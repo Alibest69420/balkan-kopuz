@@ -1,0 +1,47 @@
+[package]
+name = "kopuz-gpui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "kopuz-gpui"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+api = { workspace = true }
+config = { workspace = true }
+i18n = { workspace = true }
+link = { workspace = true }
+store = { workspace = true }
+theme = { workspace = true }
+widgets = { workspace = true }
+gpui-kit = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+
+page_home = { path = "../page_home" }
+page_search = { path = "../page_search" }
+page_discover = { path = "../page_discover" }
+page_library = { path = "../page_library" }
+page_albums = { path = "../page_albums" }
+page_artists = { path = "../page_artists" }
+page_playlists = { path = "../page_playlists" }
+page_favorites = { path = "../page_favorites" }
+page_activity = { path = "../page_activity" }
+page_radio = { path = "../page_radio" }
+page_downloader = { path = "../page_downloader" }
+page_settings = { path = "../page_settings" }
+sidebar = { path = "../sidebar" }
+player_bar = { path = "../player_bar" }
+side_panel = { path = "../side_panel" }
+fullscreen = { path = "../fullscreen" }
+quick_search = { path = "../quick_search" }
+overlays = { path = "../overlays" }
+metadata_dialog = { path = "../metadata_dialog" }
