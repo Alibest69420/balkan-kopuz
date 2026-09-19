@@ -12,7 +12,6 @@ use equalizer::Equalizer;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
-use gpui_kit::component::switch::Switch;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -21,7 +20,7 @@ use gpui_kit::{
     Subscription, Window, div, rems,
 };
 use link::Link;
-use row::{SettingRow, section};
+use row::{SettingRow, Toggle, section};
 use store::{ConfigModel, PlayerModel, Query};
 use widgets::format::t;
 use widgets::{FieldChanged, SchemaForm, style};
@@ -232,10 +231,10 @@ impl PlaybackSettings {
                 SettingRow::new(t("prefer_local_lyrics"))
                     .locked(settings.prefer_local_locked)
                     .control(
-                        Switch::new("prefer-local-lyrics")
-                            .checked(settings.prefer_local)
+                        Toggle::new("prefer_local_lyrics")
+                            .enabled(settings.prefer_local)
                             .disabled(settings.prefer_local_locked)
-                            .on_click(cx.listener(|_, checked: &bool, _, cx| {
+                            .on_change(cx.listener(|_, checked: &bool, _, cx| {
                                 let checked = *checked;
                                 write_config(cx, move |config| {
                                     config.prefer_local_lyrics = checked;
@@ -247,10 +246,10 @@ impl PlaybackSettings {
                 SettingRow::new(t("enable_musixmatch_lyrics"))
                     .locked(settings.musixmatch_locked)
                     .control(
-                        Switch::new("musixmatch-lyrics")
-                            .checked(settings.musixmatch)
+                        Toggle::new("enable_musixmatch_lyrics")
+                            .enabled(settings.musixmatch)
                             .disabled(settings.musixmatch_locked)
-                            .on_click(cx.listener(|_, checked: &bool, _, cx| {
+                            .on_change(cx.listener(|_, checked: &bool, _, cx| {
                                 let checked = *checked;
                                 write_config(cx, move |config| {
                                     config.enable_musixmatch_lyrics = checked;
@@ -263,10 +262,10 @@ impl PlaybackSettings {
                     .description(SharedString::from(format!("{latency_ms} ms")))
                     .locked(settings.auto_locked)
                     .control(
-                        Switch::new("lyrics-offset-auto")
-                            .checked(settings.auto)
+                        Toggle::new("lyrics_offset_auto")
+                            .enabled(settings.auto)
                             .disabled(settings.auto_locked)
-                            .on_click(cx.listener(|_, checked: &bool, _, cx| {
+                            .on_change(cx.listener(|_, checked: &bool, _, cx| {
                                 let checked = *checked;
                                 write_config(cx, move |config| {
                                     config.lyrics_offset_auto = checked;
@@ -387,10 +386,10 @@ impl PlaybackSettings {
         section(t("logs"))
             .child(
                 SettingRow::new(t("enable_tracing")).locked(locked).control(
-                    Switch::new("tracing-enabled")
-                        .checked(tracing_enabled)
+                    Toggle::new("tracing_enabled")
+                        .enabled(tracing_enabled)
                         .disabled(locked)
-                        .on_click(cx.listener(|_, checked: &bool, _, cx| {
+                        .on_change(cx.listener(|_, checked: &bool, _, cx| {
                             let checked = *checked;
                             write_config(cx, move |config| config.tracing_enabled = checked);
                         })),

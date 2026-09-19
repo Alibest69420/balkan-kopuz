@@ -7,7 +7,6 @@ use config::{AppConfig, BackBehavior, PlayerBarPosition};
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
-use gpui_kit::component::switch::Switch;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -15,7 +14,7 @@ use gpui_kit::{
     ParentElement as _, PathPromptOptions, Render, SharedString, StatefulInteractiveElement as _,
     Styled, Subscription, Window, div, rems,
 };
-use row::{SettingRow, section};
+use row::{SettingRow, Toggle, section};
 use store::ConfigModel;
 use theme_editor::ThemeEditor;
 use widgets::format::t;
@@ -167,10 +166,10 @@ impl AppearanceSettings {
         cx: &App,
     ) -> AnyElement {
         let locked = ConfigModel::global(cx).read(cx).is_locked(key);
-        Switch::new(key)
-            .checked(checked)
+        Toggle::new(key)
+            .enabled(checked)
             .disabled(locked)
-            .on_click(move |value: &bool, _, cx| {
+            .on_change(move |value: &bool, _, cx| {
                 let value = *value;
                 edit(cx, |cfg| change(cfg, value));
             })

@@ -82,7 +82,7 @@ pub fn empty(text: SharedString, cx: &App) -> Div {
     div()
         .text_xs()
         .italic()
-        .text_color(style::slate_400(cx))
+        .text_color(style::slate_500(cx))
         .child(text)
 }
 

@@ -26,8 +26,6 @@ const ITEM_SELECTED: f32 = 0.03;
 /// `text-white/40` on the lock, `text-white/70` on the line beside it.
 const LOCK: f32 = 0.40;
 const NOTICE: f32 = 0.70;
-/// The lock glyph; `widgets::icons` has no constant for it yet.
-const LOCK_ICON: &str = "icons/lock.svg";
 
 /// Which panel the rail is showing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -223,7 +221,7 @@ impl Settings {
             .border_color(style::white(style::BORDER, cx))
             .bg(style::white(style::RAISED, cx))
             .child(
-                icons::icon(LOCK_ICON)
+                icons::icon(icons::LOCK)
                     .with_size(style::text_11())
                     .text_color(style::white(LOCK, cx)),
             )

@@ -3,12 +3,15 @@
 // Copied verbatim into the sibling settings crates until this shape moves into `widgets`.
 #![allow(dead_code)]
 
-use gpui_kit::component::{Sizable as _, h_flex, v_flex};
+use std::rc::Rc;
+
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, FontWeight, InteractiveElement as _, IntoElement, ParentElement, Rems,
-    RenderOnce, SharedString, Styled, Window, div, rems,
+    RenderOnce, SharedString, StatefulInteractiveElement as _, Styled, Window, div, rems,
 };
+use widgets::format::t;
 use widgets::icons;
 use widgets::style;
 
@@ -25,8 +28,8 @@ const STRIPE: f32 = 0.025;
 const HEADING: f32 = 0.65;
 /// `text-white/40` on the lock a managed row is marked with.
 const LOCK: f32 = 0.40;
-/// The lock glyph; `widgets::icons` has no constant for it yet.
-const LOCK_ICON: &str = "icons/lock.svg";
+/// `hover:text-slate-300` on a toggle's idle half, one step brighter than the muted token.
+const TOGGLE_IDLE_HOVER: f32 = 0.70;
 
 /// `min-h-[3.25rem]`, the height a settings row never goes under.
 pub fn row_height() -> Rems {
@@ -161,7 +164,7 @@ impl RenderOnce for SettingRow {
                     )
                     .when(self.locked, |heading| {
                         heading.child(
-                            icons::icon(LOCK_ICON)
+                            icons::icon(icons::LOCK)
                                 .with_size(style::text_10())
                                 .text_color(style::white(LOCK, cx)),
                         )
@@ -204,5 +207,118 @@ impl RenderOnce for SettingRow {
                 .children(control)
                 .into_any_element()
         }
+    }
+}
+
+/// What a toggle answers with; both halves share one handler, so it is counted, not moved.
+type Answer = Rc<dyn Fn(&bool, &mut Window, &mut App) + 'static>;
+
+/// `ToggleSetting`: the segmented Enabled/Disabled control every boolean setting answers with.
+#[derive(IntoElement)]
+pub struct Toggle {
+    id: SharedString,
+    enabled: bool,
+    disabled: bool,
+    on_change: Option<Answer>,
+}
+
+impl Toggle {
+    /// `id` is the row's config key, so the two halves keep stable, domain-derived ids.
+    pub fn new(id: impl Into<SharedString>) -> Self {
+        Self {
+            id: id.into(),
+            enabled: false,
+            disabled: false,
+            on_change: None,
+        }
+    }
+
+    pub fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
+    }
+
+    pub fn on_change(mut self, handler: impl Fn(&bool, &mut Window, &mut App) + 'static) -> Self {
+        self.on_change = Some(Rc::new(handler));
+        self
+    }
+}
+
+impl RenderOnce for Toggle {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let on = toggle_half(
+            SharedString::from(format!("{}-on", self.id)),
+            t("enabled"),
+            true,
+            self.enabled,
+            self.disabled,
+            self.on_change.clone(),
+            cx,
+        );
+        let off = toggle_half(
+            SharedString::from(format!("{}-off", self.id)),
+            t("disabled"),
+            false,
+            !self.enabled,
+            self.disabled,
+            self.on_change,
+            cx,
+        );
+        h_flex()
+            .w_48()
+            .h_10()
+            .p_1()
+            .items_center()
+            .rounded(style::radius_xl())
+            .border_1()
+            .border_color(style::white(style::BORDER_SOFT, cx))
+            .bg(style::white(style::RAISED, cx))
+            .child(on)
+            .child(off)
+    }
+}
+
+/// One half of the segmented toggle: the surface when it is the answer, muted text when it is not.
+fn toggle_half(
+    id: SharedString,
+    label: SharedString,
+    value: bool,
+    selected: bool,
+    disabled: bool,
+    on_change: Option<Answer>,
+    cx: &App,
+) -> impl IntoElement {
+    let mut half = h_flex()
+        .id(id)
+        .flex_1()
+        .h_8()
+        .items_center()
+        .justify_center()
+        .rounded(style::radius_lg())
+        .text_size(style::text_11())
+        .font_weight(FontWeight::BOLD)
+        .child(label);
+    if selected {
+        half = half
+            .bg(style::white(style::HOVER, cx))
+            .text_color(cx.theme().foreground);
+    } else {
+        half = half.text_color(style::slate_500(cx));
+    }
+    if disabled {
+        return half;
+    }
+    half = half.cursor_pointer();
+    if !selected {
+        half = half.hover(|idle| idle.text_color(style::white(TOGGLE_IDLE_HOVER, cx)));
+    }
+    match on_change {
+        Some(handler) => half.on_click(move |_, window, cx| handler(&value, window, cx)),
+        None => half,
     }
 }

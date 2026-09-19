@@ -4,7 +4,6 @@ use config::{EqPreset, EqualizerSettings};
 use gpui_kit::component::button::Button;
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
-use gpui_kit::component::switch::Switch;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, h_flex, v_flex};
 use gpui_kit::{
     App, AppContext as _, Context, Div, Entity, IntoElement, ParentElement as _, Render,
@@ -15,6 +14,7 @@ use store::ConfigModel;
 use widgets::format::t;
 use widgets::style;
 
+use crate::row::Toggle;
 use crate::{set_slider, write_config};
 
 /// `border-white/8` around the band graph.
@@ -120,22 +120,13 @@ impl Render for Equalizer {
                     .gap_3()
                     .items_stretch()
                     .child(
-                        panel(cx)
-                            .w_48()
-                            .child(
-                                Switch::new("eq-enabled")
-                                    .checked(enabled)
-                                    .disabled(locked)
-                                    .on_click(cx.listener(|_, checked: &bool, _, cx| {
-                                        let mut settings = current(cx);
-                                        settings.enabled = *checked;
-                                        apply(settings, cx);
-                                    })),
-                            )
-                            .child(div().text_xs().text_color(muted).child(if enabled {
-                                t("enabled")
-                            } else {
-                                t("disabled")
+                        Toggle::new(CONFIG_KEY)
+                            .enabled(enabled)
+                            .disabled(locked)
+                            .on_change(cx.listener(|_, checked: &bool, _, cx| {
+                                let mut settings = current(cx);
+                                settings.enabled = *checked;
+                                apply(settings, cx);
                             })),
                     )
                     .child(
