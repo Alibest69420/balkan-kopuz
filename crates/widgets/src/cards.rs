@@ -85,7 +85,7 @@ impl RenderOnce for Tile {
         let radius = if self.round {
             self.size / 2.
         } else {
-            style::radius_xl().to_pixels(window.rem_size())
+            style::to_px(style::radius_xl(), window)
         };
         let round = self.round;
         v_flex()

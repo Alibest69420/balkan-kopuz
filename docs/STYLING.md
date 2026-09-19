@@ -38,7 +38,11 @@ family) have no Kopuz variable behind them, so pick the nearest of
 
 GPUI's scale **is** Tailwind's: `gap-3` → `.gap_3()`, `px-2` → `.px_2()`,
 `h-9` → `.h_9()`, `mb-4` → `.mb_4()`, `text-xs` → `.text_xs()`, `text-sm` →
-`.text_sm()`, `text-4xl` → `.text_4xl()`. Translate the number, not the pixels.
+`.text_sm()`. Translate the number, not the pixels.
+
+The type scale stops at `text_3xl`. Above it, use `.text_size(…)` with
+`style::text_5xl()` / `style::text_7xl()`, or `rems(n)` for a size neither
+names — `text-4xl` is `rems(2.25)`.
 
 The scale has gaps: there is no `h_14`, `w_14`, `h_18`, … Past 12 it jumps to
 16, 20, 24. For a size that is not on it, use a `style::` helper (`row_height`,

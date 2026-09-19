@@ -656,16 +656,17 @@ impl Render for MediaServers {
         ui::section(t("media_servers")).child(
             ui::card(cx)
                 .when(servers.is_empty(), |card| {
-                    card.child(ui::hint(t("no_saved_servers"), cx))
+                    card.child(ui::empty(t("no_saved_servers"), cx))
                 })
                 .children(servers.iter().map(|source| self.server(source, cx)))
                 .child(
                     Button::new("add-server")
-                        .outline()
+                        .custom(ui::soft(cx))
                         .small()
                         .icon(icons::icon(icons::PLUS))
                         .label(t("add_server"))
-                        .on_click(cx.listener(|this, _, window, cx| this.open_add(window, cx))),
+                        .on_click(cx.listener(|this, _, window, cx| this.open_add(window, cx)))
+                        .self_start(),
                 ),
         )
     }

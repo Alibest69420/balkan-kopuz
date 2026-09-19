@@ -446,11 +446,7 @@ impl Render for Search {
         } else {
             self.results(cx)
         };
-        v_flex()
-            .size_full()
-            .p_8()
-            .child(self.bar(cx))
-            .child(body)
+        v_flex().size_full().p_8().child(self.bar(cx)).child(body)
     }
 }
 

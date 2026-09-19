@@ -199,8 +199,16 @@ impl Downloader {
             .gap_2()
             .child(div().flex_1().child(Input::new(&self.url)))
             .child(
+                // `bg-white/10`, not the accent: the Dioxus button is a quiet chip.
                 Button::new("downloader-start")
-                    .primary()
+                    .custom(
+                        ButtonCustomVariant::new(cx)
+                            .color(style::white(style::HOVER, cx))
+                            .foreground(cx.theme().foreground)
+                            .hover(style::white(style::ACTIVE, cx))
+                            .active(style::white(style::ACTIVE, cx)),
+                    )
+                    .rounded(ButtonRounded::Large)
                     .icon(icons::icon(icons::DOWNLOAD))
                     .label(t("downloader_download"))
                     .on_click(cx.listener(|this, _, window, cx| this.start(window, cx))),
@@ -216,11 +224,24 @@ impl Downloader {
                 .map(|option| {
                     let selected = picked.as_deref() == Some(option.value.as_str());
                     let value = option.value.clone();
+                    let chip = if selected {
+                        ButtonCustomVariant::new(cx)
+                            .color(style::white(style::ACTIVE, cx))
+                            .foreground(cx.theme().foreground)
+                            .hover(style::white(style::ACTIVE, cx))
+                            .active(style::white(style::ACTIVE, cx))
+                    } else {
+                        ButtonCustomVariant::new(cx)
+                            .color(style::white(style::RAISED, cx))
+                            .foreground(style::slate_400(cx))
+                            .hover(style::white(style::HOVER, cx))
+                            .active(style::white(style::HOVER, cx))
+                    };
                     Button::new(SharedString::from(format!("format-{}", option.value)))
-                        .ghost()
+                        .custom(chip)
+                        .rounded(ButtonRounded::Large)
                         .xsmall()
                         .label(text(&option.label))
-                        .selected(selected)
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.format = Some(value.clone());
                             cx.notify();
@@ -231,15 +252,18 @@ impl Downloader {
     }
 
     fn failure_box(&self, failure: SharedString, cx: &Context<Self>) -> impl IntoElement {
+        let danger = cx.theme().danger;
         h_flex()
             .gap_2()
             .items_start()
-            .p_3()
-            .rounded(cx.theme().radius)
+            .px_4()
+            .py_3()
+            .rounded(style::radius_xl())
             .border_1()
-            .border_color(cx.theme().danger)
+            .border_color(danger.opacity(0.2))
+            .bg(danger.opacity(0.1))
             .text_sm()
-            .text_color(cx.theme().danger)
+            .text_color(danger)
             .child(Icon::default().path(icons::WARNING).small())
             .child(div().flex_1().child(failure))
     }

@@ -247,7 +247,7 @@ impl TrackList {
 
         let accent = cx.theme().primary;
         let mark = px(12.);
-        let cover = style::row_cover().to_pixels(window.rem_size());
+        let cover = style::to_px(style::row_cover(), window);
 
         columns::frame()
             .id(("track-row", index))
@@ -386,6 +386,7 @@ impl TrackList {
                             let album_id = album_id.clone();
                             move |_, _, cx| {
                                 if !album_id.is_empty() {
+                                    cx.stop_propagation();
                                     Navigator::navigate(Route::Album(album_id.clone().into()), cx);
                                 }
                             }

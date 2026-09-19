@@ -5,7 +5,7 @@ use gpui_kit::component::clipboard::Clipboard;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::{
     App, ClickEvent, Div, ElementId, FontWeight, IntoElement, ParentElement as _, SharedString,
-    Styled, Window, div, rems,
+    Styled, Window, div, px,
 };
 use widgets::format::t;
 use widgets::{icons, style};
@@ -207,7 +207,7 @@ pub fn host_access_warning(id: impl Into<ElementId>, message: SharedString, cx: 
         )
 }
 
-/// `.popup`: `max-width: 500px`, what every settings dialog is drawn at.
-pub fn dialog_width() -> gpui_kit::Rems {
-    rems(31.25)
+/// `.popup`: `max-width: 500px`; the dialog takes pixels, not a rem length.
+pub fn dialog_width() -> gpui_kit::Pixels {
+    px(500.)
 }

@@ -60,7 +60,7 @@ impl RenderOnce for Cover {
         // `rounded` on the thumb; a caller that wants a card or an avatar says so.
         let radius = self
             .rounded
-            .unwrap_or_else(|| style::radius(cx).to_pixels(window.rem_size()));
+            .unwrap_or_else(|| style::to_px(style::radius(cx), window));
         let glyph = px((self.size.as_f32() * 0.22).max(12.));
         div()
             .size(self.size)
