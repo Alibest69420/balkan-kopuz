@@ -65,6 +65,17 @@ Off-scale sizes have helpers: `text-[10px]` → `.text_size(style::text_10())`,
 | `absolute inset-0` | `.absolute().inset_0()` |
 | `group` + `opacity-0 group-hover:opacity-100` | `.group("name")` + `.invisible().group_hover("name", \|s\| s.visible())` |
 | `hover:bg-white/10` | `.hover(\|s\| s.bg(style::white(style::HOVER, cx)))` |
+| a chip: `bg-white/10 hover:bg-white/20 text-slate-300` | `Button::…custom(ButtonCustomVariant::new(cx)…)` — `.ghost()`/`.primary()` cannot express it |
+| an inverted control: `bg-white text-black` | the same, with `foreground`/`background` swapped; never a hex |
+
+`ButtonCustomVariant` is the call this port needs most often and the one that is
+easiest to miss: any Kopuz button that is not a plain ghost or the accent pill
+goes through it. A `Button`'s border colour also comes from its variant, so
+`bg-X border-Y` needs a custom variant too, and `rounded-full` on a `Button` is
+`px(999.)` — `ButtonRounded` has no `Full`.
+
+`Button::with_size`, `Icon::size` and `Cover::rounded` take `Pixels` only, so a
+bare `px(…)` there is expected rather than a violation of the rem rule.
 
 ## Known metrics
 
