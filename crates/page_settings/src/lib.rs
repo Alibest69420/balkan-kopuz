@@ -99,12 +99,32 @@ impl Settings {
         let category = section
             .and_then(|section| Category::from_slug(&section))
             .unwrap_or(Category::General);
-        Self {
+        let mut settings = Self {
             category,
             appearance: cx.new(|cx| AppearanceSettings::new(window, cx)),
             sources: cx.new(|cx| SourceSettings::new(window, cx)),
             playback: cx.new(|cx| PlaybackSettings::new(window, cx)),
+        };
+        settings.select(category, cx);
+        settings
+    }
+
+    /// Show one category, telling its crate which of its sections to draw.
+    fn select(&mut self, category: Category, cx: &mut Context<Self>) {
+        self.category = category;
+        let section = Some(SharedString::from(category.slug()));
+        match category {
+            Category::General | Category::Appearance => self
+                .appearance
+                .update(cx, |panel, cx| panel.show(section, cx)),
+            Category::Library | Category::Connectivity => {
+                self.sources.update(cx, |panel, cx| panel.show(section, cx))
+            }
+            _ => self
+                .playback
+                .update(cx, |panel, cx| panel.show(section, cx)),
         }
+        cx.notify();
     }
 
     fn panel(&self) -> AnyElement {
@@ -151,8 +171,7 @@ impl Render for Settings {
                                 .label(category.label())
                                 .selected(category == self.category)
                                 .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.category = category;
-                                    cx.notify();
+                                    this.select(category, cx);
                                 }))
                         }),
                     ))

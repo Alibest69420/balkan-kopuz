@@ -1,36 +1,10 @@
-//! TODO(parity): implement against docs/PARITY.md.
+//! The fullscreen player and the compact mini player, both drawn from the shared models.
 
-use gpui_kit::{Context, IntoElement, Render, Window};
-use widgets::EmptyState;
+mod background;
+mod controls;
+mod mini;
+mod player;
+mod tabs;
 
-/// TODO(parity): see docs/PARITY.md for what this page owes.
-pub struct FullscreenPlayer {}
-
-impl FullscreenPlayer {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let _ = (window, cx);
-        Self {}
-    }
-}
-
-impl Render for FullscreenPlayer {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        EmptyState::new("Fullscreen player").detail("Not implemented yet")
-    }
-}
-
-/// TODO(parity): see docs/PARITY.md for what this page owes.
-pub struct MiniPlayer {}
-
-impl MiniPlayer {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let _ = (window, cx);
-        Self {}
-    }
-}
-
-impl Render for MiniPlayer {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        EmptyState::new("Mini player").detail("Not implemented yet")
-    }
-}
+pub use mini::MiniPlayer;
+pub use player::FullscreenPlayer;

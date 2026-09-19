@@ -8,7 +8,6 @@ use gpui_kit::{
 };
 use shell::{Back, Escape, QuickSearch, Shell, TogglePlayback};
 
-// Bound in the shell's own context, so a focused input keeps its keys.
 fn keymap(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("space", TogglePlayback, Some("Shell")),
@@ -16,6 +15,9 @@ fn keymap(cx: &mut App) {
         KeyBinding::new("ctrl-k", QuickSearch, Some("Shell")),
         KeyBinding::new("escape", Escape, Some("Shell")),
         KeyBinding::new("alt-left", Back, Some("Shell")),
+        // Bindings beat key listeners, so without this the Shell's space would
+        // toggle playback instead of typing one; NoAction suppresses it.
+        KeyBinding::new("space", gpui_kit::NoAction, Some("Input")),
     ]);
 }
 

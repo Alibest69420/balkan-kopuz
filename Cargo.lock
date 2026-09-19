@@ -3749,7 +3749,6 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 [[package]]
 name = "kopuz-api"
 version = "0.17.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=6fe8a59a83fff80de216dbbb4321c25134403ac1#6fe8a59a83fff80de216dbbb4321c25134403ac1"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -3760,7 +3759,6 @@ dependencies = [
 [[package]]
 name = "kopuz-client"
 version = "0.17.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=6fe8a59a83fff80de216dbbb4321c25134403ac1#6fe8a59a83fff80de216dbbb4321c25134403ac1"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -3778,7 +3776,6 @@ dependencies = [
 [[package]]
 name = "kopuz-config"
 version = "0.17.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=6fe8a59a83fff80de216dbbb4321c25134403ac1#6fe8a59a83fff80de216dbbb4321c25134403ac1"
 dependencies = [
  "directories",
  "serde",
@@ -3827,7 +3824,6 @@ dependencies = [
 [[package]]
 name = "kopuz-i18n"
 version = "0.17.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=6fe8a59a83fff80de216dbbb4321c25134403ac1#6fe8a59a83fff80de216dbbb4321c25134403ac1"
 dependencies = [
  "fluent-bundle",
  "unic-langid",
@@ -3836,7 +3832,6 @@ dependencies = [
 [[package]]
 name = "kopuz-proto"
 version = "0.17.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=6fe8a59a83fff80de216dbbb4321c25134403ac1#6fe8a59a83fff80de216dbbb4321c25134403ac1"
 dependencies = [
  "futures-util",
  "kopuz-api",

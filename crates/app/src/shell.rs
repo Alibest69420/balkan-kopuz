@@ -6,7 +6,7 @@ use gpui_kit::component::{ActiveTheme as _, Root, WindowExt as _, h_flex, v_flex
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled,
-    Subscription, Window, div, px,
+    Subscription, Window, div,
 };
 use gpui_kit::{FocusHandle, InteractiveElement as _, actions};
 use link::{Connection, ConnectionStatus};
@@ -25,9 +25,10 @@ pub struct Shell {
     side_panel: Entity<side_panel::SidePanelView>,
     fullscreen: Entity<fullscreen::FullscreenPlayer>,
     quick_search: Entity<quick_search::QuickSearch>,
+    mini_player: Entity<fullscreen::MiniPlayer>,
     overlays: Entity<overlays::Overlays>,
     // The theme these were applied for, so config edits reapply only on a change.
-    theme_name: String,
+    applied_theme: (String, Option<config::CustomTheme>),
     _subscriptions: Vec<Subscription>,
 }
 
@@ -45,10 +46,16 @@ impl Shell {
             cx.observe(&navigator, |_, _, cx| cx.notify()),
             cx.observe(&chrome, |_, _, cx| cx.notify()),
             cx.observe_in(&config, window, |this, config, window, cx| {
-                let theme = config.read(cx).config().theme.clone();
-                if theme != this.theme_name {
-                    this.theme_name = theme.clone();
-                    theme::apply_named(&theme, Some(window), cx);
+                let settings = config.read(cx).config();
+                // Re-editing a custom theme keeps its name, so the colors are the key.
+                let applied = (
+                    settings.theme.clone(),
+                    settings.custom_themes.get(&settings.theme).cloned(),
+                );
+                if applied != this.applied_theme {
+                    this.applied_theme = applied;
+                    let settings = settings.clone();
+                    theme::apply_config(&settings, Some(window), cx);
                 }
                 cx.notify();
             }),
@@ -78,8 +85,9 @@ impl Shell {
             side_panel: cx.new(|cx| side_panel::SidePanelView::new(window, cx)),
             fullscreen: cx.new(|cx| fullscreen::FullscreenPlayer::new(window, cx)),
             quick_search: cx.new(|cx| quick_search::QuickSearch::new(window, cx)),
+            mini_player: cx.new(|cx| fullscreen::MiniPlayer::new(window, cx)),
             overlays: cx.new(|cx| overlays::Overlays::new(window, cx)),
-            theme_name: String::new(),
+            applied_theme: (String::new(), None),
             _subscriptions: subscriptions,
         }
     }
@@ -149,10 +157,30 @@ impl Render for Shell {
         let connected = self.connection.read(cx).is_connected();
         let chrome = Chrome::global(cx).read(cx);
         let fullscreen = chrome.is_fullscreen();
+        let compact = chrome.is_compact();
         let panel_open = chrome.panel().is_some();
         let quick_search_open = chrome.is_quick_search_open();
+        // The side panel is drag-resizable, so it owns the slot's width.
+        let panel_width = self.side_panel.read(cx).width();
+        // In fullscreen the bar is only kept when the setting asks for it.
+        let show_player_bar = connected
+            && !compact
+            && (!fullscreen
+                || ConfigModel::global(cx)
+                    .read(cx)
+                    .config()
+                    .fullscreen_use_player_bar);
         let route = Navigator::global(cx).read(cx).current().clone();
         let page = self.router.page(&route, window, cx);
+
+        if compact {
+            return div()
+                .size_full()
+                .bg(cx.theme().background)
+                .text_color(cx.theme().foreground)
+                .child(self.mini_player.clone())
+                .into_any_element();
+        }
 
         div()
             .size_full()
@@ -190,10 +218,10 @@ impl Render for Shell {
                                     .child(self.overlays.clone()),
                             )
                             .when(panel_open && connected, |body| {
-                                body.child(div().w(px(320.)).child(self.side_panel.clone()))
+                                body.child(div().w(panel_width).child(self.side_panel.clone()))
                             }),
                     )
-                    .when(connected, |window_body| {
+                    .when(show_player_bar, |window_body| {
                         window_body.child(self.player_bar.clone())
                     }),
             )
@@ -203,5 +231,6 @@ impl Render for Shell {
             .children(Root::render_dialog_layer(window, cx))
             .children(Root::render_sheet_layer(window, cx))
             .children(Root::render_notification_layer(window, cx))
+            .into_any_element()
     }
 }

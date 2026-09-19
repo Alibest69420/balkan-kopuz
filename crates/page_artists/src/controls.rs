@@ -1,0 +1,224 @@
+//! The header controls the two artist pages share: view mode, stacked sort, and Tracks⇄Albums.
+
+use config::{
+    AlbumSortField, AlbumViewMode, AppConfig, ArtistSortField, ArtistViewOrder, SortCriterion,
+    SortDirection,
+};
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
+use gpui_kit::component::{ActiveTheme as _, Selectable as _, Sizable as _, h_flex};
+use gpui_kit::{App, IntoElement, ParentElement as _, SharedString, Styled as _};
+use store::ConfigModel;
+use widgets::format::t;
+use widgets::icons;
+
+/// Which config key a view-mode toggle writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewModeKey {
+    Artists,
+    ArtistAlbums,
+}
+
+impl ViewModeKey {
+    fn read(self, config: &AppConfig) -> AlbumViewMode {
+        match self {
+            Self::Artists => config.artists_view_mode,
+            Self::ArtistAlbums => config.artist_album_view_mode,
+        }
+    }
+
+    fn write(self, config: &mut AppConfig, mode: AlbumViewMode) {
+        match self {
+            Self::Artists => config.artists_view_mode = mode,
+            Self::ArtistAlbums => config.artist_album_view_mode = mode,
+        }
+    }
+}
+
+/// A sortable field: its label, and the config key the criteria stack lives under.
+pub trait SortTarget: Copy + PartialEq + std::fmt::Debug + 'static {
+    fn label_key(self) -> &'static str;
+    fn read(config: &AppConfig) -> Vec<SortCriterion<Self>>;
+    fn write(config: &mut AppConfig, criteria: Vec<SortCriterion<Self>>);
+}
+
+impl SortTarget for ArtistSortField {
+    fn label_key(self) -> &'static str {
+        match self {
+            Self::Name => "sort_field_name",
+            Self::Tracks => "sort_field_tracks",
+            Self::Albums => "sort_field_albums",
+        }
+    }
+
+    fn read(config: &AppConfig) -> Vec<SortCriterion<Self>> {
+        config.artist_sort.clone()
+    }
+
+    fn write(config: &mut AppConfig, criteria: Vec<SortCriterion<Self>>) {
+        config.artist_sort = criteria;
+    }
+}
+
+impl SortTarget for AlbumSortField {
+    fn label_key(self) -> &'static str {
+        match self {
+            Self::Title => "sort_field_title",
+            Self::Artist => "sort_field_artist",
+            Self::Year => "sort_field_year",
+            Self::Genre => "sort_field_genre",
+        }
+    }
+
+    fn read(config: &AppConfig) -> Vec<SortCriterion<Self>> {
+        config.artist_album_sort.clone()
+    }
+
+    fn write(config: &mut AppConfig, criteria: Vec<SortCriterion<Self>>) {
+        config.artist_album_sort = criteria;
+    }
+}
+
+/// Read the criteria stack a control edits; empty until the daemon config loads.
+pub fn criteria<F: SortTarget>(cx: &App) -> Vec<SortCriterion<F>> {
+    let model = ConfigModel::global(cx);
+    F::read(model.read(cx).config())
+}
+
+pub fn config(cx: &App) -> AppConfig {
+    let model = ConfigModel::global(cx);
+    model.read(cx).config().clone()
+}
+
+fn edit(cx: &mut App, change: impl FnOnce(&mut AppConfig)) {
+    ConfigModel::global(cx).update(cx, |model, cx| model.update(cx, change));
+}
+
+/// Grid ⇄ list, writing `key`'s config field.
+pub fn view_mode_toggle(key: ViewModeKey, cx: &App) -> impl IntoElement {
+    let mode = key.read(&config(cx));
+    h_flex()
+        .gap_0p5()
+        .p_0p5()
+        .rounded(cx.theme().radius)
+        .bg(cx.theme().secondary)
+        .child(
+            Button::new("view-grid")
+                .ghost()
+                .xsmall()
+                .icon(icons::icon(icons::GRID))
+                .tooltip(t("view_grid"))
+                .selected(mode == AlbumViewMode::Grid)
+                .on_click(move |_, _, cx| {
+                    edit(cx, |config| key.write(config, AlbumViewMode::Grid))
+                }),
+        )
+        .child(
+            Button::new("view-list")
+                .ghost()
+                .xsmall()
+                .icon(icons::icon(icons::ROWS))
+                .tooltip(t("view_list"))
+                .selected(mode == AlbumViewMode::List)
+                .on_click(move |_, _, cx| {
+                    edit(cx, |config| key.write(config, AlbumViewMode::List))
+                }),
+        )
+}
+
+/// The stacked sort: the first field decides, the rest break ties, name always last.
+pub fn sort_control<F: SortTarget>(
+    id: &'static str,
+    available: Vec<F>,
+    cx: &App,
+) -> impl IntoElement {
+    let current: Vec<SortCriterion<F>> = criteria(cx);
+    let label = match current.first() {
+        Some(criterion) => SharedString::from(format!(
+            "{}: {}",
+            t("sort_by"),
+            t(criterion.field.label_key())
+        )),
+        None => t("sort_by"),
+    };
+    Button::new(id)
+        .ghost()
+        .small()
+        .icon(icons::icon(icons::SORT))
+        .label(label)
+        .dropdown_menu(move |mut menu, _, cx| {
+            let current: Vec<SortCriterion<F>> = criteria(cx);
+            for field in &available {
+                let field = *field;
+                let position = current
+                    .iter()
+                    .position(|criterion| criterion.field == field);
+                let direction = position.map(|index| current[index].direction);
+                let item = PopupMenuItem::new(t(field.label_key()))
+                    .checked(position.is_some())
+                    .on_click(move |_, _, cx| promote::<F>(field, cx));
+                menu = menu.item(match direction {
+                    Some(SortDirection::Asc) => item.icon(icons::icon(icons::CHEVRON_UP)),
+                    Some(SortDirection::Desc) => item.icon(icons::icon(icons::CHEVRON_DOWN)),
+                    None => item,
+                });
+            }
+            menu.separator().item(
+                PopupMenuItem::new(t("sort_none"))
+                    .icon(icons::icon(icons::CLOSE))
+                    .on_click(|_, _, cx| edit(cx, |config| F::write(config, Vec::new()))),
+            )
+        })
+}
+
+/// Clicking the deciding field flips its direction; any other field becomes the new one.
+fn promote<F: SortTarget>(field: F, cx: &mut App) {
+    let mut current: Vec<SortCriterion<F>> = criteria(cx);
+    match current.first_mut() {
+        Some(first) if first.field == field => {
+            first.direction = match first.direction {
+                SortDirection::Asc => SortDirection::Desc,
+                SortDirection::Desc => SortDirection::Asc,
+            };
+        }
+        _ => {
+            current.retain(|criterion| criterion.field != field);
+            current.insert(0, SortCriterion::new(field, SortDirection::Asc));
+        }
+    }
+    edit(cx, move |config| F::write(config, current));
+}
+
+/// Tracks ⇄ Albums for one artist, writing `cfg.artist_view_order`.
+pub fn view_order_toggle(order: &ArtistViewOrder, cx: &App) -> impl IntoElement {
+    let tracks = *order == ArtistViewOrder::Tracks;
+    h_flex()
+        .gap_0p5()
+        .p_0p5()
+        .rounded(cx.theme().radius)
+        .bg(cx.theme().secondary)
+        .child(
+            Button::new("order-tracks")
+                .ghost()
+                .xsmall()
+                .label(t("tracks"))
+                .selected(tracks)
+                .on_click(|_, _, cx| {
+                    edit(cx, |config| {
+                        config.artist_view_order = ArtistViewOrder::Tracks
+                    })
+                }),
+        )
+        .child(
+            Button::new("order-albums")
+                .ghost()
+                .xsmall()
+                .label(t("albums"))
+                .selected(!tracks)
+                .on_click(|_, _, cx| {
+                    edit(cx, |config| {
+                        config.artist_view_order = ArtistViewOrder::Albums
+                    })
+                }),
+        )
+}

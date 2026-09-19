@@ -1,0 +1,356 @@
+//! Radio registries: the station lists the radio page reads, enabled one by one.
+
+use config::RegistryEntry;
+use gpui_kit::component::WindowExt as _;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::checkbox::Checkbox;
+use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::{Disableable as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::{
+    App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
+    Styled, Subscription, Window, div,
+};
+use link::Link;
+use store::ConfigModel;
+use widgets::format::{t, t_with};
+use widgets::icons;
+
+use crate::ui;
+
+/// Change the stored registries; the config model debounces the write.
+fn edit_registries(cx: &mut App, edit: impl FnOnce(&mut Vec<RegistryEntry>)) {
+    ConfigModel::global(cx).update(cx, |model, cx| {
+        model.update(cx, |config| edit(&mut config.radio_registries));
+    });
+}
+
+pub struct RadioRegistries {
+    expanded: bool,
+    error: Option<SharedString>,
+    add: Entity<AddRegistry>,
+    _subscription: Subscription,
+}
+
+impl RadioRegistries {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let config = ConfigModel::global(cx);
+        let add = cx.new(|cx| AddRegistry::new(window, cx));
+        Self {
+            expanded: false,
+            error: None,
+            add,
+            _subscription: cx.observe(&config, |_, _, cx| cx.notify()),
+        }
+    }
+
+    fn entries(cx: &App) -> Vec<RegistryEntry> {
+        ConfigModel::global(cx)
+            .read(cx)
+            .config()
+            .radio_registries
+            .clone()
+    }
+
+    fn locked(cx: &App) -> bool {
+        ConfigModel::global(cx)
+            .read(cx)
+            .is_locked("radio_registries")
+    }
+
+    /// Turning one on means proving it answers first; turning one off is just a write.
+    fn toggle(&mut self, url: String, enable: bool, cx: &mut Context<Self>) {
+        self.error = None;
+        if !enable {
+            edit_registries(cx, |entries| {
+                if let Some(entry) = entries.iter_mut().find(|entry| entry.url == url) {
+                    entry.enabled = false;
+                }
+            });
+            cx.notify();
+            return;
+        }
+        let call = Link::global(cx).call({
+            let url = url.clone();
+            move |api| async move { api.validate_radio_registry(url).await }
+        });
+        cx.spawn(async move |this, cx| {
+            let result = call.await;
+            this.update(cx, |this, cx| {
+                match result {
+                    Ok(_) => edit_registries(cx, |entries| {
+                        if let Some(entry) = entries.iter_mut().find(|entry| entry.url == url) {
+                            entry.enabled = true;
+                        }
+                    }),
+                    Err(error) => {
+                        this.error = Some(t_with(
+                            "radio_registry_enable_failed",
+                            &[("error", error.to_string())],
+                        ));
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn delete(&mut self, url: String, cx: &mut Context<Self>) {
+        edit_registries(cx, |entries| {
+            entries.retain(|entry| entry.is_default || entry.url != url);
+        });
+        cx.notify();
+    }
+
+    fn open_add(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.add.update(cx, |form, cx| form.reset(window, cx));
+        let form = self.add.clone();
+        window.open_dialog(cx, move |dialog, _, _| {
+            dialog
+                .title(t("add_radio_registry"))
+                .child(form.clone())
+                .footer(div())
+        });
+    }
+
+    fn entry(
+        &self,
+        entry: &RegistryEntry,
+        locked: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let url = entry.url.clone();
+        let enabled = entry.enabled;
+        let shown = if entry.is_default {
+            t("radio_default_registry")
+        } else {
+            SharedString::from(url.clone())
+        };
+        h_flex()
+            .w_full()
+            .gap_3()
+            .items_center()
+            .child(
+                Checkbox::new(SharedString::from(format!("registry-{url}")))
+                    .checked(enabled)
+                    .disabled(locked)
+                    .on_click(cx.listener({
+                        let url = url.clone();
+                        move |this: &mut Self, checked: &bool, _, cx| {
+                            this.toggle(url.clone(), *checked, cx)
+                        }
+                    })),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .text_xs()
+                    .map(|label| if enabled { label } else { label.line_through() })
+                    .child(shown),
+            )
+            .when(!entry.is_default, |row| {
+                row.child(
+                    Button::new(SharedString::from(format!("delete-registry-{url}")))
+                        .danger()
+                        .xsmall()
+                        .label(t("delete"))
+                        .disabled(locked)
+                        .on_click(cx.listener({
+                            let url = url.clone();
+                            move |this: &mut Self, _, _, cx| this.delete(url.clone(), cx)
+                        })),
+                )
+            })
+    }
+}
+
+impl Render for RadioRegistries {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let entries = Self::entries(cx);
+        let locked = Self::locked(cx);
+        let active = entries.iter().filter(|entry| entry.enabled).count();
+        let summary = t_with(
+            "radio_registries_active",
+            &[
+                ("enabled_count", active.to_string()),
+                ("total", entries.len().to_string()),
+            ],
+        );
+        let expanded = self.expanded;
+
+        ui::section(t("radio")).child(
+            ui::card(cx)
+                .child(
+                    Button::new("registries-toggle")
+                        .ghost()
+                        .justify_between()
+                        .w_full()
+                        .label(summary)
+                        .icon(icons::icon(if expanded {
+                            icons::CHEVRON_UP
+                        } else {
+                            icons::CHEVRON_DOWN
+                        }))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.expanded = !this.expanded;
+                            cx.notify();
+                        })),
+                )
+                .when(expanded, |card| {
+                    card.when(entries.is_empty(), |card| {
+                        card.child(ui::hint(t("radio_registries_empty"), cx))
+                    })
+                    .when_some(self.error.clone(), |card, message| {
+                        card.child(ui::error(message, cx))
+                    })
+                    .children(
+                        entries
+                            .iter()
+                            .map(|entry| self.entry(entry, locked, cx).into_any_element()),
+                    )
+                    .child(
+                        Button::new("add-registry")
+                            .outline()
+                            .small()
+                            .icon(icons::icon(icons::PLUS))
+                            .label(t("add"))
+                            .disabled(locked)
+                            .on_click(cx.listener(|this, _, window, cx| this.open_add(window, cx))),
+                    )
+                }),
+        )
+    }
+}
+
+/// The "add radio registry" dialog: one URL, proved before it is kept.
+pub struct AddRegistry {
+    url: Entity<InputState>,
+    error: Option<SharedString>,
+    saving: bool,
+}
+
+impl AddRegistry {
+    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self {
+            url: cx.new(|cx| {
+                InputState::new(window, cx).placeholder(t("radio_registry_url_placeholder"))
+            }),
+            error: None,
+            saving: false,
+        }
+    }
+
+    fn reset(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.url
+            .update(cx, |state, cx| state.set_value("", window, cx));
+        self.error = None;
+        self.saving = false;
+        cx.notify();
+    }
+
+    fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.saving {
+            return;
+        }
+        let url = self.url.read(cx).value().trim().to_string();
+        if url.is_empty() {
+            self.error = Some(t("radio_registry_empty_path"));
+            cx.notify();
+            return;
+        }
+        let taken = ConfigModel::global(cx)
+            .read(cx)
+            .config()
+            .radio_registries
+            .iter()
+            .any(|entry| entry.url == url);
+        if taken {
+            self.error = Some(t("radio_registry_exists"));
+            cx.notify();
+            return;
+        }
+        self.error = None;
+        self.saving = true;
+        cx.notify();
+        let call = Link::global(cx).call({
+            let url = url.clone();
+            move |api| async move { api.validate_radio_registry(url).await }
+        });
+        cx.spawn_in(window, async move |this, cx| {
+            let result = call.await;
+            this.update(cx, |this, cx| {
+                this.saving = false;
+                cx.notify();
+            })
+            .ok();
+            match result {
+                Ok(_) => {
+                    cx.update(|window, cx| {
+                        edit_registries(cx, |entries| {
+                            if !entries.iter().any(|entry| entry.url == url) {
+                                entries.push(RegistryEntry {
+                                    url,
+                                    enabled: true,
+                                    is_default: false,
+                                });
+                            }
+                        });
+                        window.close_dialog(cx);
+                    })
+                    .ok();
+                }
+                Err(error) => {
+                    this.update(cx, |this, cx| {
+                        this.error = Some(t_with(
+                            "radio_registry_import_failed",
+                            &[("error", error.to_string())],
+                        ));
+                        cx.notify();
+                    })
+                    .ok();
+                }
+            }
+        })
+        .detach();
+    }
+}
+
+impl Render for AddRegistry {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let saving = self.saving;
+        v_flex()
+            .w_full()
+            .gap_3()
+            .child(Input::new(&self.url).disabled(saving))
+            .when_some(self.error.clone(), |form, message| {
+                form.child(ui::error(message, cx))
+            })
+            .child(
+                h_flex()
+                    .w_full()
+                    .gap_2()
+                    .justify_end()
+                    .child(
+                        Button::new("cancel-add-registry")
+                            .outline()
+                            .label(t("cancel"))
+                            .disabled(saving)
+                            .on_click(|_, window, cx| window.close_dialog(cx)),
+                    )
+                    .child(
+                        Button::new("save-add-registry")
+                            .primary()
+                            .label(if saving { t("saving") } else { t("save") })
+                            .loading(saving)
+                            .disabled(saving)
+                            .on_click(
+                                cx.listener(|this: &mut Self, _, window, cx| this.save(window, cx)),
+                            ),
+                    ),
+            )
+    }
+}

@@ -240,7 +240,7 @@ impl SchemaForm {
                             div()
                                 .text_xs()
                                 .text_color(cx.theme().muted_foreground)
-                                .child(t("managed_by_settings_file")),
+                                .child(t("setting_managed_by_system")),
                         )
                     }),
             )
