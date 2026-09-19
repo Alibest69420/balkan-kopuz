@@ -303,7 +303,7 @@ impl MediaServers {
         window.open_dialog(cx, move |dialog, _, _| {
             dialog
                 .title(t("add_media_server"))
-                .w(px(560.))
+                .w(ui::dialog_width())
                 .child(form.clone())
                 .footer(div())
         });
@@ -371,12 +371,13 @@ impl MediaServers {
         h_flex()
             .gap_2()
             .items_center()
+            .mt_1()
             .child(div().text_xs().text_color(color).child(label))
             .when(status == Status::Disconnected, |row| {
                 let source = source.clone();
                 row.child(
                     Button::new("server-login")
-                        .outline()
+                        .custom(ui::soft(cx))
                         .xsmall()
                         .label(t("login"))
                         .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
@@ -404,7 +405,7 @@ impl MediaServers {
             .border_color(cx.theme().border)
             .child(ui::hint(t("remote_music_folders"), cx))
             .when(folders.is_empty(), |column| {
-                column.child(ui::hint(t("no_music_folders"), cx))
+                column.child(ui::empty(t("no_music_folders"), cx))
             })
             .children(folders.iter().map(|folder| {
                 let folder = folder.clone();
@@ -434,6 +435,7 @@ impl MediaServers {
                     column.child(ui::add_folder_button(
                         "remote-add-folder",
                         false,
+                        cx,
                         cx.listener({
                             let id = id.clone();
                             move |this: &mut Self, _, _, cx| {
@@ -486,13 +488,13 @@ impl MediaServers {
             )
             .child(v_flex().w_full().gap_1().max_h(px(224.)).map(|list| {
                 if self.browser.loading {
-                    return list.child(ui::hint(t("loading_folders"), cx));
+                    return list.child(ui::empty(t("loading_folders"), cx));
                 }
                 if let Some(error) = self.browser.error.clone() {
                     return list.child(ui::error(error, cx));
                 }
                 if self.browser.entries.is_empty() {
-                    return list.child(ui::hint(t("no_subfolders"), cx));
+                    return list.child(ui::empty(t("no_subfolders"), cx));
                 }
                 list.children(self.browser.entries.iter().map(|entry| {
                     let target = entry.path.clone();
@@ -580,12 +582,7 @@ impl MediaServers {
                                 h_flex()
                                     .gap_2()
                                     .items_center()
-                                    .child(
-                                        div()
-                                            .text_sm()
-                                            .truncate()
-                                            .child(SharedString::from(source.name.clone())),
-                                    )
+                                    .child(ui::label(SharedString::from(source.name.clone())))
                                     .when(source.active, |row| {
                                         row.child(ui::active_badge(t("active_server"), cx))
                                     }),
@@ -608,8 +605,8 @@ impl MediaServers {
                             .when(!source.active, |row| {
                                 row.child(
                                     Button::new(SharedString::from(format!("switch-{id}")))
-                                        .outline()
-                                        .small()
+                                        .custom(ui::soft(cx))
+                                        .xsmall()
                                         .label(t("switch_to_server"))
                                         .on_click(cx.listener({
                                             let id = id.clone();
@@ -621,7 +618,7 @@ impl MediaServers {
                             })
                             .child(
                                 Button::new(SharedString::from(format!("delete-{id}")))
-                                    .danger()
+                                    .custom(ui::danger_text(cx))
                                     .small()
                                     .label(t("delete"))
                                     .on_click(cx.listener({

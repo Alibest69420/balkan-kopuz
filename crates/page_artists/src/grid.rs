@@ -209,9 +209,7 @@ fn tile(entry: &ArtistEntry, cx: &App) -> impl IntoElement {
                 .truncate()
                 .text_center()
                 .font_weight(FontWeight::MEDIUM)
-                .group_hover(group, |label| {
-                    label.text_color(cx.theme().primary_hover)
-                })
+                .group_hover(group, |label| label.text_color(cx.theme().primary_hover))
                 .child(name),
         )
         .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))

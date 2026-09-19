@@ -7,22 +7,26 @@ use api::{Page, QueueContext, StatsView, Table, TrackFilter, TrackInfo, TrackPag
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _, Styled,
-    Subscription, UniformListScrollHandle, Window, div, px, uniform_list,
+    AnyElement, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
+    ParentElement as _, Pixels, Rems, Render, SharedString, StatefulInteractiveElement as _,
+    Styled, Subscription, UniformListScrollHandle, Window, div, px, rems, uniform_list,
 };
 use store::{Query, actions};
 use widgets::format::{duration, t};
-use widgets::{Cover, EmptyState, Loading, PageHeader, icons};
+use widgets::{Cover, EmptyState, Loading, PageHeader, icons, style};
 
 // The Dioxus list's row height; virtualized rows need one resolved value.
 const ROW_HEIGHT: Pixels = px(60.);
+// `w-10 h-10`, and `Cover` only takes pixels.
 const COVER: Pixels = px(40.);
-const INDEX_WIDTH: Pixels = px(40.);
-const ALBUM_WIDTH: Pixels = px(200.);
-const GENRE_WIDTH: Pixels = px(120.);
-const TIME_WIDTH: Pixels = px(72.);
-const PLAYS_WIDTH: Pixels = px(72.);
+// `w-12`, `w-64`, `w-24`, `w-24`, `w-24`: the table's fixed columns.
+const INDEX_WIDTH: Rems = rems(3.);
+const ALBUM_WIDTH: Rems = rems(16.);
+const GENRE_WIDTH: Rems = rems(6.);
+const TIME_WIDTH: Rems = rems(6.);
+const PLAYS_WIDTH: Rems = rems(6.);
+// `max-w-[1600px] mx-auto`.
+const PAGE_WIDTH: Rems = rems(100.);
 
 const BUFFER: usize = 10;
 // Windows snap to this, so scrolling within one asks the daemon for nothing.
@@ -176,18 +180,20 @@ impl Activity {
             .duration_secs()
             .map(|secs| duration(secs * 1000))
             .unwrap_or_else(|| "--:--".into());
-        let muted = cx.theme().muted_foreground;
+        let muted = style::slate_400(cx);
 
         div()
             .id(SharedString::from(track.uid.clone()))
+            .group(ROW_GROUP)
             .h(ROW_HEIGHT)
             .w_full()
             .flex()
             .items_center()
-            .gap_3()
-            .px_2()
-            .rounded(cx.theme().radius)
-            .hover(|row| row.bg(cx.theme().list_hover))
+            .gap_4()
+            .px_4()
+            .cursor_pointer()
+            .rounded(style::radius_xl())
+            .hover(|row| row.bg(style::white(style::RAISED, cx)))
             .on_click(cx.listener(move |_, _, _, cx| {
                 actions::play_context(
                     QueueContext::Filter {
@@ -199,20 +205,49 @@ impl Activity {
             }))
             .child(
                 div()
+                    .relative()
                     .w(INDEX_WIDTH)
                     .flex_shrink_0()
-                    .text_sm()
-                    .text_color(muted)
-                    .child((index + 1).to_string()),
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(style::white(0.5, cx))
+                    .child(
+                        div()
+                            .group_hover(ROW_GROUP, |number| number.invisible())
+                            .child((index + 1).to_string()),
+                    )
+                    .child(
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .invisible()
+                            .group_hover(ROW_GROUP, |play| {
+                                play.visible().text_color(cx.theme().foreground)
+                            })
+                            .child(icons::icon(icons::PLAY).size(px(14.))),
+                    ),
             )
-            .child(Cover::new(track.artwork.as_ref()).size(COVER))
+            .child(
+                Cover::new(track.artwork.as_ref())
+                    .size(COVER)
+                    .rounded(px(6.)),
+            )
             .child(
                 v_flex()
                     .flex_1()
                     .min_w_0()
+                    .gap_0p5()
                     .child(
                         div()
                             .truncate()
+                            // `text-[15px]`, between `text-sm` and `text-base`.
+                            .text_size(rems(0.9375))
+                            .font_weight(FontWeight::MEDIUM)
                             .child(SharedString::from(track.title.clone())),
                     )
                     .child(
@@ -254,16 +289,18 @@ impl Activity {
                 h_flex()
                     .w(PLAYS_WIDTH)
                     .flex_shrink_0()
-                    .gap_1()
+                    .gap_2()
                     .justify_end()
                     .text_sm()
                     .text_color(muted)
                     .when(plays > 0, |cell| {
-                        cell.text_color(cx.theme().foreground).child(
-                            icons::icon(icons::ACTIVITY)
-                                .size(px(12.))
-                                .text_color(cx.theme().warning),
-                        )
+                        cell.text_color(cx.theme().foreground)
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(
+                                icons::icon(icons::ACTIVITY)
+                                    .size(style::text_10())
+                                    .text_color(cx.theme().warning.opacity(0.8)),
+                            )
                     })
                     .child(plays.to_string()),
             )
@@ -274,14 +311,22 @@ impl Activity {
         h_flex()
             .w_full()
             .items_center()
-            .gap_3()
-            .px_2()
-            .pb_2()
+            .gap_4()
+            .mb_2()
+            .px_4()
+            .py_3()
             .border_b_1()
-            .border_color(cx.theme().border)
+            .border_color(style::white(style::BORDER, cx))
             .text_xs()
-            .text_color(cx.theme().muted_foreground)
-            .child(div().w(INDEX_WIDTH).flex_shrink_0().child("#"))
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(style::slate_400(cx))
+            .child(
+                div()
+                    .w(INDEX_WIDTH)
+                    .flex_shrink_0()
+                    .text_center()
+                    .child("#"),
+            )
             .child(div().w(COVER).flex_shrink_0())
             .child(div().flex_1().min_w_0().child(t("title")))
             .child(div().w(ALBUM_WIDTH).flex_shrink_0().child(t("album")))
@@ -303,13 +348,36 @@ impl Activity {
     }
 }
 
+// The row's own hover group, so the index can swap for a play glyph.
+const ROW_GROUP: &str = "activity-row";
+
 impl Render for Activity {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let count = self.total;
         v_flex()
             .size_full()
-            .p_4()
-            .child(PageHeader::new(t("listening_logs")).subtitle(t("most_played_tracks")))
+            .max_w(PAGE_WIDTH)
+            .mx_auto()
+            .px_8()
+            .pt_8()
+            .child(
+                PageHeader::new(t("listening_logs"))
+                    .subtitle(t("most_played_tracks"))
+                    .action(
+                        // `w-12 h-12 rounded-full bg-white/5 border border-white/10`.
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .size_12()
+                            .rounded_full()
+                            .bg(style::white(style::RAISED, cx))
+                            .border_1()
+                            .border_color(style::white(style::BORDER, cx))
+                            .text_color(style::slate_400(cx))
+                            .child(icons::icon(icons::ACTIVITY).size(px(16.))),
+                    ),
+            )
             .child(self.columns(cx))
             .child(if count == 0 {
                 if self.settled {

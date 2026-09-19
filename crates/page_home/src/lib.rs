@@ -510,7 +510,7 @@ impl Home {
                         row.child(
                             Button::new("home-listen-now-layout")
                                 .custom(chip(cx))
-                                .h(px(28.))
+                                .h_7()
                                 .px_3()
                                 .rounded(px(6.))
                                 .text_xs()
@@ -534,7 +534,7 @@ impl Home {
                     .child(
                         Button::new(SharedString::from(format!("home-up-{key}")))
                             .custom(chip(cx))
-                            .size(px(28.))
+                            .size_7()
                             .rounded(px(6.))
                             .icon(icons::icon(icons::CHEVRON_UP))
                             .tooltip(t("move_up"))
@@ -547,7 +547,7 @@ impl Home {
                     .child(
                         Button::new(SharedString::from(format!("home-down-{key}")))
                             .custom(chip(cx))
-                            .size(px(28.))
+                            .size_7()
                             .rounded(px(6.))
                             .icon(icons::icon(icons::CHEVRON_DOWN))
                             .tooltip(t("move_down"))
@@ -560,7 +560,7 @@ impl Home {
                     .child(
                         Button::new(SharedString::from(format!("home-toggle-{key}")))
                             .custom(if enabled { accent_chip(cx) } else { chip(cx) })
-                            .h(px(28.))
+                            .h_7()
                             .px_3()
                             .rounded(px(6.))
                             .text_xs()
@@ -654,7 +654,7 @@ fn pill(button: Button) -> Button {
     button
         .h_8()
         .px_3()
-        .rounded(px(16.))
+        .rounded_full()
         .text_xs()
         .font_weight(FontWeight::SEMIBOLD)
 }

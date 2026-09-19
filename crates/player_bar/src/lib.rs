@@ -414,16 +414,21 @@ impl PlayerBar {
             )
             .when(capabilities.dont_recommend, |block| {
                 block.child(
-                    icon_button("dont-recommend", icons::THUMBS_DOWN, UTILITY_BUTTON, MARK_GLYPH)
-                        .tooltip(t("dont_recommend"))
-                        .text_color(if favorite { muted.opacity(0.4) } else { muted })
-                        // Like and dislike are one setting on the remote, so both at once would undo the heart.
-                        .disabled(key.is_none() || favorite)
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            if let Some(key) = key.clone() {
-                                this.dont_recommend(key, cx);
-                            }
-                        })),
+                    icon_button(
+                        "dont-recommend",
+                        icons::THUMBS_DOWN,
+                        UTILITY_BUTTON,
+                        MARK_GLYPH,
+                    )
+                    .tooltip(t("dont_recommend"))
+                    .text_color(if favorite { muted.opacity(0.4) } else { muted })
+                    // Like and dislike are one setting on the remote, so both at once would undo the heart.
+                    .disabled(key.is_none() || favorite)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(key) = key.clone() {
+                            this.dont_recommend(key, cx);
+                        }
+                    })),
                 )
             })
     }
@@ -641,12 +646,17 @@ impl PlayerBar {
                     }),
             )
             .child(
-                icon_button("mini-player", icons::COLLAPSE, UTILITY_BUTTON, UTILITY_GLYPH)
-                    .tooltip(t("mini_player"))
-                    .text_color(muted)
-                    .on_click(move |_, _, cx| {
-                        Chrome::global(cx).update(cx, |chrome, cx| chrome.set_compact(!compact, cx))
-                    }),
+                icon_button(
+                    "mini-player",
+                    icons::COLLAPSE,
+                    UTILITY_BUTTON,
+                    UTILITY_GLYPH,
+                )
+                .tooltip(t("mini_player"))
+                .text_color(muted)
+                .on_click(move |_, _, cx| {
+                    Chrome::global(cx).update(cx, |chrome, cx| chrome.set_compact(!compact, cx))
+                }),
             )
             .when(!bar_is_fullscreen, |block| {
                 block.child(
@@ -686,9 +696,9 @@ impl PlayerBar {
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_mute(cx))),
             )
             .child(
-                div().w(VOLUME_WIDTH).child(
-                    Slider::new(&self.volume).bg(style::white(style::TEXT_STRONG, cx)),
-                ),
+                div()
+                    .w(VOLUME_WIDTH)
+                    .child(Slider::new(&self.volume).bg(style::white(style::TEXT_STRONG, cx))),
             )
     }
 }

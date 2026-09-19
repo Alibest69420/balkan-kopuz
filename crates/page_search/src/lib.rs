@@ -13,14 +13,15 @@ use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Div, Entity, FontWeight, InteractiveElement as _,
-    IntoElement, KeyBinding, NoAction, ParentElement as _, Render, SharedString,
-    StatefulInteractiveElement as _, Styled, Subscription, Task, Window, div, px,
+    IntoElement, KeyBinding, NoAction, ObjectFit, ParentElement as _, Render, SharedString,
+    StatefulInteractiveElement as _, Styled, StyledImage as _, Subscription, Task, Window, div,
+    img, linear_color_stop, linear_gradient, px, rems,
 };
-use store::{PlayerModel, Query, Route, SourcesModel, actions, all};
+use store::{Navigator, PlayerModel, Query, Route, SourcesModel, actions, all};
 use widgets::format::{t, t_with};
 use widgets::{
-    EmptyState, Loading, PageHeader, Tile, TrackActions, TrackList, TrackListEvent,
-    TrackListOptions, album_tile, icons, tile_grid,
+    Cover, EmptyState, Loading, PageHeader, TrackActions, TrackList, TrackListEvent,
+    TrackListOptions, icons, style,
 };
 
 const DEBOUNCE: Duration = Duration::from_millis(150);
@@ -70,12 +71,97 @@ fn row_actions(cx: &App) -> TrackActions {
     }
 }
 
-fn section(title: SharedString) -> Div {
+/// `text-xl font-semibold text-white/80 mb-4`: the band above a result list.
+fn section(title: SharedString, cx: &App) -> Div {
     div()
         .flex_shrink_0()
-        .text_lg()
+        .mb_4()
+        .text_xl()
         .font_weight(FontWeight::SEMIBOLD)
+        .text_color(style::white(0.8, cx))
         .child(title)
+}
+
+/// `aspect-video bg-white/5 border border-white/10 rounded-xl p-4`: one genre tile.
+fn genre_tile(genre: &GenreTile, cx: &App) -> AnyElement {
+    let name = genre.name.clone();
+    let route = Route::Genre(name.clone());
+    let hovered = style::white(style::HOVER, cx);
+    let scrim = style::black(0.8, cx);
+    div()
+        .id(SharedString::from(format!("genre-{name}")))
+        .relative()
+        .overflow_hidden()
+        .flex()
+        .items_end()
+        .aspect_ratio(16. / 9.)
+        .p_4()
+        .rounded(style::radius_xl())
+        .border_1()
+        .border_color(style::white(style::BORDER, cx))
+        .bg(style::white(style::RAISED, cx))
+        .hover(move |tile| tile.bg(hovered))
+        .cursor_pointer()
+        .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
+        .when_some(genre.artwork.as_ref(), |tile, artwork| {
+            tile.child(
+                img(store::artwork_source(artwork, false))
+                    .absolute()
+                    .inset_0()
+                    .size_full()
+                    .object_fit(ObjectFit::Cover),
+            )
+            .child(div().absolute().inset_0().size_full().bg(linear_gradient(
+                0.,
+                linear_color_stop(scrim, 0.),
+                linear_color_stop(scrim.opacity(0.), 0.5),
+            )))
+        })
+        .child(
+            div()
+                .relative()
+                .text_lg()
+                .font_weight(FontWeight::BOLD)
+                .child(name),
+        )
+        .into_any_element()
+}
+
+/// `p-4 bg-white/5 rounded-xl hover:bg-white/10`: one album a search turned up.
+fn album_card(album: &AlbumInfo, cx: &App) -> AnyElement {
+    let route = Route::Album(album.id.clone().into());
+    let hovered = style::white(style::HOVER, cx);
+    v_flex()
+        .id(SharedString::from(format!("search-album-{}", album.id)))
+        .w(px(180.))
+        .p_4()
+        .rounded(style::radius_xl())
+        .bg(style::white(style::RAISED, cx))
+        .hover(move |card| card.bg(hovered))
+        .cursor_pointer()
+        .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
+        .child(
+            div().mb_3().child(
+                Cover::new(album.artwork.as_ref())
+                    .size(px(148.))
+                    .rounded(px(8.))
+                    .placeholder(icons::DISC),
+            ),
+        )
+        .child(
+            div()
+                .truncate()
+                .font_weight(FontWeight::MEDIUM)
+                .child(album.title.clone()),
+        )
+        .child(
+            div()
+                .truncate()
+                .text_sm()
+                .text_color(style::slate_400(cx))
+                .child(album.artist.clone()),
+        )
+        .into_any_element()
 }
 
 fn track_count(count: usize) -> SharedString {
@@ -237,16 +323,23 @@ impl Search {
         }
     }
 
-    fn bar(&self) -> impl IntoElement {
+    fn bar(&self, cx: &App) -> impl IntoElement {
         div()
             .key_context(INPUT_CONTEXT)
             .flex_shrink_0()
             .w_full()
-            .max_w(px(640.))
+            .max_w(rems(42.))
+            .mb_8()
             .child(
                 Input::new(&self.input)
-                    .prefix(icons::icon(icons::SEARCH))
-                    .cleanable(true),
+                    .prefix(icons::icon(icons::SEARCH).text_color(style::slate_500(cx)))
+                    .cleanable(true)
+                    .h_12()
+                    .px_4()
+                    .rounded_full()
+                    .bg(style::white(style::HOVER, cx))
+                    .border_1()
+                    .border_color(style::white(style::BORDER, cx)),
             )
     }
 
@@ -260,21 +353,24 @@ impl Search {
                 Loading.into_any_element()
             };
         }
+        let tiles: Vec<AnyElement> = self
+            .genres
+            .iter()
+            .map(|genre| genre_tile(genre, cx))
+            .collect();
         v_flex()
-            .size_full()
-            .gap_3()
-            .child(section(t("browse_genres")))
+            .w_full()
+            .flex_1()
+            .min_h_0()
+            .mt_12()
+            .child(section(t("browse_genres"), cx))
             .child(
                 div()
                     .id("search-genres")
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
-                    .child(tile_grid().children(self.genres.iter().map(|genre| {
-                        Tile::new(genre.name.clone(), genre.name.clone())
-                            .artwork(genre.artwork.as_ref())
-                            .route(Route::Genre(genre.name.clone()))
-                    }))),
+                    .child(div().grid().grid_cols(4).gap_4().children(tiles)),
             )
             .into_any_element()
     }
@@ -302,39 +398,40 @@ impl Search {
             .into_any_element();
         }
 
+        let cards: Vec<AnyElement> = albums.iter().map(|album| album_card(album, cx)).collect();
         v_flex()
-            .size_full()
-            .gap_4()
+            .w_full()
+            .flex_1()
+            .min_h_0()
+            .mt_8()
             .when(has_tracks, |body| {
                 body.child(
                     v_flex()
                         .flex_1()
                         .min_h_0()
-                        .gap_2()
-                        .child(section(t("tracks")))
+                        .child(section(t("tracks"), cx))
                         .child(div().flex_1().min_h_0().child(self.tracks.clone())),
                 )
             })
             .when(!albums.is_empty(), |body| {
                 body.child(
                     v_flex()
-                        .gap_2()
                         // Under a track list the grid is a band of its own; alone it is the page.
                         .map(|grid| {
                             if has_tracks {
-                                grid.flex_shrink_0().max_h(px(320.))
+                                grid.flex_shrink_0().mt_12().max_h(px(320.))
                             } else {
                                 grid.flex_1().min_h_0()
                             }
                         })
-                        .child(section(t("albums")))
+                        .child(section(t("albums"), cx))
                         .child(
                             div()
                                 .id("search-albums")
                                 .flex_1()
                                 .min_h_0()
                                 .overflow_y_scroll()
-                                .child(tile_grid().children(albums.iter().map(album_tile))),
+                                .child(div().flex().flex_wrap().gap_4().children(cards)),
                         ),
                 )
             })
@@ -351,9 +448,8 @@ impl Render for Search {
         };
         v_flex()
             .size_full()
-            .p_4()
-            .gap_4()
-            .child(self.bar())
+            .p_8()
+            .child(self.bar(cx))
             .child(body)
     }
 }
@@ -456,7 +552,7 @@ impl Render for Genre {
 
         v_flex()
             .size_full()
-            .p_4()
+            .p_8()
             .child(
                 PageHeader::new(self.name.clone())
                     .subtitle(track_count(count))

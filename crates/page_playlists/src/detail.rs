@@ -4,7 +4,7 @@ use std::path::Path;
 
 use api::{ArtworkTarget, ArtworkUpload, PlaylistCapability, PlaylistReorder, Table, TrackInfo};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, Size, h_flex, v_flex};
+use gpui_kit::component::{Sizable as _, Size, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AppContext as _, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
@@ -264,62 +264,60 @@ impl Render for PlaylistDetail {
 
         v_flex()
             .size_full()
-            .p_8()
-            .gap_4()
+            .px_8()
+            .pt_8()
+            .gap_8()
             .child(
                 Button::new("playlist-back")
                     .ghost()
                     .icon(icons::icon(icons::CHEVRON_LEFT))
+                    .text_color(style::slate_400(cx))
                     .on_click(|_, _, cx| {
                         Navigator::global(cx).update(cx, |navigator, cx| navigator.go_back(cx))
                     }),
             )
             .child(
                 h_flex()
-                    .gap_4()
+                    .gap_8()
                     .items_end()
                     .child(
                         div()
                             .id("playlist-cover")
+                            .flex_shrink_0()
                             .child(
                                 Cover::new(playlist.artwork.as_ref())
                                     .size(HERO)
                                     .hq(true)
-                                    .rounded(cx.theme().radius)
+                                    .rounded(px(12.))
                                     .placeholder(icons::LIST),
                             )
                             .on_click(cx.listener(|this, _, _, cx| this.upload_cover(cx))),
                     )
                     .child(
                         v_flex()
-                            .gap_2()
+                            .gap_6()
                             .flex_1()
                             .min_w_0()
                             .child(
                                 div()
-                                    .truncate()
-                                    .text_2xl()
+                                    .line_clamp(3)
+                                    .text_size(rems(4.5))
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .child(name.clone()),
                             )
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(t_with(
-                                        "playlist_track_count",
-                                        &[("count", keys.len().to_string())],
-                                    )),
-                            )
+                            .child(div().text_color(style::slate_400(cx)).child(t_with(
+                                "playlist_track_count",
+                                &[("count", keys.len().to_string())],
+                            )))
                             .child(
                                 h_flex()
-                                    .gap_2()
+                                    .gap_4()
+                                    .items_center()
                                     .flex_wrap()
                                     .child(
-                                        Button::new("play-playlist")
+                                        round_button("play-playlist", icons::PLAY)
                                             .primary()
-                                            .icon(icons::icon(icons::PLAY))
-                                            .label(t("play"))
+                                            .tooltip(t("play"))
                                             .on_click({
                                                 let keys = keys.clone();
                                                 move |_, _, cx| actions::play_all(keys.clone(), cx)
@@ -328,9 +326,10 @@ impl Render for PlaylistDetail {
                                     .when(capabilities.playlist_radio, |row| {
                                         let id = self.id.to_string();
                                         row.child(
-                                            Button::new("playlist-radio")
-                                                .icon(icons::icon(icons::RADIO))
-                                                .label(t("start_radio"))
+                                            round_button("playlist-radio", icons::RADIO)
+                                                .ghost()
+                                                .text_color(style::slate_400(cx))
+                                                .tooltip(t("start_radio"))
                                                 .on_click(move |_, _, cx| {
                                                     actions::start_playlist_radio(id.clone(), cx)
                                                 }),
@@ -340,12 +339,18 @@ impl Render for PlaylistDetail {
                                         let keys = keys.clone();
                                         row.child(
                                             Button::new("playlist-download")
+                                                .ghost()
+                                                .size_12()
+                                                .rounded_full()
+                                                .border_1()
+                                                .border_color(style::white(style::ACTIVE, cx))
+                                                .text_color(style::white(0.70, cx))
                                                 .icon(icons::icon(if stored {
                                                     icons::TRASH
                                                 } else {
                                                     icons::DOWNLOAD
                                                 }))
-                                                .label(if stored {
+                                                .tooltip(if stored {
                                                     t("remove_from_cache")
                                                 } else {
                                                     t("downloader_download")
@@ -375,8 +380,13 @@ impl Render for PlaylistDetail {
                                             row.child(
                                                 Button::new("playlist-delete")
                                                     .ghost()
+                                                    .size_12()
+                                                    .rounded_full()
+                                                    .border_1()
+                                                    .border_color(style::white(style::ACTIVE, cx))
+                                                    .text_color(style::white(0.70, cx))
                                                     .icon(icons::icon(icons::TRASH))
-                                                    .label(t("delete_playlist"))
+                                                    .tooltip(t("delete_playlist"))
                                                     .on_click(cx.listener(
                                                         move |this, _, window, cx| {
                                                             this.delete(window, cx, name.clone())
@@ -388,8 +398,17 @@ impl Render for PlaylistDetail {
                             ),
                     ),
             )
-            .child(div().flex_1().min_h_0().child(self.list.clone()))
+            .child(div().flex_1().min_h_0().pb_20().child(self.list.clone()))
     }
+}
+
+/// `w-14 h-14 rounded-full` with a `text-xl` glyph: the showcase's play and radio.
+fn round_button(id: &'static str, icon: &'static str) -> Button {
+    Button::new(id)
+        .with_size(Size::Size(HERO_GLYPH))
+        .size(HERO_BUTTON)
+        .rounded_full()
+        .icon(icons::icon(icon))
 }
 
 /// The upload's content type, by extension, the way §5.4 spells it out.

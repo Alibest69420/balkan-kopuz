@@ -98,6 +98,11 @@ Do not fake these; leave the element unstyled for that property and move on.
   one-line note, and remember that a translated string may not want it.
 - `font-mono`: the duration column is monospaced upstream; there is no mono
   family wired up here, so it renders in the UI font.
+- **A `Button` sizes its glyph, not you.** `with_size` sizes the *box* and the
+  glyph silently becomes ¾ of it; there is no public `icon_size`. To get a
+  Tailwind glyph size, ask for `with_size(glyph * 4 / 3)` and restate the box
+  with `.size(box)`, which wins because the instance style is refined last.
+  Miss this and every icon in the app is drawn about twice its intended size.
 - A `Button`'s own hover treatment is applied after yours, so a Tailwind hover
   cannot be ported onto one. Where the original is a bare element with a hover
   colour — a chip, a chevron, a close ✕ — build it from an interactive `div`

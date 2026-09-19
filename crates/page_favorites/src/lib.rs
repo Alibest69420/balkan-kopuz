@@ -6,7 +6,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use api::{ApiError, FavoritesSyncMode, FavoritesView, JobKind, KopuzApi, Table, TrackInfo};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::{
+    Button, ButtonCustomVariant, ButtonRounded, ButtonVariants as _,
+};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::spinner::Spinner;
@@ -15,13 +17,12 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _,
     IntoElement, ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled,
-    Subscription, Task, Window, div, px,
+    Subscription, Task, Window, div, px, rems,
 };
 use store::{ConfigModel, JobsModel, Query, SourcesModel, actions};
 use widgets::format::{t, t_with};
 use widgets::{
-    EmptyState, Loading, PageHeader, TrackActions, TrackList, TrackListEvent, TrackListOptions,
-    icons,
+    EmptyState, Loading, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons, style,
 };
 
 // Filtering re-sorts the whole list, so a keystroke settles first; the Dioxus search bar used the same delay.
@@ -350,6 +351,14 @@ impl Favorites {
                         }))
                         .child(
                             Button::new("favorites-refresh")
+                                .custom(
+                                    ButtonCustomVariant::new(cx)
+                                        .color(style::white(style::HOVER, cx))
+                                        .foreground(style::white(0.8, cx))
+                                        .hover(style::white(style::ACTIVE, cx))
+                                        .active(style::white(style::ACTIVE, cx)),
+                                )
+                                .rounded(ButtonRounded::Large)
                                 .small()
                                 .icon(icons::icon(icons::REFRESH))
                                 .label(t("refresh"))
@@ -375,14 +384,15 @@ impl Favorites {
         let album = self.sort_header(sort::Field::Album, cx);
         let duration = self.sort_header(sort::Field::Duration, cx);
         v_flex()
-            .gap_2()
             .child(
                 h_flex()
                     .gap_3()
                     .items_center()
+                    .mb_4()
                     .px_2()
                     .text_sm()
-                    .text_color(cx.theme().muted_foreground)
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(style::slate_500(cx))
                     .child(
                         Checkbox::new("favorites-select-all")
                             .checked(all_selected)
@@ -394,28 +404,38 @@ impl Favorites {
                     .child(t("select_all")),
             )
             .child(
+                // The columns line up with the shared row: index, cover, title, album, duration.
                 h_flex()
                     .gap_3()
                     .items_center()
+                    .mb_2()
                     .px_2()
-                    .pb_2()
+                    .py_2()
                     .border_b_1()
-                    .border_color(cx.theme().border)
+                    .border_color(style::white(style::BORDER_SOFT, cx))
                     .text_sm()
-                    .child(div().w(px(28.)).flex_shrink_0())
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(style::slate_500(cx))
+                    .child(div().w(rems(1.25)).flex_shrink_0())
                     .when(show_cover, |header| {
-                        header.child(div().w(px(40.)).flex_shrink_0())
+                        header.child(div().w(style::row_cover()).flex_shrink_0())
                     })
                     .child(
                         h_flex()
                             .flex_1()
                             .min_w_0()
-                            .gap_3()
+                            .gap_6()
                             .child(title)
                             .child(artist),
                     )
-                    .child(div().w(px(200.)).flex_shrink_0().child(album))
-                    .child(div().w(px(56.)).flex_shrink_0().child(duration)),
+                    .child(div().w(rems(12.5)).flex_shrink_0().child(album))
+                    .child(
+                        h_flex()
+                            .w(rems(4.))
+                            .flex_shrink_0()
+                            .justify_end()
+                            .child(duration),
+                    ),
             )
             .into_any_element()
     }
@@ -425,7 +445,7 @@ impl Favorites {
         let color = if active {
             cx.theme().foreground
         } else {
-            cx.theme().muted_foreground
+            style::slate_500(cx)
         };
         let hover = cx.theme().foreground;
         h_flex()
@@ -443,7 +463,9 @@ impl Favorites {
                     header.child(t(field.label_key()))
                 }
             })
-            .child(icons::icon(sort::indicator(self.sort, field)).xsmall())
+            .child(
+                icons::icon(sort::indicator(self.sort, field)).size(style::text_10()),
+            )
             .on_click(cx.listener(move |this, _, _, cx| this.toggle_sort(field, cx)))
             .into_any_element()
     }
@@ -498,11 +520,28 @@ impl Render for Favorites {
         v_flex()
             .size_full()
             .relative()
-            .p_4()
-            .gap_3()
-            .child(PageHeader::new(t("favorites")))
+            .px_8()
+            .pt_8()
             .child(
-                div().max_w(px(640.)).child(
+                h_flex()
+                    .items_center()
+                    .gap_3()
+                    .mb_8()
+                    .child(
+                        icons::icon(icons::HEART)
+                            .size(px(24.))
+                            .text_color(cx.theme().danger),
+                    )
+                    .child(
+                        div()
+                            .text_3xl()
+                            .font_weight(FontWeight::BOLD)
+                            .child(t("favorites")),
+                    ),
+            )
+            .child(
+                // `max-w-2xl`: the filter never runs the width of the page.
+                div().w_full().max_w(rems(42.)).mb_8().child(
                     Input::new(&self.filter)
                         .cleanable(true)
                         .prefix(icons::icon(icons::SEARCH).small()),

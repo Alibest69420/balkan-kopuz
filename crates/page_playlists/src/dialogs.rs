@@ -15,9 +15,12 @@ use gpui_kit::{
 };
 use store::{PlaylistsModel, SourcesModel, actions};
 use widgets::format::t;
-use widgets::icons;
+use widgets::{icons, style};
 
-const DIALOG_WIDTH: gpui_kit::Pixels = px(360.);
+/// `.popup`'s `min-width: 400px`.
+const DIALOG_WIDTH: gpui_kit::Pixels = px(400.);
+/// `w-80`: the narrower prompts the Dioxus page opens.
+const PROMPT_WIDTH: gpui_kit::Pixels = px(320.);
 
 /// Ask for a name and create a playlist, or import a directory as one.
 struct AddPlaylist {
@@ -84,16 +87,28 @@ impl Render for AddPlaylist {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let folders = SourcesModel::global(cx).read(cx).capabilities().folders;
         v_flex()
-            .gap_3()
+            .gap_4()
             .w(DIALOG_WIDTH)
             .when_some(self.error.clone(), |column, error| {
-                column.child(div().text_sm().text_color(cx.theme().danger).child(error))
+                column.child(
+                    div()
+                        .px_3()
+                        .py_2()
+                        .rounded(px(6.))
+                        .text_sm()
+                        .text_color(cx.theme().danger)
+                        .bg(cx.theme().danger.opacity(0.1))
+                        .border_1()
+                        .border_color(cx.theme().danger.opacity(0.3))
+                        .child(error),
+                )
             })
             .child(Input::new(&self.name))
             .when(folders, |column| {
                 column.child(
                     Button::new("import-folder")
                         .outline()
+                        .text_sm()
                         .icon(icons::icon(icons::FOLDER))
                         .label(t("add_folder"))
                         .on_click(
@@ -168,7 +183,7 @@ impl TextPrompt {
 
 impl Render for TextPrompt {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div().w(DIALOG_WIDTH).child(Input::new(&self.value))
+        div().w(PROMPT_WIDTH).child(Input::new(&self.value))
     }
 }
 
@@ -202,7 +217,7 @@ pub(crate) fn open_rename(
         let prompt = prompt.clone();
         plate
             .title(title.clone())
-            .w(DIALOG_WIDTH)
+            .w(PROMPT_WIDTH)
             .child(prompt.clone())
             .footer(
                 DialogFooter::new()
@@ -253,19 +268,20 @@ impl Render for FolderPicker {
         let folders = PlaylistsModel::global(cx).read(cx).folders().to_vec();
         v_flex()
             .gap_3()
-            .w(DIALOG_WIDTH)
+            .w(PROMPT_WIDTH)
             .when(folders.is_empty(), |column| {
                 column.child(
                     div()
                         .text_sm()
-                        .text_color(cx.theme().muted_foreground)
+                        .text_color(style::slate_500(cx))
                         .child(t("no_folders_yet")),
                 )
             })
             .child(
                 v_flex()
                     .id("folder-list")
-                    .max_h(px(240.))
+                    .gap_1()
+                    .max_h_48()
                     .overflow_y_scroll()
                     .children(folders.into_iter().map(|folder| {
                         let id = folder.id.clone();
@@ -274,9 +290,14 @@ impl Render for FolderPicker {
                             .gap_2()
                             .px_3()
                             .py_2()
-                            .rounded(cx.theme().radius)
-                            .hover(|row| row.bg(cx.theme().list_hover))
-                            .child(icons::icon(icons::FOLDER))
+                            .text_sm()
+                            .rounded(style::radius_lg())
+                            .hover(|row| row.bg(style::white(style::HOVER, cx)))
+                            .child(
+                                icons::icon(icons::FOLDER)
+                                    .size(px(12.))
+                                    .text_color(cx.theme().warning),
+                            )
                             .child(folder.name.clone())
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.move_into(id.clone(), window, cx)
@@ -291,6 +312,7 @@ impl Render for FolderPicker {
                         .child(
                             Button::new("create-folder")
                                 .primary()
+                                .text_sm()
                                 .label(t("create"))
                                 .on_click(
                                     cx.listener(|this, _, window, cx| this.create(window, cx)),
@@ -301,6 +323,7 @@ impl Render for FolderPicker {
             .child(
                 Button::new("new-folder")
                     .outline()
+                    .text_sm()
                     .icon(icons::icon(icons::FOLDER))
                     .label(t("new_folder"))
                     .on_click(cx.listener(|this, _, _, cx| {
@@ -334,7 +357,7 @@ pub(crate) fn open_folder_picker(playlist_id: String, window: &mut Window, cx: &
     window.open_dialog(cx, move |plate, _, _| {
         plate
             .title(t("move_to_folder"))
-            .w(DIALOG_WIDTH)
+            .w(PROMPT_WIDTH)
             .child(picker.clone())
             .footer(
                 DialogFooter::new()

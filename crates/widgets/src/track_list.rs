@@ -23,6 +23,48 @@ use crate::style;
 // The row is the hover group, so the number can step aside for the play glyph.
 const ROW_GROUP: &str = "track-row";
 
+/// The desktop row's column template, so a page's own column header lines up with the rows.
+///
+/// `20px | minmax(200px, 2fr) | minmax(150px, 1fr) | minmax(150px, 1fr) | 64px | 40px`,
+/// laid out on flex because GPUI has no grid.
+pub mod columns {
+    use gpui_kit::{Div, Pixels, Styled as _, div, px};
+
+    /// The index column: the number, the play glyph, or the selection box.
+    pub const INDEX: Pixels = px(20.);
+    /// `w-10 h-10`: the cover inside the title column, not a column of its own.
+    pub const COVER: Pixels = px(40.);
+    /// The duration column.
+    pub const DURATION: Pixels = px(64.);
+    /// The row-menu column, which the rows keep clear for a page's own control.
+    pub const MENU: Pixels = px(40.);
+    /// `minmax(200px, 2fr)`: what the title column never goes below.
+    pub const TITLE_MIN: Pixels = px(200.);
+    /// `minmax(150px, 1fr)`: what the artist and album columns never go below.
+    pub const TEXT_MIN: Pixels = px(150.);
+
+    /// The frame a row and a header share: `items-center p-2` with the `1.5rem` column gap.
+    pub fn frame() -> Div {
+        div().flex().w_full().items_center().p_2().gap_6()
+    }
+
+    /// A fixed column: the index, the duration, the menu.
+    pub fn fixed(width: Pixels) -> Div {
+        div().flex().items_center().w(width).flex_shrink_0()
+    }
+
+    /// A `minmax(min, Nfr)` column, sharing the free space `grow` ways.
+    pub fn flexible(min: Pixels, grow: f32) -> Div {
+        div()
+            .flex()
+            .items_center()
+            .flex_grow(grow)
+            .flex_shrink(1.)
+            .flex_basis(px(0.))
+            .min_w(min)
+    }
+}
+
 /// Which columns a list draws; an album view numbers its rows and hides the album column.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TrackListOptions {
@@ -188,7 +230,6 @@ impl TrackList {
             .track()
             .is_some_and(|now| now.key == key);
         let selected = self.selected.contains(&key);
-        let favorite = FavoritesModel::global(cx).read(cx).is_favorite(&key);
         let stored = DownloadsModel::global(cx).read(cx).is_stored(&key);
         let lead = if self.options.track_numbers {
             track.track_number.unwrap_or(index as u32 + 1).to_string()
@@ -206,16 +247,12 @@ impl TrackList {
 
         let accent = cx.theme().primary;
         let mark = px(12.);
+        let cover = style::row_cover().to_pixels(window.rem_size());
 
-        div()
+        columns::frame()
             .id(("track-row", index))
             .group(ROW_GROUP)
             .h(style::row_height())
-            .w_full()
-            .flex()
-            .items_center()
-            .gap_3()
-            .px_2()
             .rounded(style::radius_lg())
             .when(playing, |row| row.bg(style::accent(style::PLAYING, cx)))
             .when(selected, |row| row.bg(style::white(style::SELECTED, cx)))
@@ -228,12 +265,8 @@ impl TrackList {
                 }
             }))
             .child(
-                div()
+                columns::fixed(columns::INDEX)
                     .relative()
-                    .w(px(20.))
-                    .flex_shrink_0()
-                    .flex()
-                    .items_center()
                     .justify_center()
                     .map(|cell| {
                         if self.options.selectable && self.selecting {
@@ -275,19 +308,40 @@ impl TrackList {
                         }
                     }),
             )
-            .when(self.options.show_cover, |row| {
-                row.child(
-                    Cover::new(track.artwork.as_ref())
-                        .size(style::row_cover().to_pixels(window.rem_size())),
-                )
-            })
             .child(
-                v_flex()
-                    .flex_1()
-                    .min_w_0()
-                    .gap_0p5()
+                columns::flexible(columns::TITLE_MIN, 2.)
+                    .when(self.options.show_cover, |cell| {
+                        cell.child(
+                            div()
+                                .relative()
+                                .flex_shrink_0()
+                                .mr_4()
+                                .child(Cover::new(track.artwork.as_ref()).size(cover))
+                                .when(stored && !playing, |thumb| {
+                                    thumb.child(
+                                        div()
+                                            .absolute()
+                                            .bottom_0()
+                                            .right_0()
+                                            .size_3()
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .rounded_tl(style::radius(cx))
+                                            .bg(accent)
+                                            .child(
+                                                icons::icon(icons::CHECK)
+                                                    .size(px(6.))
+                                                    .text_color(cx.theme().foreground),
+                                            ),
+                                    )
+                                }),
+                        )
+                    })
                     .child(
                         div()
+                            .flex_1()
+                            .min_w_0()
                             .truncate()
                             .text_sm()
                             .font_weight(FontWeight::MEDIUM)
@@ -297,25 +351,37 @@ impl TrackList {
                                 style::white(style::TEXT_STRONG, cx)
                             })
                             .child(title.clone()),
-                    )
-                    .child(
-                        div()
-                            .truncate()
-                            .text_size(style::text_11())
-                            .text_color(style::white(style::TEXT_SUBTLE, cx))
-                            .child(artist.clone()),
                     ),
+            )
+            .child(
+                columns::flexible(columns::TEXT_MIN, 1.)
+                    .id(("artist", index))
+                    .text_sm()
+                    .text_color(style::slate_500(cx))
+                    .hover(|cell| cell.text_color(style::slate_400(cx)))
+                    .on_click({
+                        let artist = artist.clone();
+                        move |_, _, cx| {
+                            // Without this the row's own click would play the track too.
+                            cx.stop_propagation();
+                            Navigator::navigate(
+                                Route::Artist {
+                                    name: artist.clone(),
+                                    channel: None,
+                                },
+                                cx,
+                            )
+                        }
+                    })
+                    .child(div().flex_1().min_w_0().truncate().child(artist.clone())),
             )
             .when(self.options.show_album, |row| {
                 row.child(
-                    div()
+                    columns::flexible(columns::TEXT_MIN, 1.)
                         .id(("album", index))
-                        .w(px(200.))
-                        .flex_shrink_0()
-                        .truncate()
                         .text_sm()
-                        .text_color(style::white(style::TEXT_DIM, cx))
-                        .hover(|cell| cell.text_color(style::white(style::TEXT_SUBTLE, cx)))
+                        .text_color(style::slate_500(cx))
+                        .hover(|cell| cell.text_color(style::slate_400(cx)))
                         .on_click({
                             let album_id = album_id.clone();
                             move |_, _, cx| {
@@ -324,29 +390,17 @@ impl TrackList {
                                 }
                             }
                         })
-                        .child(album.clone()),
-                )
-            })
-            .when(favorite, |row| {
-                row.child(icons::icon(icons::HEART).size(mark).text_color(accent))
-            })
-            .when(stored, |row| {
-                row.child(
-                    icons::icon(icons::DOWNLOAD)
-                        .size(mark)
-                        .text_color(accent.opacity(0.7)),
+                        .child(div().flex_1().min_w_0().truncate().child(album.clone())),
                 )
             })
             .child(
-                div()
-                    .w(px(64.))
-                    .flex_shrink_0()
-                    .flex()
+                columns::fixed(columns::DURATION)
                     .justify_end()
                     .text_xs()
                     .text_color(style::white(style::TEXT_DIM, cx))
                     .child(length),
             )
+            .child(columns::fixed(columns::MENU))
             .context_menu({
                 let track = track.clone();
                 let actions = self.row_actions;

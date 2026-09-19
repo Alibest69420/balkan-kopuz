@@ -93,9 +93,9 @@ pub fn row_height() -> Rems {
     rems(3.5)
 }
 
-/// `w-11 h-11`: a row's cover thumb.
+/// `w-10 h-10`: a desktop row's cover thumb.
 pub fn row_cover() -> Rems {
-    rems(2.75)
+    rems(2.5)
 }
 
 /// `w-9 h-9`: the square icon buttons in the chrome.
@@ -139,4 +139,14 @@ pub fn text_5xl() -> Rems {
 /// `text-7xl`, the album detail's title.
 pub fn text_7xl() -> Rems {
     rems(4.5)
+}
+
+/// `rounded-md` — 6px, the cover thumbs and tab pills.
+pub fn radius_md() -> Rems {
+    rems(0.375)
+}
+
+/// `text-[9px]`, the repeat-one badge.
+pub fn text_9() -> Pixels {
+    px(9.)
 }

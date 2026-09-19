@@ -16,7 +16,7 @@ use gpui_kit::{
 };
 use store::{ConfigModel, PlayerModel, Playhead};
 use widgets::format::t;
-use widgets::icons;
+use widgets::{icons, style};
 
 // Where the active line parks in the panel, as a fraction of its height.
 const COMFORT_OFFSET: f32 = 0.42;
@@ -45,8 +45,9 @@ const BACKGROUND_DIM: f32 = 0.25;
 // `min(100%, 20rem)`, and `min(90%, 18rem)` once a duet pushes the lines to the edges.
 const LINE_WIDTH: f32 = 20.;
 const TURN_WIDTH: f32 = 18.;
-// `leading-snug` on the small print of a background line.
+// `leading-snug` on the small print of a background line, `leading-relaxed` on unsynced words.
 const SNUG: f32 = 1.375;
+const RELAXED: f32 = 1.625;
 // `absolute bottom-4 right-4 w-9 h-9 rounded-full bg-black/40` with a `w-5 h-5` glyph.
 const SYNC_BUTTON: Pixels = px(36.);
 const SYNC_GLYPH: Pixels = px(20.);
@@ -535,6 +536,7 @@ fn line_element(
         };
         return body
             .flex()
+            .py_2()
             .items_center()
             .gap_2()
             .when(!has_opposite, |row| row.justify_center())
@@ -624,14 +626,18 @@ impl Render for LyricsPanel {
                 .items_center()
                 .justify_center()
                 .text_sm()
-                .text_color(cx.theme().muted_foreground)
+                .text_color(style::white(BACKGROUND_ALPHA, cx))
                 .child(t("loading_lyrics"))
                 .into_any_element(),
             Lyrics::Plain(text) => self
                 .scroller(cx)
                 .py_4()
+                .px_4()
                 .text_sm()
-                .text_color(cx.theme().muted_foreground)
+                .text_center()
+                .font_medium()
+                .line_height(relative(RELAXED))
+                .text_color(style::white(BACKGROUND_ALPHA, cx))
                 .child(text.clone())
                 .into_any_element(),
             Lyrics::Synced { lines, .. } => {

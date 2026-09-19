@@ -5,6 +5,7 @@ mod integrations;
 mod local;
 mod login;
 mod registries;
+mod row;
 mod servers;
 mod ui;
 
@@ -57,7 +58,7 @@ impl Render for SourceSettings {
         v_flex()
             .id("source-settings")
             .size_full()
-            .gap_6()
+            .gap_4()
             .pb_4()
             .overflow_y_scroll()
             .when(self.shows("library"), |panel| {

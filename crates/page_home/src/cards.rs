@@ -7,7 +7,7 @@ use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, Div, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
-    Pixels, SharedString, Stateful, StatefulInteractiveElement as _, Styled, div, px,
+    Pixels, Rems, SharedString, Stateful, StatefulInteractiveElement as _, Styled, div, px, rems,
 };
 use store::{Navigator, PlayerModel, QueueModel, Route, SourcesModel, actions};
 use widgets::format::{t, t_with};
@@ -50,7 +50,7 @@ pub(crate) enum PlayLook {
 pub(crate) fn play_button(
     scope: &str,
     album_id: &str,
-    size: Pixels,
+    size: Rems,
     look: PlayLook,
     cx: &mut App,
 ) -> AnyElement {
@@ -93,7 +93,7 @@ pub(crate) fn play_button(
         .child(
             Icon::default()
                 .path(if playing { icons::PAUSE } else { icons::PLAY })
-                .size(size * 0.35),
+                .size(rems(size.0 * 0.35)),
         )
         .on_click(move |_, _, cx| {
             if is_current {
@@ -108,7 +108,7 @@ pub(crate) fn play_button(
 /// The play button and the menu a card reveals while the pointer is over it.
 fn overlay(
     group: &SharedString,
-    inset: Pixels,
+    inset: Rems,
     bottom: Option<AnyElement>,
     top: Option<AnyElement>,
 ) -> Div {
@@ -177,7 +177,7 @@ fn card_subtitle(subtitle: SharedString, alpha: f32, cx: &App) -> Div {
 pub(crate) fn album_card(scope: &str, album: &AlbumInfo, cx: &mut App) -> AnyElement {
     let size = album_size();
     let group = SharedString::from(format!("{scope}-{}", album.id));
-    let play = play_button(scope, &album.id, px(40.), PlayLook::Light, cx);
+    let play = play_button(scope, &album.id, rems(2.5), PlayLook::Light, cx);
     frame(
         format!("{scope}-{}", album.id),
         &group,
@@ -194,7 +194,7 @@ pub(crate) fn album_card(scope: &str, album: &AlbumInfo, cx: &mut App) -> AnyEle
                     .rounded(card_radius())
                     .placeholder(icons::DISC),
             )
-            .child(overlay(&group, px(12.), Some(play), None)),
+            .child(overlay(&group, rems(0.75), Some(play), None)),
     )
     .child(card_title(album.title.clone().into()))
     .child(card_subtitle(album.artist.clone().into(), 0.5, cx))
@@ -206,7 +206,7 @@ pub(crate) fn listen_now_card(album: &AlbumInfo, cx: &mut App) -> AnyElement {
     let scope = "home-listen-now";
     let size = artist_size();
     let group = SharedString::from(format!("{scope}-{}", album.id));
-    let play = play_button(scope, &album.id, px(36.), PlayLook::Accent, cx);
+    let play = play_button(scope, &album.id, rems(2.25), PlayLook::Accent, cx);
     frame(
         format!("{scope}-{}", album.id),
         &group,
@@ -223,7 +223,7 @@ pub(crate) fn listen_now_card(album: &AlbumInfo, cx: &mut App) -> AnyElement {
                     .rounded(card_radius())
                     .placeholder(icons::DISC),
             )
-            .child(overlay(&group, px(8.), Some(play), None)),
+            .child(overlay(&group, rems(0.5), Some(play), None)),
     )
     .child(
         div()
@@ -259,7 +259,7 @@ pub(crate) fn recent_card(recent: &Recent, cx: &mut App) -> AnyElement {
     let play = play_button(
         &button_scope,
         album_id.as_deref().unwrap_or_default(),
-        px(40.),
+        rems(2.5),
         PlayLook::Accent,
         cx,
     );
@@ -280,7 +280,7 @@ pub(crate) fn recent_card(recent: &Recent, cx: &mut App) -> AnyElement {
             )
             .child(overlay(
                 &group,
-                px(8.),
+                rems(0.5),
                 Some(play),
                 Some(track_menu(&recent.track)),
             )),
@@ -362,7 +362,7 @@ pub(crate) fn playlist_card(playlist: &PlaylistInfo, cx: &mut App) -> AnyElement
                     .rounded(card_radius())
                     .placeholder(icons::LIST),
             )
-            .child(overlay(&group, px(8.), None, menu)),
+            .child(overlay(&group, rems(0.5), None, menu)),
     )
     .child(
         card_title(playlist.name.clone().into())
@@ -384,7 +384,7 @@ pub(crate) fn album_row(album: &AlbumInfo, cx: &mut App) -> AnyElement {
     let scope = "home-listen-now-list";
     let group = SharedString::from(format!("{scope}-{}", album.id));
     let id = album.id.clone();
-    let play = play_button(scope, &album.id, px(32.), PlayLook::Subtle, cx);
+    let play = play_button(scope, &album.id, rems(2.), PlayLook::Subtle, cx);
     h_flex()
         .id(SharedString::from(format!("{scope}-row-{}", album.id)))
         .group(group.clone())

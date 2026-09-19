@@ -209,7 +209,9 @@ fn config_value(name: &str, colors: &Colors, mode: ThemeMode) -> serde_json::Val
     set("link.hover", &colors.accent_soft);
     set("link.active", &colors.accent_alt);
     set("progress.bar.background", &colors.progress);
-    set("slider.background", &colors.progress);
+    // A slider's empty track is this colour at 20%, so the progress green here
+    // made every idle slider read as full; Kopuz's sliders are white/90.
+    set("slider.background", &alpha(&colors.text, 0.90));
     set("slider.thumb.background", &colors.text);
     set("switch.background", &colors.surface);
     set("switch.thumb.background", &colors.text);

@@ -175,7 +175,7 @@ impl LocalLibraries {
                             .min_w_0()
                             .gap_2()
                             .items_center()
-                            .child(div().text_sm().truncate().child(name))
+                            .child(ui::label(name))
                             .when(source.active, |row| {
                                 row.child(ui::active_badge(t("active_local_library"), cx))
                             }),
@@ -187,8 +187,8 @@ impl LocalLibraries {
                             .when(!source.active, |row| {
                                 row.child(
                                     Button::new(SharedString::from(format!("switch-{id}")))
-                                        .outline()
-                                        .small()
+                                        .custom(ui::soft(cx))
+                                        .xsmall()
                                         .label(t("switch_to_local_library"))
                                         .on_click(cx.listener({
                                             let id = id.clone();
@@ -204,7 +204,7 @@ impl LocalLibraries {
                             .when(named, |row| {
                                 row.child(
                                     Button::new(SharedString::from(format!("delete-{id}")))
-                                        .danger()
+                                        .custom(ui::danger_text(cx))
                                         .small()
                                         .label(t("delete"))
                                         .disabled(locked)
@@ -219,7 +219,7 @@ impl LocalLibraries {
                     ),
             )
             .when(folders.is_empty(), |row| {
-                row.child(ui::hint(t("no_music_folders"), cx))
+                row.child(ui::empty(t("no_music_folders"), cx))
             })
             .children(folders.iter().map(|folder| {
                 let folder = folder.clone();
@@ -237,6 +237,7 @@ impl LocalLibraries {
             .child(ui::add_folder_button(
                 SharedString::from(format!("add-folder-{id}")),
                 locked,
+                cx,
                 cx.listener({
                     let source = source.clone();
                     move |this: &mut Self, _, _, cx| this.add_folders(source.clone(), cx)
@@ -258,12 +259,13 @@ impl Render for LocalLibraries {
                 )
                 .child(
                     Button::new("add-local-library")
-                        .outline()
+                        .custom(ui::soft(cx))
                         .small()
                         .icon(icons::icon(icons::PLUS))
                         .label(t("add_local_library"))
                         .disabled(locked)
-                        .on_click(cx.listener(|this, _, window, cx| this.open_add(window, cx))),
+                        .on_click(cx.listener(|this, _, window, cx| this.open_add(window, cx)))
+                        .self_start(),
                 ),
         )
     }
@@ -374,7 +376,7 @@ impl Render for AddLibrary {
             .gap_3()
             .child(Input::new(&self.name).disabled(saving))
             .when(self.directories.is_empty(), |form| {
-                form.child(ui::hint(t("no_music_folders"), cx))
+                form.child(ui::empty(t("no_music_folders"), cx))
             })
             .children(self.directories.clone().into_iter().map(|folder| {
                 ui::folder_row(
@@ -391,6 +393,7 @@ impl Render for AddLibrary {
             .child(ui::add_folder_button(
                 "draft-add-folder",
                 saving,
+                cx,
                 cx.listener(|this: &mut Self, _, _, cx| this.add_folders(cx)),
             ))
             .when_some(self.error.clone(), |form, message| {

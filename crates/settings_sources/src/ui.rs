@@ -1,62 +1,105 @@
-//! The frames the Library and Connectivity panels share: sections, cards, folder rows, the host-access warning.
+//! The frames the Library and Connectivity panels share: cards, folder rows, the host-access warning.
 
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::clipboard::Clipboard;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::{
     App, ClickEvent, Div, ElementId, FontWeight, IntoElement, ParentElement as _, SharedString,
-    Styled, Window, div,
+    Styled, Window, div, rems,
 };
 use widgets::format::t;
-use widgets::icons;
+use widgets::{icons, style};
+
+pub use crate::row::section;
 
 // Flathub refuses `org.freedesktop.Flatpak` in the manifest, so the user grants it by hand.
 const HOST_ACCESS_COMMAND: &str =
     "flatpak override --user --talk-name=org.freedesktop.Flatpak moe.kopuz.kopuz";
 
-/// A titled block; the caller appends the rows.
-pub fn section(title: SharedString) -> Div {
-    v_flex().w_full().gap_2().child(
-        div()
-            .text_lg()
-            .font_weight(FontWeight::SEMIBOLD)
-            .child(title),
-    )
+/// `text-white/60`, a card's secondary lines.
+const HINT: f32 = 0.60;
+/// `bg-indigo-500/30`, the pill on the active source.
+const BADGE: f32 = 0.30;
+/// `border-white/30` around the copyable flatpak command.
+const COMMAND_BORDER: f32 = 0.30;
+/// `bg-neutral-900/79` behind it.
+const COMMAND_BG: f32 = 0.79;
+
+/// `bg-white/10 hover:bg-white/20`: the quiet button these cards are built from.
+pub fn soft(cx: &App) -> ButtonCustomVariant {
+    ButtonCustomVariant::new(cx)
+        .color(style::white(style::HOVER, cx))
+        .hover(style::white(style::ACTIVE, cx))
+        .active(style::white(style::ACTIVE, cx))
+        .foreground(cx.theme().foreground)
 }
 
-/// The surface one settings group sits on.
-pub fn card(cx: &App) -> Div {
-    v_flex()
-        .w_full()
-        .gap_2()
-        .p_3()
-        .rounded(cx.theme().radius)
-        .bg(cx.theme().muted)
+/// `text-red-400 hover:text-red-300`: a destructive action written as text, not a filled button.
+pub fn danger_text(cx: &App) -> ButtonCustomVariant {
+    let transparent = cx.theme().transparent;
+    ButtonCustomVariant::new(cx)
+        .color(transparent)
+        .hover(cx.theme().danger.opacity(0.1))
+        .active(cx.theme().danger.opacity(0.1))
+        .foreground(cx.theme().danger)
 }
 
-/// A row inside a card, one shade away from it.
+/// The inset a settings card gives its contents, the same one a stacked row has.
+pub fn card(_: &App) -> Div {
+    v_flex().w_full().gap_3().px_5().py_4()
+}
+
+/// `bg-white/5 p-3 rounded`: one library, server or picker inside that card.
 pub fn row(cx: &App) -> Div {
     v_flex()
         .w_full()
         .gap_2()
-        .p_2()
-        .rounded(cx.theme().radius)
-        .bg(cx.theme().background)
+        .p_3()
+        .rounded(style::radius(cx))
+        .bg(style::white(style::RAISED, cx))
 }
 
+/// `text-sm font-medium text-white`: the name of whatever the card is about.
 pub fn label(text: SharedString) -> Div {
-    div().text_sm().child(text)
-}
-
-pub fn hint(text: SharedString, cx: &App) -> Div {
     div()
-        .text_xs()
-        .text_color(cx.theme().muted_foreground)
+        .min_w_0()
+        .truncate()
+        .text_sm()
+        .font_weight(FontWeight::MEDIUM)
         .child(text)
 }
 
+/// `text-xs text-white/60`: a line under that name.
+pub fn hint(text: SharedString, cx: &App) -> Div {
+    div()
+        .text_xs()
+        .text_color(style::white(HINT, cx))
+        .child(text)
+}
+
+/// `text-xs text-slate-500 italic`: what a list says when it holds nothing.
+pub fn empty(text: SharedString, cx: &App) -> Div {
+    div()
+        .text_xs()
+        .italic()
+        .text_color(style::slate_400(cx))
+        .child(text)
+}
+
+/// `.popup .error`: red text in a red box, the way every dialog reports a failure.
 pub fn error(text: SharedString, cx: &App) -> Div {
-    div().text_xs().text_color(cx.theme().danger).child(text)
+    let danger = cx.theme().danger;
+    div()
+        .w_full()
+        .px_3()
+        .py_2()
+        .rounded(style::radius(cx))
+        .border_1()
+        .border_color(danger.opacity(0.3))
+        .bg(danger.opacity(0.1))
+        .text_sm()
+        .text_color(danger)
+        .child(text)
 }
 
 /// The "Active" pill on whichever source the daemon is using.
@@ -64,10 +107,10 @@ pub fn active_badge(text: SharedString, cx: &App) -> impl IntoElement {
     div()
         .px_2()
         .py_0p5()
-        .rounded(cx.theme().radius)
-        .bg(cx.theme().primary)
-        .text_xs()
-        .text_color(cx.theme().primary_foreground)
+        .rounded(style::radius(cx))
+        .bg(style::accent(BADGE, cx))
+        .text_size(style::text_10())
+        .text_color(cx.theme().primary_hover)
         .child(text)
 }
 
@@ -84,22 +127,21 @@ pub fn folder_row(
         .gap_3()
         .items_center()
         .justify_between()
-        .px_2()
-        .py_1()
-        .rounded(cx.theme().radius)
-        .bg(cx.theme().background)
+        .p_2()
+        .rounded(style::radius(cx))
+        .bg(style::white(style::RAISED, cx))
         .child(
             div()
                 .flex_1()
                 .min_w_0()
                 .truncate()
                 .text_xs()
-                .text_color(cx.theme().muted_foreground)
+                .text_color(style::slate_400(cx))
                 .child(path),
         )
         .child(
             Button::new(id)
-                .danger()
+                .custom(danger_text(cx))
                 .xsmall()
                 .label(t("remove"))
                 .disabled(locked)
@@ -111,37 +153,50 @@ pub fn folder_row(
 pub fn add_folder_button(
     id: impl Into<ElementId>,
     locked: bool,
+    cx: &App,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     Button::new(id)
-        .outline()
+        .custom(soft(cx))
         .small()
         .icon(icons::icon(icons::PLUS))
         .label(t("add_folder"))
         .disabled(locked)
         .on_click(on_click)
+        .self_start()
 }
 
 /// Said when the daemon cannot reach a browser on the host; the command that fixes it is copyable.
 pub fn host_access_warning(id: impl Into<ElementId>, message: SharedString, cx: &App) -> Div {
+    let warning = cx.theme().warning;
     v_flex()
         .w_full()
-        .gap_1()
-        .p_2()
-        .rounded(cx.theme().radius)
+        .gap_2()
+        .items_center()
+        .px_3()
+        .py_2()
+        .rounded(style::radius(cx))
         .border_1()
-        .border_color(cx.theme().warning)
-        .child(div().text_xs().child(message))
+        .border_color(warning.opacity(0.3))
+        .bg(warning.opacity(0.1))
+        .child(div().text_xs().text_color(warning).child(message))
         .child(
             h_flex()
+                .w_full()
                 .gap_2()
                 .items_center()
                 .child(
                     div()
                         .flex_1()
                         .min_w_0()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
+                        .truncate()
+                        .px_1p5()
+                        .py_1()
+                        .rounded(style::radius(cx))
+                        .border_1()
+                        .border_color(style::white(COMMAND_BORDER, cx))
+                        .bg(style::black(COMMAND_BG, cx))
+                        .text_size(style::text_10())
                         .child(HOST_ACCESS_COMMAND),
                 )
                 .child(
@@ -150,4 +205,9 @@ pub fn host_access_warning(id: impl Into<ElementId>, message: SharedString, cx: 
                         .tooltip(t("copy")),
                 ),
         )
+}
+
+/// `.popup`: `max-width: 500px`, what every settings dialog is drawn at.
+pub fn dialog_width() -> gpui_kit::Rems {
+    rems(31.25)
 }

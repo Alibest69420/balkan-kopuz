@@ -96,6 +96,10 @@ fn breadcrumb(name: String, cx: &App) -> impl IntoElement {
                 .text_color(style::slate_400(cx))
                 .on_click(|_, _, cx| Navigator::navigate(Route::Playlists, cx)),
         )
-        .child(div().text_color(style::white(style::TEXT_DIM, cx)).child("/"))
+        .child(
+            div()
+                .text_color(style::white(style::TEXT_DIM, cx))
+                .child("/"),
+        )
         .child(div().font_weight(FontWeight::SEMIBOLD).child(name))
 }

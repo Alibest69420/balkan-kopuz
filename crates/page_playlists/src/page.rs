@@ -240,17 +240,13 @@ impl Playlists {
                     .gap_2()
                     .items_center()
                     .when(syncing, |row| {
-                        row.child(
-                            Spinner::new()
-                                .xsmall()
-                                .text_color(cx.theme().primary_hover),
-                        )
-                        .child(
-                            // TODO(i18n): the Dioxus status line is English-only too.
-                            SharedString::from(format!(
-                                "Loading tracks — {done} / {total} playlists ({remaining} left)"
-                            )),
-                        )
+                        row.child(Spinner::new().xsmall().color(cx.theme().primary_hover))
+                            .child(
+                                // TODO(i18n): the Dioxus status line is English-only too.
+                                SharedString::from(format!(
+                                    "Loading tracks — {done} / {total} playlists ({remaining} left)"
+                                )),
+                            )
                     })
                     .when(!syncing && total > 0, |row| {
                         row.child(icons::icon(icons::CHECK).text_color(cx.theme().success))
