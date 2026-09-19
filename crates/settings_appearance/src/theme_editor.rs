@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use config::CustomTheme;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{
@@ -11,12 +11,17 @@ use gpui_kit::component::{
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AppContext as _, Context, Entity, Hsla, InteractiveElement as _, IntoElement,
-    ParentElement as _, Render, SharedString, Styled, Subscription, Window, div, px,
+    AppContext as _, Context, Div, Entity, FontWeight, Hsla, InteractiveElement as _, IntoElement,
+    ParentElement as _, Render, SharedString, Styled, Subscription, Window, div, rems,
 };
 use store::ConfigModel;
 use widgets::format::t;
-use widgets::icons;
+use widgets::{icons, style};
+
+/// `text-white/70`, what a color's name reads in.
+const LABEL: f32 = 0.70;
+/// `bg-white/15`, the saved theme the editor is on.
+const SELECTED: f32 = 0.15;
 
 /// The thirteen palette tokens, in the order the editor lists them.
 pub const VAR_KEYS: &[&str] = &[
@@ -411,17 +416,29 @@ impl Render for ThemeEditor {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let saved = self.saved_themes(cx);
         let selected = self.selected.clone();
+        let transparent = cx.theme().transparent;
+        let foreground = cx.theme().foreground;
+        let danger = cx.theme().danger;
+        // The original laid the thirteen colors out in a two-column grid; GPUI has no grid.
+        let columns = |parity: usize| {
+            self.rows
+                .iter()
+                .enumerate()
+                .filter(move |(index, _)| index % 2 == parity)
+                .map(|(_, row)| self.color_row(row, cx))
+        };
         h_flex()
+            .w_full()
             .gap_6()
             .items_start()
             .child(
                 v_flex()
-                    .w(px(200.))
+                    .w(rems(13.))
                     .flex_none()
-                    .gap_1()
+                    .gap_2()
                     .child(
                         Button::new("new-theme")
-                            .outline()
+                            .custom(crate::soft(cx))
                             .w_full()
                             .justify_start()
                             .icon(icons::icon(icons::PLUS))
@@ -430,58 +447,56 @@ impl Render for ThemeEditor {
                                 cx.listener(|this, _, window, cx| this.load(None, window, cx)),
                             ),
                     )
-                    .children(saved.into_iter().map(|(id, name)| {
-                        let chosen = selected.as_deref() == Some(id.as_str());
-                        let target = id.clone();
-                        Button::new(SharedString::from(format!("theme-{id}")))
-                            .ghost()
-                            .w_full()
-                            .justify_start()
-                            .label(SharedString::from(name))
-                            .selected(chosen)
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.load(Some(target.clone()), window, cx)
-                            }))
-                    })),
+                    .child(v_flex().w_full().gap_1().children(saved.into_iter().map(
+                        |(id, name)| {
+                            let chosen = selected.as_deref() == Some(id.as_str());
+                            let target = id.clone();
+                            Button::new(SharedString::from(format!("theme-{id}")))
+                                .custom(
+                                    ButtonCustomVariant::new(cx)
+                                        .color(if chosen {
+                                            style::white(SELECTED, cx)
+                                        } else {
+                                            transparent
+                                        })
+                                        .hover(style::white(style::RAISED, cx))
+                                        .active(style::white(SELECTED, cx))
+                                        .foreground(if chosen {
+                                            foreground
+                                        } else {
+                                            style::slate_400(cx)
+                                        }),
+                                )
+                                .w_full()
+                                .justify_start()
+                                .label(SharedString::from(name))
+                                .selected(chosen)
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.load(Some(target.clone()), window, cx)
+                                }))
+                        },
+                    ))),
             )
             .child(
                 v_flex()
                     .flex_1()
                     .min_w_0()
-                    .gap_4()
+                    .gap_5()
                     .child(
-                        v_flex()
-                            .gap_1()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(t("theme_name")),
-                            )
+                        self.block(t("theme_name"), cx)
                             .child(Input::new(&self.name)),
                     )
                     .child(
-                        v_flex()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(t("colors")),
-                            )
-                            .children(self.rows.iter().map(|row| self.color_row(row, cx))),
+                        self.block(t("colors"), cx).child(
+                            h_flex()
+                                .w_full()
+                                .gap_10()
+                                .items_start()
+                                .child(v_flex().flex_1().min_w_0().gap_3().children(columns(0)))
+                                .child(v_flex().flex_1().min_w_0().gap_3().children(columns(1))),
+                        ),
                     )
-                    .child(
-                        v_flex()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(t("preview")),
-                            )
-                            .child(self.preview(cx)),
-                    )
+                    .child(self.block(t("preview"), cx).child(self.preview(cx)))
                     .child(
                         h_flex()
                             .gap_3()
@@ -496,7 +511,13 @@ impl Render for ThemeEditor {
                             .when(self.selected.is_some(), |actions| {
                                 actions.child(
                                     Button::new("delete-theme")
-                                        .danger()
+                                        .custom(
+                                            ButtonCustomVariant::new(cx)
+                                                .color(danger.opacity(0.2))
+                                                .hover(danger.opacity(0.3))
+                                                .active(danger.opacity(0.3))
+                                                .foreground(danger),
+                                        )
                                         .icon(icons::icon(icons::TRASH))
                                         .label(t("delete"))
                                         .on_click(cx.listener(|this, _, window, cx| {

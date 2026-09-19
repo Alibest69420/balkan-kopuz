@@ -133,9 +133,9 @@ impl Home {
                                 .child(
                                     Button::new("hero-play")
                                         .custom(light)
-                                        .h(px(48.))
+                                        .h_12()
                                         .px_8()
-                                        .rounded(px(24.))
+                                        .rounded_full()
                                         .text_sm()
                                         .font_weight(FontWeight::BOLD)
                                         .icon(icons::icon(icons::PLAY))
@@ -187,8 +187,8 @@ impl Home {
             .active(style::white(style::ACTIVE, cx));
         Button::new("hero-favorite")
             .custom(chip)
-            .size(px(44.))
-            .rounded(px(22.))
+            .size_11()
+            .rounded_full()
             .border_1()
             .border_color(style::white(style::ACTIVE, cx))
             .icon(icons::icon(icons::HEART))
@@ -212,7 +212,7 @@ impl Home {
             .bottom_0()
             .left_0()
             .right_0()
-            .h(px(12.))
+            .h_3()
             .flex()
             .items_center()
             .justify_center()
@@ -235,7 +235,7 @@ impl Home {
             .child(
                 div()
                     .w_10()
-                    .h(px(4.))
+                    .h_1()
                     .rounded_full()
                     .bg(style::white(style::TEXT_SECONDARY, cx)),
             )

@@ -21,14 +21,20 @@ use widgets::{dialogs, icons, playlist_picker, style};
 use crate::background;
 use crate::controls;
 
-const COLUMN_WIDTH: gpui_kit::Pixels = px(640.);
-// `w-11 h-11`: the round favourite / don't-recommend / menu buttons beside the title.
+// `max-width: 640px`: the width the title, the bitrate line and the transport share.
+fn column_width() -> gpui_kit::Rems {
+    rems(40.)
+}
+
+// The `width: 50px` the Dioxus seek row reserves for each clock.
+fn clock_width() -> gpui_kit::Rems {
+    rems(3.125)
+}
+
+// `w-11 h-11`, `w-14 h-14`, `w-16 h-16`: a `Button`'s size is only ever `Pixels`.
 const ACTION_SIZE: gpui_kit::Pixels = px(44.);
-// `w-14 h-14` and `w-16 h-16`: the transport's step and play buttons.
 const STEP_SIZE: gpui_kit::Pixels = px(56.);
 const PLAY_SIZE: gpui_kit::Pixels = px(64.);
-// The `width: 50px` the Dioxus seek row reserves for each clock.
-const CLOCK_WIDTH: gpui_kit::Pixels = px(50.);
 
 /// Which of the two right-hand tabs is showing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -376,7 +382,7 @@ impl FullscreenPlayer {
 
         v_flex()
             .w_full()
-            .max_w(COLUMN_WIDTH)
+            .max_w(column_width())
             .items_center()
             .child(
                 h_flex()
@@ -386,7 +392,7 @@ impl FullscreenPlayer {
                     .items_center()
                     .text_xs()
                     .text_color(style::white(0.7, cx))
-                    .child(div().w(CLOCK_WIDTH).child(controls::clock(position, radio)))
+                    .child(div().w(clock_width()).child(controls::clock(position, radio)))
                     .child(
                         div()
                             .flex_1()
@@ -394,7 +400,7 @@ impl FullscreenPlayer {
                     )
                     .child(
                         div()
-                            .w(CLOCK_WIDTH)
+                            .w(clock_width())
                             .text_right()
                             .child(controls::clock(duration.unwrap_or(0), radio)),
                     ),
@@ -521,7 +527,7 @@ impl FullscreenPlayer {
                     .child(
                         v_flex()
                             .w_full()
-                            .max_w(COLUMN_WIDTH)
+                            .max_w(column_width())
                             .child(
                                 h_flex()
                                     .w_full()

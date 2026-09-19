@@ -29,7 +29,6 @@ const INTERLUDE_MIN: f64 = 5.0;
 const LINE_ASSUMED_MAX: f64 = 7.0;
 // A chunk runs until the next one starts, which over a pause is far longer than the syllable.
 const MAX_WIPE: f64 = 1.2;
-const UNSUNG_ALPHA: f32 = 0.45;
 const BACKGROUND_ALPHA: f32 = 0.7;
 const SLIDE_MS: f64 = 720.0;
 // Past this the list has moved under us — a remount or a resize — so re-park rather than wait.
@@ -48,6 +47,10 @@ const LINE_WIDTH: f32 = 20.;
 const TURN_WIDTH: f32 = 18.;
 // `leading-snug` on the small print of a background line.
 const SNUG: f32 = 1.375;
+// `absolute bottom-4 right-4 w-9 h-9 rounded-full bg-black/40` with a `w-5 h-5` glyph.
+const SYNC_BUTTON: Pixels = px(36.);
+const SYNC_GLYPH: Pixels = px(20.);
+const SYNC_SCRIM: f32 = 0.4;
 
 /// A word or syllable of a line, with the byte range it occupies in the line's text.
 #[derive(Clone, Debug, PartialEq)]
@@ -442,7 +445,8 @@ impl LyricsPanel {
             .flex_1()
             .min_h_0()
             .w_full()
-            .px_3()
+            .px_2()
+            .py_2()
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
             .on_scroll_wheel(cx.listener(|this, _, _, cx| {
@@ -559,7 +563,7 @@ fn line_element(
     // No gradient sweeps a glyph in GPUI, so each chunk lights as a whole as the voice reaches it.
     let highlights = line.chunks.iter().map(|chunk| {
         let fill = chunk_fill(chunk, time);
-        let alpha = (UNSUNG_ALPHA + (1.0 - UNSUNG_ALPHA) * fill) * tint;
+        let alpha = (DIM + (1.0 - DIM) * fill) * tint;
         (
             chunk.range.clone(),
             HighlightStyle {
@@ -662,11 +666,18 @@ impl Render for LyricsPanel {
             .child(body)
             .when(synced && !self.auto_sync, |panel| {
                 panel.child(
-                    div().absolute().bottom_2().right_2().child(
+                    div().absolute().bottom_4().right_4().child(
                         Button::new("lyrics-sync")
                             .ghost()
-                            .small()
+                            .with_size(SYNC_GLYPH * (4. / 3.))
+                            .size(SYNC_BUTTON)
+                            .rounded(SYNC_BUTTON / 2.)
                             .icon(icons::icon(icons::REFRESH))
+                            .bg(style::black(SYNC_SCRIM, cx))
+                            .border_1()
+                            .border_color(style::white(style::BORDER, cx))
+                            .shadow_lg()
+                            .text_color(style::white(style::TEXT_STRONG, cx))
                             .tooltip(t("jump_to_current_song"))
                             .on_click(cx.listener(|this, _, _, cx| this.rearm(cx))),
                     ),

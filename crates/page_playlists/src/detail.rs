@@ -4,12 +4,12 @@ use std::path::Path;
 
 use api::{ArtworkTarget, ArtworkUpload, PlaylistCapability, PlaylistReorder, Table, TrackInfo};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, Size, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AppContext as _, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
-    ParentElement as _, PathPromptOptions, Render, SharedString, StatefulInteractiveElement as _,
-    Styled as _, Subscription, Window, div, px,
+    ParentElement as _, PathPromptOptions, Pixels, Rems, Render, SharedString,
+    StatefulInteractiveElement as _, Styled as _, Subscription, Window, div, px, rems,
 };
 use link::Link;
 use store::{
@@ -17,9 +17,14 @@ use store::{
 };
 use widgets::format::{t, t_with};
 use widgets::track_list::{TrackActions, TrackList, TrackListEvent};
-use widgets::{Cover, EmptyState, Loading, icons};
+use widgets::{Cover, EmptyState, Loading, icons, style};
 
-const HERO: gpui_kit::Pixels = px(180.);
+/// `w-64 h-64`: the showcase cover.
+const HERO: Pixels = px(256.);
+/// `w-14 h-14`: the round play and radio buttons beside it.
+const HERO_BUTTON: Rems = rems(3.5);
+/// A `Button` sizes its glyph at 0.75× itself, and the showcase's is `text-xl`.
+const HERO_GLYPH: Pixels = px(20. / 0.75);
 
 pub struct PlaylistDetail {
     id: SharedString,
@@ -236,7 +241,7 @@ impl Render for PlaylistDetail {
         let loaded = playlists.read(cx).is_loaded();
         let playlist = playlists.read(cx).playlist(&self.id).cloned();
         let Some(playlist) = playlist else {
-            return v_flex().size_full().p_8().child(if loaded {
+            return v_flex().size_full().px_8().pt_8().child(if loaded {
                 EmptyState::new(t("playlist_not_found"))
                     .icon(icons::LIST)
                     .into_any_element()

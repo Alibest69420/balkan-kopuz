@@ -130,3 +130,13 @@ fn parse(color: &str) -> Option<Hsla> {
 pub fn to_px(measure: Rems, window: &gpui_kit::Window) -> Pixels {
     measure.to_pixels(window.rem_size())
 }
+
+/// `text-5xl` — GPUI's own scale stops at `text_3xl`.
+pub fn text_5xl() -> Rems {
+    rems(3.)
+}
+
+/// `text-7xl`, the album detail's title.
+pub fn text_7xl() -> Rems {
+    rems(4.5)
+}

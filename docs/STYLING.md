@@ -24,8 +24,15 @@ like a fixed colour is really a theme token:
 | `text-purple-600` | highlight | `cx.theme().info` |
 
 Named constants for the alphas that recur: `style::{RAISED, HOVER, ACTIVE,
-BORDER, BORDER_SOFT, TEXT_STRONG, TEXT_SECONDARY, TEXT_SUBTLE, TEXT_FAINT}`.
-Never write a hex literal or `rgb()` in a feature crate.
+BORDER, BORDER_SOFT, TEXT_STRONG, TEXT_SECONDARY, TEXT_MUTED, TEXT_SUBTLE,
+TEXT_DIM, TEXT_FAINT, SELECTED, PLAYING}`. The class you are porting may use an
+alpha none of them names — `white/15`, `black/30` — and passing the literal
+(`style::white(0.15, cx)`) is right; the constants exist for the levels that
+recur, not as a gate. Never write a hex literal or `rgb()` in a feature crate.
+
+Tailwind's greys beyond `slate-400`/`slate-500` (`slate-300`, the `stone-*`
+family) have no Kopuz variable behind them, so pick the nearest of
+`slate_400`/`slate_500`/`white(…)` and move on.
 
 ## Spacing, size and type
 
@@ -45,7 +52,8 @@ Off-scale sizes have helpers: `text-[10px]` → `.text_size(style::text_10())`,
 | `rounded` | `.rounded(style::radius(cx))` |
 | `rounded-lg` | `.rounded(style::radius_lg())` |
 | `rounded-xl` | `.rounded(style::radius_xl())` |
-| `rounded-full` | `.rounded_full()` |
+| `rounded-full` | `.rounded_full()`, but on a `Button` it is `.rounded(cx.theme().radius_full())` — its inherent `rounded` shadows `Styled`'s |
+| `text-5xl` / `text-7xl` | `.text_size(style::text_5xl())` — GPUI's scale stops at `text_3xl` |
 | `truncate` | `.truncate()` (needs a bounded width: pair with `flex_1().min_w_0()`) |
 | `shrink-0` | `.flex_shrink_0()` |
 | `flex items-center` | `h_flex()` |
