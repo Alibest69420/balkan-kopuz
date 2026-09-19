@@ -102,9 +102,8 @@ bare `px(…)` there is expected rather than a violation of the rem rule.
 
 Do not fake these; leave the element unstyled for that property and move on.
 
-- `transition-*` and `duration-*`: there are no CSS transitions. A state change
-  is instant unless the element opts into `with_animation`.
-- `active:scale-95` and every other transform: `div` has no transform.
+- `active:scale-95` and every other transform: `div` has no transform. A cover
+  can still *read* as `scale-105` — see Motion below.
 - `backdrop-blur-*`: no backdrop filter. Use a slightly heavier scrim instead
   and leave a one-line note.
 - `shadow-[…]`: use `.shadow_lg()`/`.shadow_md()`, not a hand-built spec.
@@ -141,3 +140,58 @@ scan and connecting states are amber, which is `cx.theme().warning`.
 Not ported. `style::Skin::current(cx)` answers which skin `cfg.ui_style` asks
 for and falls back to `Normal`, so a later skin branches there rather than
 threading a flag through every call site. Do not add Vaxry branches now.
+
+## The `.hover()` panic
+
+`Button::render` sets its own hover style, and GPUI's `hover()` carries a
+`debug_assert!("hover style already set")`. So **`.hover(|…| …)` on a `Button`
+panics the moment that element renders** — in a debug build it takes the whole
+app down, and it only fires when you visit the page that draws it.
+
+A Button's colours come from `ButtonCustomVariant::new(cx).color(..).hover(..)
+.active(..).foreground(..)` instead. `.hover(colour)` on a *variant* is fine;
+it is the closure form on the button that is fatal. A plain `div()` may of
+course take one closure hover.
+
+Before finishing, check your crate:
+
+```sh
+grep -rn "\.hover(|\|\.hover(move |" crates/<yours>/src
+```
+
+and confirm each receiver is a `div`/`h_flex`/`v_flex`, not a `Button` or a
+helper that returns one.
+
+## Motion
+
+`transition-*` and `duration-*` **do** port. `gpui_base::motion` has a real
+transition system and `widgets::motion` wraps it with Kopuz's timings. It is
+keyed by element id, honours reduce-motion for free (which is what
+`cfg.reduce_animations` should drive), and interpolates anything `Lerp`:
+`f32`, `Pixels`, `Point<Pixels>` and `Hsla`.
+
+The shape is: compute the value you *want* for the current state, hand it to
+`motion`, and style with what comes back.
+
+```rust
+// `transition-colors` on a hover: ask for the target, paint the tween.
+let target = if hovered { style::white(style::HOVER, cx) } else { style::white(style::RAISED, cx) };
+let background = motion::color(("row-bg", row_id), target, window, cx);
+div().bg(background)
+```
+
+| Class | GPUI |
+| --- | --- |
+| `transition-colors` | `motion::color(id, target, window, cx)` |
+| `duration-300` on a colour | `motion::color_over(id, target, motion::SLOW, window, cx)` |
+| `group-hover:scale-105` on a cover | `motion::zoom(id, base_size, hovered, window, cx)`, inside an `overflow_hidden` frame |
+| a fading opacity | `motion::amount(id, target, motion::FAST, window, cx)` |
+
+Two rules. The id must be stable and unique per value — `("card-cover", album.id)`,
+never a list index — because it keys the channel that holds the tween's state.
+And a transition needs the state it reacts to: a hover tween wants the element's
+own hover state, so it is `div().id(..)` plus tracked hover, not a `.hover()`
+refinement.
+
+What still cannot move: anything needing a transform (`rotate`, `translate`,
+a real `scale` on a `div`), and `active:scale-95` press feedback.

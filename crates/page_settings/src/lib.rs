@@ -246,6 +246,7 @@ impl Render for Settings {
             .child(PageHeader::new(t("settings")))
             .when(locked, |page| page.child(self.managed_notice(cx)))
             .child(self.rail(cx))
-            .child(div().flex_1().min_w_0().child(self.panel()))
+            // min_h_0 is what lets the panel shrink, and so scroll, inside this column.
+            .child(div().flex_1().min_h_0().min_w_0().child(self.panel()))
     }
 }

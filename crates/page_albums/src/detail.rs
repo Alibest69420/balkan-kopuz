@@ -4,7 +4,7 @@ use api::{
     AlbumInfo, AlbumPage, AlbumPresentation, ArtworkRef, CatalogDetail, CatalogDetailRequest,
     CatalogItemKind, PlaylistCapability, SourceCapabilities, Table, TrackInfo,
 };
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -333,7 +333,6 @@ impl AlbumDetail {
         cx: &Context<Self>,
     ) -> impl IntoElement {
         let shuffled = PlayerModel::global(cx).read(cx).shuffle();
-        let foreground = cx.theme().foreground;
         let hover = style::white(style::HOVER, cx);
         Self::round_button(
             "album-shuffle",
@@ -349,11 +348,16 @@ impl AlbumDetail {
                 style::white(0.15, cx)
             })
         })
-        .map(|button| match shuffled {
-            true => button.text_color(cx.theme().primary).bg(hover),
-            false => button
-                .text_color(style::slate_400(cx))
-                .hover(move |button| button.text_color(foreground).bg(hover)),
+        // A Button paints its own hover, so these colours come from a variant.
+        .custom(match shuffled {
+            true => ButtonCustomVariant::new(cx)
+                .color(hover)
+                .hover(hover)
+                .foreground(cx.theme().primary),
+            false => ButtonCustomVariant::new(cx)
+                .color(gpui_kit::transparent_black())
+                .hover(hover)
+                .foreground(style::slate_400(cx)),
         })
         .tooltip(t("shuffle"))
         .on_click(move |_, _, cx| {

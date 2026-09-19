@@ -1,12 +1,11 @@
 //! The stacked sort control: one submenu per criterion, writing `cfg.library_sort`.
 
 use config::{SortCriterion, SortDirection, TrackSortField};
-use gpui_kit::component::ActiveTheme as _;
-use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants as _};
-use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
-use gpui_kit::{
-    App, Context, InteractiveElement as _, IntoElement, SharedString, Styled as _, Window,
+use gpui_kit::component::button::{
+    Button, ButtonCustomVariant, ButtonRounded, ButtonVariants as _,
 };
+use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
+use gpui_kit::{App, Context, IntoElement, SharedString, Styled as _, Window};
 use store::ConfigModel;
 use widgets::format::t;
 use widgets::{icons, style};
@@ -147,10 +146,14 @@ fn menu(
 /// The button and its stacked criteria menu; `criteria` is `cfg.library_sort`.
 pub fn control(criteria: Criteria, cx: &App) -> impl IntoElement {
     let first = criteria.first().copied();
-    let foreground = cx.theme().foreground;
-    let hover = style::white(style::HOVER, cx);
+    // A Button paints its own hover, so its colours come from a variant, never `.hover`.
+    let variant = ButtonCustomVariant::new(cx)
+        .color(style::white(style::RAISED, cx))
+        .hover(style::white(style::HOVER, cx))
+        .active(style::white(style::HOVER, cx))
+        .foreground(style::white(0.7, cx));
     let button = Button::new("library-sort")
-        .ghost()
+        .custom(variant)
         .icon(icons::icon(first.map_or(icons::SORT, |criterion| {
             direction_icon(criterion.direction)
         })))
@@ -164,10 +167,7 @@ pub fn control(criteria: Criteria, cx: &App) -> impl IntoElement {
         .h_7()
         .px_3()
         .text_xs()
-        .bg(style::white(style::RAISED, cx))
         .border_1()
-        .border_color(style::white(style::BORDER_SOFT, cx))
-        .text_color(style::white(0.7, cx))
-        .hover(move |sorter| sorter.bg(hover).text_color(foreground));
+        .border_color(style::white(style::BORDER_SOFT, cx));
     button.dropdown_menu(move |popup, window, cx| menu(&criteria, popup, window, cx))
 }

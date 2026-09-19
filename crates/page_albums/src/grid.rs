@@ -5,7 +5,9 @@ use std::collections::HashSet;
 
 use api::{AlbumInfo, AlbumPage, JobKind, PlaylistCapability, Table};
 use config::{AlbumSortField, AlbumViewMode, SortCriterion, SortDirection};
-use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants as _};
+use gpui_kit::component::button::{
+    Button, ButtonCustomVariant, ButtonRounded, ButtonVariants as _,
+};
 use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -96,7 +98,6 @@ impl Albums {
         let on = style::white(style::HOVER, cx);
         let off = style::white(0.4, cx);
         let ink = cx.theme().foreground;
-        let soft = style::white(0.8, cx);
         let segment = move |id: &'static str, icon: &'static str, label, active: bool| {
             Button::new(id)
                 .ghost()
@@ -105,11 +106,13 @@ impl Albums {
                 .tooltip(label)
                 .w_7()
                 .h_6()
-                .map(|button| match active {
-                    true => button.bg(on).text_color(ink),
-                    false => button
-                        .text_color(off)
-                        .hover(move |segment| segment.text_color(soft)),
+                // A Button paints its own hover, so a segment's colours are a variant.
+                .custom(match active {
+                    true => ButtonCustomVariant::new(cx).color(on).foreground(ink),
+                    false => ButtonCustomVariant::new(cx)
+                        .color(gpui_kit::transparent_black())
+                        .hover(style::white(style::RAISED, cx))
+                        .foreground(off),
                 })
         };
         h_flex()
@@ -151,20 +154,22 @@ impl Albums {
             None => t("sort_by"),
         };
         let hover = style::white(style::HOVER, cx);
-        let ink = cx.theme().foreground;
         Button::new("albums-sort")
-            .ghost()
+            .custom(
+                ButtonCustomVariant::new(cx)
+                    .color(style::white(style::RAISED, cx))
+                    .hover(hover)
+                    .active(hover)
+                    .foreground(style::white(0.7, cx)),
+            )
             .icon(icons::icon(icons::SORT))
             .label(label)
             .rounded(ButtonRounded::Large)
             .h_7()
             .px_3()
             .text_xs()
-            .bg(style::white(style::RAISED, cx))
             .border_1()
             .border_color(style::white(style::BORDER_SOFT, cx))
-            .text_color(style::white(0.7, cx))
-            .hover(move |sorter| sorter.bg(hover).text_color(ink))
             .dropdown_menu(move |mut menu, _, _| {
                 for field in available.iter().copied() {
                     menu = menu.item(
