@@ -292,6 +292,7 @@ impl MediaServers {
         window.open_dialog(cx, move |dialog, _, cx| {
             dialog
                 .title(form.read(cx).title())
+                .w(ui::dialog_width())
                 .child(form.clone())
                 .footer(div())
         });

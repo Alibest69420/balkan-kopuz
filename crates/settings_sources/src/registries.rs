@@ -14,7 +14,7 @@ use gpui_kit::{
 use link::Link;
 use store::ConfigModel;
 use widgets::format::{t, t_with};
-use widgets::icons;
+use widgets::{icons, style};
 
 use crate::ui;
 
@@ -110,6 +110,7 @@ impl RadioRegistries {
         window.open_dialog(cx, move |dialog, _, _| {
             dialog
                 .title(t("add_radio_registry"))
+                .w(ui::dialog_width())
                 .child(form.clone())
                 .footer(div())
         });
@@ -132,6 +133,9 @@ impl RadioRegistries {
             .w_full()
             .gap_3()
             .items_center()
+            .p_2()
+            .rounded(style::radius(cx))
+            .bg(style::white(style::RAISED, cx))
             .child(
                 Checkbox::new(SharedString::from(format!("registry-{url}")))
                     .checked(enabled)
@@ -149,13 +153,19 @@ impl RadioRegistries {
                     .min_w_0()
                     .truncate()
                     .text_xs()
-                    .map(|label| if enabled { label } else { label.line_through() })
+                    .map(|label| {
+                        if enabled {
+                            label.text_color(style::slate_400(cx))
+                        } else {
+                            label.line_through().text_color(style::slate_500(cx))
+                        }
+                    })
                     .child(shown),
             )
             .when(!entry.is_default, |row| {
                 row.child(
                     Button::new(SharedString::from(format!("delete-registry-{url}")))
-                        .danger()
+                        .custom(ui::danger_text(cx))
                         .xsmall()
                         .label(t("delete"))
                         .disabled(locked)
@@ -202,7 +212,7 @@ impl Render for RadioRegistries {
                 )
                 .when(expanded, |card| {
                     card.when(entries.is_empty(), |card| {
-                        card.child(ui::hint(t("radio_registries_empty"), cx))
+                        card.child(ui::empty(t("radio_registries_empty"), cx))
                     })
                     .when_some(self.error.clone(), |card, message| {
                         card.child(ui::error(message, cx))
@@ -214,12 +224,13 @@ impl Render for RadioRegistries {
                     )
                     .child(
                         Button::new("add-registry")
-                            .outline()
+                            .custom(ui::soft(cx))
                             .small()
                             .icon(icons::icon(icons::PLUS))
                             .label(t("add"))
                             .disabled(locked)
-                            .on_click(cx.listener(|this, _, window, cx| this.open_add(window, cx))),
+                            .on_click(cx.listener(|this, _, window, cx| this.open_add(window, cx)))
+                            .self_start(),
                     )
                 }),
         )

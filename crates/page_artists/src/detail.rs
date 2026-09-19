@@ -28,8 +28,8 @@ use store::{
 };
 use widgets::format::{t, t_with, total_duration};
 use widgets::{
-    Cover, EmptyState, Loading, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons,
-    playlist_picker, style,
+    Cover, EmptyState, Loading, TrackActions, TrackList, TrackListEvent, TrackListOptions, columns,
+    icons, playlist_picker, style,
 };
 
 use crate::controls::{self, ViewModeKey};
@@ -497,19 +497,15 @@ impl ArtistDetail {
     }
 
     fn column_header(&mut self, count: usize, cx: &mut Context<Self>) -> AnyElement {
-        let show_cover = controls::config(cx).show_row_images;
         let all_selected = count > 0 && count == self.list.read(cx).selected_keys().len();
-        h_flex()
-            .w_full()
-            .gap_3()
-            .px_2()
-            .py_2()
+        // Built from the row's own cells, so each sort label sits over its column.
+        columns::frame()
             .text_xs()
             .text_color(cx.theme().muted_foreground)
             .border_b_1()
             .border_color(cx.theme().border)
             .child(
-                div().w(px(28.)).flex_shrink_0().child(
+                columns::fixed(columns::INDEX).child(
                     Checkbox::new("artist-select-all")
                         .checked(all_selected)
                         .accessibility_label(t("select_all"))
@@ -524,30 +520,24 @@ impl ArtistDetail {
                         })),
                 ),
             )
-            .when(show_cover, |header| {
-                header.child(div().w(px(40.)).flex_shrink_0())
-            })
-            // The row stacks title over artist, so both sorts live in the one cell.
             .child(
-                h_flex()
-                    .flex_1()
-                    .min_w_0()
-                    .gap_3()
-                    .child(self.column_label(Column::Title, cx))
+                columns::flexible(columns::TITLE_MIN, 2.)
+                    .child(self.column_label(Column::Title, cx)),
+            )
+            .child(
+                columns::flexible(columns::TEXT_MIN, 1.)
                     .child(self.column_label(Column::Artist, cx)),
             )
             .child(
-                div()
-                    .w(px(200.))
-                    .flex_shrink_0()
+                columns::flexible(columns::TEXT_MIN, 1.)
                     .child(self.column_label(Column::Album, cx)),
             )
             .child(
-                div()
-                    .w(px(56.))
-                    .flex_shrink_0()
+                columns::fixed(columns::DURATION)
+                    .justify_end()
                     .child(self.column_label(Column::Duration, cx)),
             )
+            .child(columns::fixed(columns::MENU))
             .into_any_element()
     }
 

@@ -19,7 +19,7 @@ use gpui_kit::{
 use store::{ConfigModel, JobsModel, PlaylistsModel, Query, SourcesModel, actions};
 use widgets::format::t;
 use widgets::track_list::{TrackActions, TrackList, TrackListEvent, TrackListOptions};
-use widgets::{PageHeader, icons, playlist_picker, style};
+use widgets::{PageHeader, columns, icons, playlist_picker, style};
 
 use crate::stats::StatCard;
 
@@ -320,29 +320,25 @@ impl Library {
     }
 
     /// The column labels, laid out on the track row's own columns so they sit over them.
-    fn column_header(&self, covers: bool, cx: &mut Context<Self>) -> impl IntoElement {
-        h_flex()
-            .w_full()
+    // Built from the same cells as the row, so the labels sit over their columns.
+    fn column_header(&self, _: bool, cx: &mut Context<Self>) -> impl IntoElement {
+        columns::frame()
             .mb_2()
-            .gap_3()
-            .items_center()
-            .px_2()
-            .py_2()
             .border_b_1()
             .border_color(style::white(style::BORDER, cx))
             .text_sm()
             .font_weight(FontWeight::MEDIUM)
-            .text_color(style::white(0.5, cx))
-            .child(div().w(px(28.)).flex_shrink_0().child("#"))
-            .when(covers, |row| row.child(div().w(px(40.)).flex_shrink_0()))
-            .child(div().flex_1().min_w_0().child(t("title")))
-            .child(div().w(px(200.)).flex_shrink_0().child(t("album")))
+            .text_color(style::white(style::TEXT_MUTED, cx))
+            .child(columns::fixed(columns::INDEX).child("#"))
+            .child(columns::flexible(columns::TITLE_MIN, 2.).child(t("title")))
+            .child(columns::flexible(columns::TEXT_MIN, 1.).child(t("artist")))
+            .child(columns::flexible(columns::TEXT_MIN, 1.).child(t("album")))
             .child(
-                div()
-                    .w(px(56.))
-                    .flex_shrink_0()
+                columns::fixed(columns::DURATION)
+                    .justify_end()
                     .child(icons::icon(icons::CLOCK)),
             )
+            .child(columns::fixed(columns::MENU))
     }
 }
 

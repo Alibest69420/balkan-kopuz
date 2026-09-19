@@ -18,4 +18,6 @@ pub use format::{duration, t, t_with, text, total_duration};
 pub use header::PageHeader;
 pub use schema_form::{FieldChanged, SchemaForm};
 pub use states::{EmptyState, Loading};
-pub use track_list::{TrackActions, TrackDrag, TrackList, TrackListEvent, TrackListOptions};
+pub use track_list::{
+    TrackActions, TrackDrag, TrackList, TrackListEvent, TrackListOptions, columns,
+};

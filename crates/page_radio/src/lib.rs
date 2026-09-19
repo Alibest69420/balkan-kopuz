@@ -22,8 +22,19 @@ use widgets::{Cover, EmptyState, PageHeader, icons};
 // Typing settles before the directory is searched; the Dioxus page used the same delay.
 const DEBOUNCE: Duration = Duration::from_millis(300);
 const RESULTS: u32 = 60;
-const ART: Pixels = px(36.);
-const STREAMS_WIDTH: Pixels = px(220.);
+// `w-11 h-11` station art, and `rounded-md` on it; `Cover` only takes pixels.
+const ART: Pixels = px(44.);
+const ART_RADIUS: Pixels = px(6.);
+
+// The width the streams column reserves on the right of a selected row.
+fn streams_width() -> gpui_kit::Rems {
+    rems(13.75)
+}
+
+// `max-w-sm w-full`: the directory search box.
+fn search_width() -> gpui_kit::Rems {
+    rems(24.)
+}
 
 /// The stream a click plays when the row does not name one.
 fn first_stream(station: &RadioStationInfo) -> String {
@@ -193,6 +204,20 @@ impl Radio {
             .into_any_element()
     }
 
+    /// `px-3 py-1 rounded-lg text-xs font-medium bg-white/10 text-slate-300`.
+    fn chip(id: SharedString, cx: &App) -> Button {
+        Button::new(id)
+            .custom(
+                ButtonCustomVariant::new(cx)
+                    .color(style::white(style::HOVER, cx))
+                    .foreground(style::slate_400(cx))
+                    .hover(style::white(style::ACTIVE, cx))
+                    .active(style::white(style::ACTIVE, cx)),
+            )
+            .rounded(ButtonRounded::Large)
+            .xsmall()
+    }
+
     fn stream_button(
         &self,
         station: &RadioStationInfo,
@@ -201,12 +226,10 @@ impl Radio {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let station_id = station.id.clone();
-        Button::new(SharedString::from(format!(
-            "stream-{}-{stream_id}",
-            station.id
-        )))
-        .outline()
-        .compact()
+        Self::chip(
+            SharedString::from(format!("stream-{}-{stream_id}", station.id)),
+            cx,
+        )
         .label(label)
         .on_click(cx.listener(move |_, _, _, cx| {
             cx.stop_propagation();
@@ -228,10 +251,8 @@ impl Radio {
             _ if expanded => {
                 let id = station.id.clone();
                 vec![
-                    Button::new(SharedString::from(format!("less-{}", station.id)))
-                        .ghost()
-                        .compact()
-                        .icon(icons::icon(icons::CHEVRON_UP))
+                    Self::chip(SharedString::from(format!("less-{}", station.id)), cx)
+                        .icon(icons::icon(icons::CHEVRON_UP).xsmall())
                         .on_click(cx.listener(move |this, _, _, cx| {
                             cx.stop_propagation();
                             this.expanded.remove(&id);
@@ -247,9 +268,7 @@ impl Radio {
                     buttons.push(self.stream_button(station, first.id.clone(), t(&first.name), cx));
                 }
                 buttons.push(
-                    Button::new(SharedString::from(format!("more-{}", station.id)))
-                        .ghost()
-                        .compact()
+                    Self::chip(SharedString::from(format!("more-{}", station.id)), cx)
                         .label(format!("+{}", count - 1))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             cx.stop_propagation();
@@ -270,17 +289,31 @@ impl Radio {
             .take(2)
             .map(|tag| {
                 div()
-                    .px_2()
+                    .px_3()
                     .py_1()
                     .flex_shrink_0()
-                    .rounded(cx.theme().radius)
-                    .bg(cx.theme().secondary)
+                    .rounded(style::radius_lg())
+                    .bg(style::white(style::RAISED, cx))
                     .text_xs()
-                    .text_color(cx.theme().muted_foreground)
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(style::slate_500(cx))
                     .child(SharedString::from(tag.clone()))
                     .into_any_element()
             })
             .collect()
+    }
+
+    /// `p-4 rounded-xl border border-white/8 hover:bg-white/10`: the shape both lists' rows take.
+    fn card(id: SharedString, cx: &Context<Self>) -> gpui_kit::Stateful<gpui_kit::Div> {
+        div()
+            .id(id)
+            .w_full()
+            .p_4()
+            .rounded(style::radius_xl())
+            .border_1()
+            .border_color(style::white(0.08, cx))
+            .cursor_pointer()
+            .hover(|row| row.bg(style::white(style::HOVER, cx)))
     }
 
     /// A row of the selected table: the whole row plays, the buttons pick a stream.

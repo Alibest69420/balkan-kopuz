@@ -2,7 +2,9 @@
 
 use api::schema::{ChoiceOption, FieldValue};
 use api::{ApiEvent, DownloadHistoryEntry, DownloadState, JobKind, JobProgress};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::{
+    Button, ButtonCustomVariant, ButtonRounded, ButtonVariants as _,
+};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::progress::Progress;
 use gpui_kit::component::spinner::Spinner;
@@ -11,11 +13,11 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
     ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled,
-    Subscription, Window, div, px,
+    Subscription, Window, div, rems,
 };
 use store::{JobEvent, JobsModel, Link, Notices, Query};
 use widgets::format::{t, t_with, text};
-use widgets::{EmptyState, FieldChanged, PageHeader, SchemaForm, icons};
+use widgets::{EmptyState, FieldChanged, PageHeader, SchemaForm, icons, style};
 
 /// The downloader page: a URL, a format, the daemon's own options, and what has been fetched.
 pub struct Downloader {
@@ -317,7 +319,11 @@ impl Downloader {
                         column.child(
                             Progress::new("downloader-progress")
                                 .value(percent)
-                                .when(processing, |bar| bar.color(cx.theme().warning)),
+                                .color(if processing {
+                                    cx.theme().warning.opacity(0.6)
+                                } else {
+                                    style::white(0.5, cx)
+                                }),
                         )
                     }),
             )
@@ -404,10 +410,10 @@ fn row(cx: &Context<Downloader>) -> gpui_kit::Div {
         .items_start()
         .px_4()
         .py_3()
-        .rounded(cx.theme().radius)
+        .rounded(style::radius_xl())
         .border_1()
-        .border_color(cx.theme().border)
-        .bg(cx.theme().muted)
+        .border_color(style::white(style::BORDER, cx))
+        .bg(style::white(style::RAISED, cx))
 }
 
 impl Render for Downloader {
@@ -422,7 +428,7 @@ impl Render for Downloader {
 
         v_flex()
             .size_full()
-            .p_4()
+            .p_6()
             .gap_3()
             .child(
                 PageHeader::new(t("downloader_title"))
@@ -448,13 +454,14 @@ impl Render for Downloader {
                 page.child(
                     div()
                         .id("downloader-options-panel")
-                        .max_h(px(320.))
+                        .max_h(rems(20.))
                         .overflow_y_scroll()
                         .px_4()
                         .py_2()
-                        .rounded(cx.theme().radius)
+                        .rounded(style::radius_xl())
                         .border_1()
-                        .border_color(cx.theme().border)
+                        .border_color(style::white(style::BORDER, cx))
+                        .bg(style::white(style::RAISED, cx))
                         .child(self.options.clone()),
                 )
             })
@@ -475,7 +482,7 @@ impl Render for Downloader {
                             list.child(
                                 h_flex().w_full().justify_end().child(
                                     Button::new("downloader-clear")
-                                        .ghost()
+                                        .text()
                                         .xsmall()
                                         .label(t("downloader_clear_history"))
                                         .on_click(

@@ -4,7 +4,7 @@ mod row;
 mod theme_editor;
 
 use config::{AppConfig, BackBehavior, PlayerBarPosition};
-use gpui_kit::component::button::{Button, ButtonVariants as _, ButtonCustomVariant};
+use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
 use gpui_kit::component::switch::Switch;

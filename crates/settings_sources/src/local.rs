@@ -143,6 +143,7 @@ impl LocalLibraries {
         window.open_dialog(cx, move |dialog, _, _| {
             dialog
                 .title(t("add_local_library"))
+                .w(ui::dialog_width())
                 .child(form.clone())
                 .footer(div())
         });

@@ -120,21 +120,23 @@ impl Render for Equalizer {
                     .gap_3()
                     .items_stretch()
                     .child(
-                        panel(cx).w_48().child(
-                            Switch::new("eq-enabled")
-                                .checked(enabled)
-                                .disabled(locked)
-                                .on_click(cx.listener(|_, checked: &bool, _, cx| {
-                                    let mut settings = current(cx);
-                                    settings.enabled = *checked;
-                                    apply(settings, cx);
-                                })),
-                        )
-                        .child(div().text_xs().text_color(muted).child(if enabled {
-                            t("enabled")
-                        } else {
-                            t("disabled")
-                        })),
+                        panel(cx)
+                            .w_48()
+                            .child(
+                                Switch::new("eq-enabled")
+                                    .checked(enabled)
+                                    .disabled(locked)
+                                    .on_click(cx.listener(|_, checked: &bool, _, cx| {
+                                        let mut settings = current(cx);
+                                        settings.enabled = *checked;
+                                        apply(settings, cx);
+                                    })),
+                            )
+                            .child(div().text_xs().text_color(muted).child(if enabled {
+                                t("enabled")
+                            } else {
+                                t("disabled")
+                            })),
                     )
                     .child(
                         panel(cx)
@@ -201,8 +203,7 @@ impl Render for Equalizer {
                     .child(t("eq_graph_hint")),
             )
             .child(
-                // The Dioxus panel drew a draggable SVG curve; GPUI has no path element, so the
-                // bands are sliders on the same surface.
+                // The Dioxus panel drew a draggable SVG curve, which GPUI has no path element for.
                 div()
                     .w_full()
                     .p_4()

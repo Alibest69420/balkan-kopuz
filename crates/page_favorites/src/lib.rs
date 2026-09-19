@@ -22,7 +22,8 @@ use gpui_kit::{
 use store::{ConfigModel, JobsModel, Query, SourcesModel, actions};
 use widgets::format::{t, t_with};
 use widgets::{
-    EmptyState, Loading, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons, style,
+    EmptyState, Loading, TrackActions, TrackList, TrackListEvent, TrackListOptions, columns, icons,
+    style,
 };
 
 // Filtering re-sorts the whole list, so a keystroke settles first; the Dioxus search bar used the same delay.
@@ -41,7 +42,8 @@ pub struct Favorites {
     query: String,
     sort: sort::State,
     loaded: usize,
-    show_cover: bool,
+    // The header draws an album column only while the list does.
+    show_album: bool,
     _filter_delay: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
@@ -88,7 +90,7 @@ impl Favorites {
             query: String::new(),
             sort: None,
             loaded: 0,
-            show_cover: options.show_cover,
+            show_album: options.show_album,
             _filter_delay: None,
             _subscriptions: subscriptions,
         };
@@ -102,7 +104,7 @@ impl Favorites {
             .capabilities()
             .delete_from_disk;
         let options = list_options(cx);
-        self.show_cover = options.show_cover;
+        self.show_album = options.show_album;
         self.list.update(cx, |list, cx| {
             list.set_options(options, cx);
             list.set_actions(
@@ -375,10 +377,10 @@ impl Favorites {
         }
     }
 
-    /// The select-all row and the sortable column header, aligned with the track row's columns.
+    /// The select-all row and the sortable column header, built from the row's own column frame.
     fn columns(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let all_selected = self.all_selected(cx);
-        let show_cover = self.show_cover;
+        let show_album = self.show_album;
         let title = self.sort_header(sort::Field::Title, cx);
         let artist = self.sort_header(sort::Field::Artist, cx);
         let album = self.sort_header(sort::Field::Album, cx);
@@ -404,38 +406,21 @@ impl Favorites {
                     .child(t("select_all")),
             )
             .child(
-                // The columns line up with the shared row: index, cover, title, album, duration.
-                h_flex()
-                    .gap_3()
-                    .items_center()
+                columns::frame()
                     .mb_2()
-                    .px_2()
-                    .py_2()
                     .border_b_1()
-                    .border_color(style::white(style::BORDER_SOFT, cx))
+                    .border_color(style::white(style::BORDER, cx))
                     .text_sm()
                     .font_weight(FontWeight::MEDIUM)
-                    .text_color(style::slate_500(cx))
-                    .child(div().w(rems(1.25)).flex_shrink_0())
-                    .when(show_cover, |header| {
-                        header.child(div().w(style::row_cover()).flex_shrink_0())
+                    .text_color(style::white(style::TEXT_MUTED, cx))
+                    .child(columns::fixed(columns::INDEX))
+                    .child(columns::flexible(columns::TITLE_MIN, 2.).child(title))
+                    .child(columns::flexible(columns::TEXT_MIN, 1.).child(artist))
+                    .when(show_album, |header| {
+                        header.child(columns::flexible(columns::TEXT_MIN, 1.).child(album))
                     })
-                    .child(
-                        h_flex()
-                            .flex_1()
-                            .min_w_0()
-                            .gap_6()
-                            .child(title)
-                            .child(artist),
-                    )
-                    .child(div().w(rems(12.5)).flex_shrink_0().child(album))
-                    .child(
-                        h_flex()
-                            .w(rems(4.))
-                            .flex_shrink_0()
-                            .justify_end()
-                            .child(duration),
-                    ),
+                    .child(columns::fixed(columns::DURATION).justify_end().child(duration))
+                    .child(columns::fixed(columns::MENU)),
             )
             .into_any_element()
     }

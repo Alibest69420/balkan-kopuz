@@ -4,12 +4,12 @@ use std::collections::HashMap;
 
 use api::schema::{FieldSpec, FieldValue};
 use api::{ConnectKind, IntegrationInfo, Table};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{Disableable as _, Sizable as _, h_flex};
+use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
-    Subscription, Window,
+    Styled, Subscription, Window,
 };
 use link::Link;
 use store::{ConfigModel, Notices, Query};
@@ -144,7 +144,10 @@ impl Integrations {
         let id = integration.id.clone();
         let name = text(&integration.name);
         let configured = integration.configured;
-        ui::row(cx)
+        let success = cx.theme().success;
+        v_flex()
+            .w_full()
+            .gap_2()
             .child(ui::label(name.clone()))
             .children(self.forms.get(&id).map(|held| held.form.clone()))
             .when(integration.connect == ConnectKind::WebSignIn, |row| {
@@ -154,9 +157,15 @@ impl Integrations {
                             .small()
                             .map(|button| {
                                 if configured {
-                                    button.success()
+                                    button.custom(
+                                        ButtonCustomVariant::new(cx)
+                                            .color(success.opacity(0.2))
+                                            .hover(success.opacity(0.2))
+                                            .active(success.opacity(0.2))
+                                            .foreground(success),
+                                    )
                                 } else {
-                                    button.outline()
+                                    button.custom(ui::soft(cx))
                                 }
                             })
                             .label(if configured {

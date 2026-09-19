@@ -1,18 +1,33 @@
 //! Settings: the category rail and the panel it shows; each category lives in its own crate.
 
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{ActiveTheme as _, Selectable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render,
-    SharedString, Styled, Window, div, px,
+    AnyElement, App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _,
+    IntoElement, ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled,
+    Window, div, rems,
 };
 use settings_appearance::AppearanceSettings;
 use settings_playback::PlaybackSettings;
 use settings_sources::SourceSettings;
 use store::ConfigModel;
 use widgets::format::t;
-use widgets::{PageHeader, icons};
+use widgets::{PageHeader, icons, style};
+
+/// `border-white/9` under the fan, over `bg-black/92`.
+const FAN_BORDER: f32 = 0.09;
+const FAN_BG: f32 = 0.92;
+/// `text-white/52` on a resting fan item, `bg-white/4` and `text-white/78` under the pointer.
+const ITEM: f32 = 0.52;
+const ITEM_HOVER: f32 = 0.04;
+const ITEM_HOVER_TEXT: f32 = 0.78;
+/// `bg-white/3` on the chosen one.
+const ITEM_SELECTED: f32 = 0.03;
+/// `text-white/40` on the lock, `text-white/70` on the line beside it.
+const LOCK: f32 = 0.40;
+const NOTICE: f32 = 0.70;
+/// The lock glyph; `widgets::icons` has no constant for it yet.
+const LOCK_ICON: &str = "icons/lock.svg";
 
 /// Which panel the rail is showing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -138,44 +153,101 @@ impl Settings {
     }
 }
 
+impl Settings {
+    /// The category fan, as its top-bar branch: the CD disc is rotated clip-paths GPUI cannot draw.
+    fn rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let transparent = cx.theme().transparent;
+        let selected_border = cx.theme().primary_hover;
+        let foreground = cx.theme().foreground;
+        h_flex()
+            .id("settings-fan")
+            .w_full()
+            .flex_none()
+            .mb_4()
+            .gap_0p5()
+            .overflow_x_scroll()
+            .border_b_1()
+            .border_color(style::white(FAN_BORDER, cx))
+            .bg(style::black(FAN_BG, cx))
+            .children(Category::ALL.iter().copied().map(|category| {
+                let selected = category == self.category;
+                h_flex()
+                    .id(category.slug())
+                    .flex_none()
+                    .h_11()
+                    .px_3()
+                    .gap_2()
+                    .items_center()
+                    .border_b_2()
+                    .border_color(if selected {
+                        selected_border
+                    } else {
+                        transparent
+                    })
+                    .bg(if selected {
+                        style::white(ITEM_SELECTED, cx)
+                    } else {
+                        transparent
+                    })
+                    .text_xs()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(if selected {
+                        foreground
+                    } else {
+                        style::white(ITEM, cx)
+                    })
+                    .hover(|item| {
+                        item.bg(style::white(ITEM_HOVER, cx))
+                            .text_color(style::white(ITEM_HOVER_TEXT, cx))
+                    })
+                    .cursor_pointer()
+                    .child(icons::icon(category.icon()))
+                    .child(category.label())
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.select(category, cx);
+                    }))
+            }))
+    }
+
+    /// The notice a managed settings file puts above the fan.
+    fn managed_notice(&self, cx: &App) -> impl IntoElement {
+        h_flex()
+            .w_full()
+            .gap_3()
+            .items_center()
+            .mb_4()
+            .px_5()
+            .py_3()
+            .rounded(style::radius_xl())
+            .border_1()
+            .border_color(style::white(style::BORDER, cx))
+            .bg(style::white(style::RAISED, cx))
+            .child(
+                icons::icon(LOCK_ICON)
+                    .with_size(style::text_11())
+                    .text_color(style::white(LOCK, cx)),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(style::white(NOTICE, cx))
+                    .child(t("settings_managed_notice")),
+            )
+    }
+}
+
 impl Render for Settings {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let locked = !ConfigModel::global(cx).read(cx).locked_keys().is_empty();
         v_flex()
             .size_full()
-            .p_4()
+            .max_w(rems(80.))
+            .mx_auto()
+            .px_6()
+            .py_7()
             .child(PageHeader::new(t("settings")))
-            .when(locked, |page| {
-                page.child(
-                    div()
-                        .mb_2()
-                        .p_2()
-                        .rounded(cx.theme().radius)
-                        .bg(cx.theme().muted)
-                        .text_sm()
-                        .child(t("settings_managed_notice")),
-                )
-            })
-            .child(
-                h_flex()
-                    .size_full()
-                    .gap_4()
-                    .items_start()
-                    .child(v_flex().w(px(200.)).gap_1().children(
-                        Category::ALL.iter().copied().map(|category| {
-                            Button::new(category.slug())
-                                .ghost()
-                                .w_full()
-                                .justify_start()
-                                .icon(widgets::icons::icon(category.icon()))
-                                .label(category.label())
-                                .selected(category == self.category)
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.select(category, cx);
-                                }))
-                        }),
-                    ))
-                    .child(div().flex_1().min_w_0().child(self.panel())),
-            )
+            .when(locked, |page| page.child(self.managed_notice(cx)))
+            .child(self.rail(cx))
+            .child(div().flex_1().min_w_0().child(self.panel()))
     }
 }
