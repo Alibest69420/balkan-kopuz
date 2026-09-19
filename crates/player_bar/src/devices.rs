@@ -10,12 +10,15 @@ use gpui_kit::{
 };
 use store::{Chrome, Link, Notices, PlayerModel, SourcesModel};
 use widgets::format::t;
-use widgets::icons;
+use widgets::{icons, style};
 
-use crate::{PlayerBar, UTILITY_BUTTON, icon_button};
+use crate::{PlayerBar, UTILITY_BUTTON, UTILITY_GLYPH, icon_button};
 
 const PANEL_WIDTH: gpui_kit::Pixels = px(280.);
-const ROW_ICON: gpui_kit::Pixels = px(18.);
+// `w-10 h-10 rounded-md` with a `text-sm` glyph: the tile in front of a device's name.
+const ROW_TILE: gpui_kit::Pixels = px(40.);
+const ROW_TILE_RADIUS: gpui_kit::Pixels = px(6.);
+const ROW_ICON: gpui_kit::Pixels = px(14.);
 
 /// The active source's id, but only while it has devices of its own and is signed in.
 fn device_source(cx: &App) -> Option<String> {
@@ -35,9 +38,9 @@ impl PlayerBar {
             .external()
             .is_some_and(|external| external.device.is_some());
         let color = if elsewhere {
-            cx.theme().primary
+            cx.theme().primary_hover
         } else {
-            cx.theme().muted_foreground
+            style::slate_400(cx)
         };
         let devices = self.devices.clone();
         let bar = cx.entity().downgrade();
@@ -50,7 +53,7 @@ impl PlayerBar {
                     cx.listener(|this, open: &bool, _, cx| this.set_devices_open(*open, cx)),
                 )
                 .trigger(
-                    icon_button("devices", icons::SPEAKER, UTILITY_BUTTON)
+                    icon_button("devices", icons::SPEAKER, UTILITY_BUTTON, UTILITY_GLYPH)
                         .tooltip(t("external_play_on"))
                         .text_color(color),
                 )
@@ -168,40 +171,69 @@ fn device_row(
     cx: &App,
 ) -> impl IntoElement + use<> {
     let accent = cx.theme().primary;
-    let muted = cx.theme().muted_foreground;
 
     h_flex()
         .id(id)
         .w_full()
         .gap_3()
-        .px_2()
-        .py_1p5()
-        .rounded(cx.theme().radius)
+        .px_3()
+        .py_2p5()
+        .rounded(style::radius_lg())
         .cursor_pointer()
-        .when(chosen, |row| row.bg(cx.theme().list_active))
-        .hover(|row| row.bg(cx.theme().list_hover))
+        .when(chosen, |row| row.bg(style::accent(style::PLAYING, cx)))
+        .hover(|row| row.bg(style::white(style::RAISED, cx)))
         .on_click(move |_, _, cx| {
             bar.update(cx, |this, cx| this.select_device(target.clone(), cx))
                 .ok();
         })
         .child(
-            icons::icon(glyph)
-                .size(ROW_ICON)
-                .text_color(if chosen { accent } else { muted }),
+            div()
+                .size(ROW_TILE)
+                .flex_shrink_0()
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(ROW_TILE_RADIUS)
+                .bg(if chosen {
+                    style::accent(0.18, cx)
+                } else {
+                    style::white(0.06, cx)
+                })
+                .child(icons::icon(glyph).size(ROW_ICON).text_color(if chosen {
+                    accent
+                } else {
+                    style::white(style::TEXT_SECONDARY, cx)
+                })),
         )
         .child(
             v_flex()
                 .flex_1()
                 .min_w_0()
+                .gap_0p5()
+                .justify_center()
                 .child(
                     div()
                         .truncate()
                         .text_sm()
-                        .when(chosen, |label| label.text_color(accent))
+                        .text_color(if chosen {
+                            accent
+                        } else {
+                            cx.theme().foreground
+                        })
                         .child(name),
                 )
                 .when_some(subtitle, |column, subtitle| {
-                    column.child(div().truncate().text_xs().text_color(muted).child(subtitle))
+                    column.child(
+                        div()
+                            .truncate()
+                            .text_xs()
+                            .text_color(if chosen {
+                                accent.opacity(0.7)
+                            } else {
+                                style::white(0.5, cx)
+                            })
+                            .child(subtitle),
+                    )
                 }),
         )
         .when(chosen, |row| {

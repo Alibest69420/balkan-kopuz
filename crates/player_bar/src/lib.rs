@@ -21,7 +21,7 @@ use store::{
     SidePanel, SourcesModel, actions,
 };
 use widgets::format::{duration, t};
-use widgets::{Cover, icons};
+use widgets::{Cover, icons, style};
 
 // The bar's own height, measured from the Dioxus frontend's `h-24`.
 const BAR_HEIGHT: Pixels = px(96.);
@@ -30,12 +30,25 @@ const SEEK_TRACK: Pixels = px(24.);
 // The drawn bar inside that track, and its offset, so the buffer underlay lines up with it.
 const SEEK_BAR: Pixels = px(6.);
 const SEEK_BAR_TOP: Pixels = px(9.);
+// `w-14` with a `rounded-md` corner.
 const COVER_SIZE: Pixels = px(56.);
+const COVER_RADIUS: Pixels = px(6.);
 const TRANSPORT_SIDE: Pixels = px(36.);
 const TRANSPORT_STEP: Pixels = px(40.);
 const UTILITY_BUTTON: Pixels = px(36.);
-const TIME_LABEL_WIDTH: Pixels = px(40.);
+const TIME_LABEL_WIDTH: Pixels = px(32.);
 const VOLUME_WIDTH: Pixels = px(96.);
+// The glyph inside each of those: `text-sm`, `text-xl`, `text-lg`, `text-xs` and the heart's bare `1em`.
+const SIDE_GLYPH: Pixels = px(14.);
+const STEP_GLYPH: Pixels = px(20.);
+const PLAY_GLYPH: Pixels = px(18.);
+const UTILITY_GLYPH: Pixels = px(12.);
+const MARK_GLYPH: Pixels = px(16.);
+// `text-[9px] leading-none`: the "1" over a repeat-one button.
+const BADGE_TEXT: Pixels = px(9.);
+// `bg-black/40` when something is painted behind the bar, `bg-black/60` when nothing is.
+const SCRIM_OVER_ART: f32 = 0.4;
+const SCRIM_PLAIN: f32 = 0.6;
 // A thousandth of the track is finer than one pixel of slider in any window this app opens in.
 const SEEK_STEP: f32 = 0.001;
 const VOLUME_STEP: f32 = 0.01;
@@ -261,21 +274,29 @@ fn seekable_duration_ms(cx: &App) -> Option<u64> {
 
 impl Render for PlayerBar {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let bar_is_fullscreen = Chrome::global(cx).read(cx).is_fullscreen()
-            && ConfigModel::global(cx)
-                .read(cx)
-                .config()
-                .fullscreen_use_player_bar;
+        let (bar_is_fullscreen, over_art) = {
+            let config = ConfigModel::global(cx);
+            let config = config.read(cx);
+            let config = config.config();
+            (
+                Chrome::global(cx).read(cx).is_fullscreen() && config.fullscreen_use_player_bar,
+                config.cover_art_background || !config.custom_background_path.is_empty(),
+            )
+        };
+        let scrim = if over_art {
+            SCRIM_OVER_ART
+        } else {
+            SCRIM_PLAIN
+        };
         h_flex()
             .w_full()
             .h(BAR_HEIGHT)
             .flex_shrink_0()
             .px_4()
-            .gap_4()
             .justify_between()
             .border_t_1()
-            .border_color(cx.theme().border)
-            .bg(cx.theme().background)
+            .border_color(style::white(style::BORDER_SOFT, cx))
+            .bg(style::black(scrim, cx))
             .child(self.now_playing_block(bar_is_fullscreen, cx))
             .child(self.transport_block(cx))
             .child(self.utilities_block(bar_is_fullscreen, cx))
@@ -307,19 +328,19 @@ impl PlayerBar {
                 .unwrap_or_default(),
         );
         let album_id = self.current_album_id(cx);
-        let muted = cx.theme().muted_foreground;
-        let foreground = cx.theme().foreground;
+        let muted = style::slate_400(cx);
+        let hovered = style::white(0.7, cx);
 
         h_flex()
             .flex_1()
             .min_w_0()
-            .gap_3()
+            .gap_4()
             .when(!bar_is_fullscreen, |block| {
                 block
                     .child(
                         Cover::new(track.as_ref().and_then(|track| track.artwork.as_ref()))
                             .size(COVER_SIZE)
-                            .rounded(cx.theme().radius),
+                            .rounded(COVER_RADIUS),
                     )
                     .child(
                         v_flex()
@@ -330,7 +351,8 @@ impl PlayerBar {
                                     .id("now-playing-title")
                                     .truncate()
                                     .text_sm()
-                                    .font_semibold()
+                                    .font_bold()
+                                    .text_color(style::white(style::TEXT_STRONG, cx))
                                     .when(album_id.is_some(), |label| {
                                         label.cursor_pointer().hover(|label| label.underline())
                                     })
@@ -350,7 +372,7 @@ impl PlayerBar {
                                     .when(!artist.is_empty(), |label| {
                                         label
                                             .cursor_pointer()
-                                            .hover(move |label| label.text_color(foreground))
+                                            .hover(move |label| label.text_color(hovered))
                                     })
                                     .on_click({
                                         let artist = artist.clone();
@@ -371,7 +393,8 @@ impl PlayerBar {
                     )
             })
             .child(
-                icon_button("favorite", icons::HEART, UTILITY_BUTTON)
+                icon_button("favorite", icons::HEART, UTILITY_BUTTON, MARK_GLYPH)
+                    .ml_2()
                     .tooltip(if favorite {
                         t("remove_from_favorites")
                     } else {
@@ -391,7 +414,7 @@ impl PlayerBar {
             )
             .when(capabilities.dont_recommend, |block| {
                 block.child(
-                    icon_button("dont-recommend", icons::THUMBS_DOWN, UTILITY_BUTTON)
+                    icon_button("dont-recommend", icons::THUMBS_DOWN, UTILITY_BUTTON, MARK_GLYPH)
                         .tooltip(t("dont_recommend"))
                         .text_color(if favorite { muted.opacity(0.4) } else { muted })
                         // Like and dislike are one setting on the remote, so both at once would undo the heart.
@@ -408,7 +431,6 @@ impl PlayerBar {
     fn transport_block(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         v_flex()
             .w(relative(0.4))
-            .max_w(px(640.))
             .flex_shrink_0()
             .items_center()
             .justify_center()
@@ -424,13 +446,13 @@ impl PlayerBar {
             (player.is_playing(), player.shuffle(), player.loop_mode())
         };
         let accent = cx.theme().primary;
-        let idle = cx.theme().muted_foreground;
+        let idle = style::slate_400(cx);
 
         h_flex()
             .gap_2()
             .items_center()
             .child(
-                icon_button("shuffle", icons::SHUFFLE, TRANSPORT_SIDE)
+                icon_button("shuffle", icons::SHUFFLE, TRANSPORT_SIDE, SIDE_GLYPH)
                     .tooltip(if shuffle {
                         t("shuffle_on")
                     } else {
@@ -443,7 +465,7 @@ impl PlayerBar {
                     }),
             )
             .child(
-                icon_button("previous", icons::SKIP_BACK, TRANSPORT_STEP)
+                icon_button("previous", icons::SKIP_BACK, TRANSPORT_STEP, STEP_GLYPH)
                     .text_color(idle)
                     .on_click(|_, _, cx| {
                         PlayerModel::global(cx).update(cx, |player, cx| player.previous(cx));
@@ -454,13 +476,15 @@ impl PlayerBar {
                     "play-pause",
                     if playing { icons::PAUSE } else { icons::PLAY },
                     TRANSPORT_STEP,
+                    PLAY_GLYPH,
                 )
+                .text_color(cx.theme().foreground)
                 .on_click(|_, _, cx| {
                     PlayerModel::global(cx).update(cx, |player, cx| player.toggle(cx));
                 }),
             )
             .child(
-                icon_button("next", icons::SKIP_FORWARD, TRANSPORT_STEP)
+                icon_button("next", icons::SKIP_FORWARD, TRANSPORT_STEP, STEP_GLYPH)
                     .text_color(idle)
                     .on_click(|_, _, cx| {
                         PlayerModel::global(cx).update(cx, |player, cx| player.next(cx));
@@ -471,7 +495,7 @@ impl PlayerBar {
                     .relative()
                     .flex()
                     .child(
-                        icon_button("repeat", icons::REPEAT, TRANSPORT_SIDE)
+                        icon_button("repeat", icons::REPEAT, TRANSPORT_SIDE, SIDE_GLYPH)
                             .tooltip(match loop_mode {
                                 LoopMode::None => t("repeat_off"),
                                 LoopMode::Queue => t("repeat_queue"),
@@ -495,7 +519,8 @@ impl PlayerBar {
                                 .left_0()
                                 .right_0()
                                 .text_center()
-                                .text_xs()
+                                .text_size(BADGE_TEXT)
+                                .line_height(relative(1.))
                                 .font_bold()
                                 .text_color(accent)
                                 .child("1"),
@@ -526,13 +551,13 @@ impl PlayerBar {
             _ => position_ms,
         };
         let bars = buffer::visual_ranges(&ranges, played * 100.);
-        let muted = cx.theme().muted_foreground;
+        let dim = style::slate_500(cx);
 
         h_flex()
             .w_full()
             .gap_2()
             .items_center()
-            .child(time_label(duration(shown_ms), muted).text_right())
+            .child(time_label(duration(shown_ms), dim).text_right())
             .child(
                 div()
                     .relative()
@@ -540,14 +565,18 @@ impl PlayerBar {
                     .min_w_0()
                     .h(SEEK_TRACK)
                     .child(buffer_underlay(bars, loading, cx))
-                    .child(Slider::new(&self.seek).disabled(!can_seek)),
+                    .child(
+                        Slider::new(&self.seek)
+                            .disabled(!can_seek)
+                            .bg(style::white(style::TEXT_STRONG, cx)),
+                    ),
             )
             .child(time_label(
                 match total_ms {
                     Some(total) => duration(total),
                     None => "--:--".into(),
                 },
-                muted,
+                dim,
             ))
     }
 
@@ -562,17 +591,17 @@ impl PlayerBar {
             (chrome.panel(), chrome.is_compact())
         };
         let key = self.now_playing(cx).map(|track| track.key);
-        let muted = cx.theme().muted_foreground;
+        let muted = style::slate_400(cx);
         let accent = cx.theme().primary;
 
         h_flex()
             .flex_1()
             .min_w_0()
-            .gap_2()
+            .gap_4()
             .justify_end()
             .child(self.volume_control(cx))
             .child(
-                icon_button("queue-panel", icons::LIST, UTILITY_BUTTON)
+                icon_button("queue-panel", icons::LIST, UTILITY_BUTTON, UTILITY_GLYPH)
                     .tooltip(t("up_next"))
                     .text_color(if panel == Some(SidePanel::Queue) {
                         accent
@@ -586,7 +615,7 @@ impl PlayerBar {
                     })),
             )
             .child(
-                icon_button("lyrics-panel", icons::LYRICS, UTILITY_BUTTON)
+                icon_button("lyrics-panel", icons::LYRICS, UTILITY_BUTTON, UTILITY_GLYPH)
                     .tooltip(t("lyrics"))
                     .text_color(if panel == Some(SidePanel::Lyrics) {
                         accent
@@ -601,7 +630,7 @@ impl PlayerBar {
             )
             .children(self.devices_button(cx))
             .child(
-                icon_button("share", icons::SHARE, UTILITY_BUTTON)
+                icon_button("share", icons::SHARE, UTILITY_BUTTON, UTILITY_GLYPH)
                     .tooltip(t("share_musicbrainz"))
                     .text_color(muted)
                     .disabled(key.is_none())
@@ -612,7 +641,7 @@ impl PlayerBar {
                     }),
             )
             .child(
-                icon_button("mini-player", icons::COLLAPSE, UTILITY_BUTTON)
+                icon_button("mini-player", icons::COLLAPSE, UTILITY_BUTTON, UTILITY_GLYPH)
                     .tooltip(t("mini_player"))
                     .text_color(muted)
                     .on_click(move |_, _, cx| {
@@ -621,7 +650,7 @@ impl PlayerBar {
             )
             .when(!bar_is_fullscreen, |block| {
                 block.child(
-                    icon_button("fullscreen", icons::EXPAND, UTILITY_BUTTON)
+                    icon_button("fullscreen", icons::EXPAND, UTILITY_BUTTON, UTILITY_GLYPH)
                         // TODO(i18n): the Dioxus bar gave this button an icon and no label.
                         .tooltip("Fullscreen")
                         .text_color(muted)
@@ -645,18 +674,22 @@ impl PlayerBar {
 
         h_flex()
             .id("volume")
-            .gap_1()
+            .gap_2()
             .items_center()
             .on_scroll_wheel(
                 cx.listener(|this, event: &ScrollWheelEvent, _, cx| this.scroll_volume(event, cx)),
             )
             .child(
-                icon_button("mute", glyph, UTILITY_BUTTON)
+                icon_button("mute", glyph, UTILITY_BUTTON, UTILITY_GLYPH)
                     .tooltip(t("volume"))
-                    .text_color(cx.theme().muted_foreground)
+                    .text_color(style::slate_400(cx))
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_mute(cx))),
             )
-            .child(div().w(VOLUME_WIDTH).child(Slider::new(&self.volume)))
+            .child(
+                div().w(VOLUME_WIDTH).child(
+                    Slider::new(&self.volume).bg(style::white(style::TEXT_STRONG, cx)),
+                ),
+            )
     }
 }
 
@@ -667,7 +700,7 @@ fn buffer_underlay(
     cx: &mut Context<PlayerBar>,
 ) -> impl IntoElement + use<> {
     let scanning = loading && bars.is_empty();
-    let buffered = cx.theme().muted_foreground.opacity(0.4);
+    let buffered = style::white(style::TEXT_DIM, cx);
     let scan = cx.theme().primary;
     div()
         .absolute()
@@ -706,10 +739,12 @@ fn buffer_underlay(
 }
 
 /// A circular ghost button carrying one glyph: the shape every control in this bar takes.
-fn icon_button(id: &'static str, glyph: &'static str, size: Pixels) -> Button {
+fn icon_button(id: &'static str, glyph: &'static str, size: Pixels, glyph_size: Pixels) -> Button {
+    // Button draws its glyph at three quarters of its own size, so the box is restated after it.
     Button::new(id)
         .ghost()
-        .with_size(size)
+        .with_size(glyph_size * (4. / 3.))
+        .size(size)
         .rounded(size / 2.)
         .icon(icons::icon(glyph))
 }
@@ -718,7 +753,7 @@ fn time_label(text: SharedString, color: Hsla) -> gpui_kit::Div {
     div()
         .w(TIME_LABEL_WIDTH)
         .flex_shrink_0()
-        .text_xs()
+        .text_size(style::text_10())
         .text_color(color)
         .child(text)
 }

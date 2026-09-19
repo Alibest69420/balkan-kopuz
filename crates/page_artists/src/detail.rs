@@ -13,13 +13,14 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, Selectable as _, Sizable as _, h_flex, v_flex,
+    ActiveTheme as _, Disableable as _, Selectable as _, Sizable as _, Size, h_flex, v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _,
-    IntoElement, ParentElement as _, PathPromptOptions, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement as _, Styled as _, Subscription, Task, Window, div, px,
+    IntoElement, ParentElement as _, PathPromptOptions, Pixels, Rems, Render, ScrollHandle,
+    SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Task, Window, div,
+    px, rems,
 };
 use store::{
     ConfigModel, DownloadsModel, JobsModel, Link, Navigator, Notices, PlayerModel, Query, Route,
@@ -28,14 +29,20 @@ use store::{
 use widgets::format::{t, t_with, total_duration};
 use widgets::{
     Cover, EmptyState, Loading, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons,
-    playlist_picker, tile_grid,
+    playlist_picker, style,
 };
 
 use crate::controls::{self, ViewModeKey};
 use crate::names;
 
-const PHOTO: f32 = 224.;
+/// `w-64 h-64`: the showcase photo.
+const PHOTO: f32 = 256.;
+/// `minmax(180px, 1fr)`: one album card.
 const CARD: f32 = 180.;
+/// `w-14 h-14`: the round shuffle and play buttons.
+const HERO_BUTTON: Rems = rems(3.5);
+/// A `Button` sizes its glyph at 0.75× itself, and the showcase's is `text-xl`.
+const HERO_GLYPH: Pixels = px(20. / 0.75);
 
 /// A sortable column of the tracks view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -285,8 +292,9 @@ impl Render for ArtistDetail {
         };
         v_flex()
             .size_full()
-            .p_4()
-            .gap_4()
+            .px_8()
+            .pt_8()
+            .gap_6()
             .child(
                 h_flex()
                     .w_full()
@@ -338,7 +346,7 @@ impl ArtistDetail {
             .relative()
             .flex_1()
             .min_h_0()
-            .gap_4()
+            .gap_12()
             .child(self.hero(keys, total, cx))
             .child(body)
             .when(selecting, |view| view.child(self.selection_bar(cx)))
@@ -357,29 +365,41 @@ impl ArtistDetail {
         let busy = JobsModel::global(cx).read(cx).is_running(JobKind::Download);
 
         h_flex()
-            .gap_6()
+            .gap_8()
             .items_end()
             .child(
                 div()
                     .id("artist-photo")
                     .relative()
+                    .group("artist-photo")
+                    .flex_shrink_0()
                     .child(
                         Cover::new(artwork.as_ref())
                             .size(px(PHOTO))
                             .hq(true)
-                            .rounded(cx.theme().radius)
+                            .rounded(px(12.))
                             .placeholder(icons::MIC),
                     )
                     .when(capabilities.edit_tags, |photo| {
                         photo
                             .cursor_pointer()
+                            // The scrim the original fades in over the whole photo, minus the fade.
                             .child(
-                                div().absolute().bottom_2().right_2().child(
-                                    Button::new("artist-photo-edit")
-                                        .ghost()
-                                        .small()
-                                        .icon(icons::icon(icons::EDIT)),
-                                ),
+                                div()
+                                    .absolute()
+                                    .inset_0()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded(px(12.))
+                                    .bg(style::black(0.5, cx))
+                                    .invisible()
+                                    .group_hover("artist-photo", |scrim| scrim.visible())
+                                    .child(
+                                        icons::icon(icons::EDIT)
+                                            .size(px(30.))
+                                            .text_color(cx.theme().foreground),
+                                    ),
                             )
                             .tooltip(|window, cx| {
                                 gpui_kit::component::tooltip::Tooltip::new(t("change_photo"))
@@ -392,19 +412,18 @@ impl ArtistDetail {
                 v_flex()
                     .flex_1()
                     .min_w_0()
-                    .gap_2()
+                    .gap_6()
                     .child(
                         div()
-                            .text_3xl()
+                            .text_size(rems(4.5))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .truncate()
+                            .line_clamp(3)
                             .child(self.name.clone()),
                     )
                     .child(
                         h_flex()
-                            .gap_2()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
+                            .gap_6()
+                            .text_color(style::slate_400(cx))
                             .child(t_with(
                                 "showcase_song_count",
                                 &[("count", keys.len().to_string())],
@@ -415,13 +434,18 @@ impl ArtistDetail {
             )
             .child(
                 h_flex()
-                    .gap_2()
+                    .gap_4()
                     .items_center()
+                    .flex_shrink_0()
                     .child(
-                        Button::new("artist-shuffle")
+                        round_button("artist-shuffle", icons::SHUFFLE)
                             .ghost()
-                            .icon(icons::icon(icons::SHUFFLE))
                             .selected(shuffle)
+                            .text_color(if shuffle {
+                                cx.theme().primary
+                            } else {
+                                style::slate_400(cx)
+                            })
                             .tooltip(if shuffle {
                                 t("shuffle_on")
                             } else {
@@ -433,10 +457,9 @@ impl ArtistDetail {
                             }),
                     )
                     .child(
-                        Button::new("artist-play")
+                        round_button("artist-play", icons::PLAY)
                             .primary()
-                            .icon(icons::icon(icons::PLAY))
-                            .label(t("play"))
+                            .tooltip(t("play"))
                             .disabled(keys.is_empty())
                             .on_click({
                                 let keys = keys.clone();
@@ -447,6 +470,11 @@ impl ArtistDetail {
                         row.child(
                             Button::new("artist-download-all")
                                 .ghost()
+                                .size_12()
+                                .rounded_full()
+                                .border_1()
+                                .border_color(style::white(style::ACTIVE, cx))
+                                .text_color(style::white(0.70, cx))
                                 .icon(icons::icon(if stored {
                                     icons::TRASH
                                 } else {
@@ -546,17 +574,18 @@ impl ArtistDetail {
         let count = selected.len();
         h_flex()
             .absolute()
-            .bottom_4()
+            .bottom_24()
             .left_0()
             .right_0()
             .justify_center()
             .child(
                 h_flex()
-                    .gap_3()
+                    .gap_4()
                     .items_center()
-                    .px_4()
-                    .py_2()
+                    .px_6()
+                    .py_2p5()
                     .rounded_full()
+                    .shadow_lg()
                     .bg(cx.theme().primary)
                     .text_color(cx.theme().primary_foreground)
                     // TODO(i18n): the Dioxus frontend had no key for this either.
@@ -626,8 +655,9 @@ impl ArtistDetail {
         let body = if !settled && albums.is_empty() {
             Loading.into_any_element()
         } else if albums.is_empty() {
-            EmptyState::new(t("no_albums_found"))
-                .icon(icons::DISC)
+            div()
+                .text_color(style::slate_500(cx))
+                .child(t("no_albums_found"))
                 .into_any_element()
         } else {
             let cards = albums.iter().map(|album| {
@@ -641,11 +671,17 @@ impl ArtistDetail {
                 .id("artist-albums-scroll")
                 .flex_1()
                 .min_h_0()
+                .pb_20()
                 .overflow_y_scroll()
                 .track_scroll(&self.scroll)
                 .child(match mode {
-                    AlbumViewMode::Grid => tile_grid().children(cards).into_any_element(),
-                    AlbumViewMode::List => v_flex().gap_1().children(cards).into_any_element(),
+                    AlbumViewMode::Grid => div()
+                        .flex()
+                        .flex_wrap()
+                        .gap_6()
+                        .children(cards)
+                        .into_any_element(),
+                    AlbumViewMode::List => v_flex().gap_2().children(cards).into_any_element(),
                 })
                 .into_any_element()
         };
@@ -653,7 +689,7 @@ impl ArtistDetail {
         v_flex()
             .flex_1()
             .min_h_0()
-            .gap_3()
+            .gap_4()
             .child(
                 h_flex()
                     .w_full()
@@ -668,44 +704,72 @@ impl ArtistDetail {
     }
 }
 
+/// `w-14 h-14 rounded-full` with a `text-xl` glyph: the showcase's shuffle and play.
+fn round_button(id: &'static str, icon: &'static str) -> Button {
+    Button::new(id)
+        .with_size(Size::Size(HERO_GLYPH))
+        .size(HERO_BUTTON)
+        .rounded_full()
+        .icon(icons::icon(icon))
+}
+
 fn album_card(album: &AlbumInfo, stored: bool, cx: &App) -> AnyElement {
     let menu = album_menu(album.id.clone(), stored);
     let route = Route::Album(album.id.clone().into());
+    let group = SharedString::from(format!("album-card-{}", album.id));
     div()
         .id(SharedString::from(format!("album-card-{}", album.id)))
+        .group(group.clone())
         .relative()
         .w(px(CARD))
-        .p_2()
-        .rounded(cx.theme().radius)
-        .hover(|card| card.bg(cx.theme().list_hover))
+        .p_4()
+        .rounded(style::radius_xl())
+        .bg(style::white(style::RAISED, cx))
+        .cursor_pointer()
+        .hover(|card| card.bg(style::white(style::HOVER, cx)))
         .child(
             v_flex()
                 .id(SharedString::from(format!("album-open-{}", album.id)))
-                .gap_2()
+                .gap_3()
                 .child(
                     Cover::new(album.artwork.as_ref())
-                        .size(px(CARD - 16.))
+                        .size(px(CARD - 32.))
                         .rounded(px(8.))
                         .placeholder(icons::DISC),
                 )
-                .child(div().truncate().text_sm().child(album.title.clone()))
                 .child(
-                    div()
-                        .truncate()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(album.artist.clone()),
+                    v_flex()
+                        .child(
+                            div()
+                                .truncate()
+                                .font_weight(FontWeight::MEDIUM)
+                                .child(album.title.clone()),
+                        )
+                        .child(
+                            div()
+                                .truncate()
+                                .text_sm()
+                                .text_color(style::slate_400(cx))
+                                .child(album.artist.clone()),
+                        ),
                 )
                 .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx)),
         )
         .child(
-            div().absolute().bottom_2().right_2().child(
-                Button::new(SharedString::from(format!("album-menu-{}", album.id)))
-                    .ghost()
-                    .xsmall()
-                    .icon(icons::icon(icons::MORE))
-                    .dropdown_menu(menu.clone()),
-            ),
+            div()
+                .absolute()
+                .bottom_3()
+                .right_3()
+                .invisible()
+                .group_hover(group, |menu| menu.visible())
+                .child(
+                    Button::new(SharedString::from(format!("album-menu-{}", album.id)))
+                        .ghost()
+                        .xsmall()
+                        .bg(style::black(0.4, cx))
+                        .icon(icons::icon(icons::MORE))
+                        .dropdown_menu(menu.clone()),
+                ),
         )
         .context_menu(menu)
         .into_any_element()
@@ -718,25 +782,33 @@ fn album_row(album: &AlbumInfo, stored: bool, cx: &App) -> AnyElement {
         .id(SharedString::from(format!("album-row-{}", album.id)))
         .w_full()
         .gap_3()
-        .px_2()
-        .py_1()
-        .rounded(cx.theme().radius)
-        .hover(|row| row.bg(cx.theme().list_hover))
+        .px_3()
+        .py_2()
+        .rounded(style::radius_lg())
+        .bg(style::white(style::RAISED, cx))
+        .cursor_pointer()
+        .hover(|row| row.bg(style::white(style::HOVER, cx)))
         .child(
             Cover::new(album.artwork.as_ref())
-                .size(px(40.))
+                .size(px(48.))
+                .rounded(px(6.))
                 .placeholder(icons::DISC),
         )
         .child(
             v_flex()
                 .flex_1()
                 .min_w_0()
-                .child(div().truncate().text_sm().child(album.title.clone()))
                 .child(
                     div()
                         .truncate()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
+                        .font_weight(FontWeight::MEDIUM)
+                        .child(album.title.clone()),
+                )
+                .child(
+                    div()
+                        .truncate()
+                        .text_sm()
+                        .text_color(style::slate_400(cx))
                         .child(album.artist.clone()),
                 ),
         )

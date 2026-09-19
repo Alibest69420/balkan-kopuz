@@ -3,18 +3,30 @@
 use std::path::PathBuf;
 
 use api::{ArtworkChange, TrackInfo, TrackMetadataPatch};
+use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Div, Entity, InteractiveElement as _, IntoElement,
-    ObjectFit, ParentElement as _, PathPromptOptions, Render, SharedString,
+    ObjectFit, ParentElement as _, PathPromptOptions, Pixels, Render, SharedString,
     StatefulInteractiveElement as _, Styled, StyledImage as _, Task, Window, div, img, px,
 };
 use store::{Link, Notices};
 use widgets::format::{duration, t};
-use widgets::{Cover, Loading, icons};
+use widgets::{Cover, Loading, icons, style};
+
+// Measured geometry: `max-w-lg`, the `w-24 h-24` cover, its `rounded-lg`, the `max-h-[60vh]` body.
+const DIALOG_WIDTH: Pixels = px(512.);
+const COVER_SIZE: Pixels = px(96.);
+const COVER_RADIUS: Pixels = px(8.);
+const BODY_HEIGHT: Pixels = px(360.);
+const LOADING_HEIGHT: Pixels = px(160.);
+
+// `text-white/35` on a field label, `text-white/30` on the edit warning.
+const LABEL_TEXT: f32 = 0.35;
+const WARNING_TEXT: f32 = 0.30;
 
 /// Register the dialog so a track row's "View metadata" can open it.
 pub fn register(cx: &mut App) {
@@ -31,7 +43,7 @@ fn open(key: String, editable: bool, window: &mut Window, cx: &mut App) {
             } else {
                 t("metadata")
             })
-            .w(px(520.))
+            .w(DIALOG_WIDTH)
             .child(view.clone())
     });
 }
@@ -217,32 +229,35 @@ impl MetadataDialog {
         }));
     }
 
-    fn cover_preview(&self, cx: &Context<Self>) -> AnyElement {
-        let size = px(96.);
+    fn cover_preview(&self, _: &Context<Self>) -> AnyElement {
         match &self.cover {
             CoverEdit::Set(path) => img(path.clone())
-                .size(size)
-                .rounded(cx.theme().radius)
+                .size(COVER_SIZE)
+                .rounded(COVER_RADIUS)
                 .object_fit(ObjectFit::Cover)
                 .into_any_element(),
-            CoverEdit::Remove => Cover::new(None).size(size).into_any_element(),
+            CoverEdit::Remove => Cover::new(None)
+                .size(COVER_SIZE)
+                .rounded(COVER_RADIUS)
+                .into_any_element(),
             CoverEdit::Keep => Cover::new(self.track.as_ref().and_then(|t| t.artwork.as_ref()))
-                .size(size)
+                .size(COVER_SIZE)
+                .rounded(COVER_RADIUS)
                 .hq(true)
                 .into_any_element(),
         }
     }
 
     fn field(&self, label: SharedString, input: &Entity<InputState>, cx: &Context<Self>) -> Div {
-        v_flex()
-            .gap_1()
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(label),
-            )
-            .child(Input::new(input))
+        v_flex().gap_1().child(caption(label, cx)).child(
+            Input::new(input)
+                .bg(style::white(style::HOVER, cx))
+                .border_color(style::white(style::BORDER, cx))
+                .rounded(style::radius_lg())
+                .px_3()
+                .py_2()
+                .text_sm(),
+        )
     }
 
     fn editor(&self, cx: &Context<Self>) -> AnyElement {
@@ -268,7 +283,8 @@ impl MetadataDialog {
             .child(
                 div()
                     .text_xs()
-                    .text_color(cx.theme().muted_foreground)
+                    .italic()
+                    .text_color(style::white(WARNING_TEXT, cx))
                     .child(t("metadata_edit_warning")),
             )
             .into_any_element()
@@ -304,21 +320,31 @@ impl MetadataDialog {
         for (label, id) in ids {
             rows.push((label, id.clone().unwrap_or_default()));
         }
-        let muted = cx.theme().muted_foreground;
         v_flex()
             .gap_3()
             .children(
                 rows.into_iter()
                     .filter(|(_, value)| !value.trim().is_empty())
                     .map(|(label, value)| {
-                        v_flex()
-                            .gap_0p5()
-                            .child(div().text_xs().text_color(muted).child(label))
-                            .child(div().text_sm().child(value))
+                        v_flex().gap_0p5().child(caption(label, cx)).child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().foreground)
+                                .child(value),
+                        )
                     }),
             )
             .into_any_element()
     }
+}
+
+/// `text-[10px] font-bold text-white/35`: the label over a value or an edit field.
+fn caption(label: SharedString, cx: &App) -> Div {
+    div()
+        .text_size(style::text_10())
+        .font_bold()
+        .text_color(style::white(LABEL_TEXT, cx))
+        .child(label)
 }
 
 fn number(value: Option<u32>) -> String {
@@ -328,7 +354,7 @@ fn number(value: Option<u32>) -> String {
 impl Render for MetadataDialog {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(track) = self.track.clone() else {
-            return div().h(px(160.)).child(Loading).into_any_element();
+            return div().h(LOADING_HEIGHT).child(Loading).into_any_element();
         };
         let editing = self.editing;
         let has_cover = self.has_cover();
@@ -373,7 +399,7 @@ impl Render for MetadataDialog {
             .child(
                 div()
                     .id("metadata-body")
-                    .max_h(px(360.))
+                    .max_h(BODY_HEIGHT)
                     .overflow_y_scroll()
                     .child(if editing {
                         self.editor(cx)

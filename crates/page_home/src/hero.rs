@@ -1,18 +1,18 @@
 //! The featured-album banner: the newest recent track, its cover, and the resize handle edit mode adds.
 
 use api::QueueContext;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, AppContext as _, Context, DragMoveEvent, FontWeight, InteractiveElement as _,
     IntoElement, MouseButton, MouseDownEvent, ObjectFit, ParentElement as _, Pixels, Render,
     StatefulInteractiveElement as _, Styled, StyledImage as _, Window, div, img, linear_color_stop,
-    linear_gradient, px,
+    linear_gradient, px, relative, rems,
 };
 use store::{ConfigModel, FavoritesModel, actions};
 use widgets::format::{t, t_with};
-use widgets::icons;
+use widgets::{icons, style};
 
 use crate::Home;
 
@@ -35,9 +35,9 @@ impl Home {
             .relative()
             .w_full()
             .h(px(height as f32))
-            .rounded(cx.theme().radius)
+            .rounded(style::radius_xl())
             .overflow_hidden()
-            .bg(cx.theme().secondary)
+            .bg(style::white(style::RAISED, cx))
             .children(banner)
             .when(edit, |hero| hero.child(self.resize_handle(cx)))
             .into_any_element()
@@ -61,6 +61,11 @@ impl Home {
             hero.track.artist.clone()
         };
         let background = cx.theme().background;
+        let light = ButtonCustomVariant::new(cx)
+            .color(cx.theme().foreground)
+            .foreground(background)
+            .hover(style::white(style::TEXT_STRONG, cx))
+            .active(style::white(style::TEXT_STRONG, cx));
         Some(
             div()
                 .absolute()
@@ -75,29 +80,37 @@ impl Home {
                             .object_fit(ObjectFit::Cover),
                     )
                 })
+                // `via-black/60` needs a third stop, so the scrim is the two ends of it.
                 .child(div().absolute().inset_0().size_full().bg(linear_gradient(
                     90.,
                     linear_color_stop(background.opacity(0.95), 0.),
                     linear_color_stop(background.opacity(0.2), 1.),
+                )))
+                .child(div().absolute().inset_0().size_full().bg(linear_gradient(
+                    0.,
+                    linear_color_stop(background.opacity(0.5), 0.),
+                    linear_color_stop(background.opacity(0.), 1.),
                 )))
                 .child(
                     v_flex()
                         .relative()
                         .size_full()
                         .justify_center()
-                        .gap_2()
-                        .p_8()
+                        .p_12()
                         .child(
                             div()
-                                .text_xs()
+                                .mb_3()
+                                .text_size(style::text_10())
                                 .font_weight(FontWeight::BOLD)
-                                .text_color(cx.theme().primary)
+                                .text_color(cx.theme().primary_hover)
                                 .child(t("featured_album")),
                         )
                         .child(
                             div()
                                 .truncate()
-                                .text_3xl()
+                                .mb_4()
+                                .text_size(rems(3.))
+                                .line_height(relative(1.25))
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .child(title),
                         )
@@ -105,18 +118,26 @@ impl Home {
                             column.child(
                                 div()
                                     .truncate()
-                                    .text_color(cx.theme().muted_foreground)
+                                    .mb_8()
+                                    .max_w_112()
+                                    .text_lg()
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(style::white(style::TEXT_SECONDARY, cx))
                                     .child(t_with("by_artist_full", &[("artist", artist)])),
                             )
                         })
                         .child(
                             h_flex()
-                                .pt_4()
-                                .gap_3()
+                                .gap_4()
                                 .items_center()
                                 .child(
                                     Button::new("hero-play")
-                                        .primary()
+                                        .custom(light)
+                                        .h(px(48.))
+                                        .px_8()
+                                        .rounded(px(24.))
+                                        .text_sm()
+                                        .font_weight(FontWeight::BOLD)
                                         .icon(icons::icon(icons::PLAY))
                                         .label(t("start_listening"))
                                         .on_click(move |_, _, cx| {
@@ -155,12 +176,22 @@ impl Home {
                     .all(|key| !key.is_empty() && favorites.is_favorite(key))
         };
         let target = !favorited;
+        let chip = ButtonCustomVariant::new(cx)
+            .color(style::white(style::HOVER, cx))
+            .foreground(if favorited {
+                cx.theme().danger
+            } else {
+                cx.theme().foreground
+            })
+            .hover(style::white(style::ACTIVE, cx))
+            .active(style::white(style::ACTIVE, cx));
         Button::new("hero-favorite")
-            .ghost()
-            .icon(
-                icons::icon(icons::HEART)
-                    .when(favorited, |heart| heart.text_color(cx.theme().danger)),
-            )
+            .custom(chip)
+            .size(px(44.))
+            .rounded(px(22.))
+            .border_1()
+            .border_color(style::white(style::ACTIVE, cx))
+            .icon(icons::icon(icons::HEART))
             .on_click(move |_, _, cx| {
                 let keys = keys.clone();
                 FavoritesModel::global(cx).update(cx, |favorites, cx| {
@@ -186,8 +217,8 @@ impl Home {
             .items_center()
             .justify_center()
             .cursor_ns_resize()
-            .bg(cx.theme().overlay)
-            .hover(|handle| handle.bg(cx.theme().primary))
+            .bg(style::black(0.4, cx))
+            .hover(|handle| handle.bg(cx.theme().primary.opacity(0.4)))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this, event: &MouseDownEvent, _, cx| {
@@ -203,10 +234,10 @@ impl Home {
             )
             .child(
                 div()
-                    .w(px(40.))
+                    .w_10()
                     .h(px(4.))
-                    .rounded(px(2.))
-                    .bg(cx.theme().foreground),
+                    .rounded_full()
+                    .bg(style::white(style::TEXT_SECONDARY, cx)),
             )
             .into_any_element()
     }

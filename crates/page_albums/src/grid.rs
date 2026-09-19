@@ -5,26 +5,29 @@ use std::collections::HashSet;
 
 use api::{AlbumInfo, AlbumPage, JobKind, PlaylistCapability, Table};
 use config::{AlbumSortField, AlbumViewMode, SortCriterion, SortDirection};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonRounded, ButtonVariants as _};
 use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenu, PopupMenuItem};
-use gpui_kit::component::{ActiveTheme as _, Selectable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
-    ParentElement as _, Render, ScrollHandle, SharedString, StatefulInteractiveElement as _,
-    Styled, Subscription, Window, div, px,
+    AnyElement, App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _,
+    IntoElement, ParentElement as _, Render, ScrollHandle, SharedString,
+    StatefulInteractiveElement as _, Styled, Subscription, Window, div, px,
 };
 use store::{ConfigModel, JobsModel, Navigator, Query, Route, SourcesModel, actions};
 use widgets::format::t;
-use widgets::{Cover, EmptyState, Loading, PageHeader, album_tile, icons, tile_grid};
+use widgets::{Cover, Loading, PageHeader, icons, style};
 
 use crate::ops;
 use crate::sort;
 
 // TODO(offline): filtering the grid to downloaded albums waits on an offline seam the checklist flags as wrong.
 
-// Tiles are a touch larger than the shared default, the way the Dioxus grid drew them.
+// `grid-cols-[repeat(auto-fill,minmax(180px,1fr))]`: GPUI wraps flex children instead, at the column's minimum.
 const TILE: gpui_kit::Pixels = px(180.);
+// The tile's cover fills it inside `p-4`.
+const TILE_COVER: gpui_kit::Pixels = px(148.);
+const ROW_COVER: gpui_kit::Pixels = px(48.);
 
 /// Every album, as tiles or as rows.
 pub struct Albums {
@@ -90,23 +93,49 @@ impl Albums {
 
     fn view_toggle(&self, cx: &App) -> impl IntoElement {
         let mode = view_mode(cx);
+        let on = style::white(style::HOVER, cx);
+        let off = style::white(0.4, cx);
+        let ink = cx.theme().foreground;
+        let soft = style::white(0.8, cx);
+        let segment = move |id: &'static str, icon: &'static str, label, active: bool| {
+            Button::new(id)
+                .ghost()
+                .xsmall()
+                .icon(icons::icon(icon))
+                .tooltip(label)
+                .w_7()
+                .h_6()
+                .map(|button| match active {
+                    true => button.bg(on).text_color(ink),
+                    false => button
+                        .text_color(off)
+                        .hover(move |segment| segment.text_color(soft)),
+                })
+        };
         h_flex()
-            .gap_1()
+            .gap_0p5()
+            .p_0p5()
+            .rounded(style::radius_lg())
+            .bg(style::white(style::RAISED, cx))
+            .border_1()
+            .border_color(style::white(style::BORDER_SOFT, cx))
             .child(
-                Button::new("albums-view-grid")
-                    .ghost()
-                    .icon(icons::icon(icons::GRID))
-                    .tooltip(t("view_grid"))
-                    .selected(mode == AlbumViewMode::Grid)
-                    .on_click(|_, _, cx| set_view_mode(AlbumViewMode::Grid, cx)),
+                segment(
+                    "albums-view-grid",
+                    icons::GRID,
+                    t("view_grid"),
+                    mode == AlbumViewMode::Grid,
+                )
+                .on_click(|_, _, cx| set_view_mode(AlbumViewMode::Grid, cx)),
             )
             .child(
-                Button::new("albums-view-list")
-                    .ghost()
-                    .icon(icons::icon(icons::ROWS))
-                    .tooltip(t("view_list"))
-                    .selected(mode == AlbumViewMode::List)
-                    .on_click(|_, _, cx| set_view_mode(AlbumViewMode::List, cx)),
+                segment(
+                    "albums-view-list",
+                    icons::ROWS,
+                    t("view_list"),
+                    mode == AlbumViewMode::List,
+                )
+                .on_click(|_, _, cx| set_view_mode(AlbumViewMode::List, cx)),
             )
     }
 
@@ -121,10 +150,21 @@ impl Albums {
             )),
             None => t("sort_by"),
         };
+        let hover = style::white(style::HOVER, cx);
+        let ink = cx.theme().foreground;
         Button::new("albums-sort")
             .ghost()
             .icon(icons::icon(icons::SORT))
             .label(label)
+            .rounded(ButtonRounded::Large)
+            .h_7()
+            .px_3()
+            .text_xs()
+            .bg(style::white(style::RAISED, cx))
+            .border_1()
+            .border_color(style::white(style::BORDER_SOFT, cx))
+            .text_color(style::white(0.7, cx))
+            .hover(move |sorter| sorter.bg(hover).text_color(ink))
             .dropdown_menu(move |mut menu, _, _| {
                 for field in available.iter().copied() {
                     menu = menu.item(
@@ -181,7 +221,7 @@ impl Render for Albums {
                         .unwrap_or_default(),
                 };
                 match grid {
-                    true => card(album, target).into_any_element(),
+                    true => card(album, target, cx).into_any_element(),
                     false => row(album, target, cx).into_any_element(),
                 }
             })
@@ -189,71 +229,132 @@ impl Render for Albums {
 
         v_flex()
             .size_full()
-            .p_4()
+            .px_8()
+            .pt_8()
+            .child(PageHeader::new(t("all_albums")))
             .child(
-                PageHeader::new(t("all_albums"))
-                    .action(self.view_toggle(cx))
-                    .action(self.sort_control(&all, cx)),
+                h_flex()
+                    .w_full()
+                    .flex_shrink_0()
+                    .justify_end()
+                    .items_center()
+                    .gap_2()
+                    .mb_4()
+                    .child(self.view_toggle(cx))
+                    .child(self.sort_control(&all, cx)),
             )
             .child(
                 div()
                     .id("albums-scroll")
                     .flex_1()
                     .min_h_0()
+                    .pb_8()
                     .overflow_y_scroll()
                     .track_scroll(&self.scroll)
                     .map(|body| match (cards.is_empty(), settled) {
                         (true, false) => body.child(Loading),
-                        (true, true) => {
-                            body.child(EmptyState::new(t("no_albums_found")).icon(icons::DISC))
+                        (true, true) => body.child(
+                            div()
+                                .text_color(style::slate_500(cx))
+                                .child(t("no_albums_found")),
+                        ),
+                        (false, _) if grid => {
+                            body.child(div().flex().flex_wrap().gap_6().children(cards))
                         }
-                        (false, _) if grid => body.child(tile_grid().children(cards)),
-                        (false, _) => body.child(v_flex().w_full().children(cards)),
+                        (false, _) => body.child(v_flex().w_full().gap_2().children(cards)),
                     }),
             )
     }
 }
 
-fn card(album: &AlbumInfo, target: MenuTarget) -> impl IntoElement {
+/// The `.vcard` grid tile: a padded raised card whose menu appears on hover.
+fn card(album: &AlbumInfo, target: MenuTarget, cx: &App) -> impl IntoElement {
     let menu_target = target.clone();
+    let route = Route::Album(album.id.clone().into());
+    let group = SharedString::from(format!("album-card-{}", album.id));
+    let hover = style::white(style::HOVER, cx);
     div()
         .id(SharedString::from(format!("album-card-{}", album.id)))
+        .group(group.clone())
+        .relative()
+        .w(TILE)
+        .p_4()
+        .rounded(style::radius_xl())
+        .bg(style::white(style::RAISED, cx))
+        .hover(move |card| card.bg(hover))
         .child(
-            album_tile(album).size(TILE).overlay(
-                div()
-                    .id(SharedString::from(format!("album-menu-slot-{}", album.id)))
-                    .absolute()
-                    .bottom_2()
-                    .right_2()
-                    // The menu button sits inside the tile, whose own click opens the album.
-                    .on_click(|_, _, cx| cx.stop_propagation())
-                    .child(
-                        Button::new(SharedString::from(format!("album-menu-{}", album.id)))
-                            .ghost()
-                            .icon(icons::icon(icons::MORE))
-                            .dropdown_menu(move |menu, window, cx| {
-                                album_menu(menu, &menu_target, window, cx)
-                            }),
-                    ),
-            ),
+            div()
+                .id(SharedString::from(format!("album-card-open-{}", album.id)))
+                .cursor_pointer()
+                .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
+                .child(
+                    Cover::new(album.artwork.as_ref())
+                        .size(TILE_COVER)
+                        .rounded(cx.theme().radius * 2.)
+                        .placeholder(icons::DISC),
+                )
+                .child(
+                    div()
+                        .mt_3()
+                        .child(
+                            div()
+                                .truncate()
+                                .font_weight(FontWeight::MEDIUM)
+                                .child(SharedString::from(album.title.clone())),
+                        )
+                        .child(
+                            div()
+                                .truncate()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(SharedString::from(album.artist.clone())),
+                        ),
+                ),
+        )
+        .child(
+            div()
+                .id(SharedString::from(format!("album-menu-slot-{}", album.id)))
+                .absolute()
+                .bottom_3()
+                .right_3()
+                .invisible()
+                .group_hover(group, |slot| slot.visible())
+                // The menu button sits inside the card, whose own click opens the album.
+                .on_click(|_, _, cx| cx.stop_propagation())
+                .child(
+                    Button::new(SharedString::from(format!("album-menu-{}", album.id)))
+                        .ghost()
+                        .icon(icons::icon(icons::MORE))
+                        .rounded(cx.theme().radius_full())
+                        .bg(style::black(0.4, cx))
+                        .dropdown_menu(move |menu, window, cx| {
+                            album_menu(menu, &menu_target, window, cx)
+                        }),
+                ),
         )
         .context_menu(move |menu, window, cx| album_menu(menu, &target, window, cx))
 }
 
+/// The same card as `.view-list` restyles it: a compact row.
 fn row(album: &AlbumInfo, target: MenuTarget, cx: &App) -> impl IntoElement {
     let menu_target = target.clone();
     let route = Route::Album(album.id.clone().into());
+    let hover = style::white(style::HOVER, cx);
     h_flex()
         .id(SharedString::from(format!("album-row-{}", album.id)))
         .w_full()
         .gap_3()
-        .p_2()
-        .rounded(cx.theme().radius)
-        .hover(|row| row.bg(cx.theme().list_hover))
+        .items_center()
+        .px_3()
+        .py_2()
+        .rounded(style::radius_lg())
+        .bg(style::white(style::RAISED, cx))
+        .hover(move |row| row.bg(hover))
         .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
         .child(
             Cover::new(album.artwork.as_ref())
-                .size(px(48.))
+                .size(ROW_COVER)
+                .rounded(cx.theme().radius * 1.5)
                 .placeholder(icons::DISC),
         )
         .child(
@@ -263,6 +364,7 @@ fn row(album: &AlbumInfo, target: MenuTarget, cx: &App) -> impl IntoElement {
                 .child(
                     div()
                         .truncate()
+                        .font_weight(FontWeight::MEDIUM)
                         .child(SharedString::from(album.title.clone())),
                 )
                 .child(
@@ -276,6 +378,7 @@ fn row(album: &AlbumInfo, target: MenuTarget, cx: &App) -> impl IntoElement {
         .when(album.year > 0, |row| {
             row.child(
                 div()
+                    .flex_shrink_0()
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)
                     .child(album.year.to_string()),
@@ -287,6 +390,8 @@ fn row(album: &AlbumInfo, target: MenuTarget, cx: &App) -> impl IntoElement {
                     "album-row-menu-slot-{}",
                     album.id
                 )))
+                .ml_auto()
+                .flex_shrink_0()
                 .on_click(|_, _, cx| cx.stop_propagation())
                 .child(
                     Button::new(SharedString::from(format!("album-row-menu-{}", album.id)))

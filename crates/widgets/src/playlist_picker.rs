@@ -2,7 +2,7 @@
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
+use gpui_kit::component::{WindowExt as _, h_flex, v_flex};
 use gpui_kit::{
     App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
     ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled, Window, div,
@@ -12,6 +12,7 @@ use store::{Notices, PlaylistsModel};
 
 use crate::format::t;
 use crate::icons;
+use crate::style;
 
 struct PlaylistPicker {
     keys: Vec<String>,
@@ -41,8 +42,8 @@ impl Render for PlaylistPicker {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let playlists = PlaylistsModel::global(cx).read(cx).playlists().to_vec();
         v_flex()
-            .gap_3()
-            .w(px(360.))
+            .gap_4()
+            .w(px(448.))
             .child(
                 h_flex()
                     .gap_2()
@@ -58,16 +59,18 @@ impl Render for PlaylistPicker {
             .child(
                 v_flex()
                     .id("playlist-list")
-                    .max_h(px(320.))
+                    .gap_2()
+                    .max_h(px(240.))
                     .overflow_y_scroll()
                     .children(playlists.into_iter().map(|playlist| {
                         let id = playlist.id.clone();
                         div()
                             .id(SharedString::from(format!("playlist-{}", playlist.id)))
-                            .px_3()
-                            .py_2()
-                            .rounded(cx.theme().radius)
-                            .hover(|row| row.bg(cx.theme().list_hover))
+                            .p_3()
+                            .text_sm()
+                            .rounded(style::radius_lg())
+                            .bg(style::white(style::RAISED, cx))
+                            .hover(|row| row.bg(style::white(style::HOVER, cx)))
                             .child(playlist.name.clone())
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.add(id.clone(), window, cx)

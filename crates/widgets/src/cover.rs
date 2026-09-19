@@ -1,5 +1,5 @@
 use api::ArtworkRef;
-use gpui_kit::component::{ActiveTheme as _, Icon};
+use gpui_kit::component::Icon;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, IntoElement, ObjectFit, ParentElement as _, Pixels, RenderOnce, Styled, StyledImage as _,
@@ -7,6 +7,7 @@ use gpui_kit::{
 };
 
 use crate::icons;
+use crate::style;
 
 /// A row, tile or hero cover. A row without artwork renders the placeholder and asks for nothing.
 #[derive(IntoElement)]
@@ -14,7 +15,7 @@ pub struct Cover {
     artwork: Option<ArtworkRef>,
     size: Pixels,
     hq: bool,
-    rounded: Pixels,
+    rounded: Option<Pixels>,
     placeholder: &'static str,
 }
 
@@ -24,7 +25,7 @@ impl Cover {
             artwork: artwork.cloned(),
             size: px(40.),
             hq: false,
-            rounded: px(4.),
+            rounded: None,
             placeholder: icons::MUSIC,
         }
     }
@@ -43,7 +44,7 @@ impl Cover {
     }
 
     pub fn rounded(mut self, radius: Pixels) -> Self {
-        self.rounded = radius;
+        self.rounded = Some(radius);
         self
     }
 
@@ -55,17 +56,21 @@ impl Cover {
 }
 
 impl RenderOnce for Cover {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        // `rounded` on the thumb; a caller that wants a card or an avatar says so.
+        let radius = self
+            .rounded
+            .unwrap_or_else(|| style::radius(cx).to_pixels(window.rem_size()));
+        let glyph = px((self.size.as_f32() * 0.22).max(12.));
         div()
             .size(self.size)
-            .rounded(self.rounded)
+            .rounded(radius)
             .overflow_hidden()
             .flex()
             .flex_shrink_0()
             .items_center()
             .justify_center()
-            .bg(cx.theme().secondary)
-            .text_color(cx.theme().muted_foreground)
+            .bg(style::white(style::RAISED, cx))
             .map(|frame| match &self.artwork {
                 Some(artwork) => frame.child(
                     img(store::artwork_source(artwork, self.hq))
@@ -75,7 +80,8 @@ impl RenderOnce for Cover {
                 None => frame.child(
                     Icon::default()
                         .path(self.placeholder)
-                        .size(self.size * 0.45),
+                        .size(glyph)
+                        .text_color(style::white(style::TEXT_FAINT, cx)),
                 ),
             })
     }

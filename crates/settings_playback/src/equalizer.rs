@@ -7,14 +7,20 @@ use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
 use gpui_kit::component::switch::Switch;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, h_flex, v_flex};
 use gpui_kit::{
-    App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
-    Styled, Subscription, Window, div,
+    App, AppContext as _, Context, Div, Entity, IntoElement, ParentElement as _, Render,
+    SharedString, Styled, Subscription, Window, div, rems,
 };
 use link::Link;
 use store::ConfigModel;
 use widgets::format::t;
+use widgets::style;
 
 use crate::{set_slider, write_config};
+
+/// `border-white/8` around the band graph.
+const GRAPH_BORDER: f32 = 0.08;
+/// `text-white/58` under each band, the way the graph labelled its axis.
+const BAND_LABEL: f32 = 0.58;
 
 const BAND_MIN_DB: f32 = -12.0;
 const BAND_MAX_DB: f32 = 12.0;
@@ -103,100 +109,151 @@ impl Render for Equalizer {
         let preset = settings.preset;
         let gains = settings.resolved_bands();
         let muted = cx.theme().muted_foreground;
+        let readout = style::white(crate::READOUT, cx);
 
         v_flex()
             .w_full()
-            .gap_3()
-            .child(
-                h_flex()
-                    .w_full()
-                    .gap_4()
-                    .items_center()
-                    .child(
-                        Switch::new("eq-enabled")
-                            .checked(enabled)
-                            .disabled(locked)
-                            .on_click(cx.listener(|_, checked: &bool, _, cx| {
-                                let mut settings = current(cx);
-                                settings.enabled = *checked;
-                                apply(settings, cx);
-                            })),
-                    )
-                    .child(div().text_sm().child(if enabled {
-                        t("enabled")
-                    } else {
-                        t("disabled")
-                    }))
-                    .child(div().flex_1())
-                    .child(div().text_xs().text_color(muted).child(t("eq_preset")))
-                    .child(
-                        Button::new("eq-preset")
-                            .outline()
-                            .label(preset_label(preset))
-                            .disabled(locked)
-                            .dropdown_menu(move |mut menu, _, _| {
-                                for option in EqPreset::all() {
-                                    menu = menu.item(
-                                        PopupMenuItem::new(preset_label(option))
-                                            .checked(option == preset)
-                                            .on_click(move |_, _, cx| set_preset(option, cx)),
-                                    );
-                                }
-                                menu
-                            }),
-                    ),
-            )
+            .gap_4()
             .child(
                 h_flex()
                     .w_full()
                     .gap_3()
-                    .items_center()
+                    .items_stretch()
                     .child(
-                        v_flex()
-                            .min_w_0()
-                            .child(div().text_sm().child(t("eq_preamp")))
-                            .child(div().text_xs().text_color(muted).child(t("eq_preamp_desc"))),
+                        panel(cx).w_48().child(
+                            Switch::new("eq-enabled")
+                                .checked(enabled)
+                                .disabled(locked)
+                                .on_click(cx.listener(|_, checked: &bool, _, cx| {
+                                    let mut settings = current(cx);
+                                    settings.enabled = *checked;
+                                    apply(settings, cx);
+                                })),
+                        )
+                        .child(div().text_xs().text_color(muted).child(if enabled {
+                            t("enabled")
+                        } else {
+                            t("disabled")
+                        })),
                     )
                     .child(
-                        div()
+                        panel(cx)
+                            .w_64()
+                            .child(div().text_xs().text_color(muted).child(t("eq_preset")))
+                            .child(
+                                Button::new("eq-preset")
+                                    .outline()
+                                    .flex_1()
+                                    .justify_between()
+                                    .label(preset_label(preset))
+                                    .disabled(locked)
+                                    .dropdown_menu(move |mut menu, _, _| {
+                                        for option in EqPreset::all() {
+                                            menu = menu.item(
+                                                PopupMenuItem::new(preset_label(option))
+                                                    .checked(option == preset)
+                                                    .on_click(move |_, _, cx| {
+                                                        set_preset(option, cx)
+                                                    }),
+                                            );
+                                        }
+                                        menu
+                                    }),
+                            ),
+                    )
+                    .child(
+                        panel(cx)
                             .flex_1()
-                            .child(Slider::new(&self.preamp).disabled(locked)),
-                    )
-                    .child(
-                        div()
-                            .w_16()
-                            .text_xs()
-                            .text_right()
-                            .child(SharedString::from(format!("{:+.1} dB", settings.preamp_db))),
+                            .gap_3()
+                            .child(
+                                v_flex()
+                                    .min_w_0()
+                                    .child(div().text_xs().text_color(muted).child(t("eq_preamp")))
+                                    .child(
+                                        div()
+                                            .text_size(style::text_11())
+                                            .text_color(style::slate_500(cx))
+                                            .child(t("eq_preamp_desc")),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .child(Slider::new(&self.preamp).disabled(locked)),
+                            )
+                            .child(
+                                div()
+                                    .w(rems(3.5))
+                                    .text_xs()
+                                    .text_right()
+                                    .text_color(readout)
+                                    .child(SharedString::from(format!(
+                                        "{:+.1} dB",
+                                        settings.preamp_db
+                                    ))),
+                            ),
                     ),
             )
             .child(
-                h_flex()
-                    .w_full()
-                    .gap_2()
-                    .justify_between()
-                    .items_end()
-                    .children(self.bands.iter().enumerate().map(|(index, band)| {
-                        v_flex()
-                            .gap_1()
-                            .items_center()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(muted)
-                                    .child(SharedString::from(format!("{:+.1}", gains[index]))),
-                            )
-                            .child(Slider::new(band).vertical().disabled(locked))
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(muted)
-                                    .child(SharedString::from(BAND_LABELS[index])),
-                            )
-                    })),
+                div()
+                    .text_xs()
+                    .text_color(style::slate_500(cx))
+                    .child(t("eq_graph_hint")),
             )
-            .child(div().text_xs().text_color(muted).child(t("eq_graph_hint")))
+            .child(
+                // The Dioxus panel drew a draggable SVG curve; GPUI has no path element, so the
+                // bands are sliders on the same surface.
+                div()
+                    .w_full()
+                    .p_4()
+                    .rounded(style::radius_lg())
+                    .border_1()
+                    .border_color(style::white(GRAPH_BORDER, cx))
+                    .bg(style::white(style::RAISED, cx))
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .gap_2()
+                            .justify_between()
+                            .items_end()
+                            .children(self.bands.iter().enumerate().map(|(index, band)| {
+                                v_flex()
+                                    .gap_1()
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .text_size(style::text_11())
+                                            .text_color(readout)
+                                            .child(SharedString::from(format!(
+                                                "{:+.1}",
+                                                gains[index]
+                                            ))),
+                                    )
+                                    .child(Slider::new(band).vertical().disabled(locked))
+                                    .child(
+                                        div()
+                                            .text_size(style::text_11())
+                                            .text_color(style::white(BAND_LABEL, cx))
+                                            .child(SharedString::from(BAND_LABELS[index])),
+                                    )
+                            })),
+                    ),
+            )
     }
+}
+
+/// `bg-white/5 border border-white/10 rounded-xl px-3 py-2`: one control box of the top row.
+fn panel(cx: &App) -> Div {
+    h_flex()
+        .min_w_0()
+        .gap_2()
+        .items_center()
+        .px_3()
+        .py_2()
+        .rounded(style::radius_xl())
+        .border_1()
+        .border_color(style::white(style::BORDER, cx))
+        .bg(style::white(style::RAISED, cx))
 }
 
 fn current(cx: &App) -> EqualizerSettings {

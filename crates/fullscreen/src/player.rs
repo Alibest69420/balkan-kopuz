@@ -1,28 +1,34 @@
-use api::{LyricsView, NowPlaying, PlaylistCapability};
+use api::{ArtworkRef, LyricsView, NowPlaying, PlaylistCapability};
 use gpui_kit::base::Disableable as _;
 use gpui_kit::base::slider::{SliderEvent, SliderState};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::slider::Slider;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AppContext as _, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
-    ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled,
-    Subscription, Window, div, px,
+    App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
+    ObjectFit, ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled,
+    StyledImage as _, Subscription, Window, div, img, px, rems,
 };
 use store::{
     Chrome, ConfigModel, FavoritesModel, Link, Navigator, Notices, PlayerModel, Playhead, Query,
     QueueModel, Route, SourcesModel, actions,
 };
 use widgets::format::t;
-use widgets::{Cover, dialogs, icons, playlist_picker};
+use widgets::{dialogs, icons, playlist_picker, style};
 
 use crate::background;
 use crate::controls;
 
-const COVER_SIZE: gpui_kit::Pixels = px(320.);
 const COLUMN_WIDTH: gpui_kit::Pixels = px(640.);
+// `w-11 h-11`: the round favourite / don't-recommend / menu buttons beside the title.
+const ACTION_SIZE: gpui_kit::Pixels = px(44.);
+// `w-14 h-14` and `w-16 h-16`: the transport's step and play buttons.
+const STEP_SIZE: gpui_kit::Pixels = px(56.);
+const PLAY_SIZE: gpui_kit::Pixels = px(64.);
+// The `width: 50px` the Dioxus seek row reserves for each clock.
+const CLOCK_WIDTH: gpui_kit::Pixels = px(50.);
 
 /// Which of the two right-hand tabs is showing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -215,26 +221,32 @@ impl FullscreenPlayer {
         v_flex()
             .flex_1()
             .min_w_0()
-            .gap_1()
+            .items_start()
             .child(
                 div()
-                    .text_3xl()
+                    // `text-[28px]`, which is off Tailwind's scale.
+                    .text_size(rems(1.75))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .truncate()
+                    .w_full()
+                    .mb_1()
+                    .line_clamp(2)
                     .child(SharedString::from(track.title.clone())),
             )
             .child(
                 h_flex()
+                    .w_full()
+                    .flex_wrap()
                     .gap_2()
                     .items_center()
-                    .min_w_0()
-                    .text_color(cx.theme().muted_foreground)
                     .child(
                         div()
                             .id("fs-artist")
+                            .max_w_full()
                             .text_xl()
-                            .truncate()
-                            .hover(|link| link.text_color(cx.theme().foreground))
+                            .font_weight(FontWeight::MEDIUM)
+                            .line_clamp(2)
+                            .text_color(style::white(0.7, cx))
+                            .hover(|link| link.text_color(cx.theme().foreground).underline())
                             .child(SharedString::from(artist.clone()))
                             .on_click(move |_, _, cx| {
                                 if artist.is_empty() {
@@ -250,12 +262,22 @@ impl FullscreenPlayer {
                                 );
                             }),
                     )
-                    .child(div().child("•"))
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .text_color(style::white(style::TEXT_DIM, cx))
+                            .child("•"),
+                    )
                     .child(
                         div()
                             .id("fs-album")
-                            .truncate()
-                            .hover(|link| link.text_color(cx.theme().foreground))
+                            .max_w_full()
+                            .text_lg()
+                            .line_clamp(2)
+                            .text_color(style::white(0.5, cx))
+                            .hover(|link| {
+                                link.text_color(style::white(0.8, cx)).underline()
+                            })
                             .child(album)
                             .on_click(move |_, _, cx| {
                                 if album_id.is_empty() {
@@ -268,22 +290,36 @@ impl FullscreenPlayer {
             )
     }
 
+    /// `w-11 h-11 rounded-full bg-white/10`: the shape every button beside the title takes.
+    fn round_action(id: &'static str, foreground: gpui_kit::Hsla, cx: &App) -> Button {
+        Button::new(id)
+            .custom(
+                ButtonCustomVariant::new(cx)
+                    .color(style::white(style::HOVER, cx))
+                    .foreground(foreground)
+                    .hover(style::white(0.15, cx))
+                    .active(style::white(style::ACTIVE, cx)),
+            )
+            .rounded(px(999.))
+            .with_size(ACTION_SIZE)
+    }
+
     fn track_actions(&self, track: &NowPlaying, cx: &mut Context<Self>) -> impl IntoElement {
         let sources = SourcesModel::global(cx);
         let capabilities = sources.read(cx).capabilities();
         let favorite = FavoritesModel::global(cx).read(cx).is_favorite(&track.key);
         let key = track.key.clone();
 
+        let liked = cx.theme().danger;
+        let resting = style::white(0.7, cx);
+
         h_flex()
             .gap_2()
             .items_center()
             .flex_shrink_0()
             .child(
-                Button::new("fs-favorite")
-                    .ghost()
-                    .large()
+                Self::round_action("fs-favorite", if favorite { liked } else { resting }, cx)
                     .icon(icons::icon(icons::HEART))
-                    .toggled(favorite)
                     .tooltip(if favorite {
                         t("remove_from_favorites")
                     } else {
@@ -299,9 +335,7 @@ impl FullscreenPlayer {
             )
             .when(capabilities.dont_recommend, |row| {
                 row.child(
-                    Button::new("fs-dont-recommend")
-                        .ghost()
-                        .large()
+                    Self::round_action("fs-dont-recommend", style::white(0.5, cx), cx)
                         .icon(icons::icon(icons::THUMBS_DOWN))
                         .tooltip(t("dont_recommend"))
                         .disabled(favorite)
@@ -312,9 +346,7 @@ impl FullscreenPlayer {
                 )
             })
             .child(
-                Button::new("fs-actions")
-                    .ghost()
-                    .large()
+                Self::round_action("fs-actions", resting, cx)
                     .icon(icons::icon(icons::MORE))
                     .dropdown_menu(move |menu, _, _| track_menu(menu, &key, capabilities)),
             )
@@ -345,15 +377,16 @@ impl FullscreenPlayer {
         v_flex()
             .w_full()
             .max_w(COLUMN_WIDTH)
-            .gap_4()
+            .items_center()
             .child(
                 h_flex()
                     .w_full()
                     .gap_3()
+                    .mb_3()
                     .items_center()
                     .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(div().w(px(44.)).child(controls::clock(position, radio)))
+                    .text_color(style::white(0.7, cx))
+                    .child(div().w(CLOCK_WIDTH).child(controls::clock(position, radio)))
                     .child(
                         div()
                             .flex_1()
@@ -361,26 +394,42 @@ impl FullscreenPlayer {
                     )
                     .child(
                         div()
-                            .w(px(44.))
+                            .w(CLOCK_WIDTH)
+                            .text_right()
                             .child(controls::clock(duration.unwrap_or(0), radio)),
                     ),
             )
             .child(
                 h_flex()
                     .w_full()
-                    .gap_4()
+                    .mb_3()
                     .items_center()
-                    .justify_center()
-                    .child(controls::shuffle_button(shuffle))
-                    .child(controls::previous_button("fs-previous").large())
-                    .child(controls::play_button("fs-play", playing).large())
-                    .child(controls::next_button("fs-next").large())
-                    .child(controls::repeat_button(loop_mode)),
+                    .justify_between()
+                    .child(controls::shuffle_button(shuffle).with_size(ACTION_SIZE))
+                    .child(
+                        h_flex()
+                            .gap_4()
+                            .items_center()
+                            .child(
+                                controls::previous_button("fs-previous")
+                                    .with_size(STEP_SIZE)
+                                    .rounded(px(999.)),
+                            )
+                            .child(
+                                controls::play_button("fs-play", playing).with_size(PLAY_SIZE),
+                            )
+                            .child(
+                                controls::next_button("fs-next")
+                                    .with_size(STEP_SIZE)
+                                    .rounded(px(999.)),
+                            ),
+                    )
+                    .child(controls::repeat_button(loop_mode).with_size(ACTION_SIZE)),
             )
             .child(
                 h_flex()
                     .w_full()
-                    .gap_3()
+                    .gap_5()
                     .items_center()
                     .child(
                         Button::new("fs-mute")
@@ -393,6 +442,41 @@ impl FullscreenPlayer {
             )
     }
 
+    /// The cover grows to fill what the stage leaves it, the way the Dioxus `flex-1` wrapper does.
+    fn cover(&self, artwork: Option<&ArtworkRef>, cx: &Context<Self>) -> impl IntoElement {
+        let source = artwork.map(|artwork| store::artwork_source(artwork, true));
+        v_flex()
+            .flex_1()
+            .min_h_0()
+            .w_full()
+            .mb_6()
+            .items_center()
+            .justify_center()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .h_full()
+                    .max_w_full()
+                    .aspect_ratio(1.)
+                    .overflow_hidden()
+                    .rounded(style::radius_xl())
+                    .shadow_lg()
+                    .bg(style::black(0.3, cx))
+                    .map(|frame| match source {
+                        Some(source) => frame.child(
+                            img(source).size_full().object_fit(ObjectFit::Cover),
+                        ),
+                        None => frame.child(
+                            icons::icon(icons::MUSIC)
+                                .size(px(48.))
+                                .text_color(style::white(style::TEXT_FAINT, cx)),
+                        ),
+                    }),
+            )
+    }
+
     fn stage(&mut self, full_width: bool, cx: &mut Context<Self>) -> impl IntoElement {
         let player = PlayerModel::global(cx);
         let (track, playing) = {
@@ -401,15 +485,18 @@ impl FullscreenPlayer {
         };
         let config = ConfigModel::global(cx);
         let use_player_bar = config.read(cx).config().fullscreen_use_player_bar;
+        let cover = self.cover(track.as_ref().and_then(|track| track.artwork.as_ref()), cx);
 
         v_flex()
             .h_full()
             .min_w_0()
             .relative()
+            .flex_shrink_0()
+            .overflow_hidden()
             .items_center()
             .justify_center()
-            .gap_6()
             .p_10()
+            .pt_16()
             .map(|column| {
                 if full_width {
                     column.w_full()
@@ -418,21 +505,15 @@ impl FullscreenPlayer {
                 }
             })
             .child(
-                div().absolute().top_4().left_4().child(
+                div().absolute().top_8().left_8().child(
                     Button::new("fs-close")
                         .ghost()
-                        .large()
-                        .icon(icons::icon(icons::CHEVRON_DOWN))
+                        .icon(icons::icon(icons::CHEVRON_DOWN).size(px(24.)))
                         .tooltip(t("close"))
                         .on_click(|_, _, cx| Self::close(cx)),
                 ),
             )
-            .child(
-                Cover::new(track.as_ref().and_then(|track| track.artwork.as_ref()))
-                    .size(COVER_SIZE)
-                    .hq(true)
-                    .rounded(cx.theme().radius_lg),
-            )
+            .child(cover)
             .when_some(track, |column, track| {
                 let bitrate = track.bitrate;
                 let seekable = track.seekable;
@@ -441,24 +522,34 @@ impl FullscreenPlayer {
                         v_flex()
                             .w_full()
                             .max_w(COLUMN_WIDTH)
-                            .gap_2()
                             .child(
                                 h_flex()
                                     .w_full()
+                                    .mb_1()
                                     .gap_4()
                                     .items_center()
                                     .child(self.title_block(&track, cx))
                                     .child(self.track_actions(&track, cx)),
                             )
-                            .when(bitrate > 0, |block| {
-                                block.child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(cx.theme().muted_foreground)
-                                        // TODO(i18n): the Dioxus app wrote the unit in English too.
-                                        .child(SharedString::from(format!("{bitrate} kbps"))),
-                                )
-                            }),
+                            .child(
+                                h_flex()
+                                    .w_full()
+                                    .h_5()
+                                    .mb_3()
+                                    .gap_4()
+                                    .items_center()
+                                    .text_color(style::white(style::TEXT_SECONDARY, cx))
+                                    .when(bitrate > 0, |row| {
+                                        row.child(
+                                            div()
+                                                .text_size(style::text_10())
+                                                // TODO(i18n): the Dioxus app wrote the unit in English too.
+                                                .child(SharedString::from(format!(
+                                                    "{bitrate} kbps"
+                                                ))),
+                                        )
+                                    }),
+                            ),
                     )
                     .when(!use_player_bar, |column| {
                         column.child(self.transport(playing, seekable, cx))
@@ -491,7 +582,7 @@ impl Render for FullscreenPlayer {
                     .child(self.stage(collapsed, cx))
                     .when(!collapsed, |row| row.child(self.panel(cx))),
             )
-            .when(collapsed, |view| view.child(self.expand_button()))
+            .when(collapsed, |view| view.child(self.expand_button(cx)))
     }
 }
 

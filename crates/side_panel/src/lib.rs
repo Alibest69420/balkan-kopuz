@@ -3,6 +3,7 @@
 mod lyrics;
 mod queue;
 
+use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Selectable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -13,12 +14,20 @@ use gpui_kit::{
 };
 use store::{Chrome, SidePanel};
 use widgets::format::t;
-use widgets::icons;
+use widgets::{icons, style};
 
 // The Dioxus rightbar's drag bounds, and the width the shell's slot starts at.
 const MIN_WIDTH: Pixels = px(280.);
 const MAX_WIDTH: Pixels = px(600.);
 const DEFAULT_WIDTH: Pixels = px(320.);
+// `bg-black/40`: the rightbar darkens whatever the window paints behind it.
+const SCRIM: f32 = 0.4;
+// `px-4 py-1.5 text-xs` on a tab, and the `rounded-md` it is cut with.
+const TAB_HEIGHT: Pixels = px(28.);
+const TAB_RADIUS: Pixels = px(6.);
+// `w-9 h-9` with a `text-sm` glyph: the close button.
+const CLOSE_BUTTON: Pixels = px(36.);
+const CLOSE_GLYPH: Pixels = px(14.);
 
 /// Carried by the left-edge handle; nothing is dropped, so it paints nothing.
 #[derive(Clone)]
@@ -63,11 +72,22 @@ impl SidePanelView {
         showing: SidePanel,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        let active = showing == panel;
         Button::new(id)
             .ghost()
             .xsmall()
             .label(t(key))
-            .selected(showing == panel)
+            .selected(active)
+            .px_4()
+            .h(TAB_HEIGHT)
+            .rounded(TAB_RADIUS)
+            .text_xs()
+            .font_medium()
+            .when(active, |tab| {
+                tab.bg(style::white(style::ACTIVE, cx))
+                    .text_color(cx.theme().foreground)
+            })
+            .when(!active, |tab| tab.text_color(style::white(0.5, cx)))
             .on_click(cx.listener(move |_, _, _, cx| {
                 Chrome::global(cx).update(cx, |chrome, cx| chrome.set_panel(Some(panel), cx));
             }))
@@ -79,24 +99,27 @@ impl SidePanelView {
             .flex_shrink_0()
             .justify_between()
             .items_center()
-            .px_3()
-            .py_2()
+            .px_4()
+            .py_3()
             .border_b_1()
-            .border_color(cx.theme().border)
+            .border_color(style::white(style::BORDER, cx))
             .child(
                 h_flex()
                     .gap_1()
                     .p_1()
-                    .rounded(cx.theme().radius)
-                    .bg(cx.theme().tab_bar)
+                    .rounded(style::radius_lg())
+                    .bg(style::white(style::HOVER, cx))
                     .child(self.tab("panel-tab-queue", SidePanel::Queue, "up_next", showing, cx))
                     .child(self.tab("panel-tab-lyrics", SidePanel::Lyrics, "lyrics", showing, cx)),
             )
             .child(
                 Button::new("panel-close")
                     .ghost()
-                    .small()
+                    .with_size(CLOSE_GLYPH * (4. / 3.))
+                    .size(CLOSE_BUTTON)
+                    .rounded(CLOSE_BUTTON / 2.)
                     .icon(icons::icon(icons::CLOSE))
+                    .text_color(style::white(0.4, cx))
                     .tooltip(t("close"))
                     .on_click(cx.listener(|_, _, _, cx| {
                         Chrome::global(cx).update(cx, |chrome, cx| chrome.set_panel(None, cx));
@@ -115,7 +138,7 @@ impl SidePanelView {
             .w(px(6.))
             .occlude()
             .cursor_col_resize()
-            .hover(|handle| handle.bg(cx.theme().drag_border))
+            .hover(|handle| handle.bg(style::white(style::ACTIVE, cx)))
             .on_drag(ResizePanel, |drag, _, _, cx| {
                 cx.stop_propagation();
                 cx.new(|_| drag.clone())
@@ -146,9 +169,9 @@ impl Render for SidePanelView {
             .h_full()
             .w(self.width)
             .flex_shrink_0()
-            .bg(cx.theme().sidebar)
+            .bg(style::black(SCRIM, cx))
             .border_l_1()
-            .border_color(cx.theme().border)
+            .border_color(style::white(style::BORDER_SOFT, cx))
             .child(self.header(showing, cx))
             .child(div().flex_1().min_h_0().w_full().map(|body| match showing {
                 SidePanel::Lyrics => body.child(self.lyrics.clone()),

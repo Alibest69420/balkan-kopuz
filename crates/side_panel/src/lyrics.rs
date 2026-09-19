@@ -12,7 +12,7 @@ use gpui_kit::{
     AnyElement, Context, Entity, HighlightStyle, Hsla, InteractiveElement as _, IntoElement,
     ParentElement as _, Pixels, Render, ScrollHandle, SharedString,
     StatefulInteractiveElement as _, Styled, StyledText, Subscription, Task, Window, div, point,
-    px,
+    px, relative, rems,
 };
 use store::{ConfigModel, PlayerModel, Playhead};
 use widgets::format::t;
@@ -38,6 +38,16 @@ const REPARK_DRIFT: Pixels = px(24.);
 const DEPTH_STEP: f32 = 0.09;
 const DEPTH_MAX: f32 = 0.55;
 const INTERLUDE_BAR: Pixels = px(72.);
+// `text-white/40` unsung, `text-white/60` under the pointer: a line the voice has left.
+const DIM: f32 = 0.4;
+const DIM_HOVER: f32 = 0.6;
+// A background line is quieter still: `text-white/25`, lit at `text-white/70`.
+const BACKGROUND_DIM: f32 = 0.25;
+// `min(100%, 20rem)`, and `min(90%, 18rem)` once a duet pushes the lines to the edges.
+const LINE_WIDTH: f32 = 20.;
+const TURN_WIDTH: f32 = 18.;
+// `leading-snug` on the small print of a background line.
+const SNUG: f32 = 1.375;
 
 /// A word or syllable of a line, with the byte range it occupies in the line's text.
 #[derive(Clone, Debug, PartialEq)]
@@ -476,24 +486,38 @@ fn line_element(
     let sung: Hsla = cx.theme().foreground;
     let base = if lit {
         sung.alpha(tint)
+    } else if line.background {
+        sung.alpha(BACKGROUND_DIM)
     } else {
-        cx.theme().muted_foreground.alpha(tint)
+        sung.alpha(DIM)
     };
+    let turned = line.opposite || has_opposite;
 
     let body = div()
         .id(("lyric", index))
-        .w_full()
-        .py_1()
+        .w(if turned { relative(0.9) } else { relative(1.) })
+        .max_w(rems(if turned { TURN_WIDTH } else { LINE_WIDTH }))
+        .py_0p5()
         .opacity(opacity)
         .text_color(base)
-        .when(line.background, |row| row.pl_4().text_sm())
+        .when(line.background, |row| {
+            row.pl_4()
+                .text_sm()
+                .font_medium()
+                .line_height(relative(SNUG))
+        })
         .when(!line.background, |row| row.font_semibold())
+        // The `scale(1.12)` the lit Dioxus line grows by is a transform GPUI has not; a size step stands in.
         .when(!line.background && lit, |row| row.text_xl())
         .when(!line.background && !lit, |row| row.text_lg())
-        .when(line.opposite, |row| row.text_right().italic())
+        .when(line.opposite, |row| row.text_right().italic().ml_auto())
         .when(!line.opposite && has_opposite, |row| row.text_left())
-        .when(!line.opposite && !has_opposite, |row| row.text_center())
-        .hover(|row| row.text_color(sung.alpha(tint)))
+        .when(!line.opposite && !has_opposite, |row| {
+            row.text_center().mx_auto()
+        })
+        .when(!lit, |row| {
+            row.hover(move |row| row.text_color(sung.alpha(DIM_HOVER * tint)))
+        })
         .on_click(move |_, _, cx| {
             PlayerModel::global(cx).update(cx, |player, cx| player.seek(start_ms, cx));
         });

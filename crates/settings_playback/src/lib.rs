@@ -18,13 +18,16 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
     ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled,
-    Subscription, Window, div,
+    Subscription, Window, div, rems,
 };
 use link::Link;
 use row::{SettingRow, section};
 use store::{ConfigModel, PlayerModel, Query};
 use widgets::format::t;
-use widgets::{FieldChanged, SchemaForm};
+use widgets::{FieldChanged, SchemaForm, style};
+
+/// `text-white/80`, what a slider's value reads in.
+pub(crate) const READOUT: f32 = 0.80;
 
 const CROSSFADE_MAX_SECONDS: f32 = 12.0;
 const VOLUME_STEP_MIN_PERCENT: f32 = 1.0;
@@ -224,7 +227,7 @@ impl PlaybackSettings {
         };
 
         section(t("metadata"))
-            .child(self.artwork.clone())
+            .child(div().px_5().py_2p5().child(self.artwork.clone()))
             .child(
                 SettingRow::new(t("prefer_local_lyrics"))
                     .locked(settings.prefer_local_locked)
@@ -278,6 +281,7 @@ impl PlaybackSettings {
                         Slider::new(&self.lyrics_offset)
                             .disabled(settings.offset_locked || settings.auto),
                         offset_label,
+                        cx,
                     )),
             )
     }
@@ -313,6 +317,7 @@ impl PlaybackSettings {
                     .control(readout(
                         Slider::new(&self.crossfade).disabled(settings.crossfade_locked),
                         crossfade_label,
+                        cx,
                     )),
             )
             .child(
@@ -321,6 +326,7 @@ impl PlaybackSettings {
                     .control(readout(
                         Slider::new(&self.volume_scroll).disabled(settings.volume_locked),
                         SharedString::from(format!("{}%", volume_percent(settings.volume_step))),
+                        cx,
                     )),
             )
             .child(
@@ -377,7 +383,7 @@ impl PlaybackSettings {
                 config.is_locked("tracing_enabled"),
             )
         };
-        let warning = cx.theme().warning;
+        let warning = cx.theme().warning.opacity(0.8);
         section(t("logs"))
             .child(
                 SettingRow::new(t("enable_tracing")).locked(locked).control(
@@ -392,6 +398,8 @@ impl PlaybackSettings {
             )
             .child(
                 div()
+                    .px_5()
+                    .pb_3()
                     .text_xs()
                     .text_color(warning)
                     .child(t("tracing_warning")),
@@ -416,6 +424,8 @@ impl Render for PlaybackSettings {
         v_flex()
             .id("playback-settings")
             .size_full()
+            .gap_4()
+            .pb_4()
             .overflow_y_scroll()
             .when(self.shows("offline"), |panel| panel.child(self.offline(cx)))
             .when(self.shows("metadata"), |panel| {
@@ -499,12 +509,20 @@ fn on_slider_change(
 }
 
 /// A slider with its current value beside it, the way every numeric row here reads.
-fn readout(slider: Slider, label: impl Into<SharedString>) -> impl IntoElement {
+fn readout(slider: Slider, label: impl Into<SharedString>, cx: &App) -> impl IntoElement {
     h_flex()
         .gap_3()
         .items_center()
-        .child(div().w_64().child(slider))
-        .child(div().w_16().text_xs().text_right().child(label.into()))
+        .min_w(rems(13.75))
+        .child(div().w_40().child(slider))
+        .child(
+            div()
+                .w_16()
+                .text_xs()
+                .text_right()
+                .text_color(style::white(READOUT, cx))
+                .child(label.into()),
+        )
 }
 
 /// One config value picked from a fixed set of variants.

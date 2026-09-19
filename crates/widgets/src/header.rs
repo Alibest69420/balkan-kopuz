@@ -7,6 +7,7 @@ use gpui_kit::{
 use store::{Navigator, Route};
 
 use crate::icons;
+use crate::style;
 
 /// The title block every page opens with, with its actions on the right.
 #[derive(IntoElement)]
@@ -51,7 +52,7 @@ impl RenderOnce for PageHeader {
             .justify_between()
             .items_center()
             .gap_3()
-            .pb_4()
+            .pb_6()
             .child(
                 h_flex()
                     .gap_3()
@@ -66,17 +67,19 @@ impl RenderOnce for PageHeader {
                     })
                     .child(
                         v_flex()
+                            .gap_0p5()
                             .child(
                                 div()
-                                    .text_2xl()
+                                    .text_3xl()
                                     .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                                    .text_color(cx.theme().foreground)
                                     .child(self.title),
                             )
                             .when_some(self.subtitle, |column, subtitle| {
                                 column.child(
                                     div()
                                         .text_sm()
-                                        .text_color(cx.theme().muted_foreground)
+                                        .text_color(style::slate_400(cx))
                                         .child(subtitle),
                                 )
                             }),

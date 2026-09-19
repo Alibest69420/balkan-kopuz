@@ -1,19 +1,21 @@
 //! The right-hand Up next / Lyrics panel. Its lists are deliberately plain; `side_panel` owns the full ones.
 
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, Context, InteractiveElement as _, IntoElement, ParentElement as _, Pixels,
-    SharedString, StatefulInteractiveElement as _, Styled, div, px, uniform_list,
+    AnyElement, Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
+    Pixels, SharedString, StatefulInteractiveElement as _, Styled, div, px, rems, uniform_list,
 };
 use store::{ConfigModel, PlayerModel, QueueModel};
 use widgets::format::{duration, t};
-use widgets::{Cover, EmptyState, Loading, icons};
+use widgets::{Cover, EmptyState, Loading, icons, style};
 
 use crate::player::{FullscreenPlayer, Tab};
 
-const ROW_HEIGHT: Pixels = px(56.);
+// The Dioxus fullscreen queue's own row height, taller than the library's.
+const ROW_HEIGHT: Pixels = px(76.);
+const ROW_COVER: Pixels = px(48.);
 
 impl FullscreenPlayer {
     pub(crate) fn panel(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -22,8 +24,8 @@ impl FullscreenPlayer {
             .min_w_0()
             .h_full()
             .border_l_1()
-            .border_color(cx.theme().border)
-            .bg(cx.theme().background.opacity(0.45))
+            .border_color(style::white(style::BORDER_SOFT, cx))
+            .bg(style::black(0.45, cx))
             .child(self.tab_bar(cx))
             .child(match self.tab {
                 Tab::Queue => self.queue(cx),
@@ -32,10 +34,19 @@ impl FullscreenPlayer {
     }
 
     /// The chevron that brings the panel back once it is collapsed.
-    pub(crate) fn expand_button(&self) -> impl IntoElement {
+    pub(crate) fn expand_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div().absolute().right_4().top_1_2().child(
             Button::new("fs-expand-panel")
-                .ghost()
+                .custom(
+                    ButtonCustomVariant::new(cx)
+                        .color(style::black(0.4, cx))
+                        .foreground(style::white(0.7, cx))
+                        .hover(style::black(0.6, cx))
+                        .active(style::black(0.6, cx))
+                        .shadow(true),
+                )
+                .rounded(px(999.))
+                .with_size(px(36.))
                 .icon(icons::icon(icons::CHEVRON_LEFT))
                 .tooltip(t("show_side_panel"))
                 .on_click(|_, _, cx| set_collapsed(false, cx)),
@@ -45,43 +56,71 @@ impl FullscreenPlayer {
     fn tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         h_flex()
             .w_full()
-            .gap_1()
             .items_center()
-            .px_4()
-            .py_3()
+            .px_6()
+            .pt_4()
+            .pb_2()
             .child(
-                Button::new("fs-tab-queue")
-                    .ghost()
-                    .small()
-                    .label(t("up_next"))
-                    .toggled(self.tab == Tab::Queue)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.tab = Tab::Queue;
-                        cx.notify();
-                    })),
-            )
-            .child(
-                Button::new("fs-tab-lyrics")
-                    .ghost()
-                    .small()
-                    .label(t("lyrics"))
-                    .toggled(self.tab == Tab::Lyrics)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.tab = Tab::Lyrics;
-                        this.load_lyrics(cx);
-                        cx.notify();
-                    })),
+                h_flex()
+                    .gap_1()
+                    .items_center()
+                    .p_1()
+                    .rounded(style::radius_lg())
+                    .bg(style::white(style::HOVER, cx))
+                    .child(
+                        self.tab_pill("fs-tab-queue", t("up_next"), self.tab == Tab::Queue, cx)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.tab = Tab::Queue;
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        self.tab_pill("fs-tab-lyrics", t("lyrics"), self.tab == Tab::Lyrics, cx)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.tab = Tab::Lyrics;
+                                this.load_lyrics(cx);
+                                cx.notify();
+                            })),
+                    ),
             )
             .child(
                 div().ml_auto().child(
                     Button::new("fs-collapse-panel")
                         .ghost()
-                        .small()
-                        .icon(icons::icon(icons::CHEVRON_RIGHT))
+                        .with_size(px(32.))
+                        .icon(icons::icon(icons::CHEVRON_RIGHT).small())
                         .tooltip(t("hide_side_panel"))
                         .on_click(|_, _, cx| set_collapsed(true, cx)),
                 ),
             )
+    }
+
+    /// `px-4 py-1.5 text-xs font-medium rounded-md`, lit by `bg-white/20` when it is the open tab.
+    fn tab_pill(
+        &self,
+        id: &'static str,
+        label: SharedString,
+        active: bool,
+        cx: &Context<Self>,
+    ) -> gpui_kit::Stateful<gpui_kit::Div> {
+        div()
+            .id(id)
+            .px_4()
+            .py_1p5()
+            .rounded(rems(0.375))
+            .text_xs()
+            .font_weight(FontWeight::MEDIUM)
+            .cursor_pointer()
+            .map(|pill| {
+                if active {
+                    pill.bg(style::white(style::ACTIVE, cx))
+                        .text_color(cx.theme().foreground)
+                } else {
+                    pill.text_color(style::white(0.5, cx))
+                        .hover(|idle| idle.text_color(style::white(0.8, cx)))
+                }
+            })
+            .child(label)
     }
 
     fn queue(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -100,6 +139,8 @@ impl FullscreenPlayer {
         )
         .flex_1()
         .size_full()
+        .px_4()
+        .py_2()
         .into_any_element()
     }
 
@@ -120,34 +161,52 @@ impl FullscreenPlayer {
             .w_full()
             .flex()
             .items_center()
-            .gap_3()
+            .gap_4()
             .px_4()
-            .hover(|row| row.bg(cx.theme().list_hover))
-            .when(current, |row| row.bg(cx.theme().list_active))
-            .child(Cover::new(track.artwork.as_ref()).size(px(36.)))
+            .py_2()
+            .rounded(style::radius_lg())
+            .cursor_pointer()
+            .hover(|row| row.bg(style::white(style::RAISED, cx)))
+            .when(current, |row| row.bg(style::accent(style::PLAYING, cx)))
+            .child(
+                div()
+                    .w_4()
+                    .flex_shrink_0()
+                    .text_xs()
+                    .text_color(style::white(style::TEXT_SECONDARY, cx))
+                    .child((index + 1).to_string()),
+            )
+            .child(
+                Cover::new(track.artwork.as_ref())
+                    .size(ROW_COVER)
+                    .rounded(px(6.)),
+            )
             .child(
                 v_flex()
                     .flex_1()
                     .min_w_0()
+                    .gap_0p5()
                     .child(
                         div()
                             .truncate()
-                            .text_sm()
+                            .text_base()
+                            .font_weight(FontWeight::MEDIUM)
                             .when(current, |title| title.text_color(cx.theme().primary))
                             .child(SharedString::from(track.title.clone())),
                     )
                     .child(
                         div()
                             .truncate()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
+                            .text_sm()
+                            .text_color(style::white(0.65, cx))
                             .child(SharedString::from(track.artist.clone())),
                     ),
             )
             .child(
                 div()
+                    .flex_shrink_0()
                     .text_xs()
-                    .text_color(cx.theme().muted_foreground)
+                    .text_color(style::white(style::TEXT_SECONDARY, cx))
                     .child(length),
             )
             .on_click(move |_, _, cx| {
@@ -202,13 +261,17 @@ impl FullscreenPlayer {
             .id("fs-lyrics")
             .flex_1()
             .size_full()
-            .gap_2()
-            .px_6()
-            .py_4()
+            .gap_1()
+            .px_4()
+            .py_2()
             .overflow_y_scroll()
-            .text_color(cx.theme().muted_foreground)
+            .text_2xl()
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_center()
+            .text_color(style::white(0.4, cx))
             .children(lines.into_iter().map(|(text, active)| {
                 div()
+                    .w_full()
                     .when(active, |line| line.text_color(cx.theme().foreground))
                     .child(text)
             }))

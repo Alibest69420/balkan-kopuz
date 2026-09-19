@@ -7,7 +7,7 @@ use gpui_kit::component::menu::PopupMenu;
 use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Context, EventEmitter, InteractiveElement as _, IntoElement, ParentElement as _, Pixels,
+    Context, EventEmitter, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
     Render, SharedString, StatefulInteractiveElement as _, Styled, UniformListScrollHandle,
     WeakEntity, Window, div, px, uniform_list,
 };
@@ -18,9 +18,10 @@ use crate::dialogs;
 use crate::format::{duration, t};
 use crate::icons;
 use crate::playlist_picker;
+use crate::style;
 
-// Virtualized rows need one resolved height; this is the Dioxus frontend's.
-const ROW_HEIGHT: Pixels = px(60.);
+// The row is the hover group, so the number can step aside for the play glyph.
+const ROW_GROUP: &str = "track-row";
 
 /// Which columns a list draws; an album view numbers its rows and hides the album column.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -172,7 +173,12 @@ impl TrackList {
         cx.emit(TrackListEvent::SelectionChanged);
     }
 
-    fn row(&self, index: usize, cx: &mut Context<Self>) -> gpui_kit::AnyElement {
+    fn row(
+        &self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> gpui_kit::AnyElement {
         let Some(track) = self.rows.get(index) else {
             return div().into_any_element();
         };
@@ -198,17 +204,22 @@ impl TrackList {
             .map(|secs| duration(secs * 1000))
             .unwrap_or_else(|| "--:--".into());
 
+        let accent = cx.theme().primary;
+        let mark = px(12.);
+
         div()
             .id(("track-row", index))
-            .h(ROW_HEIGHT)
+            .group(ROW_GROUP)
+            .h(style::row_height())
             .w_full()
             .flex()
             .items_center()
             .gap_3()
             .px_2()
-            .rounded(cx.theme().radius)
-            .when(selected, |row| row.bg(cx.theme().list_active))
-            .hover(|row| row.bg(cx.theme().list_hover))
+            .rounded(style::radius_lg())
+            .when(playing, |row| row.bg(style::accent(style::PLAYING, cx)))
+            .when(selected, |row| row.bg(style::white(style::SELECTED, cx)))
+            .hover(|row| row.bg(style::white(style::RAISED, cx)))
             .on_click(cx.listener(move |this, _, _, cx| {
                 if this.selecting {
                     this.toggle_selected(key.clone(), cx);
@@ -218,14 +229,12 @@ impl TrackList {
             }))
             .child(
                 div()
-                    .w(px(28.))
+                    .relative()
+                    .w(px(20.))
                     .flex_shrink_0()
-                    .text_sm()
-                    .text_color(if playing {
-                        cx.theme().primary
-                    } else {
-                        cx.theme().muted_foreground
-                    })
+                    .flex()
+                    .items_center()
+                    .justify_center()
                     .map(|cell| {
                         if self.options.selectable && self.selecting {
                             cell.child(Checkbox::new(("select", index)).checked(selected).on_click(
@@ -236,31 +245,64 @@ impl TrackList {
                                     }
                                 }),
                             ))
+                        } else if playing {
+                            cell.child(icons::icon(icons::VOLUME).size(mark).text_color(accent))
                         } else if self.options.show_index {
-                            cell.child(lead)
+                            cell.child(
+                                div()
+                                    .text_xs()
+                                    .text_color(style::white(style::TEXT_SECONDARY, cx))
+                                    .group_hover(ROW_GROUP, |number| number.invisible())
+                                    .child(lead),
+                            )
+                            .child(
+                                div()
+                                    .absolute()
+                                    .inset_0()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .invisible()
+                                    .group_hover(ROW_GROUP, |play| play.visible())
+                                    .child(
+                                        icons::icon(icons::PLAY)
+                                            .size(mark)
+                                            .text_color(style::white(style::TEXT_SECONDARY, cx)),
+                                    ),
+                            )
                         } else {
                             cell
                         }
                     }),
             )
             .when(self.options.show_cover, |row| {
-                row.child(Cover::new(track.artwork.as_ref()).size(px(40.)))
+                row.child(
+                    Cover::new(track.artwork.as_ref())
+                        .size(style::row_cover().to_pixels(window.rem_size())),
+                )
             })
             .child(
                 v_flex()
                     .flex_1()
                     .min_w_0()
+                    .gap_0p5()
                     .child(
                         div()
                             .truncate()
-                            .when(playing, |title| title.text_color(cx.theme().primary))
+                            .text_sm()
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(if playing {
+                                accent
+                            } else {
+                                style::white(style::TEXT_STRONG, cx)
+                            })
                             .child(title.clone()),
                     )
                     .child(
                         div()
                             .truncate()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
+                            .text_size(style::text_11())
+                            .text_color(style::white(style::TEXT_SUBTLE, cx))
                             .child(artist.clone()),
                     ),
             )
@@ -269,10 +311,11 @@ impl TrackList {
                     div()
                         .id(("album", index))
                         .w(px(200.))
+                        .flex_shrink_0()
                         .truncate()
                         .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .hover(|cell| cell.text_color(cx.theme().foreground))
+                        .text_color(style::white(style::TEXT_DIM, cx))
+                        .hover(|cell| cell.text_color(style::white(style::TEXT_SUBTLE, cx)))
                         .on_click({
                             let album_id = album_id.clone();
                             move |_, _, cx| {
@@ -285,19 +328,23 @@ impl TrackList {
                 )
             })
             .when(favorite, |row| {
-                row.child(crate::icons::icon(icons::HEART).text_color(cx.theme().primary))
+                row.child(icons::icon(icons::HEART).size(mark).text_color(accent))
             })
             .when(stored, |row| {
                 row.child(
-                    crate::icons::icon(icons::DOWNLOAD).text_color(cx.theme().muted_foreground),
+                    icons::icon(icons::DOWNLOAD)
+                        .size(mark)
+                        .text_color(accent.opacity(0.7)),
                 )
             })
             .child(
                 div()
-                    .w(px(56.))
+                    .w(px(64.))
                     .flex_shrink_0()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
+                    .flex()
+                    .justify_end()
+                    .text_xs()
+                    .text_color(style::white(style::TEXT_DIM, cx))
                     .child(length),
             )
             .context_menu({
@@ -482,9 +529,9 @@ impl Render for TrackList {
             uniform_list(
                 "track-list",
                 count,
-                cx.processor(move |this, range: std::ops::Range<usize>, _, cx| {
+                cx.processor(move |this, range: std::ops::Range<usize>, window, cx| {
                     range
-                        .map(|index| this.row(index, cx).into_any_element())
+                        .map(|index| this.row(index, window, cx).into_any_element())
                         .collect()
                 }),
             )

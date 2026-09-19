@@ -1,0 +1,110 @@
+# Porting Kopuz's look 1:1
+
+The Dioxus UI is Tailwind v4 classes written inline in each component. This is
+how each of them becomes a GPUI call. The source of truth is the component file
+in `../kopuz/crates/{components,pages}/src/…`; read the classes on the element
+you are porting and translate them here, rather than eyeballing a screenshot.
+
+## The colour system
+
+Every Kopuz theme redefines Tailwind's palette variables, so a class that looks
+like a fixed colour is really a theme token:
+
+| Class | Resolves to | GPUI |
+| --- | --- | --- |
+| `bg-white/N`, `text-white/N`, `border-white/N` | `--color-white`, the theme's **text** colour, at N% | `style::white(N/100., cx)` |
+| `bg-black/N` | `--color-black`, the theme's **background**, at N% | `style::black(N/100., cx)` |
+| `text-white` | the theme's text colour | `cx.theme().foreground` |
+| `text-slate-400` | the theme's muted text | `style::slate_400(cx)` |
+| `text-slate-500` | dimmer still | `style::slate_500(cx)` |
+| `text-green-500` | the progress colour | `cx.theme().success` |
+| `text-indigo-500` / `bg-indigo-500` | the accent | `cx.theme().primary` |
+| `text-indigo-400` | accent-soft | `cx.theme().primary_hover` |
+| `text-red-400` | danger | `cx.theme().danger` |
+| `text-purple-600` | highlight | `cx.theme().info` |
+
+Named constants for the alphas that recur: `style::{RAISED, HOVER, ACTIVE,
+BORDER, BORDER_SOFT, TEXT_STRONG, TEXT_SECONDARY, TEXT_SUBTLE, TEXT_FAINT}`.
+Never write a hex literal or `rgb()` in a feature crate.
+
+## Spacing, size and type
+
+GPUI's scale **is** Tailwind's: `gap-3` → `.gap_3()`, `px-2` → `.px_2()`,
+`h-9` → `.h_9()`, `mb-4` → `.mb_4()`, `text-xs` → `.text_xs()`, `text-sm` →
+`.text_sm()`, `text-4xl` → `.text_4xl()`. Translate the number, not the pixels.
+
+The scale has gaps: there is no `h_14`, `w_14`, `h_18`, … Past 12 it jumps to
+16, 20, 24. For a size that is not on it, use a `style::` helper (`row_height`,
+`row_cover`) or `rems(n)`, never a bare `px`.
+
+Off-scale sizes have helpers: `text-[10px]` → `.text_size(style::text_10())`,
+`text-[11px]` → `style::text_11()`.
+
+| Class | GPUI |
+| --- | --- |
+| `rounded` | `.rounded(style::radius(cx))` |
+| `rounded-lg` | `.rounded(style::radius_lg())` |
+| `rounded-xl` | `.rounded(style::radius_xl())` |
+| `rounded-full` | `.rounded_full()` |
+| `truncate` | `.truncate()` (needs a bounded width: pair with `flex_1().min_w_0()`) |
+| `shrink-0` | `.flex_shrink_0()` |
+| `flex items-center` | `h_flex()` |
+| `flex flex-col` | `v_flex()` |
+| `absolute inset-0` | `.absolute().inset_0()` |
+| `group` + `opacity-0 group-hover:opacity-100` | `.group("name")` + `.invisible().group_hover("name", \|s\| s.visible())` |
+| `hover:bg-white/10` | `.hover(\|s\| s.bg(style::white(style::HOVER, cx)))` |
+
+## Known metrics
+
+- **Track row (desktop).** `components/src/track/row.rs` has two designs: a
+  two-line Android row and the desktop column grid. The port targets the
+  **desktop** one: `grid items-center h-14 p-2 rounded-lg hover:bg-white/5`,
+  column template `20px | minmax(200px,2fr) | minmax(150px,1fr) |
+  minmax(150px,1fr) | 64px | 40px` with a `1.5rem` column gap.
+  - index `text-xs text-white/60`, replaced by a play glyph on row hover and by
+    a volume glyph while that row plays;
+  - title cell: cover `w-10 h-10 bg-white/5 rounded mr-4 shrink-0` (with the
+    downloaded badge as a `w-3 h-3 bg-indigo-500 rounded-tl` corner on the
+    cover, not an inline icon), then title `text-sm font-medium truncate`;
+  - artist and album are their own columns, `text-sm text-slate-500 truncate`,
+    hovering to `text-slate-400`;
+  - the playing row is washed with `indigo-500 @ 12%`, a selected row with
+    `white @ 7%`.
+  The virtualized row height must match the row, so it is `style::row_height()`.
+- Chrome icon buttons: `w-9 h-9`, `rounded-xl`, `bg-white/10`, `border-white/10`.
+- Desktop sidebar: `bg-black/40`, `border-white/5`, base text `text-slate-400`.
+- Cards and panels: `rounded-xl`, `bg-white/5`.
+
+## What GPUI cannot do
+
+Do not fake these; leave the element unstyled for that property and move on.
+
+- `transition-*` and `duration-*`: there are no CSS transitions. A state change
+  is instant unless the element opts into `with_animation`.
+- `active:scale-95` and every other transform: `div` has no transform.
+- `backdrop-blur-*`: no backdrop filter. Use a slightly heavier scrim instead
+  and leave a one-line note.
+- `shadow-[…]`: use `.shadow_lg()`/`.shadow_md()`, not a hand-built spec.
+- `tracking-*`: no letter-spacing. Drop it.
+- `uppercase`: no text-transform. Uppercase the string in Rust, with a
+  one-line note, and remember that a translated string may not want it.
+- `font-mono`: the duration column is monospaced upstream; there is no mono
+  family wired up here, so it renders in the UI font.
+- A `Button`'s own hover treatment is applied after yours, so a Tailwind hover
+  cannot be ported onto one. Where the original is a bare element with a hover
+  colour — a chip, a chevron, a close ✕ — build it from an interactive `div`
+  rather than reaching for `Button`.
+- `Progress` paints its track as its own bar colour at 20%; an original with a
+  separate track colour cannot be matched without hand-rolling the bar.
+- A rem helper cannot be handed to `Cover::size`, `Icon::size` or anything else
+  taking `Pixels`; wrap it in `style::to_px(measure, window)`.
+
+Two colours the table does not list: the playback-error banner is
+`rose-500` at 15/20/70% — use `cx.theme().danger` at those alphas — and the
+scan and connecting states are amber, which is `cx.theme().warning`.
+
+## The Vaxry skin
+
+Not ported. `style::Skin::current(cx)` answers which skin `cfg.ui_style` asks
+for and falls back to `Normal`, so a later skin branches there rather than
+threading a flag through every call site. Do not add Vaxry branches now.

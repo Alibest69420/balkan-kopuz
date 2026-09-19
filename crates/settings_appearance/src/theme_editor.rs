@@ -313,14 +313,22 @@ impl ThemeEditor {
                 .child(label)
         };
         v_flex()
+            .w_full()
             .gap_2()
             .p_4()
-            .rounded(theme.radius)
+            .rounded(style::radius_lg())
             .bg(bg)
             .child(
                 h_flex()
+                    .items_center()
                     .justify_between()
-                    .child(div().text_sm().text_color(text).child(t("track_title")))
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(text)
+                            .child(t("track_title")),
+                    )
                     .child(
                         div()
                             .text_xs()
@@ -329,10 +337,10 @@ impl ThemeEditor {
                     ),
             )
             .child(
-                div().w_full().h(px(4.)).rounded_full().bg(surface).child(
+                div().w_full().h_1().rounded_full().bg(surface).child(
                     div()
                         .w(gpui_kit::relative(0.66))
-                        .h(px(4.))
+                        .h_1()
                         .rounded_full()
                         .bg(progress),
                 ),
@@ -340,6 +348,7 @@ impl ThemeEditor {
             .child(
                 h_flex()
                     .gap_2()
+                    .mt_1()
                     .child(chip(
                         "preview-accent",
                         t("accent"),
@@ -360,19 +369,40 @@ impl ThemeEditor {
 
     fn color_row(&self, row: &ColorRow, cx: &Context<Self>) -> impl IntoElement {
         h_flex()
-            .gap_3()
+            .w_full()
+            .gap_4()
+            .items_center()
             .justify_between()
             .child(
                 div()
+                    .min_w_0()
                     .text_sm()
-                    .text_color(cx.theme().muted_foreground)
+                    .text_color(style::white(LABEL, cx))
                     .child(t(row.key)),
             )
             .child(
                 h_flex()
+                    .flex_shrink_0()
                     .gap_2()
+                    .items_center()
                     .child(ColorPicker::new(&row.picker).small())
-                    .child(div().w(px(104.)).child(Input::new(&row.hex).small())),
+                    .child(div().w(rems(6.)).child(Input::new(&row.hex).small())),
+            )
+    }
+
+    /// `bg-white/5 rounded-xl p-5`: one block of the editor's right column.
+    fn block(&self, label: SharedString, cx: &Context<Self>) -> Div {
+        v_flex()
+            .w_full()
+            .gap_3()
+            .p_5()
+            .rounded(style::radius_xl())
+            .bg(style::white(style::RAISED, cx))
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(style::slate_400(cx))
+                    .child(label),
             )
     }
 }

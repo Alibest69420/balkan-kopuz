@@ -4,13 +4,13 @@ use api::{AlbumPage, ArtistPage, Table, TrackPage};
 use config::{AlbumViewMode, ArtistSortField};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::{
-    App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
+    App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
     ParentElement as _, Render, ScrollHandle, SharedString, StatefulInteractiveElement as _,
     Styled as _, Subscription, Task, Window, div, px,
 };
 use store::{ConfigModel, Link, Navigator, Query, Route};
 use widgets::format::t;
-use widgets::{Cover, EmptyState, Loading, PageHeader, Tile, icons, tile_grid};
+use widgets::{Cover, EmptyState, Loading, PageHeader, icons, style};
 
 use crate::controls::{self, ViewModeKey};
 use crate::names::{self, ArtistEntry};
@@ -136,7 +136,8 @@ impl Render for Artists {
 
         v_flex()
             .size_full()
-            .p_4()
+            .px_8()
+            .pt_8()
             .child(
                 PageHeader::new(t("artists"))
                     .action(controls::view_mode_toggle(ViewModeKey::Artists, cx))
@@ -160,10 +161,11 @@ impl Render for Artists {
                     .id("artists-scroll")
                     .flex_1()
                     .min_h_0()
+                    .pb_20()
                     .overflow_y_scroll()
                     .track_scroll(&self.scroll)
                     .child(match mode {
-                        AlbumViewMode::Grid => grid(&entries),
+                        AlbumViewMode::Grid => grid(&entries, cx),
                         AlbumViewMode::List => list(&entries, cx),
                     })
                     .into_any_element(),
@@ -171,41 +173,70 @@ impl Render for Artists {
     }
 }
 
-fn grid(entries: &[ArtistEntry]) -> gpui_kit::AnyElement {
-    tile_grid()
-        .children(entries.iter().map(|entry| {
-            Tile::new(entry.name.clone(), entry.name.clone())
-                .artwork(entry.artwork.as_ref())
-                .placeholder(icons::MIC)
-                .round(true)
-                .size(px(TILE))
-                .route(Route::Artist {
-                    name: entry.name.clone().into(),
-                    channel: None,
-                })
-        }))
+fn grid(entries: &[ArtistEntry], cx: &App) -> gpui_kit::AnyElement {
+    div()
+        .flex()
+        .flex_wrap()
+        .gap_8()
+        .children(entries.iter().map(|entry| tile(entry, cx)))
         .into_any_element()
+}
+
+/// `rounded-full` photo, `mb-4`, and a centred label that goes accent under the pointer.
+fn tile(entry: &ArtistEntry, cx: &App) -> impl IntoElement {
+    let name = SharedString::from(entry.name.clone());
+    let group = SharedString::from(format!("artist-tile-{}", entry.name));
+    let route = Route::Artist {
+        name: name.clone(),
+        channel: None,
+    };
+    v_flex()
+        .id(SharedString::from(format!("artist-tile-{}", entry.name)))
+        .group(group.clone())
+        .w(px(TILE))
+        .gap_4()
+        .items_center()
+        .cursor_pointer()
+        .child(
+            Cover::new(entry.artwork.as_ref())
+                .size(px(TILE))
+                .rounded(px(TILE / 2.))
+                .placeholder(icons::MIC),
+        )
+        .child(
+            div()
+                .w_full()
+                .truncate()
+                .text_center()
+                .font_weight(FontWeight::MEDIUM)
+                .group_hover(group, |label| {
+                    label.text_color(cx.theme().primary_hover)
+                })
+                .child(name),
+        )
+        .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
 }
 
 fn list(entries: &[ArtistEntry], cx: &App) -> gpui_kit::AnyElement {
     v_flex()
-        .gap_1()
+        .gap_2()
         .children(entries.iter().map(|entry| {
             let name = SharedString::from(entry.name.clone());
             h_flex()
                 .id(SharedString::from(format!("artist-row-{}", entry.name)))
                 .gap_3()
-                .px_2()
-                .py_1()
-                .rounded(cx.theme().radius)
-                .hover(|row| row.bg(cx.theme().list_hover))
+                .px_3()
+                .py_2()
+                .rounded(style::radius_lg())
+                .bg(style::white(style::RAISED, cx))
+                .hover(|row| row.bg(style::white(style::HOVER, cx)))
                 .child(
                     Cover::new(entry.artwork.as_ref())
-                        .size(px(40.))
-                        .rounded(px(20.))
+                        .size(px(48.))
+                        .rounded(px(24.))
                         .placeholder(icons::MIC),
                 )
-                .child(div().truncate().child(name.clone()))
+                .child(div().flex_1().min_w_0().truncate().child(name.clone()))
                 .on_click(move |_, _, cx| {
                     Navigator::navigate(
                         Route::Artist {

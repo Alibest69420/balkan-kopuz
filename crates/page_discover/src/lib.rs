@@ -3,7 +3,7 @@
 mod shelves;
 
 use api::{CatalogDetail, CatalogDetailRequest, CatalogItemKind};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -11,18 +11,27 @@ use gpui_kit::{
     AnyElement, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement, ObjectFit,
     ParentElement as _, Pixels, Render, ScrollHandle, SharedString,
     StatefulInteractiveElement as _, Styled, StyledImage as _, Subscription, Task, Window, div,
-    img, px,
+    img, linear_color_stop, linear_gradient, px, rems,
 };
 use store::{Link, Route, SourcesModel, actions};
 use widgets::format::t;
 use widgets::{
-    EmptyState, PageHeader, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons,
+    EmptyState, PageHeader, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons, style,
 };
 
 use crate::shelves::{Shelves, failure_text};
 
 // The Dioxus sentinel's root margin: how close to the end a scroll asks for the next page.
 const PAGE_MARGIN: Pixels = px(600.);
+// `max-w-[1600px] mx-auto`: the catalog pages never run wider than this.
+fn page_width() -> gpui_kit::Rems {
+    rems(100.)
+}
+
+// The artist banner's `min-height: 360px`.
+fn banner_height() -> gpui_kit::Rems {
+    rems(22.5)
+}
 
 /// The active source's browse feed.
 pub struct Discover {
@@ -125,15 +134,35 @@ impl Render for Discover {
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
             .on_scroll_wheel(cx.listener(|this, _, _, cx| this.page_on_scroll(cx)))
-            .p_6()
+            .p_10()
             .child(
                 v_flex()
                     .w_full()
-                    .gap_8()
-                    .child(PageHeader::new(t("discover")))
+                    .max_w(page_width())
+                    .mx_auto()
+                    .child(
+                        div()
+                            .mb_2()
+                            .text_size(rems(2.25))
+                            .font_weight(gpui_kit::FontWeight::BLACK)
+                            .child(t("discover")),
+                    )
+                    .child(
+                        div()
+                            .w_full()
+                            .h_px()
+                            .mb_8()
+                            .bg(style::white(style::BORDER, cx)),
+                    )
                     .when(waiting, |body| body.child(spinner_row()))
                     .when_some(self.error.clone(), |body, error| {
-                        body.child(div().text_sm().text_color(cx.theme().danger).child(error))
+                        body.child(
+                            div()
+                                .py_12()
+                                .text_sm()
+                                .text_color(cx.theme().danger)
+                                .child(error),
+                        )
                     })
                     .child(self.shelves.clone())
                     .when(self.loading_more, |body| {
@@ -144,9 +173,9 @@ impl Render for Discover {
                                 .justify_center()
                                 .gap_3()
                                 .py_6()
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(Spinner::new())
+                                .text_xs()
+                                .text_color(style::white(0.5, cx))
+                                .child(Spinner::new().small())
                                 .child(t("discover_more_loading")),
                         )
                     }),
@@ -255,7 +284,7 @@ impl Render for DiscoverPlaylist {
         let empty = !self.loading && self.error.is_none() && self.list.read(cx).rows().is_empty();
         v_flex()
             .size_full()
-            .p_6()
+            .p_8()
             .child(PageHeader::new(self.title.clone()).back(Route::Discover))
             .map(|page| {
                 if self.loading {
@@ -356,9 +385,8 @@ impl DiscoverArtist {
         div()
             .relative()
             .w_full()
-            .h(px(320.))
+            .h(banner_height())
             .overflow_hidden()
-            .rounded(cx.theme().radius)
             .bg(cx.theme().secondary)
             .when_some(detail.artwork.as_ref(), |frame, artwork| {
                 frame.child(
@@ -368,49 +396,58 @@ impl DiscoverArtist {
                         .object_fit(ObjectFit::Cover),
                 )
             })
-            .child(
-                div()
-                    .absolute()
-                    .size_full()
-                    .bg(cx.theme().background.opacity(0.6)),
-            )
+            .child(div().absolute().size_full().bg(linear_gradient(
+                180.,
+                linear_color_stop(style::black(0.2, cx), 0.),
+                linear_color_stop(style::black(0.95, cx), 1.),
+            )))
             .child(
                 v_flex()
                     .absolute()
                     .size_full()
                     .justify_end()
-                    .gap_3()
-                    .p_8()
+                    .gap_4()
+                    .px_10()
+                    .pt_16()
+                    .pb_10()
                     .child(
                         div()
-                            .text_3xl()
-                            .font_weight(gpui_kit::FontWeight::BOLD)
+                            .text_size(rems(3.75))
+                            .font_weight(gpui_kit::FontWeight::BLACK)
                             .child(detail.title.clone()),
                     )
                     .when_some(detail.subtitle.clone(), |banner, subtitle| {
                         banner.child(
                             div()
                                 .text_sm()
-                                .text_color(cx.theme().muted_foreground)
+                                .text_color(style::white(0.7, cx))
                                 .child(subtitle),
                         )
                     })
                     .when_some(detail.description.clone(), |banner, description| {
                         banner.child(
                             div()
-                                .max_w(px(720.))
+                                .max_w(rems(48.))
                                 .text_sm()
                                 .line_clamp(3)
-                                .text_color(cx.theme().muted_foreground)
+                                .text_color(style::white(style::TEXT_SECONDARY, cx))
                                 .child(description),
                         )
                     })
                     .when_some(detail.playback_id.clone(), |banner, id| {
                         banner.child(
-                            h_flex().child(
+                            h_flex().mt_2().child(
+                                // `bg-white text-black`: the banner's one inverted control.
                                 Button::new("artist-shuffle")
-                                    .primary()
-                                    .icon(icons::icon(icons::SHUFFLE))
+                                    .custom(
+                                        ButtonCustomVariant::new(cx)
+                                            .color(cx.theme().foreground)
+                                            .foreground(cx.theme().background)
+                                            .hover(style::white(0.9, cx))
+                                            .active(style::white(0.8, cx)),
+                                    )
+                                    .rounded(px(999.))
+                                    .icon(icons::icon(icons::SHUFFLE).xsmall())
                                     .label(t("shuffle"))
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         let id = id.clone();
@@ -439,10 +476,14 @@ impl Render for DiscoverArtist {
             .size_full()
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
-            .p_6()
             .child(
                 v_flex()
                     .w_full()
+                    .max_w(page_width())
+                    .mx_auto()
+                    .px_10()
+                    .pt_6()
+                    .pb_10()
                     .gap_8()
                     .child(PageHeader::new(self.name.clone()).back(Route::Discover))
                     .when(self.loading, |page| page.child(spinner_row()))

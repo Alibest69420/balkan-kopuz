@@ -5,7 +5,7 @@ use api::{
     CatalogItemKind, PlaylistCapability, SourceCapabilities, Table, TrackInfo,
 };
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Selectable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
@@ -13,9 +13,10 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled, Subscription, Window, div, px,
 };
 use store::{DownloadsModel, Navigator, PlayerModel, Query, Route, SourcesModel, actions};
-use widgets::format::{t, t_with, total_duration};
+use widgets::format::{t, t_with};
 use widgets::{
     Cover, EmptyState, Loading, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons,
+    style,
 };
 
 use crate::ops;
@@ -24,8 +25,14 @@ use crate::ops;
 
 // One virtualized row, so a disc's list can be sized to its contents inside the page's own scroll.
 const ROW_HEIGHT: Pixels = px(60.);
-const HERO_COVER: Pixels = px(200.);
-const REMOTE_COVER: Pixels = px(280.);
+// `w-64 h-64` on the showcase, `max-w-[300px]` on the catalog-styled page.
+const HERO_COVER: Pixels = px(256.);
+const REMOTE_COVER: Pixels = px(300.);
+// `w-14`/`w-16`/`w-12`/`w-11`, with the glyph sizes the Dioxus buttons set on them.
+const HERO_ACTION: Pixels = px(56.);
+const HERO_SECONDARY: Pixels = px(48.);
+const REMOTE_ACTION: Pixels = px(64.);
+const REMOTE_SECONDARY: Pixels = px(44.);
 
 /// One disc's rows; its list reports a play by the album-wide index its subscription carries.
 struct DiscGroup {
@@ -289,34 +296,73 @@ impl AlbumDetail {
             })
     }
 
-    fn play_button(&self, cx: &Context<Self>) -> impl IntoElement {
+    /// The circular chrome both heroes hang their actions on.
+    fn round_button(
+        id: &'static str,
+        icon: &'static str,
+        box_size: Pixels,
+        glyph: Pixels,
+        cx: &Context<Self>,
+    ) -> Button {
+        Button::new(id)
+            .ghost()
+            .icon(icons::icon(icon))
+            .with_size(glyph / 0.75)
+            .rounded(cx.theme().radius_full())
+            .w(box_size)
+            .h(box_size)
+            .flex_shrink_0()
+    }
+
+    /// `bg-indigo-500 text-black`, the one filled action on the page.
+    fn play_button(&self, box_size: Pixels, cx: &Context<Self>) -> impl IntoElement {
         let keys = self.keys();
+        Self::round_button("album-play", icons::PLAY, box_size, box_size * 0.36, cx)
+            .bg(cx.theme().primary)
+            .text_color(cx.theme().primary_foreground)
+            .tooltip(t("play"))
+            .disabled(keys.is_empty())
+            .on_click(move |_, _, cx| actions::play_all(keys.clone(), cx))
+    }
+
+    /// The shuffle toggle: accent-coloured while on, muted while off.
+    fn shuffle_button(
+        &self,
+        box_size: Pixels,
+        outlined: bool,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
         let shuffled = PlayerModel::global(cx).read(cx).shuffle();
-        h_flex()
-            .gap_2()
-            .child(
-                Button::new("album-play")
-                    .primary()
-                    .icon(icons::icon(icons::PLAY))
-                    .label(t("play"))
-                    .disabled(keys.is_empty())
-                    .on_click(move |_, _, cx| actions::play_all(keys.clone(), cx)),
-            )
-            .child(
-                Button::new("album-shuffle")
-                    .ghost()
-                    .icon(icons::icon(icons::SHUFFLE))
-                    .tooltip(t("shuffle"))
-                    .selected(shuffled)
-                    .on_click(move |_, _, cx| {
-                        PlayerModel::global(cx)
-                            .update(cx, |player, cx| player.set_shuffle(!shuffled, cx))
-                    }),
-            )
+        let foreground = cx.theme().foreground;
+        let hover = style::white(style::HOVER, cx);
+        Self::round_button(
+            "album-shuffle",
+            icons::SHUFFLE,
+            box_size,
+            box_size * 0.36,
+            cx,
+        )
+        .when(outlined, |button| {
+            button.border_1().border_color(if shuffled {
+                style::white(0.3, cx)
+            } else {
+                style::white(0.15, cx)
+            })
+        })
+        .map(|button| match shuffled {
+            true => button.text_color(cx.theme().primary).bg(hover),
+            false => button
+                .text_color(style::slate_400(cx))
+                .hover(move |button| button.text_color(foreground).bg(hover)),
+        })
+        .tooltip(t("shuffle"))
+        .on_click(move |_, _, cx| {
+            PlayerModel::global(cx).update(cx, |player, cx| player.set_shuffle(!shuffled, cx))
+        })
     }
 
     /// Download the whole album, or give its offline copies back; disabled while a download runs.
-    fn download_all_button(&self, cx: &Context<Self>) -> Option<AnyElement> {
+    fn download_all_button(&self, box_size: Pixels, cx: &Context<Self>) -> Option<AnyElement> {
         if !self.capabilities.downloads {
             return None;
         }
@@ -333,55 +379,91 @@ impl AlbumDetail {
         } else {
             "Download all"
         };
+        let foreground = cx.theme().foreground;
+        let border = style::white(0.2, cx);
+        let border_hover = style::white(0.4, cx);
         Some(
-            Button::new("album-download-all")
-                .ghost()
-                .icon(icons::icon(if stored {
+            Self::round_button(
+                "album-download-all",
+                if stored {
                     icons::TRASH
                 } else {
                     icons::DOWNLOAD
-                }))
-                .label(label)
-                .disabled(busy)
-                .on_click(move |_, _, cx| {
-                    let keys = keys.clone();
-                    DownloadsModel::global(cx).update(cx, |downloads, cx| {
-                        if stored {
-                            for key in keys {
-                                downloads.remove(key, cx);
-                            }
-                        } else {
-                            downloads.download(keys, cx);
+                },
+                box_size,
+                box_size * 0.33,
+                cx,
+            )
+            .border_1()
+            .border_color(border)
+            .text_color(style::white(0.7, cx))
+            .hover({
+                let hover = style::white(style::HOVER, cx);
+                move |button| {
+                    button
+                        .border_color(border_hover)
+                        .text_color(foreground)
+                        .bg(hover)
+                }
+            })
+            .tooltip(label)
+            .disabled(busy)
+            .on_click(move |_, _, cx| {
+                let keys = keys.clone();
+                DownloadsModel::global(cx).update(cx, |downloads, cx| {
+                    if stored {
+                        for key in keys {
+                            downloads.remove(key, cx);
                         }
-                    })
+                    } else {
+                        downloads.download(keys, cx);
+                    }
                 })
-                .into_any_element(),
+            })
+            .into_any_element(),
         )
     }
 
-    fn cover(&self, album: &AlbumInfo, size: Pixels, cx: &Context<Self>) -> impl IntoElement {
+    fn cover(
+        &self,
+        album: &AlbumInfo,
+        size: Pixels,
+        radius: Pixels,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
         let editable = self.capabilities.edit_tags;
         let id = album.id.clone();
         let remove_id = album.id.clone();
+        let scrim = style::black(0.5, cx);
         div()
             .relative()
             .flex_shrink_0()
+            .group("album-cover")
             .child(
-                div()
-                    .id("album-cover")
-                    .when(editable, |cover| {
-                        cover.cursor_pointer().on_click(move |_, _, cx| {
-                            ops::pick_album_cover(id.clone(), cx);
-                        })
-                    })
-                    .child(
-                        Cover::new(album.artwork.as_ref())
-                            .size(size)
-                            .hq(true)
-                            .rounded(cx.theme().radius)
-                            .placeholder(icons::DISC),
-                    ),
+                Cover::new(album.artwork.as_ref())
+                    .size(size)
+                    .hq(true)
+                    .rounded(radius)
+                    .placeholder(icons::DISC),
             )
+            .when(editable, |block| {
+                block.child(
+                    div()
+                        .id("album-cover")
+                        .absolute()
+                        .inset_0()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(radius)
+                        .bg(scrim)
+                        .invisible()
+                        .group_hover("album-cover", |overlay| overlay.visible())
+                        .cursor_pointer()
+                        .on_click(move |_, _, cx| ops::pick_album_cover(id.clone(), cx))
+                        .child(icons::icon(icons::EDIT).size(px(30.))),
+                )
+            })
             .when(editable && album.artwork.is_some(), |block| {
                 block.child(
                     div().absolute().bottom_1().right_1().child(
@@ -397,17 +479,22 @@ impl AlbumDetail {
             })
     }
 
+    /// `text-sm font-bold text-white/60 hover:text-white hover:underline`.
     fn artist_link(&self, artist: &str, id: &'static str, cx: &Context<Self>) -> impl IntoElement {
         let name = SharedString::from(artist.to_string());
         let route = Route::Artist {
             name: name.clone(),
             channel: None,
         };
+        let foreground = cx.theme().foreground;
         div()
             .id(id)
             .truncate()
-            .text_color(cx.theme().muted_foreground)
-            .hover(|link| link.text_color(cx.theme().foreground))
+            .max_w_full()
+            .text_sm()
+            .font_weight(gpui_kit::FontWeight::BOLD)
+            .text_color(style::white(style::TEXT_SECONDARY, cx))
+            .hover(move |link| link.text_color(foreground).underline())
             .cursor_pointer()
             .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
             .child(name)
@@ -415,10 +502,17 @@ impl AlbumDetail {
 
     fn tracks_body(&self, cx: &Context<Self>) -> AnyElement {
         if self.rows.is_empty() {
-            return EmptyState::new(t("no_tracks_found"))
-                .icon(icons::MUSIC)
+            return v_flex()
+                .w_full()
+                .py_12()
+                .items_center()
+                .justify_center()
+                .text_color(style::slate_500(cx))
+                .child(icons::icon(icons::MUSIC).size(px(36.)).into_any_element())
+                .child(div().mt_4().text_lg().child(t("no_tracks_found")))
                 .into_any_element();
         }
+        let hover = style::white(style::RAISED, cx);
         div()
             .id("album-tracks")
             .flex_1()
@@ -430,11 +524,16 @@ impl AlbumDetail {
                     .w_full()
                     .when_some(group.disc, |column, disc| {
                         column.child(
-                            div()
-                                .px_2()
-                                .py_1()
-                                .text_sm()
+                            h_flex()
+                                .id(("album-disc", disc as usize))
+                                .w_full()
+                                .gap_3()
+                                .items_center()
+                                .p_2()
+                                .rounded(style::radius_lg())
+                                .hover(move |heading| heading.bg(hover))
                                 .text_color(cx.theme().muted_foreground)
+                                .child(icons::icon(icons::DISC))
                                 // TODO(i18n): en.ftl has no disc-heading key.
                                 .child(format!("Disc {disc}")),
                         )
@@ -456,126 +555,187 @@ impl AlbumDetail {
         let keys = self.selected_keys(cx);
         let playlists = self.capabilities.playlists != PlaylistCapability::None;
         let deletable = self.capabilities.delete_from_disk;
+        let ink = cx.theme().primary_foreground;
+        let rule = style::black(0.2, cx);
+        let divider = move || div().w(px(1.)).h_5().flex_shrink_0().bg(rule);
+        let entry = move |id: &'static str, icon: &'static str, label: SharedString| {
+            Button::new(id)
+                .text()
+                .icon(icons::icon(icon))
+                .label(label)
+                .text_color(ink)
+                .font_weight(gpui_kit::FontWeight::MEDIUM)
+        };
         Some(
-            h_flex()
-                .w_full()
-                .gap_2()
-                .mt_2()
-                .p_2()
-                .rounded(cx.theme().radius)
-                .bg(cx.theme().secondary)
-                .child(div().flex_1().text_sm().child(t_with(
-                    "showcase_song_count",
-                    &[("count", keys.len().to_string())],
-                )))
+            div()
+                .absolute()
+                .bottom_24()
+                .left_0()
+                .right_0()
+                .flex()
+                .justify_center()
                 .child(
-                    Button::new("album-selection-queue")
-                        .ghost()
-                        .icon(icons::icon(icons::QUEUE_ADD))
-                        .label(t("add_to_queue"))
-                        .on_click({
-                            let keys = keys.clone();
-                            move |_, _, cx| actions::append(keys.clone(), cx)
-                        }),
-                )
-                .when(playlists, |bar| {
-                    bar.child(
-                        Button::new("album-selection-playlist")
-                            .ghost()
-                            .icon(icons::icon(icons::PLUS))
-                            .label(t("add_to_playlist"))
-                            .on_click({
-                                let keys = keys.clone();
-                                move |_, window, cx| {
-                                    widgets::playlist_picker::open(keys.clone(), window, cx)
-                                }
-                            }),
-                    )
-                })
-                .when(deletable, |bar| {
-                    bar.child(
-                        Button::new("album-selection-delete")
-                            .ghost()
-                            .icon(icons::icon(icons::TRASH))
-                            .label(t("delete"))
-                            .on_click({
-                                let keys = keys.clone();
-                                move |_, _, cx| ops::delete_tracks(keys.clone(), cx)
-                            }),
-                    )
-                })
-                .child(
-                    Button::new("album-selection-cancel")
-                        .ghost()
-                        .icon(icons::icon(icons::CLOSE))
-                        .label(t("cancel"))
-                        .on_click(cx.listener(|this, _, _, cx| this.clear_selection(cx))),
+                    h_flex()
+                        .gap_4()
+                        .items_center()
+                        .px_6()
+                        .py_2p5()
+                        .rounded(cx.theme().radius_full())
+                        .bg(cx.theme().primary)
+                        .text_color(ink)
+                        .shadow_2xl()
+                        .child(
+                            div()
+                                .pl_2()
+                                .text_lg()
+                                .font_weight(gpui_kit::FontWeight::BOLD)
+                                .child(t_with(
+                                    "showcase_song_count",
+                                    &[("count", keys.len().to_string())],
+                                )),
+                        )
+                        .child(divider())
+                        .child(
+                            h_flex()
+                                .gap_4()
+                                .items_center()
+                                .child(
+                                    entry(
+                                        "album-selection-queue",
+                                        icons::QUEUE_ADD,
+                                        t("add_to_queue"),
+                                    )
+                                    .on_click({
+                                        let keys = keys.clone();
+                                        move |_, _, cx| actions::append(keys.clone(), cx)
+                                    }),
+                                )
+                                .when(playlists, |bar| {
+                                    bar.child(
+                                        entry(
+                                            "album-selection-playlist",
+                                            icons::PLUS,
+                                            t("add_to_playlist"),
+                                        )
+                                        .on_click({
+                                            let keys = keys.clone();
+                                            move |_, window, cx| {
+                                                widgets::playlist_picker::open(
+                                                    keys.clone(),
+                                                    window,
+                                                    cx,
+                                                )
+                                            }
+                                        }),
+                                    )
+                                })
+                                .when(deletable, |bar| {
+                                    bar.child(
+                                        entry("album-selection-delete", icons::TRASH, t("delete"))
+                                            .on_click({
+                                                let keys = keys.clone();
+                                                move |_, _, cx| ops::delete_tracks(keys.clone(), cx)
+                                            }),
+                                    )
+                                }),
+                        )
+                        .child(divider())
+                        .child(
+                            Button::new("album-selection-cancel")
+                                .text()
+                                .icon(icons::icon(icons::CLOSE))
+                                .tooltip(t("cancel"))
+                                .text_color(ink)
+                                .pr_2()
+                                .text_lg()
+                                .on_click(cx.listener(|this, _, _, cx| this.clear_selection(cx))),
+                        ),
                 )
                 .into_any_element(),
         )
     }
 
     fn standard_detail(&self, album: AlbumInfo, cx: &Context<Self>) -> AnyElement {
-        let meta = {
-            let count = t_with(
-                "showcase_song_count",
-                &[("count", self.rows.len().to_string())],
-            );
-            match album.year > 0 {
-                true => format!(
-                    "{} • {} • {}",
-                    album.year,
-                    count,
-                    total_duration(self.total_ms())
-                ),
-                false => format!("{} • {}", count, total_duration(self.total_ms())),
-            }
-        };
+        let count = t_with(
+            "showcase_song_count",
+            &[("count", self.rows.len().to_string())],
+        );
+        let dot = || div().child("•");
         v_flex()
             .size_full()
-            .p_4()
-            .child(h_flex().gap_2().items_center().child(self.back_button()))
+            .relative()
+            .p_8()
+            .overflow_hidden()
             .child(
                 h_flex()
-                    .gap_4()
+                    .flex_shrink_0()
+                    .mb_8()
+                    .items_center()
+                    .child(self.back_button()),
+            )
+            .child(
+                h_flex()
+                    .flex_shrink_0()
+                    .gap_8()
                     .items_end()
-                    .py_4()
-                    .child(self.cover(&album, HERO_COVER, cx))
+                    .mb_12()
+                    .child(self.cover(&album, HERO_COVER, cx.theme().radius * 3., cx))
                     .child(
                         v_flex()
                             .flex_1()
                             .min_w_0()
-                            .gap_2()
+                            .child(div().mb_2().child(self.artist_link(
+                                &album.artist,
+                                "album-artist",
+                                cx,
+                            )))
                             .child(
                                 div()
-                                    .truncate()
-                                    .text_2xl()
+                                    .mb_6()
+                                    .line_clamp(3)
+                                    .text_size(gpui_kit::rems(4.5))
                                     .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                                     .child(SharedString::from(album.title.clone())),
                             )
-                            .child(self.artist_link(&album.artist, "album-artist", cx))
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(meta),
-                            )
                             .child(
                                 h_flex()
-                                    .gap_2()
-                                    .flex_wrap()
-                                    .child(self.play_button(cx))
-                                    .child(
-                                        Button::new("album-select-all")
-                                            .ghost()
-                                            .icon(icons::icon(icons::CHECK))
-                                            .label(t("select_all"))
-                                            .on_click(
-                                                cx.listener(|this, _, _, cx| this.select_all(cx)),
-                                            ),
-                                    )
-                                    .children(self.download_all_button(cx)),
+                                    .gap_6()
+                                    .items_center()
+                                    .text_color(style::slate_400(cx))
+                                    .child(div().child(count))
+                                    .child(dot())
+                                    .child(div().child(format!(
+                                        "{} {}",
+                                        self.total_ms() / 60_000,
+                                        t("min")
+                                    )))
+                                    .when(album.year > 0, |line| {
+                                        line.child(dot()).child(div().child(album.year.to_string()))
+                                    }),
                             ),
+                    )
+                    .child(
+                        h_flex()
+                            .flex_shrink_0()
+                            .gap_4()
+                            .items_center()
+                            .child(self.shuffle_button(HERO_ACTION, false, cx))
+                            .child(self.play_button(HERO_ACTION, cx))
+                            .child(
+                                Self::round_button(
+                                    "album-select-all",
+                                    icons::CHECK,
+                                    HERO_SECONDARY,
+                                    HERO_SECONDARY * 0.33,
+                                    cx,
+                                )
+                                .border_1()
+                                .border_color(style::white(0.2, cx))
+                                .text_color(style::white(0.7, cx))
+                                .tooltip(t("select_all"))
+                                .on_click(cx.listener(|this, _, _, cx| this.select_all(cx))),
+                            )
+                            .children(self.download_all_button(HERO_SECONDARY, cx)),
                     ),
             )
             .child(self.tracks_body(cx))
@@ -589,15 +749,10 @@ impl AlbumDetail {
             "showcase_song_count",
             &[("count", self.rows.len().to_string())],
         );
-        let mut meta = Vec::new();
-        if view.year.is_some() {
-            meta.push(t("album").to_string());
-        }
-        meta.push(count.to_string());
-        meta.push(format!("{minutes} {}", t("min")));
-        if let Some(year) = &view.year {
-            meta.push(year.to_string());
-        }
+        let dot = {
+            let faint = style::white(0.3, cx);
+            move || div().text_color(faint).child("•")
+        };
         let cover = AlbumInfo {
             id: view.id.clone(),
             title: view.title.to_string(),
@@ -612,25 +767,51 @@ impl AlbumDetail {
         let browse_id = view.browse_id.clone();
         let first_key = self.rows.first().map(|row| row.key.clone());
 
+        let outlined = |button: Button, cx: &Context<Self>| {
+            let foreground = cx.theme().foreground;
+            let border_hover = style::white(0.3, cx);
+            button
+                .border_1()
+                .border_color(style::white(0.15, cx))
+                .text_color(style::slate_400(cx))
+                .hover(move |button| button.border_color(border_hover).text_color(foreground))
+        };
+
         v_flex()
             .size_full()
-            .p_4()
-            .child(h_flex().gap_2().items_center().child(self.back_button()))
+            .relative()
+            .p_8()
+            .overflow_hidden()
+            .child(
+                h_flex()
+                    .flex_shrink_0()
+                    .mb_8()
+                    .items_center()
+                    .child(self.back_button()),
+            )
             .child(
                 h_flex()
                     .size_full()
                     .min_h_0()
-                    .gap_6()
-                    .pt_4()
+                    .gap_10()
+                    .items_start()
                     .child(
                         v_flex()
                             .w(px(320.))
                             .flex_shrink_0()
-                            .gap_4()
-                            .child(self.cover(&cover, REMOTE_COVER, cx))
+                            .items_start()
+                            .gap_5()
+                            .pt_2()
+                            .child(div().shadow_2xl().child(self.cover(
+                                &cover,
+                                REMOTE_COVER,
+                                cx.theme().radius * 2.,
+                                cx,
+                            )))
                             .child(
                                 v_flex()
-                                    .gap_1()
+                                    .w_full()
+                                    .gap_2()
                                     .child(self.artist_link(
                                         &view.artist,
                                         "album-remote-artist",
@@ -638,50 +819,95 @@ impl AlbumDetail {
                                     ))
                                     .child(
                                         div()
-                                            .text_2xl()
+                                            .text_3xl()
                                             .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                                             .child(view.title.clone()),
                                     )
                                     .child(
-                                        div()
+                                        h_flex()
+                                            .flex_wrap()
+                                            .items_center()
+                                            .gap_x_2()
                                             .text_sm()
-                                            .text_color(cx.theme().muted_foreground)
-                                            .child(meta.join(" • ")),
+                                            .text_color(style::slate_400(cx))
+                                            .when_some(view.year.clone(), |line, _| {
+                                                line.child(
+                                                    div()
+                                                        .text_xs()
+                                                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                                                        .text_color(style::white(0.4, cx))
+                                                        .child(t("album")),
+                                                )
+                                                .child(dot())
+                                            })
+                                            .child(div().child(count))
+                                            .child(dot())
+                                            .child(div().child(format!("{minutes} {}", t("min"))))
+                                            .when_some(view.year.clone(), |line, year| {
+                                                line.child(dot()).child(div().child(year))
+                                            }),
                                     ),
                             )
                             .child(
                                 h_flex()
-                                    .gap_2()
+                                    .mt_1()
+                                    .gap_3()
+                                    .items_center()
                                     .flex_wrap()
-                                    .children(self.download_all_button(cx))
+                                    .children(self.download_all_button(REMOTE_SECONDARY, cx))
                                     .child(
-                                        Button::new("album-remote-artist-button")
-                                            .ghost()
-                                            .icon(icons::icon(icons::MIC))
-                                            // TODO(i18n): en.ftl has no go-to-artist key.
-                                            .tooltip("Go to artist")
-                                            .on_click(move |_, _, cx| {
+                                        outlined(
+                                            Self::round_button(
+                                                "album-remote-artist-button",
+                                                icons::MIC,
+                                                REMOTE_SECONDARY,
+                                                REMOTE_SECONDARY * 0.36,
+                                                cx,
+                                            ),
+                                            cx,
+                                        )
+                                        // TODO(i18n): en.ftl has no go-to-artist key.
+                                        .tooltip("Go to artist")
+                                        .on_click(
+                                            move |_, _, cx| {
                                                 Navigator::navigate(artist_route.clone(), cx)
-                                            }),
+                                            },
+                                        ),
                                     )
-                                    .child(self.play_button(cx))
+                                    .child(self.play_button(REMOTE_ACTION, cx))
+                                    .child(self.shuffle_button(REMOTE_SECONDARY, true, cx))
                                     .child(
-                                        Button::new("album-remote-share")
-                                            .ghost()
-                                            .icon(icons::icon(icons::SHARE))
-                                            // TODO(i18n): en.ftl has no generic share key.
-                                            .tooltip("Share")
-                                            .on_click(move |_, _, cx| {
+                                        outlined(
+                                            Self::round_button(
+                                                "album-remote-share",
+                                                icons::SHARE,
+                                                REMOTE_SECONDARY,
+                                                REMOTE_SECONDARY * 0.36,
+                                                cx,
+                                            ),
+                                            cx,
+                                        )
+                                        // TODO(i18n): en.ftl has no generic share key.
+                                        .tooltip("Share")
+                                        .on_click(
+                                            move |_, _, cx| {
                                                 ops::share_album(
                                                     browse_id.clone(),
                                                     first_key.clone(),
                                                     cx,
                                                 )
-                                            }),
+                                            },
+                                        ),
                                     ),
                             ),
                     )
-                    .child(v_flex().flex_1().min_w_0().child(self.tracks_body(cx))),
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .pb_24()
+                            .child(self.tracks_body(cx)),
+                    ),
             )
             .into_any_element()
     }

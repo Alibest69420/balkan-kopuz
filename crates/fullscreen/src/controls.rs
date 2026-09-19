@@ -3,7 +3,6 @@
 use api::LoopMode;
 use gpui_kit::base::slider::SliderState;
 use gpui_kit::base::{Slider as BareSlider, SliderIndicator, SliderTrack};
-use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -12,7 +11,7 @@ use gpui_kit::{
 };
 use store::PlayerModel;
 use widgets::format::{duration, t};
-use widgets::icons;
+use widgets::{icons, style};
 
 /// A slider over the 0..1 fraction of a track, since a `SliderState`'s range is fixed at build time.
 pub(crate) fn fraction_state(step: f32) -> SliderState {
@@ -47,8 +46,9 @@ pub(crate) fn next_button(id: &'static str) -> Button {
 
 pub(crate) fn play_button(id: &'static str, playing: bool) -> Button {
     let icon = if playing { icons::PAUSE } else { icons::PLAY };
+    // Kopuz's play button is a bare round glyph on both surfaces, not a filled accent pill.
     Button::new(id)
-        .primary()
+        .ghost()
         .rounded(px(999.))
         .icon(icons::icon(icon))
         .when(!playing, |button| button.tooltip(t("play")))
@@ -58,6 +58,7 @@ pub(crate) fn play_button(id: &'static str, playing: bool) -> Button {
 pub(crate) fn shuffle_button(shuffle: bool) -> Button {
     Button::new("fs-shuffle")
         .ghost()
+        .rounded(px(999.))
         .icon(icons::icon(icons::SHUFFLE))
         .toggled(shuffle)
         .tooltip(if shuffle {
@@ -77,6 +78,7 @@ pub(crate) fn repeat_button(mode: LoopMode) -> Button {
     };
     Button::new("fs-repeat")
         .ghost()
+        .rounded(px(999.))
         .icon(icons::icon(icon))
         .toggled(mode != LoopMode::None)
         .tooltip(match mode {
@@ -112,7 +114,7 @@ pub(crate) fn thin_slider(
                         .relative()
                         .w_full()
                         .h_full()
-                        .bg(cx.theme().secondary)
+                        .bg(style::white(style::HOVER, cx))
                         .child(
                             div()
                                 .absolute()
@@ -120,7 +122,7 @@ pub(crate) fn thin_slider(
                                 .left_0()
                                 .h_full()
                                 .w(relative(filled))
-                                .bg(cx.theme().primary),
+                                .bg(style::white(style::TEXT_STRONG, cx)),
                         ),
                 ),
         )

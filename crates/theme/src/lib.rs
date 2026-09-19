@@ -95,8 +95,20 @@ impl Colors {
     }
 }
 
+struct Active(Colors);
+
+impl gpui_kit::Global for Active {}
+
+/// The palette now showing, for the tokens the component theme has no role for.
+pub fn colors(cx: &App) -> Colors {
+    cx.try_global::<Active>()
+        .map(|active| active.0.clone())
+        .unwrap_or_else(|| palette("default").expect("default theme").into())
+}
+
 /// Make these colors the active theme, including the scrollbars the Base layer paints.
 pub fn apply(name: &str, colors: &Colors, window: Option<&mut Window>, cx: &mut App) {
+    cx.set_global(Active(colors.clone()));
     let mode = if colors.dark {
         ThemeMode::Dark
     } else {
@@ -144,6 +156,13 @@ pub fn apply_config(config: &AppConfig, window: Option<&mut Window>, cx: &mut Ap
     apply_named("default", window, cx);
 }
 
+/// `#rrggbb` at `a`, which the component theme parses as 8-digit hex.
+fn alpha(color: &str, a: f32) -> String {
+    let hex = color.trim_start_matches('#');
+    let hex = if hex.len() >= 6 { &hex[..6] } else { "000000" };
+    format!("#{hex}{:02x}", (a.clamp(0., 1.) * 255.) as u8)
+}
+
 /// A theme is dark when its background is; the editor never asks which it is.
 fn is_dark(background: &str) -> bool {
     let hex = background.trim_start_matches('#');
@@ -163,18 +182,23 @@ fn config_value(name: &str, colors: &Colors, mode: ThemeMode) -> serde_json::Val
             serde_json::Value::String(value.to_string()),
         );
     };
+    // Kopuz's surfaces are its text color at low alpha (Tailwind `bg-white/N`),
+    // so the component library's own widgets are given the same.
+    let raised = alpha(&colors.text, 0.05);
+    let hover = alpha(&colors.text, 0.10);
+    let active = alpha(&colors.text, 0.20);
     set("background", &colors.bg);
     set("foreground", &colors.text);
-    set("border", &colors.surface);
-    set("muted.background", &colors.raised);
+    set("border", &hover);
+    set("muted.background", &raised);
     set("muted.foreground", &colors.text_muted);
-    set("secondary.background", &colors.raised);
+    set("secondary.background", &raised);
     set("secondary.foreground", &colors.text);
-    set("secondary.hover.background", &colors.surface);
-    set("secondary.active.background", &colors.surface);
+    set("secondary.hover.background", &hover);
+    set("secondary.active.background", &active);
     set("popover.background", &colors.raised);
     set("popover.foreground", &colors.text);
-    set("accent.background", &colors.surface);
+    set("accent.background", &hover);
     set("accent.foreground", &colors.text);
     set("primary.background", &colors.accent);
     set("primary.foreground", &colors.bg);
@@ -192,10 +216,10 @@ fn config_value(name: &str, colors: &Colors, mode: ThemeMode) -> serde_json::Val
     set("selection.background", &colors.accent_deep);
     set("danger.background", &colors.danger);
     set("danger.foreground", &colors.text);
-    set("sidebar.background", &colors.raised);
+    set("sidebar.background", &alpha(&colors.bg, 0.40));
     set("sidebar.foreground", &colors.text);
-    set("sidebar.border", &colors.surface);
-    set("sidebar.accent.background", &colors.surface);
+    set("sidebar.border", &alpha(&colors.text, 0.05));
+    set("sidebar.accent.background", &hover);
     set("sidebar.accent.foreground", &colors.text);
     set("sidebar.primary.background", &colors.accent);
     set("sidebar.primary.foreground", &colors.bg);
@@ -204,13 +228,13 @@ fn config_value(name: &str, colors: &Colors, mode: ThemeMode) -> serde_json::Val
     set("status_bar.background", &colors.raised);
     set("status_bar.border", &colors.surface);
     set("list.background", &colors.bg);
-    set("list.hover.background", &colors.raised);
-    set("list.active.background", &colors.surface);
+    set("list.hover.background", &hover);
+    set("list.active.background", &active);
     set("list.active.border", &colors.accent);
     set("table.background", &colors.bg);
-    set("table.hover.background", &colors.raised);
-    set("table.active.background", &colors.surface);
-    set("input.border", &colors.surface);
+    set("table.hover.background", &hover);
+    set("table.active.background", &active);
+    set("input.border", &hover);
     set("tab.background", &colors.raised);
     set("tab.foreground", &colors.text_muted);
     set("tab.active.background", &colors.surface);
@@ -219,15 +243,15 @@ fn config_value(name: &str, colors: &Colors, mode: ThemeMode) -> serde_json::Val
     set("scrollbar.background", &colors.bg);
     set("scrollbar.thumb.background", &colors.surface);
     set("scrollbar.thumb.hover.background", &colors.text_muted);
-    set("skeleton.background", &colors.surface);
+    set("skeleton.background", &raised);
     set("drag.border", &colors.accent);
     set("drop_target.background", &colors.accent_deep);
     set("caret", &colors.accent);
     set("overlay", &colors.accent_deep);
-    set("button.background", &colors.raised);
+    set("button.background", &raised);
     set("button.foreground", &colors.text);
-    set("button.hover.background", &colors.surface);
-    set("button.active.background", &colors.surface);
+    set("button.hover.background", &hover);
+    set("button.active.background", &active);
     set("button.primary.background", &colors.accent);
     set("button.primary.foreground", &colors.bg);
     set("button.primary.hover.background", &colors.accent_soft);

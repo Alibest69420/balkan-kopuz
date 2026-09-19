@@ -3,17 +3,25 @@
 use api::{ArtworkRef, PlaylistCapability, PlaylistFolderInfo, PlaylistInfo};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, RenderOnce,
-    SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, px,
+    AnyElement, App, Div, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
+    Pixels, RenderOnce, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
+    px,
 };
 use store::{Navigator, Route, SourcesModel, actions};
 use widgets::format::{t, t_with};
-use widgets::{Cover, icons};
+use widgets::{Cover, icons, style};
 
-const COVER: Pixels = px(160.);
+/// The card, and the `w-full h-32` picture inside its `p-4`.
+const CARD: Pixels = px(160.);
+const COVER: Pixels = px(128.);
+
+/// The `gap-6` wrap every playlist grid lays its cards out in.
+pub(crate) fn card_grid() -> Div {
+    div().flex().flex_wrap().gap_6()
+}
 
 /// A cover card with a title, a subtitle, a menu beside the title and an optional button over the cover.
 #[derive(IntoElement)]
@@ -82,11 +90,15 @@ impl RenderOnce for Card {
         v_flex()
             .id(SharedString::from(format!("card-{}", self.id)))
             .group(group.clone())
-            .w(COVER)
-            .gap_2()
-            .p_2()
-            .rounded(cx.theme().radius)
-            .hover(|card| card.bg(cx.theme().list_hover))
+            .w(CARD)
+            .gap_4()
+            .p_4()
+            .rounded(style::radius_xl())
+            .bg(style::white(style::RAISED, cx))
+            .border_1()
+            .border_color(style::white(style::BORDER_SOFT, cx))
+            .cursor_pointer()
+            .hover(|card| card.bg(style::white(style::HOVER, cx)))
             .child(
                 // The corner button is a sibling of the clickable cover, so pressing it is not a navigation.
                 div()
@@ -98,7 +110,7 @@ impl RenderOnce for Card {
                             .child(
                                 Cover::new(self.artwork.as_ref())
                                     .size(COVER)
-                                    .rounded(cx.theme().radius)
+                                    .rounded(px(12.))
                                     .placeholder(self.placeholder),
                             ),
                     )
@@ -106,34 +118,47 @@ impl RenderOnce for Card {
                         cover.child(
                             div()
                                 .absolute()
-                                .top_1()
-                                .right_1()
-                                .opacity(0.)
-                                .group_hover(group, |style| style.opacity(1.))
+                                .top_0()
+                                .right_0()
+                                .invisible()
+                                .group_hover(group.clone(), |corner| corner.visible())
                                 .child(corner),
                         )
                     }),
             )
             .child(
                 h_flex()
-                    .gap_1()
+                    .gap_2()
                     .items_start()
                     .child(
                         v_flex()
                             .id(SharedString::from(format!("title-{}", self.id)))
                             .flex_1()
                             .min_w_0()
+                            .gap_1()
                             .on_click(move |_, _, cx| Navigator::navigate(title_route.clone(), cx))
-                            .child(div().truncate().text_sm().child(self.title))
                             .child(
                                 div()
                                     .truncate()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
+                                    .text_xl()
+                                    .font_weight(FontWeight::BOLD)
+                                    .child(self.title),
+                            )
+                            .child(
+                                div()
+                                    .truncate()
+                                    .text_sm()
+                                    .text_color(style::slate_400(cx))
                                     .child(self.subtitle),
                             ),
                     )
-                    .children(self.menu),
+                    .children(self.menu.map(|menu| {
+                        div()
+                            .flex_shrink_0()
+                            .invisible()
+                            .group_hover(group, |menu| menu.visible())
+                            .child(menu)
+                    })),
             )
     }
 }

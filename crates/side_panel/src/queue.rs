@@ -5,19 +5,34 @@ use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AppContext as _, Context, Div, InteractiveElement as _, IntoElement,
+    AnyElement, App, AppContext as _, Context, Div, InteractiveElement as _, IntoElement,
     ParentElement as _, Pixels, Render, ScrollStrategy, SharedString, Stateful,
     StatefulInteractiveElement as _, Styled, Subscription, UniformListScrollHandle, Window, div,
     px, uniform_list,
 };
 use store::{ConfigModel, PlayerModel, QueueModel};
 use widgets::format::{duration, t};
-use widgets::{Cover, EmptyState, TrackDrag, icons};
+use widgets::{Cover, EmptyState, TrackDrag, icons, style};
 
 // Virtualized rows need one resolved height; this is the Dioxus rightbar's.
 const ROW_HEIGHT: Pixels = px(60.);
 // Above this point in a row a drop lands before it, below it after.
 const DROP_SPLIT: Pixels = px(23.);
+// The row's `w-4` lead column, its 40px `rounded-md` thumb and the `text-xs` mark in the lead.
+const LEAD_WIDTH: Pixels = px(16.);
+const ROW_COVER: Pixels = px(40.);
+const ROW_COVER_RADIUS: Pixels = px(6.);
+const LEAD_GLYPH: Pixels = px(12.);
+// `text-[9px]` chevrons in a `p-0.5` box: the reorder pair that fades in on hover.
+const REORDER_BUTTON: Pixels = px(14.);
+const REORDER_GLYPH: Pixels = px(9.);
+// `text-white/65`: the artist line under a queued title.
+const ROW_SUBTITLE: f32 = 0.65;
+// The name the row's hover group answers to, so its reorder buttons can watch it.
+const ROW_GROUP: &str = "queue-row";
+// `absolute bottom-4 right-4 w-9 h-9` with a `w-5 h-5` glyph: the jump-back-to-current button.
+const JUMP_BUTTON: Pixels = px(36.);
+const JUMP_GLYPH: Pixels = px(20.);
 
 /// A queue row dragged over the list, to reorder it in place.
 #[derive(Clone)]
@@ -72,6 +87,16 @@ fn drop_zone(id: (&'static str, usize), at: u32, count: u32) -> Stateful<Div> {
         })
         .drag_over::<TrackDrag>(|style, _, _, cx| style.bg(cx.theme().drop_target))
         .drag_over::<QueueRowDrag>(|style, _, _, cx| style.bg(cx.theme().drop_target))
+}
+
+/// One chevron of the reorder pair: a `text-slate-500` glyph with barely a box around it.
+fn reorder_button(id: (&'static str, usize), glyph: &'static str, cx: &App) -> Button {
+    Button::new(id)
+        .ghost()
+        .with_size(REORDER_GLYPH * (4. / 3.))
+        .size(REORDER_BUTTON)
+        .icon(icons::icon(glyph))
+        .text_color(style::slate_500(cx))
 }
 
 /// The queue tab: rows in play order, the summary line, and auto-follow of what is playing.
@@ -136,16 +161,17 @@ impl QueuePanel {
 
         div()
             .id(("queue-row", index))
+            .group(ROW_GROUP)
             .relative()
             .h(ROW_HEIGHT)
             .w_full()
             .flex()
             .items_center()
-            .gap_2()
+            .gap_3()
             .px_2()
-            .rounded(cx.theme().radius)
-            .when(active, |row| row.bg(cx.theme().list_active))
-            .hover(|row| row.bg(cx.theme().list_hover))
+            .rounded(style::radius_lg())
+            .when(active, |row| row.bg(style::accent(style::PLAYING, cx)))
+            .hover(|row| row.bg(style::white(style::RAISED, cx)))
             .on_click(move |_, _, cx| {
                 QueueModel::global(cx).update(cx, |queue, cx| queue.jump(at, cx));
             })
@@ -161,52 +187,65 @@ impl QueuePanel {
             )
             .child(
                 div()
-                    .w(px(20.))
+                    .w(LEAD_WIDTH)
                     .flex_shrink_0()
+                    .flex()
+                    .justify_center()
+                    .items_end()
                     .text_xs()
                     .text_color(if active {
                         cx.theme().primary
                     } else {
-                        cx.theme().muted_foreground
+                        style::white(style::TEXT_SECONDARY, cx)
                     })
                     .map(|lead| {
                         if active {
-                            lead.child(icons::icon(icons::VOLUME).size(px(14.)))
+                            lead.child(icons::icon(icons::VOLUME).size(LEAD_GLYPH))
                         } else {
                             lead.child((index + 1).to_string())
                         }
                     }),
             )
             .when(covers, |row| {
-                row.child(Cover::new(artwork.as_ref()).size(px(40.)))
+                row.child(
+                    Cover::new(artwork.as_ref())
+                        .size(ROW_COVER)
+                        .rounded(ROW_COVER_RADIUS),
+                )
             })
             .child(
                 v_flex()
                     .flex_1()
                     .min_w_0()
+                    .justify_center()
+                    .gap_0p5()
                     .child(
                         div()
                             .truncate()
                             .text_sm()
-                            .when(active, |line| line.text_color(cx.theme().primary))
+                            .text_color(if active {
+                                cx.theme().primary
+                            } else {
+                                cx.theme().foreground
+                            })
                             .child(title),
                     )
                     .child(
                         div()
                             .truncate()
                             .text_xs()
-                            .text_color(cx.theme().muted_foreground)
+                            .text_color(style::white(ROW_SUBTITLE, cx))
                             .child(artist),
                     ),
             )
             .child(
                 v_flex()
                     .flex_shrink_0()
+                    .pr_1()
+                    .invisible()
+                    .group_hover(ROW_GROUP, |buttons| buttons.visible())
                     .child(
-                        Button::new(("queue-up", index))
-                            .ghost()
-                            .xsmall()
-                            .icon(icons::icon(icons::CHEVRON_UP))
+                        reorder_button(("queue-up", index), icons::CHEVRON_UP, cx)
                             .tooltip(t("move_up"))
                             .disabled(index == 0)
                             .on_click(move |_, _, cx| {
@@ -217,10 +256,7 @@ impl QueuePanel {
                             }),
                     )
                     .child(
-                        Button::new(("queue-down", index))
-                            .ghost()
-                            .xsmall()
-                            .icon(icons::icon(icons::CHEVRON_DOWN))
+                        reorder_button(("queue-down", index), icons::CHEVRON_DOWN, cx)
                             .tooltip(t("move_down"))
                             .disabled(at + 1 >= count)
                             .on_click(move |_, _, cx| {
@@ -262,10 +298,11 @@ impl QueuePanel {
             div()
                 .id("queue-summary")
                 .px_2()
-                .py_1()
-                .text_xs()
-                .text_color(cx.theme().muted_foreground)
-                .hover(|line| line.text_color(cx.theme().foreground))
+                .pt_1()
+                .pb_2()
+                .text_size(style::text_11())
+                .text_color(style::white(style::TEXT_SECONDARY, cx))
+                .hover(|line| line.text_color(style::white(0.85, cx)))
                 .tooltip(|window, cx| Tooltip::new(t("jump_to_current_song")).build(window, cx))
                 .on_click(cx.listener(|this, _, _, cx| this.rearm(cx)))
                 .child(label)
@@ -300,7 +337,7 @@ impl Render for QueuePanel {
                 .track_scroll(&self.scroll)
                 .flex_1()
                 .min_h_0()
-                .px_1()
+                .px_2()
                 .on_scroll_wheel(cx.listener(|this, _, _, cx| {
                     if this.auto_follow {
                         this.auto_follow = false;
@@ -311,11 +348,18 @@ impl Render for QueuePanel {
             )
             .when(!self.auto_follow, |panel| {
                 panel.child(
-                    div().absolute().bottom_2().right_2().child(
+                    div().absolute().bottom_4().right_4().child(
                         Button::new("queue-jump-to-current")
                             .ghost()
-                            .small()
+                            .with_size(JUMP_GLYPH * (4. / 3.))
+                            .size(JUMP_BUTTON)
+                            .rounded(JUMP_BUTTON / 2.)
                             .icon(icons::icon(icons::REFRESH))
+                            .bg(style::black(0.4, cx))
+                            .border_1()
+                            .border_color(style::white(style::BORDER, cx))
+                            .shadow_lg()
+                            .text_color(style::white(style::TEXT_STRONG, cx))
                             .tooltip(t("jump_to_current_song"))
                             .on_click(cx.listener(|this, _, _, cx| this.rearm(cx))),
                     ),

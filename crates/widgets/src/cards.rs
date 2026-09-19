@@ -9,6 +9,7 @@ use store::{Navigator, Route};
 
 use crate::cover::Cover;
 use crate::icons;
+use crate::style;
 
 /// A cover tile with a title and a subtitle: the shape of every grid in the app.
 #[derive(IntoElement)]
@@ -79,15 +80,21 @@ impl Tile {
 }
 
 impl RenderOnce for Tile {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let radius = if self.round { self.size / 2. } else { px(8.) };
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        // `rounded-xl` on a cover, `rounded-full` on an artist.
+        let radius = if self.round {
+            self.size / 2.
+        } else {
+            style::radius_xl().to_pixels(window.rem_size())
+        };
+        let round = self.round;
         v_flex()
             .id(SharedString::from(format!("tile-{}", self.id)))
-            .w(self.size)
-            .gap_2()
+            .flex_shrink_0()
+            .gap_3()
             .p_2()
-            .rounded(cx.theme().radius)
-            .hover(|tile| tile.bg(cx.theme().list_hover))
+            .rounded(style::radius_xl())
+            .hover(|tile| tile.bg(style::white(style::RAISED, cx)))
             .when_some(self.route, |tile, route| {
                 tile.on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
             })
@@ -103,22 +110,29 @@ impl RenderOnce for Tile {
                     .children(self.overlay),
             )
             .child(
-                div()
-                    .truncate()
-                    .text_sm()
-                    .when(self.round, |title| title.text_center())
-                    .child(self.title),
+                v_flex()
+                    .w(self.size)
+                    .gap_0p5()
+                    .child(
+                        div()
+                            .truncate()
+                            .text_sm()
+                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                            .text_color(cx.theme().foreground)
+                            .when(round, |title| title.text_center())
+                            .child(self.title),
+                    )
+                    .when_some(self.subtitle, |meta, subtitle| {
+                        meta.child(
+                            div()
+                                .truncate()
+                                .text_xs()
+                                .text_color(style::white(style::TEXT_SUBTLE, cx))
+                                .when(round, |line| line.text_center())
+                                .child(subtitle),
+                        )
+                    }),
             )
-            .when_some(self.subtitle, |tile, subtitle| {
-                tile.child(
-                    div()
-                        .truncate()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .when(self.round, |line| line.text_center())
-                        .child(subtitle),
-                )
-            })
     }
 }
 

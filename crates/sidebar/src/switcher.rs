@@ -13,13 +13,22 @@ use gpui_kit::{
 };
 use store::{Navigator, Route, SourcesModel};
 use widgets::format::{t, text};
-use widgets::icons;
+use widgets::{icons, style};
 
 const GLYPH: Pixels = px(16.);
 const DOT: Pixels = px(6.);
-const POPOVER_WIDTH: Pixels = px(232.);
+const CHEVRON: Pixels = px(10.);
+const CHECK: Pixels = px(11.);
+const ARROW: Pixels = px(9.);
+const POPOVER_WIDTH: Pixels = px(218.);
 const ROWS_HEIGHT: Pixels = px(320.);
 const RAIL_TILE: Pixels = px(40.);
+const HEAD_TOP: Pixels = px(10.);
+const SUBLINE_GAP: Pixels = px(2.);
+
+// The switcher's own dimmed tones, which are off the named alpha scale.
+const HEAD_COUNT: f32 = 0.38;
+const ROW_NAME: f32 = 0.85;
 
 const LOCAL_ICON: &str = "icons/hard-drive.svg";
 const LIBRARY_ICON: &str = "icons/folder-tree.svg";
@@ -80,7 +89,7 @@ impl RenderOnce for SourceSwitcher {
 
         div()
             .border_b_1()
-            .border_color(cx.theme().sidebar_border)
+            .border_color(style::white(style::BORDER_SOFT, cx))
             .map(|frame| {
                 if collapsed {
                     frame.flex().justify_center().py_3()
@@ -91,6 +100,12 @@ impl RenderOnce for SourceSwitcher {
             .child(
                 Popover::new("source-switcher")
                     .anchor(Anchor::TopLeft)
+                    .p_0()
+                    .w(POPOVER_WIDTH)
+                    .rounded(style::radius_lg())
+                    .border_1()
+                    .border_color(style::white(style::BORDER, cx))
+                    .overflow_hidden()
                     .trigger(SwitcherTrigger {
                         label,
                         mark,
@@ -102,12 +117,12 @@ impl RenderOnce for SourceSwitcher {
                     .content(move |_, _, cx| {
                         let state = cx.entity();
                         v_flex()
-                            .w(POPOVER_WIDTH)
+                            .w_full()
                             .child(header(count, cx))
                             .child(
                                 v_flex()
                                     .id("source-rows")
-                                    .py_1()
+                                    .p_1()
                                     .max_h(ROWS_HEIGHT)
                                     .overflow_y_scroll()
                                     .children(
@@ -126,14 +141,22 @@ impl RenderOnce for SourceSwitcher {
 fn header(count: usize, cx: &App) -> impl IntoElement {
     h_flex()
         .justify_between()
+        .pt(HEAD_TOP)
+        .px_3()
         .pb_2()
         .border_b_1()
-        .border_color(cx.theme().border)
-        .child(div().text_xs().font_semibold().child(t("sources")))
+        .border_color(style::white(style::BORDER, cx))
         .child(
             div()
                 .text_xs()
-                .text_color(cx.theme().muted_foreground)
+                .font_semibold()
+                .text_color(style::white(style::TEXT_SECONDARY, cx))
+                .child(t("sources")),
+        )
+        .child(
+            div()
+                .text_xs()
+                .text_color(style::white(HEAD_COUNT, cx))
                 .child(SharedString::from(count.to_string())),
         )
 }
@@ -146,27 +169,36 @@ fn row(source: &SourceInfo, state: &Entity<PopoverState>, cx: &App) -> AnyElemen
     h_flex()
         .id(SharedString::from(format!("source-{}", source.id)))
         .w_full()
-        .gap_2()
+        .gap_2p5()
         .p_2()
-        .rounded(cx.theme().radius)
-        .when(active, |row| row.bg(cx.theme().accent))
-        .hover(|row| row.bg(cx.theme().accent.opacity(0.6)))
+        .rounded(style::radius_lg())
+        .cursor_pointer()
+        .when(active, |row| row.bg(style::white(style::RAISED, cx)))
+        .hover(|row| row.bg(style::white(style::RAISED, cx)))
         .child(glyph(&mark_of(source), GLYPH, accent))
         .child(
             v_flex()
                 .flex_1()
                 .min_w_0()
+                .gap(SUBLINE_GAP)
                 .child(
                     div()
                         .truncate()
                         .text_sm()
+                        .map(|name| {
+                            if active {
+                                name.font_semibold().text_color(cx.theme().foreground)
+                            } else {
+                                name.font_medium().text_color(style::white(ROW_NAME, cx))
+                            }
+                        })
                         .child(SharedString::from(source.name.clone())),
                 )
                 .child(
                     div()
                         .truncate()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
+                        .text_size(style::text_11())
+                        .text_color(style::white(style::TEXT_SUBTLE, cx))
                         .child(subline(source)),
                 ),
         )
@@ -174,7 +206,7 @@ fn row(source: &SourceInfo, state: &Entity<PopoverState>, cx: &App) -> AnyElemen
             row.child(
                 Icon::default()
                     .path(icons::CHECK)
-                    .size(px(12.))
+                    .size(CHECK)
                     .text_color(accent),
             )
         })
@@ -187,33 +219,46 @@ fn row(source: &SourceInfo, state: &Entity<PopoverState>, cx: &App) -> AnyElemen
 
 fn footer(state: &Entity<PopoverState>, cx: &App) -> impl IntoElement {
     let state = state.clone();
-    h_flex()
-        .id("manage-sources")
+    div()
         .w_full()
-        .gap_2()
-        .mt_1()
-        .p_2()
-        .rounded(cx.theme().radius)
+        .p_1()
         .border_t_1()
-        .border_color(cx.theme().border)
-        .text_color(cx.theme().muted_foreground)
-        .hover(|footer| {
-            footer
-                .bg(cx.theme().accent.opacity(0.6))
-                .text_color(cx.theme().foreground)
-        })
-        .child(Icon::default().path(MANAGE_ICON).size(px(14.)))
-        .child(div().flex_1().text_sm().child(t("manage_sources")))
-        .child(Icon::default().path(FORWARD_ICON).size(px(12.)))
-        .on_click(move |_, window, cx| {
-            Navigator::navigate(
-                Route::Settings {
-                    section: Some("library".into()),
-                },
-                cx,
-            );
-            state.update(cx, |popover, cx| popover.dismiss(window, cx));
-        })
+        .border_color(style::white(style::BORDER, cx))
+        .child(
+            h_flex()
+                .id("manage-sources")
+                .w_full()
+                .gap_2p5()
+                .p_2()
+                .rounded(style::radius_lg())
+                .cursor_pointer()
+                .text_sm()
+                .font_medium()
+                .text_color(style::white(style::TEXT_SECONDARY, cx))
+                .hover(|footer| {
+                    footer
+                        .bg(style::white(style::RAISED, cx))
+                        .text_color(cx.theme().foreground)
+                })
+                .child(Icon::default().path(MANAGE_ICON).size(GLYPH))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .truncate()
+                        .child(t("manage_sources")),
+                )
+                .child(Icon::default().path(FORWARD_ICON).size(ARROW).ml_auto())
+                .on_click(move |_, window, cx| {
+                    Navigator::navigate(
+                        Route::Settings {
+                            section: Some("library".into()),
+                        },
+                        cx,
+                    );
+                    state.update(cx, |popover, cx| popover.dismiss(window, cx));
+                }),
+        )
 }
 
 /// The trigger tile: glyph, name, status dot and chevron.
@@ -245,15 +290,19 @@ impl RenderOnce for SwitcherTrigger {
         h_flex()
             .id("source-trigger")
             .w_full()
-            .gap_2()
-            .p_2()
-            .rounded(cx.theme().radius)
+            .gap_2p5()
+            .px_2p5()
+            .py_2()
+            .rounded(style::radius_lg())
             .border_1()
-            .border_color(cx.theme().sidebar_border)
+            .border_color(style::white(style::BORDER, cx))
+            .cursor_pointer()
             .when(self.selected, |trigger| {
-                trigger.bg(cx.theme().sidebar_accent)
+                trigger
+                    .bg(style::white(style::RAISED, cx))
+                    .border_color(style::white(style::ACTIVE, cx))
             })
-            .hover(|trigger| trigger.bg(cx.theme().sidebar_accent.opacity(0.6)))
+            .hover(|trigger| trigger.bg(style::white(style::RAISED, cx)))
             .when(self.collapsed, |trigger| {
                 trigger
                     .w(RAIL_TILE)
@@ -265,13 +314,22 @@ impl RenderOnce for SwitcherTrigger {
             .child(glyph(&self.mark, GLYPH, self.accent))
             .when(!self.collapsed, |trigger| {
                 trigger
-                    .child(div().flex_1().min_w_0().truncate().text_sm().child(label))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_sm()
+                            .font_medium()
+                            .text_color(cx.theme().foreground)
+                            .child(label),
+                    )
                     .child(dot(self.status, cx))
                     .child(
                         Icon::default()
                             .path(icons::CHEVRON_DOWN)
-                            .size(px(12.))
-                            .text_color(cx.theme().muted_foreground),
+                            .size(CHEVRON)
+                            .text_color(style::white(HEAD_COUNT, cx)),
                     )
             })
     }

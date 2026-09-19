@@ -3,17 +3,17 @@
 use std::collections::HashSet;
 
 use api::{ApiError, CatalogDetailRequest, CatalogItem, CatalogItemKind, CatalogShelf, ErrorCode};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
+    AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
     ParentElement as _, Pixels, Render, ScrollHandle, SharedString,
     StatefulInteractiveElement as _, Styled, Subscription, Task, Window, div, point, px,
 };
 use store::{Link, Navigator, Notices, PlayerModel, Route, SourcesModel, actions};
 use widgets::format::{t, t_with};
-use widgets::{Tile, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons};
+use widgets::{Tile, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons, style};
 
 const TILE: Pixels = px(176.);
 // One ‹ or › press, matching the Dioxus frontend's 800 px nudge.
@@ -219,7 +219,7 @@ impl Shelves {
             .collect();
         v_flex()
             .w_full()
-            .gap_4()
+            .gap_5()
             .child(
                 h_flex()
                     .w_full()
@@ -232,15 +232,17 @@ impl Shelves {
                             .when_some(view.shelf.strapline.clone(), |column, strapline| {
                                 column.child(
                                     div()
-                                        .text_xs()
-                                        .text_color(cx.theme().muted_foreground)
+                                        .mb_0p5()
+                                        .text_size(style::text_10())
+                                        .font_weight(gpui_kit::FontWeight::BOLD)
+                                        .text_color(style::white(0.4, cx))
                                         .child(strapline),
                                 )
                             })
                             .child(
                                 div()
                                     .truncate()
-                                    .text_xl()
+                                    .text_3xl()
                                     .font_weight(gpui_kit::FontWeight::BOLD)
                                     .child(view.shelf.title.clone()),
                             ),
@@ -249,8 +251,8 @@ impl Shelves {
                         h_flex()
                             .flex_shrink_0()
                             .gap_2()
-                            .child(nudge(index, -STEP, &view.scroll))
-                            .child(nudge(index, STEP, &view.scroll)),
+                            .child(nudge(index, -STEP, &view.scroll, cx))
+                            .child(nudge(index, STEP, &view.scroll, cx)),
                     ),
             )
             .child(
@@ -258,8 +260,10 @@ impl Shelves {
                     .id(("shelf", index))
                     .w_full()
                     .items_start()
-                    .gap_4()
-                    .pb_2()
+                    .gap_5()
+                    .px_2()
+                    .pt_1()
+                    .pb_3()
                     .overflow_x_scroll()
                     .track_scroll(&view.scroll)
                     .children(tiles),
@@ -278,7 +282,7 @@ impl Shelves {
         let rows = list.read(cx).rows().len();
         v_flex()
             .w_full()
-            .gap_4()
+            .gap_5()
             .child(
                 h_flex()
                     .w_full()
@@ -288,16 +292,21 @@ impl Shelves {
                     .child(
                         div()
                             .truncate()
-                            .text_xl()
+                            .text_3xl()
                             .font_weight(gpui_kit::FontWeight::BOLD)
                             .child(title.clone()),
                     )
                     .when_some(view.shelf.more_ref.clone(), |row, more| {
                         row.child(
-                            Button::new(("show-all", index))
-                                .ghost()
-                                .small()
-                                .label(t("discover_show_all"))
+                            div()
+                                .id(("show-all", index))
+                                .flex_shrink_0()
+                                .cursor_pointer()
+                                .text_xs()
+                                .font_weight(gpui_kit::FontWeight::BOLD)
+                                .text_color(style::white(style::TEXT_SECONDARY, cx))
+                                .hover(|link| link.text_color(cx.theme().foreground))
+                                .child(t("discover_show_all"))
                                 .on_click(move |_, _, cx| {
                                     Navigator::navigate(
                                         Route::DiscoverPlaylist {
@@ -439,16 +448,25 @@ impl Shelves {
         };
         div()
             .absolute()
-            .right_2()
-            .bottom_2()
+            .right_3()
+            .bottom_3()
             .opacity(0.)
             .group_hover(GROUP, |style| style.opacity(1.))
             .child(
+                // `bg-white text-black`: the one control in the app that inverts the theme.
                 Button::new(SharedString::from(format!("play-{shelf}-{id}")))
-                    .primary()
-                    .small()
+                    .custom(
+                        ButtonCustomVariant::new(cx)
+                            .color(cx.theme().foreground)
+                            .foreground(cx.theme().background)
+                            .hover(style::white(0.9, cx))
+                            .active(style::white(0.8, cx))
+                            .shadow(true),
+                    )
+                    .rounded(px(999.))
+                    .with_size(px(40.))
                     .loading(loading)
-                    .icon(icons::icon(icon))
+                    .icon(icons::icon(icon).small())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();
                         this.toggle_or_play(kind, id.clone(), cx);
@@ -469,11 +487,12 @@ impl Shelves {
             .flex()
             .items_center()
             .justify_center()
-            .rounded(cx.theme().radius)
-            .bg(cx.theme().background.opacity(0.5))
+            .rounded(style::radius_xl())
+            .bg(style::black(0.4, cx))
+            .text_color(cx.theme().foreground)
             .opacity(0.)
             .group_hover(GROUP, |style| style.opacity(1.))
-            .child(icons::icon(icon).size(px(28.)))
+            .child(icons::icon(icon).size(px(24.)))
             .into_any_element()
     }
 
@@ -490,7 +509,7 @@ impl Render for Shelves {
         for index in 0..self.views.len() {
             sections.push(self.section(index, cx));
         }
-        v_flex().w_full().gap_10().children(sections)
+        v_flex().w_full().gap_12().children(sections)
     }
 }
 
@@ -502,7 +521,7 @@ fn element_id(shelf: usize, id: &str) -> SharedString {
     SharedString::from(format!("{shelf}-{id}"))
 }
 
-fn nudge(shelf: usize, delta: Pixels, scroll: &ScrollHandle) -> Button {
+fn nudge(shelf: usize, delta: Pixels, scroll: &ScrollHandle, cx: &App) -> Button {
     let icon = if delta < px(0.) {
         icons::CHEVRON_LEFT
     } else {
@@ -510,9 +529,16 @@ fn nudge(shelf: usize, delta: Pixels, scroll: &ScrollHandle) -> Button {
     };
     let scroll = scroll.clone();
     Button::new((if delta < px(0.) { "left" } else { "right" }, shelf))
-        .ghost()
-        .small()
-        .icon(icons::icon(icon))
+        .custom(
+            ButtonCustomVariant::new(cx)
+                .color(style::white(style::RAISED, cx))
+                .foreground(cx.theme().foreground)
+                .hover(style::white(style::HOVER, cx))
+                .active(style::white(style::HOVER, cx)),
+        )
+        .rounded(px(999.))
+        .with_size(px(32.))
+        .icon(icons::icon(icon).xsmall())
         .on_click(move |_, window, _| {
             let offset = scroll.offset();
             let max = scroll.max_offset().x.max(px(0.));

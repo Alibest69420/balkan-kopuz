@@ -9,6 +9,7 @@ pub mod icons;
 pub mod playlist_picker;
 pub mod schema_form;
 pub mod states;
+pub mod style;
 pub mod track_list;
 
 pub use cards::{Tile, album_tile, artist_tile, playlist_tile, tile_grid};

@@ -7,20 +7,20 @@ mod sections;
 
 use api::{AlbumPage, ArtistPage, JobKind, Page, Table, TrackPage};
 use config::{HomeSection, ListenNowStyle, UiStyle};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement as _, Styled, Subscription, Window, div,
+    AnyElement, App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _,
+    IntoElement, ParentElement as _, Pixels, Render, ScrollHandle, SharedString,
+    StatefulInteractiveElement as _, Styled, Subscription, Window, div, px,
 };
 use store::{
     ConfigModel, FavoritesModel, JobsModel, PlayerModel, PlaylistsModel, Query, QueueModel,
     SourcesModel,
 };
 use widgets::format::t;
-use widgets::{PageHeader, icons};
+use widgets::{PageHeader, icons, style};
 
 use data::{ARTIST_SAMPLE_WINDOW, Data, RECENT_TRACKS_WINDOW, RECENTLY_ADDED_WINDOW};
 
@@ -342,7 +342,7 @@ impl Home {
         let body = if skin.listen_now_cards {
             let cards: Vec<AnyElement> = albums
                 .iter()
-                .map(|album| cards::album_card("home-listen-now", album, cx))
+                .map(|album| cards::listen_now_card(album, cx))
                 .collect();
             sections::scroller("home-listen-now", &self.scroll.listen_now, cards)
         } else {
@@ -353,14 +353,13 @@ impl Home {
             h_flex()
                 .w_full()
                 .flex_wrap()
-                .gap_3()
-                .pt_1()
+                .gap_4()
                 .children(rows)
                 .into_any_element()
         };
         v_flex()
             .w_full()
-            .child(sections::heading(
+            .child(sections::heading_lead(
                 "home-listen-now",
                 t("listen_now"),
                 skin.eyebrow(t("music")),
@@ -379,7 +378,7 @@ impl Home {
             .data
             .top_artists
             .iter()
-            .map(|artist| cards::artist_card(&artist.name, artist.artwork.as_ref()))
+            .map(|artist| cards::artist_card(&artist.name, artist.artwork.as_ref(), cx))
             .collect();
         v_flex()
             .w_full()
@@ -444,17 +443,15 @@ impl Home {
                 |header| {
                     header
                         .action(
-                            Button::new("home-reset")
-                                .ghost()
-                                .small()
+                            outlined(pill(Button::new("home-reset").custom(chip(cx))), cx)
                                 .icon(icons::icon(icons::REFRESH))
                                 .label(t("reset_home"))
                                 .on_click(cx.listener(|this, _, _, cx| this.reset_sections(cx))),
                         )
                         .action(
-                            Button::new("home-done")
-                                .primary()
-                                .small()
+                            pill(Button::new("home-done").primary())
+                                .px_4()
+                                .font_weight(FontWeight::BOLD)
                                 .icon(icons::icon(icons::CHECK))
                                 .label(t("done_editing"))
                                 .on_click(cx.listener(|this, _, _, cx| {
@@ -465,9 +462,7 @@ impl Home {
                 },
                 |header| {
                     header.action(
-                        Button::new("home-customize")
-                            .ghost()
-                            .small()
+                        outlined(pill(Button::new("home-customize").custom(chip(cx))), cx)
                             .icon(icons::icon(icons::SETTINGS))
                             .label(t("customize_home"))
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -495,14 +490,16 @@ impl Home {
             .items_center()
             .justify_between()
             .gap_2()
-            .px_2()
-            .py_1()
-            .rounded(cx.theme().radius)
-            .bg(cx.theme().muted)
+            .p_2()
+            .rounded(style::radius_lg())
+            .bg(style::white(style::RAISED, cx))
+            .border_1()
+            .border_color(style::white(style::BORDER, cx))
             .child(
                 div()
                     .text_xs()
                     .font_weight(FontWeight::BOLD)
+                    .text_color(style::white(0.8, cx))
                     .child(section_label(&key)),
             )
             .child(
@@ -512,8 +509,12 @@ impl Home {
                     .when(key == "listen_now", |row| {
                         row.child(
                             Button::new("home-listen-now-layout")
-                                .ghost()
-                                .small()
+                                .custom(chip(cx))
+                                .h(px(28.))
+                                .px_3()
+                                .rounded(px(6.))
+                                .text_xs()
+                                .font_weight(FontWeight::SEMIBOLD)
                                 .icon(icons::icon(if skin.listen_now_cards {
                                     icons::GRID
                                 } else {
@@ -532,8 +533,9 @@ impl Home {
                     })
                     .child(
                         Button::new(SharedString::from(format!("home-up-{key}")))
-                            .ghost()
-                            .xsmall()
+                            .custom(chip(cx))
+                            .size(px(28.))
+                            .rounded(px(6.))
                             .icon(icons::icon(icons::CHEVRON_UP))
                             .tooltip(t("move_up"))
                             .disabled(index == 0)
@@ -544,8 +546,9 @@ impl Home {
                     )
                     .child(
                         Button::new(SharedString::from(format!("home-down-{key}")))
-                            .ghost()
-                            .xsmall()
+                            .custom(chip(cx))
+                            .size(px(28.))
+                            .rounded(px(6.))
                             .icon(icons::icon(icons::CHEVRON_DOWN))
                             .tooltip(t("move_down"))
                             .disabled(index + 1 >= total)
@@ -556,8 +559,12 @@ impl Home {
                     )
                     .child(
                         Button::new(SharedString::from(format!("home-toggle-{key}")))
-                            .ghost()
-                            .small()
+                            .custom(if enabled { accent_chip(cx) } else { chip(cx) })
+                            .h(px(28.))
+                            .px_3()
+                            .rounded(px(6.))
+                            .text_xs()
+                            .font_weight(FontWeight::SEMIBOLD)
                             .icon(icons::icon(if enabled {
                                 icons::CLOSE
                             } else {
@@ -630,8 +637,9 @@ impl Render for Home {
             .id("home")
             .size_full()
             .overflow_y_scroll()
-            .p_6()
-            .gap_8()
+            .p_8()
+            .pb_32()
+            .gap_12()
             .child(header)
             .children(rows)
     }
@@ -639,6 +647,41 @@ impl Render for Home {
 
 fn page(limit: u32) -> Page {
     Page { offset: 0, limit }
+}
+
+/// `px-3 h-8 rounded-full text-xs font-semibold`: the chrome pills the header carries.
+fn pill(button: Button) -> Button {
+    button
+        .h_8()
+        .px_3()
+        .rounded(px(16.))
+        .text_xs()
+        .font_weight(FontWeight::SEMIBOLD)
+}
+
+/// `border border-white/10`, which only the quiet pills wear.
+fn outlined(button: Button, cx: &App) -> Button {
+    button
+        .border_1()
+        .border_color(style::white(style::BORDER, cx))
+}
+
+/// `bg-white/5 hover:bg-white/15 text-white/70`: a quiet control in the chrome.
+fn chip(cx: &App) -> ButtonCustomVariant {
+    ButtonCustomVariant::new(cx)
+        .color(style::white(style::RAISED, cx))
+        .foreground(style::white(0.7, cx))
+        .hover(style::white(0.15, cx))
+        .active(style::white(style::ACTIVE, cx))
+}
+
+/// `bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300`: the same chip, switched on.
+fn accent_chip(cx: &App) -> ButtonCustomVariant {
+    ButtonCustomVariant::new(cx)
+        .color(cx.theme().primary.opacity(0.2))
+        .foreground(cx.theme().primary_hover)
+        .hover(cx.theme().primary.opacity(0.3))
+        .active(cx.theme().primary.opacity(0.3))
 }
 
 fn section_label(key: &str) -> SharedString {

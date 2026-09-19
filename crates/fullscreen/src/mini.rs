@@ -2,15 +2,23 @@ use gpui_kit::base::slider::{SliderEvent, SliderState};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::{
-    AppContext as _, Context, Entity, FontWeight, IntoElement, ParentElement as _, Render,
+    AppContext as _, Context, Entity, FontWeight, IntoElement, ParentElement as _, Pixels, Render,
     SharedString, Styled, Subscription, Window, div, px,
 };
 use store::{Chrome, PlayerModel, Playhead};
 use widgets::format::{duration, t};
-use widgets::{Cover, icons};
+use widgets::{Cover, icons, style};
 
 use crate::background;
 use crate::controls;
+
+// The mini surface is measured geometry: it is drawn for a window the shell fixes at ~380×148.
+const COVER: Pixels = px(56.);
+const CONTROL: Pixels = px(36.);
+const PLAY: Pixels = px(40.);
+const PROGRESS_HEIGHT: Pixels = px(3.);
+// `text-[9px]`, below anything the shared scale names.
+const CLOCK_SIZE: Pixels = px(9.);
 
 /// The compact surface, drawn for the ~380×148 window the shell shrinks to.
 pub struct MiniPlayer {
@@ -109,6 +117,9 @@ impl Render for MiniPlayer {
             .size_full()
             .relative()
             .overflow_hidden()
+            .rounded(style::radius_xl())
+            .border_1()
+            .border_color(style::white(style::BORDER, cx))
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
             .children(background::cover_backdrop(artwork.as_ref(), cx))
@@ -123,41 +134,46 @@ impl Render for MiniPlayer {
                             .gap_3()
                             .px_3()
                             .pt_2()
+                            .pb_1()
                             .child(
                                 Cover::new(artwork.as_ref())
-                                    .size(px(56.))
-                                    .rounded(cx.theme().radius),
+                                    .size(COVER)
+                                    .rounded(px(8.)),
                             )
                             .child(
                                 v_flex()
                                     .flex_1()
                                     .min_w_0()
+                                    .justify_center()
+                                    .gap_0p5()
                                     .child(
                                         div()
                                             .text_sm()
-                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .font_weight(FontWeight::BOLD)
                                             .truncate()
+                                            .text_color(style::white(0.95, cx))
                                             .child(title),
                                     )
                                     .child(
                                         div()
-                                            .text_xs()
+                                            .text_size(style::text_11())
                                             .truncate()
-                                            .text_color(cx.theme().muted_foreground)
+                                            .text_color(style::white(0.55, cx))
                                             .child(artist),
                                     )
                                     .child(
                                         div()
-                                            .text_xs()
-                                            .text_color(cx.theme().muted_foreground)
+                                            .text_size(CLOCK_SIZE)
+                                            .text_color(style::white(0.35, cx))
                                             .child(clock),
                                     ),
                             )
                             .child(
                                 Button::new("mini-restore")
                                     .ghost()
-                                    .small()
-                                    .icon(icons::icon(icons::EXPAND))
+                                    .rounded(px(999.))
+                                    .with_size(CONTROL)
+                                    .icon(icons::icon(icons::EXPAND).xsmall())
                                     .tooltip(t("restore_full_player"))
                                     .on_click(|_, _, cx| {
                                         Chrome::global(cx)
@@ -171,14 +187,25 @@ impl Render for MiniPlayer {
                             .items_center()
                             .justify_center()
                             .gap_2()
+                            .px_3()
                             .pb_2()
-                            .child(controls::previous_button("mini-previous").small())
-                            .child(controls::play_button("mini-play", playing))
-                            .child(controls::next_button("mini-next").small()),
+                            .child(
+                                controls::previous_button("mini-previous")
+                                    .rounded(px(999.))
+                                    .with_size(CONTROL),
+                            )
+                            .child(
+                                controls::play_button("mini-play", playing).with_size(PLAY),
+                            )
+                            .child(
+                                controls::next_button("mini-next")
+                                    .rounded(px(999.))
+                                    .with_size(CONTROL),
+                            ),
                     )
                     .child(controls::thin_slider(
                         &self.seek,
-                        px(3.),
+                        PROGRESS_HEIGHT,
                         radio || loading || !seekable,
                         cx,
                     )),

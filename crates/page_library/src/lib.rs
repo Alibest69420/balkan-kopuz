@@ -19,7 +19,7 @@ use gpui_kit::{
 use store::{ConfigModel, JobsModel, PlaylistsModel, Query, SourcesModel, actions};
 use widgets::format::t;
 use widgets::track_list::{TrackActions, TrackList, TrackListEvent, TrackListOptions};
-use widgets::{EmptyState, Loading, PageHeader, icons, playlist_picker};
+use widgets::{PageHeader, icons, playlist_picker, style};
 
 use crate::stats::StatCard;
 
@@ -229,91 +229,120 @@ impl Library {
         });
     }
 
+    /// The floating pill the Dioxus page drops over the list while rows are picked.
     fn selection_bar(&self, count: usize, cx: &mut Context<Self>) -> impl IntoElement {
         let deletable = SourcesModel::global(cx)
             .read(cx)
             .capabilities()
             .delete_from_disk;
-        h_flex()
-            .w_full()
-            .mb_3()
-            .gap_3()
-            .items_center()
-            .px_4()
-            .py_2()
-            .rounded(cx.theme().radius)
-            .bg(cx.theme().accent)
+        let ink = cx.theme().primary_foreground;
+        let rule = style::black(0.2, cx);
+        let divider = move || div().w(px(1.)).h_5().flex_shrink_0().bg(rule);
+        let entry = |id: &'static str, icon: &'static str, label: SharedString| {
+            Button::new(id)
+                .text()
+                .icon(icons::icon(icon))
+                .label(label)
+                .text_color(ink)
+                .font_weight(FontWeight::MEDIUM)
+        };
+        div()
+            .absolute()
+            .bottom_24()
+            .left_0()
+            .right_0()
+            .flex()
+            .justify_center()
             .child(
-                // TODO(i18n): the Dioxus selection bar spells this count in English too.
-                div()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(SharedString::from(format!("{count} selected"))),
-            )
-            .child(
-                Button::new("selection-queue")
-                    .ghost()
-                    .small()
-                    .icon(icons::icon(icons::QUEUE_ADD))
-                    .label(t("add_to_queue"))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        let keys = this.list.read(cx).selected_keys();
-                        actions::append(keys, cx);
-                        this.list.update(cx, |list, cx| list.clear_selection(cx));
-                    })),
-            )
-            .child(
-                Button::new("selection-playlist")
-                    .ghost()
-                    .small()
-                    .icon(icons::icon(icons::PLUS))
-                    .label(t("add_to_playlist"))
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        let keys = this.list.read(cx).selected_keys();
-                        playlist_picker::open(keys, window, cx);
-                        this.list.update(cx, |list, cx| list.clear_selection(cx));
-                    })),
-            )
-            .when(deletable, |bar| {
-                bar.child(
-                    Button::new("selection-delete")
-                        .ghost()
-                        .small()
-                        .icon(icons::icon(icons::TRASH))
-                        .label(t("delete"))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            let keys = this.list.read(cx).selected_keys();
-                            this.delete(keys, cx);
-                        })),
-                )
-            })
-            .child(div().flex_1())
-            .child(
-                Button::new("selection-cancel")
-                    .ghost()
-                    .small()
-                    .icon(icons::icon(icons::CLOSE))
-                    .label(t("cancel"))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.list.update(cx, |list, cx| list.clear_selection(cx));
-                    })),
+                h_flex()
+                    .gap_4()
+                    .items_center()
+                    .px_6()
+                    .py_2p5()
+                    .rounded(cx.theme().radius_full())
+                    .bg(cx.theme().primary)
+                    .text_color(ink)
+                    .shadow_2xl()
+                    .child(
+                        // TODO(i18n): the Dioxus selection bar spells this count in English too.
+                        div()
+                            .pl_2()
+                            .text_lg()
+                            .font_weight(FontWeight::BOLD)
+                            .child(SharedString::from(format!("{count} selected"))),
+                    )
+                    .child(divider())
+                    .child(
+                        h_flex()
+                            .gap_4()
+                            .items_center()
+                            .child(
+                                entry("selection-queue", icons::QUEUE_ADD, t("add_to_queue"))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        let keys = this.list.read(cx).selected_keys();
+                                        actions::append(keys, cx);
+                                        this.list.update(cx, |list, cx| list.clear_selection(cx));
+                                    })),
+                            )
+                            .child(
+                                entry("selection-playlist", icons::PLUS, t("add_to_playlist"))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        let keys = this.list.read(cx).selected_keys();
+                                        playlist_picker::open(keys, window, cx);
+                                        this.list.update(cx, |list, cx| list.clear_selection(cx));
+                                    })),
+                            )
+                            .when(deletable, |bar| {
+                                bar.child(
+                                    entry("selection-delete", icons::TRASH, t("delete")).on_click(
+                                        cx.listener(|this, _, _, cx| {
+                                            let keys = this.list.read(cx).selected_keys();
+                                            this.delete(keys, cx);
+                                        }),
+                                    ),
+                                )
+                            }),
+                    )
+                    .child(divider())
+                    .child(
+                        Button::new("selection-cancel")
+                            .text()
+                            .icon(icons::icon(icons::CLOSE))
+                            .tooltip(t("cancel"))
+                            .text_color(ink)
+                            .pr_2()
+                            .text_lg()
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.list.update(cx, |list, cx| list.clear_selection(cx));
+                            })),
+                    ),
             )
     }
 
+    /// The column labels, laid out on the track row's own columns so they sit over them.
     fn column_header(&self, covers: bool, cx: &mut Context<Self>) -> impl IntoElement {
         h_flex()
             .w_full()
+            .mb_2()
             .gap_3()
+            .items_center()
             .px_2()
             .py_2()
             .border_b_1()
-            .border_color(cx.theme().border)
+            .border_color(style::white(style::BORDER, cx))
             .text_sm()
-            .text_color(cx.theme().muted_foreground)
-            .child(div().w(px(28.)).flex_shrink_0().child(t("title")))
+            .font_weight(FontWeight::MEDIUM)
+            .text_color(style::white(0.5, cx))
+            .child(div().w(px(28.)).flex_shrink_0().child("#"))
             .when(covers, |row| row.child(div().w(px(40.)).flex_shrink_0()))
-            .child(div().flex_1().min_w_0().child(t("artist")))
+            .child(div().flex_1().min_w_0().child(t("title")))
             .child(div().w(px(200.)).flex_shrink_0().child(t("album")))
-            .child(div().w(px(56.)).flex_shrink_0().child(t("duration")))
+            .child(
+                div()
+                    .w(px(56.))
+                    .flex_shrink_0()
+                    .child(icons::icon(icons::CLOCK)),
+            )
     }
 }
 
@@ -356,14 +385,22 @@ impl Render for Library {
             t("refresh_music_library")
         };
 
+        let faint = style::white(style::TEXT_FAINT, cx);
+        let spinner = move |size: gpui_kit::Pixels| Spinner::new().color(faint).with_size(size);
+
         v_flex()
             .size_full()
-            .p_4()
+            .relative()
+            .px_8()
+            .pt_8()
             .child(
                 PageHeader::new(t("your_library")).action(
                     Button::new("library-refresh")
                         .ghost()
                         .icon(icons::icon(icons::REFRESH))
+                        .rounded(cx.theme().radius_full())
+                        .size_9()
+                        .text_color(style::white(style::TEXT_SECONDARY, cx))
                         .tooltip(refresh_hint)
                         .disabled(!capabilities.scan_folders && !capabilities.sync)
                         .on_click(cx.listener(|this, _, _, cx| this.refresh(cx))),
@@ -373,7 +410,7 @@ impl Render for Library {
                 h_flex()
                     .w_full()
                     .gap_4()
-                    .mb_6()
+                    .mb_12()
                     .child(StatCard::new(t("tracks"), track_count, icons::MUSIC))
                     .child(StatCard::new(t("albums"), album_count, icons::DISC))
                     .child(StatCard::new(t("artists"), artist_count, icons::MIC))
@@ -382,7 +419,7 @@ impl Render for Library {
             .child(
                 h_flex()
                     .w_full()
-                    .mb_3()
+                    .mb_4()
                     .gap_3()
                     .items_center()
                     .justify_between()
@@ -401,34 +438,45 @@ impl Render for Library {
                             )
                             .child(
                                 div()
-                                    .text_lg()
+                                    .text_xl()
                                     .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(style::white(0.8, cx))
                                     .child(t("tracks")),
                             ),
                     )
-                    .child(sort::control(self.sort.clone())),
+                    .child(sort::control(self.sort.clone(), cx)),
             )
-            .when(selecting, |page| {
-                page.child(self.selection_bar(selected, cx))
-            })
             .child(self.column_header(covers, cx))
             .child(v_flex().flex_1().min_h_0().map(|body| {
+                let pending = h_flex()
+                    .w_full()
+                    .py_12()
+                    .justify_center()
+                    .child(spinner(px(30.)));
                 match (total, track_count) {
-                    (None, _) => body.child(Loading),
-                    (Some(_), 0) if syncing => body.child(Loading),
-                    (Some(_), 0) => body.child(EmptyState::new(t("no_tracks_found"))),
+                    (None, _) => body.child(pending),
+                    (Some(_), 0) if syncing => body.child(pending),
+                    (Some(_), 0) => body.child(
+                        div()
+                            .italic()
+                            .text_color(style::slate_500(cx))
+                            .child(t("no_tracks_found")),
+                    ),
                     _ => body
                         .child(div().flex_1().min_h_0().child(self.list.clone()))
                         .when(syncing, |body| {
                             body.child(
                                 h_flex()
                                     .w_full()
-                                    .py_2()
+                                    .py_4()
                                     .justify_center()
-                                    .child(Spinner::new().small()),
+                                    .child(spinner(px(20.))),
                             )
                         }),
                 }
             }))
+            .when(selecting, |page| {
+                page.child(self.selection_bar(selected, cx))
+            })
     }
 }

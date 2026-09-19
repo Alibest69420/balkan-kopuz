@@ -1,12 +1,13 @@
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::spinner::Spinner;
-use gpui_kit::component::{ActiveTheme as _, Icon, v_flex};
+use gpui_kit::component::{Icon, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, IntoElement, ParentElement as _, RenderOnce, SharedString, Styled, Window, div, px,
 };
 
 use crate::icons;
+use crate::style;
 
 /// What a page shows instead of rows: nothing found, nothing configured, nothing yet.
 #[derive(IntoElement)]
@@ -42,13 +43,25 @@ impl RenderOnce for EmptyState {
             .size_full()
             .items_center()
             .justify_center()
-            .gap_2()
-            .p_8()
-            .text_color(cx.theme().muted_foreground)
-            .child(Icon::default().path(self.icon).size(px(32.)))
-            .child(div().text_lg().child(self.title))
+            .gap_1()
+            .px_6()
+            .text_center()
+            .text_color(style::white(style::TEXT_SUBTLE, cx))
+            .child(
+                Icon::default()
+                    .path(self.icon)
+                    .size(px(36.))
+                    .mb_4()
+                    .text_color(style::white(style::TEXT_FAINT, cx)),
+            )
+            .child(div().text_base().child(self.title))
             .when_some(self.detail, |column, detail| {
-                column.child(div().text_sm().child(detail))
+                column.child(
+                    div()
+                        .text_sm()
+                        .text_color(style::white(style::TEXT_DIM, cx))
+                        .child(detail),
+                )
             })
     }
 }
@@ -58,11 +71,16 @@ impl RenderOnce for EmptyState {
 pub struct Loading;
 
 impl RenderOnce for Loading {
-    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         v_flex()
             .size_full()
             .items_center()
             .justify_center()
-            .child(Spinner::new().large())
+            .py_12()
+            .child(
+                Spinner::new()
+                    .large()
+                    .color(style::white(style::TEXT_FAINT, cx)),
+            )
     }
 }

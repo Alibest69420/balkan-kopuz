@@ -6,11 +6,17 @@ use config::{
 };
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
-use gpui_kit::component::{ActiveTheme as _, Selectable as _, Sizable as _, h_flex};
-use gpui_kit::{App, IntoElement, ParentElement as _, SharedString, Styled as _};
+use gpui_kit::component::{Selectable as _, Sizable as _, h_flex};
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::{App, Div, IntoElement, ParentElement as _, Pixels, SharedString, Styled as _, px};
 use store::ConfigModel;
 use widgets::format::t;
-use widgets::icons;
+use widgets::{icons, style};
+
+/// `text-white/40`: the resting label of a segmented pill's unselected half.
+const SEGMENT_IDLE: f32 = 0.40;
+/// `rounded-md`, which the shared radius helpers do not carry.
+const SEGMENT_RADIUS: Pixels = px(6.);
 
 /// Which config key a view-mode toggle writes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,32 +100,48 @@ fn edit(cx: &mut App, change: impl FnOnce(&mut AppConfig)) {
     ConfigModel::global(cx).update(cx, |model, cx| model.update(cx, change));
 }
 
+/// The `h-9 p-1 rounded-full bg-white/5` track both segmented toggles sit in.
+fn pill(cx: &App) -> Div {
+    h_flex()
+        .h_9()
+        .p_1()
+        .gap_1()
+        .rounded_full()
+        .bg(style::white(style::RAISED, cx))
+        .border_1()
+        .border_color(style::white(style::BORDER_SOFT, cx))
+}
+
+/// One half of a pill: `h-7 px-3 text-xs rounded-md`, dim until it is the chosen one.
+fn segment(id: &'static str, selected: bool, cx: &App) -> Button {
+    Button::new(id)
+        .ghost()
+        .xsmall()
+        .h_7()
+        .px_3()
+        .rounded(SEGMENT_RADIUS)
+        .selected(selected)
+        .when(!selected, |button| {
+            button.text_color(style::white(SEGMENT_IDLE, cx))
+        })
+}
+
 /// Grid ⇄ list, writing `key`'s config field.
 pub fn view_mode_toggle(key: ViewModeKey, cx: &App) -> impl IntoElement {
     let mode = key.read(&config(cx));
-    h_flex()
-        .gap_0p5()
-        .p_0p5()
-        .rounded(cx.theme().radius)
-        .bg(cx.theme().secondary)
+    pill(cx)
         .child(
-            Button::new("view-grid")
-                .ghost()
-                .xsmall()
+            segment("view-grid", mode == AlbumViewMode::Grid, cx)
                 .icon(icons::icon(icons::GRID))
                 .tooltip(t("view_grid"))
-                .selected(mode == AlbumViewMode::Grid)
                 .on_click(move |_, _, cx| {
                     edit(cx, |config| key.write(config, AlbumViewMode::Grid))
                 }),
         )
         .child(
-            Button::new("view-list")
-                .ghost()
-                .xsmall()
+            segment("view-list", mode == AlbumViewMode::List, cx)
                 .icon(icons::icon(icons::ROWS))
                 .tooltip(t("view_list"))
-                .selected(mode == AlbumViewMode::List)
                 .on_click(move |_, _, cx| {
                     edit(cx, |config| key.write(config, AlbumViewMode::List))
                 }),
@@ -192,17 +214,10 @@ fn promote<F: SortTarget>(field: F, cx: &mut App) {
 /// Tracks ⇄ Albums for one artist, writing `cfg.artist_view_order`.
 pub fn view_order_toggle(order: &ArtistViewOrder, cx: &App) -> impl IntoElement {
     let tracks = *order == ArtistViewOrder::Tracks;
-    h_flex()
-        .gap_0p5()
-        .p_0p5()
-        .rounded(cx.theme().radius)
-        .bg(cx.theme().secondary)
+    pill(cx)
         .child(
-            Button::new("order-tracks")
-                .ghost()
-                .xsmall()
+            segment("order-tracks", tracks, cx)
                 .label(t("tracks"))
-                .selected(tracks)
                 .on_click(|_, _, cx| {
                     edit(cx, |config| {
                         config.artist_view_order = ArtistViewOrder::Tracks
@@ -210,11 +225,8 @@ pub fn view_order_toggle(order: &ArtistViewOrder, cx: &App) -> impl IntoElement 
                 }),
         )
         .child(
-            Button::new("order-albums")
-                .ghost()
-                .xsmall()
+            segment("order-albums", !tracks, cx)
                 .label(t("albums"))
-                .selected(!tracks)
                 .on_click(|_, _, cx| {
                     edit(cx, |config| {
                         config.artist_view_order = ArtistViewOrder::Albums

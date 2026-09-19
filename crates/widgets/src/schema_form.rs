@@ -17,6 +17,7 @@ use gpui_kit::{
 
 use crate::format::{t, text};
 use crate::icons;
+use crate::style;
 
 /// One field was answered; the owner sends it to whichever `set_*_settings` call it belongs to.
 #[derive(Debug, Clone)]
@@ -229,17 +230,24 @@ impl SchemaForm {
 
         v_flex()
             .gap_1()
-            .py_1()
+            .px_5()
+            .py_2p5()
             .child(
                 h_flex()
                     .gap_2()
                     .items_center()
-                    .child(div().text_sm().child(text(&spec.label)))
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(gpui_kit::FontWeight::MEDIUM)
+                            .text_color(style::white(style::TEXT_STRONG, cx))
+                            .child(text(&spec.label)),
+                    )
                     .when(locked, |row| {
                         row.child(
                             div()
-                                .text_xs()
-                                .text_color(cx.theme().muted_foreground)
+                                .text_size(style::text_10())
+                                .text_color(style::white(style::TEXT_SUBTLE, cx))
                                 .child(t("setting_managed_by_system")),
                         )
                     }),
@@ -249,7 +257,7 @@ impl SchemaForm {
                 field.child(
                     div()
                         .text_xs()
-                        .text_color(cx.theme().muted_foreground)
+                        .text_color(style::white(style::TEXT_MUTED, cx))
                         .child(text(help)),
                 )
             })
@@ -289,13 +297,17 @@ impl Render for SchemaForm {
             let heading = spec.section.as_ref().map(text);
             if heading.is_some() && heading != section {
                 section = heading.clone();
+                // `uppercase` is a CSS transform GPUI has no equivalent for.
+                let title = heading.clone().unwrap_or_default().to_uppercase();
                 rows.push(
                     div()
-                        .pt_3()
-                        .text_sm()
+                        .px_5()
+                        .pt_4()
+                        .pb_1()
+                        .text_xs()
                         .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                        .text_color(cx.theme().muted_foreground)
-                        .child(heading.unwrap_or_default())
+                        .text_color(style::white(style::TEXT_MUTED, cx))
+                        .child(SharedString::from(title))
                         .into_any_element(),
                 );
             }
@@ -307,10 +319,16 @@ impl Render for SchemaForm {
             .filter(|problem| problem.field.is_none())
             .map(|problem| text(&problem.label))
             .collect();
-        v_flex().gap_1().children(rows).children(
-            form_problems
-                .into_iter()
-                .map(|problem| div().text_sm().text_color(cx.theme().danger).child(problem)),
-        )
+        v_flex()
+            .w_full()
+            .children(rows)
+            .children(form_problems.into_iter().map(|problem| {
+                div()
+                    .px_5()
+                    .py_1()
+                    .text_xs()
+                    .text_color(cx.theme().danger)
+                    .child(problem)
+            }))
     }
 }

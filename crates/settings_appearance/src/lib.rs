@@ -1,23 +1,46 @@
 //! Settings → General and Appearance, plus the custom theme editor embedded under them.
 
+mod row;
 mod theme_editor;
 
 use config::{AppConfig, BackBehavior, PlayerBarPosition};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonVariants as _, ButtonCustomVariant};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
 use gpui_kit::component::switch::Switch;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
     ParentElement as _, PathPromptOptions, Render, SharedString, StatefulInteractiveElement as _,
-    Styled, Subscription, Window, div, px,
+    Styled, Subscription, Window, div, rems,
 };
+use row::{SettingRow, section};
 use store::ConfigModel;
 use theme_editor::ThemeEditor;
 use widgets::format::t;
-use widgets::icons;
+use widgets::{icons, style};
+
+/// `text-white/80`, what a slider's value reads in.
+const READOUT: f32 = 0.80;
+/// `text-white/50`, the path a file setting shows.
+const PATH: f32 = 0.50;
+/// `w-40`, the width every settings slider is drawn at.
+fn slider_width() -> gpui_kit::Rems {
+    rems(10.)
+}
+/// `.settings-select`: `width: min(14rem, …)`.
+fn select_width() -> gpui_kit::Rems {
+    rems(14.)
+}
+/// `bg-white/10 hover:bg-white/20`, the quiet button the settings rows use.
+fn soft(cx: &App) -> ButtonCustomVariant {
+    ButtonCustomVariant::new(cx)
+        .color(style::white(style::HOVER, cx))
+        .hover(style::white(style::ACTIVE, cx))
+        .active(style::white(style::ACTIVE, cx))
+        .foreground(cx.theme().foreground)
+}
 
 /// The i18n key each built-in theme is listed under; `kettek16` is a name, not a phrase.
 fn theme_label(id: &str) -> SharedString {
@@ -131,44 +154,9 @@ impl AppearanceSettings {
         );
     }
 
-    fn heading(&self, label: SharedString, cx: &App) -> impl IntoElement {
-        div()
-            .pt_4()
-            .pb_1()
-            .text_sm()
-            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-            .text_color(cx.theme().muted_foreground)
-            .child(label)
-    }
-
-    fn row(
-        &self,
-        label: SharedString,
-        key: &str,
-        control: AnyElement,
-        cx: &App,
-    ) -> impl IntoElement {
+    fn row(&self, label: SharedString, key: &str, control: AnyElement, cx: &App) -> SettingRow {
         let locked = ConfigModel::global(cx).read(cx).is_locked(key);
-        h_flex()
-            .py_2()
-            .gap_4()
-            .justify_between()
-            .items_center()
-            .child(
-                v_flex()
-                    .gap_1()
-                    .min_w_0()
-                    .child(div().text_sm().child(label))
-                    .when(locked, |row| {
-                        row.child(
-                            div()
-                                .text_xs()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(t("managed_by_settings_file")),
-                        )
-                    }),
-            )
-            .child(control)
+        SettingRow::new(label).locked(locked).control(control)
     }
 
     fn toggle(
@@ -208,12 +196,17 @@ impl AppearanceSettings {
         if locked {
             return Button::new(key)
                 .outline()
+                .w(select_width())
+                .justify_between()
                 .label(label)
                 .disabled(true)
                 .into_any_element();
         }
         Button::new(key)
             .outline()
+            .w(select_width())
+            .justify_between()
+            .icon(icons::icon(icons::CHEVRON_DOWN))
             .label(label)
             .dropdown_menu(move |mut menu, _, _| {
                 for (value, label) in &options {
@@ -241,12 +234,18 @@ impl AppearanceSettings {
         h_flex()
             .gap_3()
             .items_center()
-            .child(div().w(px(160.)).child(Slider::new(state).disabled(locked)))
+            .min_w(rems(13.75))
             .child(
                 div()
-                    .w(px(56.))
+                    .w(slider_width())
+                    .child(Slider::new(state).disabled(locked)),
+            )
+            .child(
+                div()
+                    .w_16()
                     .text_xs()
-                    .text_color(cx.theme().muted_foreground)
+                    .text_right()
+                    .text_color(style::white(READOUT, cx))
                     .child(readout),
             )
             .into_any_element()
@@ -261,21 +260,23 @@ impl AppearanceSettings {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let locked = ConfigModel::global(cx).read(cx).is_locked(key);
+        let danger = cx.theme().danger;
         h_flex()
             .gap_2()
             .items_center()
             .when(!path.is_empty(), |row| {
                 row.child(
                     div()
-                        .max_w(px(220.))
+                        .max_w(rems(13.75))
                         .truncate()
                         .text_xs()
-                        .text_color(cx.theme().muted_foreground)
+                        .text_color(style::white(PATH, cx))
                         .child(SharedString::from(path)),
                 )
                 .child(
                     Button::new(SharedString::from(format!("{key}-remove")))
-                        .ghost()
+                        .custom(soft(cx).foreground(danger))
+                        .small()
                         .icon(icons::icon(icons::TRASH))
                         .label(t("remove"))
                         .disabled(locked)
@@ -286,7 +287,8 @@ impl AppearanceSettings {
             })
             .child(
                 Button::new(SharedString::from(format!("{key}-choose")))
-                    .outline()
+                    .custom(soft(cx))
+                    .small()
                     .icon(icons::icon(icons::FOLDER))
                     .label(choose)
                     .disabled(locked)
@@ -318,7 +320,6 @@ impl AppearanceSettings {
 
     fn general(&self, cfg: &AppConfig, cx: &mut Context<Self>) -> Vec<AnyElement> {
         vec![
-            self.heading(t("general"), cx).into_any_element(),
             self.row(
                 t("auto_check_updates"),
                 "auto_check_updates",
@@ -364,7 +365,6 @@ impl AppearanceSettings {
 
     fn appearance(&self, cfg: &AppConfig, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let mut rows = vec![
-            self.heading(t("appearance"), cx).into_any_element(),
             self.row(t("language"), "language", self.language(cfg, cx), cx)
                 .into_any_element(),
             self.row(t("appearance"), "theme", self.theme(cfg, cx), cx)
@@ -609,18 +609,21 @@ impl Render for AppearanceSettings {
         v_flex()
             .id("appearance-settings")
             .size_full()
+            .gap_4()
+            .pb_4()
             .pr_2()
             .overflow_y_scroll()
             .when(self.shows("general"), |panel| {
-                panel.children(self.general(&cfg, cx))
+                panel.child(section(t("general")).children(self.general(&cfg, cx)))
             })
             .when(self.shows("appearance"), |panel| {
-                panel.children(self.appearance(&cfg, cx))
+                panel.child(section(t("appearance")).children(self.appearance(&cfg, cx)))
             })
             .when(self.shows("appearance"), |panel| {
-                panel
-                    .child(self.heading(t("theme_editor"), cx))
-                    .child(self.editor.clone())
+                panel.child(
+                    section(t("theme_editor"))
+                        .child(div().px_5().py_4().child(self.editor.clone())),
+                )
             })
     }
 }

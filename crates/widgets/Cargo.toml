@@ -17,3 +17,4 @@ link = { workspace = true }
 store = { workspace = true }
 gpui-kit = { workspace = true }
 tracing = { workspace = true }
+theme = { workspace = true }

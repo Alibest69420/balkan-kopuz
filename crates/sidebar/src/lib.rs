@@ -4,9 +4,9 @@ mod items;
 mod switcher;
 
 use api::{SourceKind, SourceState};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::tooltip::Tooltip;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Icon, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, DragMoveEvent, Entity, InteractiveElement as _,
@@ -16,7 +16,7 @@ use gpui_kit::{
 use link::Link;
 use store::{ConfigModel, Navigator, Route, SourcesModel};
 use widgets::format::t;
-use widgets::icons;
+use widgets::{icons, style};
 
 use switcher::{SourceSwitcher, Status};
 
@@ -26,13 +26,24 @@ const RAIL_WIDTH: Pixels = px(72.);
 const COLLAPSE_BELOW: Pixels = px(150.);
 const EXPAND_ABOVE: Pixels = px(180.);
 const MAX_WIDTH: Pixels = px(450.);
-const HANDLE_WIDTH: Pixels = px(4.);
+const HANDLE_WIDTH: Pixels = px(8.);
+const HANDLE_LINE: Pixels = px(1.);
 const INDICATOR: Pixels = px(2.);
 const INDICATOR_HEIGHT: Pixels = px(24.);
+const INDICATOR_HOVER: Pixels = px(16.);
 const ITEM_ICON: Pixels = px(18.);
+const ARROW_ICON: Pixels = px(9.);
+const DIVIDER: Pixels = px(1.);
+
+// `opacity-70` on an inactive label, full on the row the pointer is over.
+const LABEL_IDLE: f32 = 0.70;
+// `bg-white/40`: the sliver of an indicator an inactive row grows on hover.
+const INDICATOR_IDLE: f32 = 0.40;
 
 // The reorder arrows only appear on the row the pointer is over.
 const ITEM_GROUP: &str = "sidebar-item";
+// The resize handle is an invisible strip; only its hairline reacts.
+const HANDLE_GROUP: &str = "sidebar-handle";
 
 // TODO(ui-style): the Vaxry variant — grouped "discover"/"library" sections, no reorder, 200 px default.
 
@@ -164,38 +175,59 @@ impl Sidebar {
             .id(SharedString::from(format!("nav-{key}")))
             .group(ITEM_GROUP)
             .w_full()
-            .rounded(cx.theme().radius)
-            .when(active, |row| {
-                row.bg(cx.theme().sidebar_accent)
-                    .text_color(cx.theme().sidebar_accent_foreground)
-            })
-            .when(!active, |row| {
-                row.hover(|row| row.bg(cx.theme().sidebar_accent.opacity(0.5)))
-            })
-            .child(
-                div()
-                    .w(INDICATOR)
-                    .h(INDICATOR_HEIGHT)
-                    .flex_shrink_0()
-                    .rounded_r(INDICATOR)
-                    .when(active, |bar| bar.bg(cx.theme().sidebar_primary)),
-            )
             .child(
                 h_flex()
                     .id("link")
+                    .relative()
                     .flex_1()
                     .min_w_0()
-                    .gap_3()
-                    .p_2()
+                    .p_3()
+                    .rounded(style::radius_lg())
+                    .cursor_pointer()
+                    .map(|link| {
+                        if active {
+                            link.bg(style::white(style::HOVER, cx))
+                                .text_color(cx.theme().foreground)
+                        } else {
+                            link.text_color(style::slate_400(cx)).hover(|link| {
+                                link.bg(style::white(style::RAISED, cx))
+                                    .text_color(style::white(style::TEXT_STRONG, cx))
+                            })
+                        }
+                    })
                     .when(collapsed, |link| {
                         link.justify_center().tooltip(move |window, cx| {
                             Tooltip::new(tooltip.clone()).build(window, cx)
                         })
                     })
-                    .child(Icon::default().path(items::icon(key)).size(ITEM_ICON))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .w_6()
+                            .h_6()
+                            .flex_shrink_0()
+                            .child(Icon::default().path(items::icon(key)).size(ITEM_ICON)),
+                    )
                     .when(!collapsed, |link| {
-                        link.child(div().flex_1().min_w_0().truncate().text_sm().child(label))
+                        link.child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .ml_4()
+                                .truncate()
+                                .text_sm()
+                                .font_medium()
+                                .when(!active, |label| {
+                                    label
+                                        .opacity(LABEL_IDLE)
+                                        .group_hover(ITEM_GROUP, |label| label.opacity(1.))
+                                })
+                                .child(label),
+                        )
                     })
+                    .child(indicator(active, cx))
                     .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx)),
             )
             .when(!collapsed && (can_move_up || can_move_down), |row| {
@@ -204,18 +236,37 @@ impl Sidebar {
                         .pr_1()
                         .opacity(0.)
                         .group_hover(ITEM_GROUP, |arrows| arrows.opacity(1.))
-                        .child(arrow(key, -1, "move_up", icons::CHEVRON_UP, can_move_up))
+                        .child(arrow(key, -1, "up", icons::CHEVRON_UP, can_move_up, cx))
                         .child(arrow(
                             key,
                             1,
-                            "move_down",
+                            "down",
                             icons::CHEVRON_DOWN,
                             can_move_down,
+                            cx,
                         )),
                 )
             })
             .into_any_element()
     }
+}
+
+/// The bar down the leading edge: full height on the active row, a sliver on the hovered one.
+fn indicator(active: bool, cx: &App) -> impl IntoElement {
+    div()
+        .absolute()
+        .left_0()
+        .w(INDICATOR)
+        .rounded_r_full()
+        .map(|bar| {
+            if active {
+                bar.h(INDICATOR_HEIGHT).bg(cx.theme().foreground)
+            } else {
+                bar.h(px(0.))
+                    .bg(style::white(INDICATOR_IDLE, cx))
+                    .group_hover(ITEM_GROUP, |bar| bar.h(INDICATOR_HOVER))
+            }
+        })
 }
 
 fn arrow(
@@ -224,14 +275,31 @@ fn arrow(
     label: &'static str,
     icon: &'static str,
     enabled: bool,
+    cx: &App,
 ) -> impl IntoElement {
-    Button::new(SharedString::from(format!("nav-{key}-{label}")))
-        .ghost()
-        .xsmall()
-        .icon(Icon::default().path(icon))
-        .tooltip(t(label))
-        .disabled(!enabled)
-        .on_click(move |_, _, cx| Sidebar::reorder(key, delta, cx))
+    div()
+        .id(SharedString::from(format!("nav-{key}-{label}")))
+        .flex()
+        .items_center()
+        .justify_center()
+        .px_1()
+        .rounded_full()
+        .map(|button| {
+            if enabled {
+                button
+                    .text_color(style::slate_500(cx))
+                    .cursor_pointer()
+                    .hover(|button| {
+                        button
+                            .bg(style::white(style::HOVER, cx))
+                            .text_color(cx.theme().foreground)
+                    })
+                    .on_click(move |_, _, cx| Sidebar::reorder(key, delta, cx))
+            } else {
+                button.text_color(style::white(style::TEXT_FAINT, cx))
+            }
+        })
+        .child(Icon::default().path(icon).size(ARROW_ICON))
 }
 
 impl Render for Sidebar {
@@ -263,10 +331,10 @@ impl Render for Sidebar {
             .h_full()
             .w(width)
             .flex_shrink_0()
-            .bg(cx.theme().sidebar)
-            .text_color(cx.theme().sidebar_foreground)
+            .bg(style::black(0.40, cx))
+            .text_color(style::slate_400(cx))
             .border_r_1()
-            .border_color(cx.theme().sidebar_border)
+            .border_color(style::white(style::BORDER_SOFT, cx))
             .on_drag_move(
                 cx.listener(|this, event: &DragMoveEvent<ResizeDrag>, _, cx| {
                     this.resize(event.event.position.x - event.bounds.left(), cx);
@@ -285,24 +353,42 @@ impl Render for Sidebar {
                             .flex_1()
                             .min_h_0()
                             .overflow_y_scroll()
-                            .p_2()
+                            .pt_2()
+                            .px_3()
                             .gap_1()
-                            .children(rows),
-                    )
-                    .child(div().h(px(1.)).mx_3().bg(cx.theme().sidebar_border))
-                    .child(div().p_2().child(settings)),
+                            .children(rows)
+                            .child(
+                                div()
+                                    .h(DIVIDER)
+                                    .my_4()
+                                    .mx_3()
+                                    .bg(style::white(style::BORDER_SOFT, cx)),
+                            )
+                            .child(settings),
+                    ),
             )
             .child(
                 div()
                     .id("sidebar-resize")
+                    .group(HANDLE_GROUP)
                     .absolute()
                     .top_0()
                     .right_0()
                     .h_full()
                     .w(HANDLE_WIDTH)
                     .cursor_col_resize()
-                    .hover(|handle| handle.bg(cx.theme().ring.opacity(0.4)))
-                    .on_drag(ResizeDrag, |_, _, _, cx| cx.new(|_| ResizeGhost)),
+                    .on_drag(ResizeDrag, |_, _, _, cx| cx.new(|_| ResizeGhost))
+                    .child(
+                        div()
+                            .absolute()
+                            .top_0()
+                            .bottom_0()
+                            .right_0()
+                            .w(HANDLE_LINE)
+                            .group_hover(HANDLE_GROUP, |line| {
+                                line.bg(style::white(style::HOVER, cx))
+                            }),
+                    ),
             )
     }
 }

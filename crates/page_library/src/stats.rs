@@ -1,7 +1,9 @@
-use gpui_kit::component::{ActiveTheme as _, Icon, h_flex, v_flex};
+use gpui_kit::component::{Icon, h_flex, v_flex};
 use gpui_kit::{
-    App, FontWeight, IntoElement, ParentElement as _, RenderOnce, SharedString, Styled, Window, div,
+    App, FontWeight, IntoElement, ParentElement as _, RenderOnce, SharedString, Styled, Window,
+    div, px,
 };
+use widgets::style;
 
 /// One of the four counters the library opens with.
 #[derive(IntoElement)]
@@ -28,10 +30,10 @@ impl RenderOnce for StatCard {
             .min_w_0()
             .gap_4()
             .items_center()
-            .p_4()
-            .rounded(cx.theme().radius)
+            .p_5()
+            .rounded(style::radius_xl())
             .border_1()
-            .border_color(cx.theme().border)
+            .border_color(style::white(style::BORDER_SOFT, cx))
             .child(
                 div()
                     .flex()
@@ -39,12 +41,13 @@ impl RenderOnce for StatCard {
                     .justify_center()
                     .size_12()
                     .flex_shrink_0()
-                    .rounded(cx.theme().radius)
-                    .bg(cx.theme().muted)
+                    .rounded(style::radius_lg())
+                    .bg(style::white(style::RAISED, cx))
                     .child(
                         Icon::default()
                             .path(self.icon)
-                            .text_color(cx.theme().muted_foreground),
+                            .size(px(18.))
+                            .text_color(style::white(style::TEXT_SECONDARY, cx)),
                     ),
             )
             .child(
@@ -53,7 +56,8 @@ impl RenderOnce for StatCard {
                     .child(
                         div()
                             .text_xs()
-                            .text_color(cx.theme().muted_foreground)
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(style::slate_500(cx))
                             .truncate()
                             .child(self.label),
                     )

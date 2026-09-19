@@ -8,15 +8,24 @@ use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AppContext as _, Context, Entity, FocusHandle, InteractiveElement as _, IntoElement,
-    ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled,
+    ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _, Styled,
     Subscription, Task, Window, div, px,
 };
 use store::{Chrome, ConfigModel, Link};
 use widgets::format::{duration, t, t_with};
-use widgets::{Cover, icons};
+use widgets::{Cover, icons, style};
 
 const SHOWN_RESULTS: usize = 8;
 const DEBOUNCE: Duration = Duration::from_millis(150);
+
+// Measured geometry: `max-w-xl`, `max-h-96`, `w-9 h-9` on a row's thumb.
+const PANEL_WIDTH: Pixels = px(576.);
+const RESULTS_HEIGHT: Pixels = px(384.);
+const ROW_COVER: Pixels = px(36.);
+
+// `bg-black/60` behind the palette, and the `text-white/40` of its empty line.
+const SCRIM: f32 = 0.60;
+const EMPTY_TEXT: f32 = 0.40;
 
 /// Rendered only while `Chrome::is_quick_search_open`.
 pub struct QuickSearch {
@@ -206,20 +215,27 @@ impl QuickSearch {
             .gap_3()
             .px_4()
             .py_2()
-            .when(selected, |row| row.bg(cx.theme().list_active))
-            .hover(|row| row.bg(cx.theme().list_hover))
+            .cursor_pointer()
+            .when(selected, |row| row.bg(style::white(style::HOVER, cx)))
+            .hover(|row| row.bg(style::white(style::RAISED, cx)))
             .when(covers, |row| {
-                row.child(Cover::new(track.artwork.as_ref()).size(px(36.)))
+                row.child(Cover::new(track.artwork.as_ref()).size(ROW_COVER))
             })
             .child(
                 v_flex()
                     .flex_1()
                     .min_w_0()
-                    .child(div().text_sm().truncate().child(track.title.clone()))
+                    .child(
+                        div()
+                            .text_sm()
+                            .truncate()
+                            .text_color(style::white(style::TEXT_STRONG, cx))
+                            .child(track.title.clone()),
+                    )
                     .child(
                         div()
                             .text_xs()
-                            .text_color(cx.theme().muted_foreground)
+                            .text_color(style::slate_400(cx))
                             .truncate()
                             .child(track.artist.clone()),
                     ),
@@ -228,7 +244,7 @@ impl QuickSearch {
                 div()
                     .flex_shrink_0()
                     .text_xs()
-                    .text_color(cx.theme().muted_foreground)
+                    .text_color(style::slate_500(cx))
                     .child(duration(secs * 1000))
             }))
             .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
@@ -261,8 +277,8 @@ impl Render for QuickSearch {
             .flex()
             .justify_center()
             .px_4()
-            .pt(px(128.))
-            .bg(cx.theme().overlay.opacity(0.6))
+            .pt_32()
+            .bg(style::black(SCRIM, cx))
             .capture_action(cx.listener(|this, _: &MoveUp, _, cx| {
                 this.move_selection(false, cx);
                 cx.stop_propagation();
@@ -276,24 +292,29 @@ impl Render for QuickSearch {
                 v_flex()
                     .id("quick-search-panel")
                     .w_full()
-                    .max_w(px(576.))
-                    .max_h(px(480.))
+                    .max_w(PANEL_WIDTH)
                     .bg(cx.theme().popover)
                     .border_1()
-                    .border_color(cx.theme().border)
-                    .rounded(cx.theme().radius)
+                    .border_color(style::white(style::BORDER, cx))
+                    .rounded(style::radius_xl())
+                    .shadow_lg()
                     .overflow_hidden()
                     .on_click(|_, _, cx| cx.stop_propagation())
                     .child(
                         div()
-                            .px_2()
+                            .px_5()
                             .border_b_1()
-                            .border_color(cx.theme().border)
+                            .border_color(style::white(style::BORDER, cx))
                             .child(
                                 Input::new(&self.input)
                                     .appearance(false)
-                                    .h(px(52.))
-                                    .prefix(icons::icon(icons::SEARCH)),
+                                    .prefix(
+                                        icons::icon(icons::SEARCH).text_color(style::slate_500(cx)),
+                                    )
+                                    .gap_3()
+                                    .px_0()
+                                    .py_4()
+                                    .text_base(),
                             ),
                     )
                     .when(!rows.is_empty(), |panel| {
@@ -302,6 +323,7 @@ impl Render for QuickSearch {
                                 .id("quick-search-results")
                                 .py_2()
                                 .min_h_0()
+                                .max_h(RESULTS_HEIGHT)
                                 .overflow_y_scroll()
                                 .children(rows),
                         )
@@ -312,7 +334,7 @@ impl Render for QuickSearch {
                                 .px_5()
                                 .py_6()
                                 .text_sm()
-                                .text_color(cx.theme().muted_foreground)
+                                .text_color(style::white(EMPTY_TEXT, cx))
                                 .child(t_with(
                                     "no_results_found",
                                     &[("query", self.query.clone())],

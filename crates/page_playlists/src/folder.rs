@@ -1,15 +1,16 @@
 //! The playlists inside one folder.
 
-use gpui_kit::component::v_flex;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::{
-    Context, InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString,
-    StatefulInteractiveElement as _, Styled as _, Subscription, Window,
+    App, Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Render,
+    SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Window, div,
 };
-use store::{PlaylistsModel, Route};
+use store::{Navigator, PlaylistsModel, Route};
 use widgets::format::t;
-use widgets::{EmptyState, Loading, PageHeader, icons, tile_grid};
+use widgets::{EmptyState, Loading, icons, style};
 
-use crate::cards::playlist_card;
+use crate::cards::{card_grid, playlist_card};
 
 pub struct PlaylistFolder {
     id: SharedString,
@@ -38,7 +39,7 @@ impl Render for PlaylistFolder {
             .cloned();
         let playlists = model.read(cx).playlists().to_vec();
         let Some(folder) = folder else {
-            return v_flex().size_full().p_8().child(if loaded {
+            return v_flex().size_full().px_8().pt_8().child(if loaded {
                 EmptyState::new(t("no_playlists_yet"))
                     .icon(icons::FOLDER)
                     .into_any_element()
@@ -55,24 +56,22 @@ impl Render for PlaylistFolder {
 
         v_flex()
             .size_full()
-            .p_8()
-            .child(
-                PageHeader::new(folder.name.clone())
-                    .subtitle(t("playlists"))
-                    .back(Route::Playlists),
-            )
+            .px_8()
+            .pt_8()
+            .child(breadcrumb(folder.name.clone(), cx))
             .child(
                 v_flex()
                     .id("folder-body")
                     .flex_1()
                     .min_h_0()
+                    .pb_20()
                     .overflow_y_scroll()
                     .child(if inside.is_empty() {
                         EmptyState::new(t("no_playlists_yet"))
-                            .icon(icons::LIST)
+                            .icon(icons::FOLDER)
                             .into_any_element()
                     } else {
-                        tile_grid()
+                        card_grid()
                             .children(
                                 inside
                                     .iter()
@@ -82,4 +81,21 @@ impl Render for PlaylistFolder {
                     }),
             )
     }
+}
+
+/// Back, a dim slash, and the folder's name: the trail the Dioxus page draws above the grid.
+fn breadcrumb(name: String, cx: &App) -> impl IntoElement {
+    h_flex()
+        .gap_3()
+        .items_center()
+        .pb_8()
+        .child(
+            Button::new("folder-back")
+                .ghost()
+                .icon(icons::icon(icons::CHEVRON_LEFT))
+                .text_color(style::slate_400(cx))
+                .on_click(|_, _, cx| Navigator::navigate(Route::Playlists, cx)),
+        )
+        .child(div().text_color(style::white(style::TEXT_DIM, cx)).child("/"))
+        .child(div().font_weight(FontWeight::SEMIBOLD).child(name))
 }
