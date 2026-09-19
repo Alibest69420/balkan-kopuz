@@ -4,20 +4,22 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 use api::{QueueContext, RadioStationInfo};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::{
+    Button, ButtonCustomVariant, ButtonRounded, ButtonVariants as _,
+};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::spinner::Spinner;
-use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement as _, Styled, Subscription, Task, Window, div, px,
+    AnyElement, App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _,
+    IntoElement, ParentElement as _, Pixels, Render, ScrollHandle, SharedString,
+    StatefulInteractiveElement as _, Styled, Subscription, Task, Window, div, px, rems,
 };
 use link::Link;
 use store::{Notices, Query, actions};
 use widgets::format::t;
-use widgets::{Cover, EmptyState, PageHeader, icons};
+use widgets::{Cover, EmptyState, icons, style};
 
 // Typing settles before the directory is searched; the Dioxus page used the same delay.
 const DEBOUNCE: Duration = Duration::from_millis(300);
@@ -321,12 +323,10 @@ impl Radio {
         let expanded = self.expanded.contains(&station.id);
         let station_id = station.id.clone();
         let stream_id = first_stream(station);
-        let muted = cx.theme().muted_foreground;
-        v_flex()
-            .id(SharedString::from(station.id.clone()))
-            .w_full()
-            .rounded(cx.theme().radius)
-            .hover(|row| row.bg(cx.theme().list_hover))
+        let muted = style::slate_400(cx);
+        Self::card(SharedString::from(station.id.clone()), cx)
+            .flex()
+            .flex_col()
             .on_click(
                 cx.listener(move |_, _, _, cx| play(station_id.clone(), stream_id.clone(), cx)),
             )
@@ -334,15 +334,22 @@ impl Radio {
                 h_flex()
                     .w_full()
                     .items_center()
-                    .gap_3()
-                    .px_3()
-                    .py_2()
+                    .gap_4()
                     .child(
                         Cover::new(station.artwork.as_ref())
                             .size(ART)
+                            .rounded(ART_RADIUS)
                             .placeholder(icons::RADIO),
                     )
-                    .child(div().flex_1().min_w_0().truncate().child(t(&station.name)))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_base()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(t(&station.name)),
+                    )
                     .child(
                         h_flex()
                             .flex_1()
@@ -353,7 +360,7 @@ impl Radio {
                                     .flex_1()
                                     .min_w_0()
                                     .truncate()
-                                    .text_sm()
+                                    .text_xs()
                                     .text_color(muted)
                                     .child(t(&station.description)),
                             )
@@ -361,7 +368,7 @@ impl Radio {
                     )
                     .child(
                         h_flex()
-                            .w(STREAMS_WIDTH)
+                            .w(streams_width())
                             .flex_shrink_0()
                             .gap_2()
                             .justify_end()
@@ -369,17 +376,11 @@ impl Radio {
                     ),
             )
             .when(expanded, |row| {
-                row.child(
-                    h_flex()
-                        .w_full()
-                        .flex_wrap()
-                        .gap_2()
-                        .px_3()
-                        .pb_2()
-                        .children(station.streams.iter().map(|stream| {
-                            self.stream_button(station, stream.id.clone(), t(&stream.name), cx)
-                        })),
-                )
+                row.child(h_flex().w_full().flex_wrap().gap_2().mt_2p5().children(
+                    station.streams.iter().map(|stream| {
+                        self.stream_button(station, stream.id.clone(), t(&stream.name), cx)
+                    }),
+                ))
             })
             .into_any_element()
     }
@@ -390,42 +391,47 @@ impl Radio {
         let station_id = station.id.clone();
         let stream_id = first_stream(station);
         let toggle_id = station.id.clone();
-        let muted = cx.theme().muted_foreground;
-        h_flex()
-            .id(SharedString::from(format!("directory-{}", station.id)))
-            .w_full()
-            .items_center()
-            .gap_3()
-            .px_3()
-            .py_2()
-            .rounded(cx.theme().radius)
-            .hover(|row| row.bg(cx.theme().list_hover))
+        let muted = style::slate_400(cx);
+        Self::card(SharedString::from(format!("directory-{}", station.id)), cx)
+            .flex()
+            .items_start()
+            .gap_4()
             .on_click(
                 cx.listener(move |_, _, _, cx| play(station_id.clone(), stream_id.clone(), cx)),
             )
             .child(
                 Cover::new(station.artwork.as_ref())
                     .size(ART)
+                    .rounded(ART_RADIUS)
                     .placeholder(icons::RADIO),
             )
             .child(
                 v_flex()
                     .flex_1()
                     .min_w_0()
-                    .child(div().truncate().child(t(&station.name)))
+                    .gap_0p5()
                     .child(
                         div()
                             .truncate()
-                            .text_sm()
+                            .text_base()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(t(&station.name)),
+                    )
+                    .child(
+                        div()
+                            .truncate()
+                            .text_xs()
                             .text_color(muted)
                             .child(t(&station.description)),
-                    ),
+                    )
+                    .child(h_flex().gap_2().mt_2().children(self.tags(station, cx))),
             )
-            .children(self.tags(station, cx))
             .child(
                 Button::new(SharedString::from(format!("pin-{}", station.id)))
                     .ghost()
-                    .icon(icons::icon(if pinned { icons::CHECK } else { icons::PLUS }))
+                    .rounded(px(999.))
+                    .with_size(px(36.))
+                    .icon(icons::icon(if pinned { icons::CHECK } else { icons::PLUS }).xsmall())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();
                         this.toggle_pin(toggle_id.clone(), cx);
@@ -435,12 +441,14 @@ impl Radio {
             .into_any_element()
     }
 
+    /// `text-sm font-bold uppercase tracking-wider text-slate-400`, less the two GPUI cannot draw.
     fn heading(&self, label: SharedString, cx: &Context<Self>) -> impl IntoElement {
         div()
             .pt_4()
-            .pb_2()
-            .text_xs()
-            .text_color(cx.theme().muted_foreground)
+            .pb_3()
+            .text_sm()
+            .font_weight(FontWeight::BOLD)
+            .text_color(style::slate_400(cx))
             .child(label)
     }
 
@@ -457,36 +465,17 @@ impl Radio {
         if stations.is_empty() {
             return None;
         }
-        let muted = cx.theme().muted_foreground;
         Some(
             v_flex()
                 .w_full()
                 .child(self.heading(t("radio_selected"), cx))
                 .child(
-                    h_flex()
-                        .w_full()
-                        .items_center()
-                        .gap_3()
-                        .px_3()
-                        .pb_1()
-                        .text_xs()
-                        .text_color(muted)
-                        .child(div().w(ART).flex_shrink_0())
-                        .child(div().flex_1().min_w_0().child(t("radio_station_col")))
-                        .child(div().flex_1().min_w_0().child(t("radio_description_col")))
-                        .child(
-                            div()
-                                .w(STREAMS_WIDTH)
-                                .flex_shrink_0()
-                                .text_right()
-                                .child(t("radio_streams_col")),
-                        ),
-                )
-                .children(
-                    stations
-                        .iter()
-                        .map(|station| self.pinned_row(station, cx))
-                        .collect::<Vec<_>>(),
+                    v_flex().w_full().gap_3().mb_8().children(
+                        stations
+                            .iter()
+                            .map(|station| self.pinned_row(station, cx))
+                            .collect::<Vec<_>>(),
+                    ),
                 )
                 .into_any_element(),
         )
@@ -497,16 +486,15 @@ impl Radio {
         let loading = query.is_loading() || !query.is_settled();
         let error = query.error().map(|error| error.to_string());
         let results = query.value().cloned().unwrap_or_default();
-        let muted = cx.theme().muted_foreground;
         if loading {
             return h_flex()
                 .w_full()
                 .justify_center()
                 .items_center()
-                .gap_2()
-                .py_8()
+                .gap_3()
+                .py_16()
                 .text_sm()
-                .text_color(muted)
+                .text_color(style::white(style::TEXT_DIM, cx))
                 .child(Spinner::new())
                 .child(t("radio_loading_stations"))
                 .into_any_element();
@@ -524,6 +512,7 @@ impl Radio {
         }
         v_flex()
             .w_full()
+            .gap_3()
             .children(
                 results
                     .iter()
@@ -539,14 +528,48 @@ impl Render for Radio {
         let searching = !self.query.trim().is_empty();
         let selected = self.selected(cx);
         let browser = self.browser(cx);
-        let muted = cx.theme().muted_foreground;
         v_flex()
             .size_full()
-            .p_4()
+            .px_8()
+            .pt_8()
             .child(
-                PageHeader::new(t("radio"))
-                    .subtitle(t("radio_subtitle"))
-                    .action(div().w(px(260.)).child(Input::new(&self.filter))),
+                h_flex()
+                    .w_full()
+                    .items_end()
+                    .justify_between()
+                    .flex_wrap()
+                    .gap_4()
+                    .mb_8()
+                    .child(
+                        v_flex()
+                            .min_w_0()
+                            .child(
+                                h_flex()
+                                    .items_center()
+                                    .gap_3()
+                                    .mb_2()
+                                    .child(
+                                        icons::icon(icons::RADIO)
+                                            .size(px(24.))
+                                            .text_color(cx.theme().primary_hover),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_3xl()
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .child(t("radio")),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(style::slate_400(cx))
+                                    .child(t("radio_subtitle")),
+                            ),
+                    )
+                    .child(div().w_full().max_w(search_width()).flex_shrink_0().child(
+                        Input::new(&self.filter).prefix(icons::icon(icons::SEARCH).small()),
+                    )),
             )
             .child(
                 div()
@@ -575,8 +598,9 @@ impl Render for Radio {
                                     ))
                                     .child(
                                         div()
-                                            .text_xs()
-                                            .text_color(muted)
+                                            .pb_3()
+                                            .text_size(style::text_10())
+                                            .text_color(style::white(0.25, cx))
                                             .child(t("radio_powered_by")),
                                     ),
                             )

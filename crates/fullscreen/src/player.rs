@@ -281,9 +281,7 @@ impl FullscreenPlayer {
                             .text_lg()
                             .line_clamp(2)
                             .text_color(style::white(0.5, cx))
-                            .hover(|link| {
-                                link.text_color(style::white(0.8, cx)).underline()
-                            })
+                            .hover(|link| link.text_color(style::white(0.8, cx)).underline())
                             .child(album)
                             .on_click(move |_, _, cx| {
                                 if album_id.is_empty() {
@@ -392,7 +390,11 @@ impl FullscreenPlayer {
                     .items_center()
                     .text_xs()
                     .text_color(style::white(0.7, cx))
-                    .child(div().w(clock_width()).child(controls::clock(position, radio)))
+                    .child(
+                        div()
+                            .w(clock_width())
+                            .child(controls::clock(position, radio)),
+                    )
                     .child(
                         div()
                             .flex_1()
@@ -421,9 +423,7 @@ impl FullscreenPlayer {
                                     .with_size(STEP_SIZE)
                                     .rounded(px(999.)),
                             )
-                            .child(
-                                controls::play_button("fs-play", playing).with_size(PLAY_SIZE),
-                            )
+                            .child(controls::play_button("fs-play", playing).with_size(PLAY_SIZE))
                             .child(
                                 controls::next_button("fs-next")
                                     .with_size(STEP_SIZE)
@@ -471,9 +471,9 @@ impl FullscreenPlayer {
                     .shadow_lg()
                     .bg(style::black(0.3, cx))
                     .map(|frame| match source {
-                        Some(source) => frame.child(
-                            img(source).size_full().object_fit(ObjectFit::Cover),
-                        ),
+                        Some(source) => {
+                            frame.child(img(source).size_full().object_fit(ObjectFit::Cover))
+                        }
                         None => frame.child(
                             icons::icon(icons::MUSIC)
                                 .size(px(48.))

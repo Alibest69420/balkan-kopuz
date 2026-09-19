@@ -51,6 +51,8 @@ pub const SPEAKER: &str = "icons/speaker.svg";
 pub const LYRICS: &str = "icons/mic.svg";
 pub const ACTIVITY: &str = "icons/flame.svg";
 pub const WARNING: &str = "icons/triangle-alert.svg";
+pub const LOCK: &str = "icons/lock.svg";
+pub const COPY: &str = "icons/copy.svg";
 
 /// An icon by path, e.g. `icon(icons::PLAY)`.
 pub fn icon(path: &'static str) -> Icon {

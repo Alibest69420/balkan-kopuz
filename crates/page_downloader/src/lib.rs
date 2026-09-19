@@ -316,15 +316,13 @@ impl Downloader {
                             .child(status),
                     )
                     .when(percent > 0.0, |column| {
-                        column.child(
-                            Progress::new("downloader-progress")
-                                .value(percent)
-                                .color(if processing {
-                                    cx.theme().warning.opacity(0.6)
-                                } else {
-                                    style::white(0.5, cx)
-                                }),
-                        )
+                        column.child(Progress::new("downloader-progress").value(percent).color(
+                            if processing {
+                                cx.theme().warning.opacity(0.6)
+                            } else {
+                                style::white(0.5, cx)
+                            },
+                        ))
                     }),
             )
             .into_any_element()

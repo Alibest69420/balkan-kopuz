@@ -419,7 +419,11 @@ impl Favorites {
                     .when(show_album, |header| {
                         header.child(columns::flexible(columns::TEXT_MIN, 1.).child(album))
                     })
-                    .child(columns::fixed(columns::DURATION).justify_end().child(duration))
+                    .child(
+                        columns::fixed(columns::DURATION)
+                            .justify_end()
+                            .child(duration),
+                    )
                     .child(columns::fixed(columns::MENU)),
             )
             .into_any_element()
@@ -448,9 +452,7 @@ impl Favorites {
                     header.child(t(field.label_key()))
                 }
             })
-            .child(
-                icons::icon(sort::indicator(self.sort, field)).size(style::text_10()),
-            )
+            .child(icons::icon(sort::indicator(self.sort, field)).size(style::text_10()))
             .on_click(cx.listener(move |this, _, _, cx| this.toggle_sort(field, cx)))
             .into_any_element()
     }

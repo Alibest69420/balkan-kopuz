@@ -135,11 +135,7 @@ impl Render for MiniPlayer {
                             .px_3()
                             .pt_2()
                             .pb_1()
-                            .child(
-                                Cover::new(artwork.as_ref())
-                                    .size(COVER)
-                                    .rounded(px(8.)),
-                            )
+                            .child(Cover::new(artwork.as_ref()).size(COVER).rounded(px(8.)))
                             .child(
                                 v_flex()
                                     .flex_1()
@@ -194,9 +190,7 @@ impl Render for MiniPlayer {
                                     .rounded(px(999.))
                                     .with_size(CONTROL),
                             )
-                            .child(
-                                controls::play_button("mini-play", playing).with_size(PLAY),
-                            )
+                            .child(controls::play_button("mini-play", playing).with_size(PLAY))
                             .child(
                                 controls::next_button("mini-next")
                                     .rounded(px(999.))

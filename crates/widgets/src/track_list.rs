@@ -1,8 +1,12 @@
 use std::collections::HashSet;
+use std::rc::Rc;
 
 use api::TrackInfo;
+use gpui_kit::component::Sizable as _;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::menu::ContextMenuExt as _;
+use gpui_kit::component::menu::DropdownMenu as _;
 use gpui_kit::component::menu::PopupMenu;
 use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -124,6 +128,8 @@ pub struct TrackList {
     selected: HashSet<String>,
     selecting: bool,
     scroll: UniformListScrollHandle,
+    // A hidden trigger would take its own open menu down with it, so the row it belongs to shows it.
+    menu_open: Option<String>,
 }
 
 impl EventEmitter<TrackListEvent> for TrackList {}
@@ -137,6 +143,7 @@ impl TrackList {
             selected: HashSet::new(),
             selecting: false,
             scroll: UniformListScrollHandle::new(),
+            menu_open: None,
         }
     }
 
@@ -248,6 +255,18 @@ impl TrackList {
         let accent = cx.theme().primary;
         let mark = px(12.);
         let cover = style::to_px(style::row_cover(), window);
+        let menu_open = self.menu_open.as_deref() == Some(key.as_str());
+        // One builder, so the dots button and the right-click menu cannot drift apart.
+        let menu = {
+            let track = track.clone();
+            let actions = self.row_actions;
+            let list = cx.entity().downgrade();
+            Rc::new(
+                move |popup, window: &mut Window, cx: &mut Context<PopupMenu>| {
+                    row_menu(popup, &track, index, actions, list.clone(), window, cx)
+                },
+            )
+        };
 
         columns::frame()
             .id(("track-row", index))
@@ -401,15 +420,40 @@ impl TrackList {
                     .text_color(style::white(style::TEXT_DIM, cx))
                     .child(length),
             )
-            .child(columns::fixed(columns::MENU))
-            .context_menu({
-                let track = track.clone();
-                let actions = self.row_actions;
-                let list = cx.entity().downgrade();
-                move |menu, window, cx| {
-                    row_menu(menu, &track, index, actions, list.clone(), window, cx)
-                }
-            })
+            .child(
+                columns::fixed(columns::MENU)
+                    .id(("row-menu", index))
+                    .justify_end()
+                    // The popover stops the press; this stops the rest of the cell playing the row.
+                    .on_click(|_, _, cx| cx.stop_propagation())
+                    .when(!menu_open, |cell| {
+                        cell.invisible()
+                            .group_hover(ROW_GROUP, |dots| dots.visible())
+                    })
+                    .child(
+                        Button::new(("row-menu-button", index))
+                            .ghost()
+                            .xsmall()
+                            .icon(icons::icon(icons::MORE))
+                            .dropdown_menu({
+                                let menu = menu.clone();
+                                move |popup, window, cx| menu(popup, window, cx)
+                            })
+                            .on_open_change({
+                                let list = cx.entity().downgrade();
+                                let key = track.key.clone();
+                                move |open, _, cx| {
+                                    let key = open.then(|| key.clone());
+                                    list.update(cx, |this, cx| {
+                                        this.menu_open = key;
+                                        cx.notify();
+                                    })
+                                    .ok();
+                                }
+                            }),
+                    ),
+            )
+            .context_menu(move |popup, window, cx| menu(popup, window, cx))
             .into_any_element()
     }
 }

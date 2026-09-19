@@ -102,6 +102,11 @@ Do not fake these; leave the element unstyled for that property and move on.
   one-line note, and remember that a translated string may not want it.
 - `font-mono`: the duration column is monospaced upstream; there is no mono
   family wired up here, so it renders in the UI font.
+- **Do not wrap a popup trigger in `.invisible()` or `.opacity(0.)`.** `Div::paint`
+  returns early when hidden and takes the deferred popup content with it, so an
+  open menu vanishes the moment the pointer leaves the element that revealed it.
+  A hover-revealed trigger has to track whether its own popup is open and only
+  hide itself while it is closed — `track_list`'s row menu is the worked example.
 - **A `Button` sizes its glyph, not you.** `with_size` sizes the *box* and the
   glyph silently becomes ¾ of it; there is no public `icon_size`. To get a
   Tailwind glyph size, ask for `with_size(glyph * 4 / 3)` and restate the box
