@@ -1,16 +1,14 @@
-//! The window: sidebar, the routed page, the side panel, the player bar, and everything drawn over them.
+//! The window: the top bar, the routed page, the panels, the player bar, and everything over them.
 
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::notification::Notification;
-use gpui_kit::component::{ActiveTheme as _, Root, WindowExt as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Root, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled,
     Subscription, Task, Window, div,
 };
 use gpui_kit::{FocusHandle, InteractiveElement as _, actions};
-use link::{Connection, ConnectionStatus};
-use store::{Chrome, ConfigModel, Navigator, Notice, Notices, PlayerModel, SourcesModel};
+use link::Connection;
+use store::{Chrome, ConfigModel, Navigator, PlayerModel, SourcesModel};
 
 use crate::router::Router;
 
@@ -32,11 +30,11 @@ pub struct Shell {
     connection: Entity<Connection>,
     topbar: Entity<topbar::TopBar>,
     playlists_panel: Entity<playlists_panel::PlaylistsPanel>,
-    player_bar: Entity<player_bar::PlayerBar>,
-    side_panel: Entity<side_panel::SidePanelView>,
-    fullscreen: Entity<fullscreen::FullscreenPlayer>,
+    player_bar: Entity<now_playing::NowPlaying>,
+    side_panel: Entity<now_playing::NowPlaying>,
+    fullscreen: Entity<now_playing::NowPlaying>,
     quick_search: Entity<palette::Palette>,
-    mini_player: Entity<fullscreen::MiniPlayer>,
+    mini_player: Entity<now_playing::NowPlaying>,
     overlays: Entity<overlays::Overlays>,
     first_run: Entity<onboarding::FirstRun>,
     debug_overlay: Entity<debug_overlay::DebugOverlay>,
@@ -71,7 +69,6 @@ impl Shell {
         let chrome = Chrome::global(cx);
         let config = ConfigModel::global(cx);
         let sources = SourcesModel::global(cx);
-        let notices = Notices::global(cx);
         let first_run = cx.new(|cx| onboarding::FirstRun::new(window, cx));
 
         let subscriptions = vec![
@@ -105,29 +102,25 @@ impl Shell {
                 this.router.clear();
                 cx.notify();
             }),
-            cx.subscribe_in(&notices, window, |_, _, notice: &Notice, window, cx| {
-                let toast = match notice.level {
-                    api::NoticeLevel::Error => Notification::error(notice.message.clone()),
-                    api::NoticeLevel::Warning => Notification::warning(notice.message.clone()),
-                    _ => Notification::info(notice.message.clone()),
-                };
-                window.push_notification(toast, cx);
-            }),
         ];
 
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
+        // Overlays owns the notices channel now, so the bar only has to hold the cluster.
+        let topbar = cx.new(|cx| topbar::TopBar::new(window, cx));
+        let cluster = cx.new(|cx| status::StatusCluster::new(window, cx));
+        topbar.update(cx, |bar, cx| bar.set_activity(Some(cluster.into()), cx));
         Self {
             router: Router::default(),
             focus,
             connection,
-            topbar: cx.new(|cx| topbar::TopBar::new(window, cx)),
+            topbar,
             playlists_panel: cx.new(|cx| playlists_panel::PlaylistsPanel::new(window, cx)),
-            player_bar: cx.new(|cx| player_bar::PlayerBar::new(window, cx)),
-            side_panel: cx.new(|cx| side_panel::SidePanelView::new(window, cx)),
-            fullscreen: cx.new(|cx| fullscreen::FullscreenPlayer::new(window, cx)),
+            player_bar: cx.new(|cx| now_playing::NowPlaying::bar(window, cx)),
+            side_panel: cx.new(|cx| now_playing::NowPlaying::panel(window, cx)),
+            fullscreen: cx.new(|cx| now_playing::NowPlaying::sheet(window, cx)),
             quick_search: cx.new(|cx| palette::Palette::new(window, cx)),
-            mini_player: cx.new(|cx| fullscreen::MiniPlayer::new(window, cx)),
+            mini_player: cx.new(|cx| now_playing::NowPlaying::mini(window, cx)),
             overlays: cx.new(|cx| overlays::Overlays::new(window, cx)),
             first_run,
             debug_overlay: cx.new(|cx| debug_overlay::DebugOverlay::new(window, cx)),
@@ -150,13 +143,18 @@ impl Shell {
 
     /// Dismiss the innermost thing that is open, so Escape always undoes the most recent step.
     pub fn escape(&mut self, cx: &mut Context<Self>) {
+        // The mini window is the innermost thing open, and it is a window rather than a flag.
+        if now_playing::mini_is_open(cx) {
+            now_playing::close_mini(cx);
+            return;
+        }
         Chrome::global(cx).update(cx, |chrome, cx| {
             if chrome.is_quick_search_open() {
                 chrome.set_quick_search(false, cx);
-            } else if chrome.is_compact() {
-                chrome.set_compact(false, cx);
-            } else if chrome.is_fullscreen() {
-                chrome.set_fullscreen(false, cx);
+            } else if chrome.is_mini() {
+                chrome.set_mini(false, cx);
+            } else if chrome.is_sheet_open() {
+                chrome.set_sheet(false, cx);
             } else if chrome.panel().is_some() {
                 chrome.set_panel(None, cx);
             }
@@ -166,51 +164,6 @@ impl Shell {
     pub fn go_back(&mut self, cx: &mut Context<Self>) {
         Navigator::global(cx).update(cx, |navigator, cx| navigator.go_back(cx));
     }
-
-    /// While the daemon is unreachable there is nothing to show, so say so and offer to start it.
-    ///
-    /// The first probe is not a failure. This used to head every state with "Can't reach the kopuz
-    /// daemon", so an ordinary cold start read as an error before anything had gone wrong.
-    fn connection_screen(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let failure = match self.connection.read(cx).status() {
-            ConnectionStatus::Unreachable(error) => Some(store::human(error)),
-            _ => None,
-        };
-        v_flex()
-            .size_full()
-            .items_center()
-            .justify_center()
-            .gap_3()
-            .child(div().text_lg().child(match failure.is_some() {
-                true => i18n::t("daemon_unreachable"),
-                false => i18n::t("connecting"),
-            }))
-            .when_some(failure, |screen, message| {
-                screen.child(
-                    div()
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(message),
-                )
-            })
-            .child(
-                Button::new("start-daemon")
-                    .primary()
-                    .label(i18n::t("start_daemon"))
-                    .on_click(|_, _, cx| {
-                        let socket = match link::Link::global(cx).address() {
-                            link::Address::Socket(path) => Some(path.clone()),
-                            link::Address::Tcp(_) => None,
-                        };
-                        // Silently logging this left the button looking broken, so it got
-                        // pressed again, spawning another daemon each time.
-                        if let Err(error) = link::spawn_daemon(socket) {
-                            tracing::error!(%error, "could not start the daemon");
-                            Notices::error(error.to_string(), cx);
-                        }
-                    }),
-            )
-    }
 }
 
 impl Render for Shell {
@@ -218,29 +171,23 @@ impl Render for Shell {
         let _rebuild = profile::Rebuild::new();
         let connected = self.connection.read(cx).is_connected();
         let chrome = Chrome::global(cx).read(cx);
-        let fullscreen = chrome.is_fullscreen();
+        // The sheet is a full-window overlay, not a body state: its hero cover flies out of the
+        // bar's own cover slot, so the bar has to still be there underneath it.
+        let sheet_open = chrome.is_sheet_open();
         // A disconnect outranks compact: a mini player with nothing behind it would keep showing
         // the last track it saw, with no way to learn the daemon had gone.
         let compact = chrome.is_compact() && connected;
         let first_run = self.first_run.read(cx).showing(cx);
-        let nav_left =
-            store::layout(cx).nav.position == store::layout::NavPosition::Left && !fullscreen;
-        let bar = (!fullscreen).then(|| self.topbar.clone());
+        let nav_left = store::layout(cx).nav.position == store::layout::NavPosition::Left;
+        let bar = Some(self.topbar.clone());
         let playlists = self.playlists_panel.read(cx);
-        let playlists_open = playlists.is_open(cx) && connected && !fullscreen;
+        let playlists_open = playlists.is_open(cx) && connected;
         let playlists_width = playlists.width();
         let panel_open = chrome.panel().is_some();
         let quick_search_open = chrome.is_quick_search_open();
-        // The side panel is drag-resizable, so it owns the slot's width.
-        let panel_width = self.side_panel.read(cx).width();
-        // In fullscreen the bar is only kept when the setting asks for it.
-        let show_player_bar = connected
-            && !compact
-            && (!fullscreen
-                || ConfigModel::global(cx)
-                    .read(cx)
-                    .config()
-                    .fullscreen_use_player_bar);
+        // The docked column is drag-resizable, so it owns the slot's width.
+        let panel_width = self.side_panel.read(cx).panel_width();
+        let show_player_bar = connected && !compact;
         let route = Navigator::global(cx).read(cx).current().clone();
         let page = self.router.page(&route, window, cx);
 
@@ -273,14 +220,11 @@ impl Render for Shell {
                                 .flex_1()
                                 .min_w_0()
                                 .relative()
-                                .map(|content| {
-                                    if !connected {
-                                        content.child(self.connection_screen(cx))
-                                    } else if fullscreen {
-                                        content.child(self.fullscreen.clone())
-                                    } else if first_run {
-                                        content.child(self.first_run.clone())
-                                    } else {
+                                // A disconnect dims the page and banners over it rather than
+                                // replacing the window, so what was on screen stays on screen.
+                                .map(|content| match first_run {
+                                    true => content.child(self.first_run.clone()),
+                                    false => {
                                         content.child(topbar::content_frame().h_full().child(page))
                                     }
                                 })
@@ -333,6 +277,9 @@ impl Render for Shell {
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
             .child(body)
+            .when(sheet_open && connected && !compact, |shell| {
+                shell.child(div().absolute().inset_0().child(self.fullscreen.clone()))
+            })
             .when(quick_search_open && !compact, |shell| {
                 shell.child(self.quick_search.clone())
             })

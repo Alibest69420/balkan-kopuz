@@ -3814,13 +3814,13 @@ dependencies = [
  "anyhow",
  "commands",
  "debug_overlay",
- "fullscreen",
  "gpui-kit",
  "kopuz-api",
  "kopuz-config",
  "kopuz-i18n",
  "link",
  "metadata_dialog",
+ "now_playing",
  "onboarding",
  "overlays",
  "page_activity",
@@ -3836,12 +3836,11 @@ dependencies = [
  "page_search",
  "page_settings",
  "palette",
- "player_bar",
  "playlists_panel",
  "profile",
  "settings_interface",
  "settings_sources",
- "side_panel",
+ "status",
  "store",
  "theme",
  "tikv-jemallocator",
@@ -4589,6 +4588,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "now_playing"
+version = "0.1.0"
+dependencies = [
+ "gpui-kit",
+ "kopuz-api",
+ "kopuz-i18n",
+ "link",
+ "profile",
+ "settings_interface",
+ "store",
+ "theme",
+ "tracing",
+ "widgets",
+]
+
+[[package]]
 name = "ntapi"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5169,6 +5184,7 @@ dependencies = [
  "kopuz-config",
  "kopuz-i18n",
  "link",
+ "status",
  "store",
  "theme",
  "tracing",
@@ -7219,6 +7235,22 @@ name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
+
+[[package]]
+name = "status"
+version = "0.1.0"
+dependencies = [
+ "gpui-kit",
+ "kopuz-api",
+ "kopuz-i18n",
+ "link",
+ "profile",
+ "settings_interface",
+ "store",
+ "theme",
+ "tracing",
+ "widgets",
+]
 
 [[package]]
 name = "store"

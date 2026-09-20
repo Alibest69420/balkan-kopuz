@@ -70,11 +70,7 @@ pub fn all_stored(keys: &[String], cx: &App) -> bool {
 pub fn toggle_favorite(target: &Target, cx: &mut App) {
     let keys = track_keys(target);
     let favorite = !all_favorite(&keys, cx);
-    FavoritesModel::global(cx).update(cx, |favorites, cx| {
-        for key in keys {
-            favorites.set(key, favorite, cx);
-        }
-    });
+    store::actions::set_favorites(keys, favorite, cx);
 }
 
 pub fn toggle_download(target: &Target, cx: &mut App) {
@@ -366,7 +362,7 @@ pub fn queue_remove(target: &Target, cx: &mut App) {
     let Some(index) = queue_index(target) else {
         return;
     };
-    QueueModel::global(cx).update(cx, |queue, cx| queue.remove(index, cx));
+    store::actions::queue_remove(index, cx);
 }
 
 pub fn seek(step_ms: i64, cx: &mut App) {
@@ -395,8 +391,5 @@ pub fn toggle_fullscreen(cx: &mut App) {
 }
 
 pub fn toggle_mini_player(cx: &mut App) {
-    Chrome::global(cx).update(cx, |chrome, cx| {
-        let compact = chrome.is_compact();
-        chrome.set_compact(!compact, cx);
-    });
+    store::toggle_mini_player(cx);
 }

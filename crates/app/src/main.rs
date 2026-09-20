@@ -75,9 +75,27 @@ fn main() -> anyhow::Result<()> {
         .run(move |cx| {
             gpui_kit::init(cx);
             i18n::init("en");
+            // Quitting here would look like the icon did nothing; say why instead.
             if let Err(error) = link::init(address, cx) {
                 tracing::error!(%error, "could not set up the daemon link");
-                cx.quit();
+                theme::apply_named("default", None, cx);
+                let reason = error.to_string();
+                cx.open_window(
+                    WindowOptions {
+                        app_id: Some("kopuz-gpui".into()),
+                        titlebar: Some(TitlebarOptions {
+                            title: Some("Kopuz".into()),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                    |window, cx| {
+                        let screen: gpui_kit::AnyView =
+                            cx.new(|_| status::StartupError::new(reason)).into();
+                        cx.new(|cx| Root::new(screen, window, cx))
+                    },
+                )
+                .expect("failed to open the error window");
                 return;
             }
             store::init(cx);
@@ -87,6 +105,9 @@ fn main() -> anyhow::Result<()> {
             topbar::register_settings(cx);
             playlists_panel::register_settings(cx);
             palette::register_settings(cx);
+            now_playing::register_settings(cx);
+            store::register_mini_player(now_playing::toggle_mini, cx);
+            status::register_settings(cx);
             page_playlists::register(cx);
             commands::init(cx);
             theme::apply_named("default", None, cx);
