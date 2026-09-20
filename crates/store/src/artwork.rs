@@ -105,8 +105,6 @@ fn budget() -> usize {
 pub struct Residents {
     live: std::collections::HashMap<ArtworkKey, Resident>,
     clock: u64,
-    // Where the clock stood at the last sweep; anything drawn since is on screen and stays.
-    swept: u64,
 }
 
 struct Resident {
@@ -138,22 +136,19 @@ impl Residents {
 
     /// Releases the least recently drawn covers until the budget is met.
     pub fn sweep(window: &mut Window, cx: &mut App) {
-        let over = cx
-            .default_global::<Self>()
-            .live
-            .len()
-            .saturating_sub(budget());
+        let held = cx.default_global::<Self>().live.len();
+        profile::artwork::tracked(held);
+        let over = held.saturating_sub(budget());
         if over == 0 {
             return;
         }
+        // Oldest drawn first, which leaves the screenful at the young end untouched so long as the
+        // budget stays well above it. Do not filter by "drawn recently": under a continuous scroll
+        // every cover was drawn recently, and the sweep stops exactly when it is needed most.
         let residents = cx.default_global::<Self>();
-        let swept = residents.swept;
-        residents.swept = residents.clock;
-        // A cover drawn since the last sweep is on screen: evicting it only makes it fetch again.
         let mut ages: Vec<(u64, ArtworkKey)> = residents
             .live
             .iter()
-            .filter(|(_, resident)| resident.used <= swept)
             .map(|(key, resident)| (resident.used, key.clone()))
             .collect();
         ages.sort_unstable_by_key(|(used, _)| *used);

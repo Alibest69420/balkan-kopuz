@@ -77,6 +77,7 @@ impl Heartbeat {
             allocated_mb = allocated / 1_048_576,
             resident_mb = resident / 1_048_576,
             artwork_live = counters.artwork_live,
+            artwork_tracked = counters.artwork_tracked,
             artwork_loaded = counters.artwork_loaded,
             artwork_released = counters.artwork_released,
             artwork_bytes_mb = counters.artwork_bytes / 1_048_576,
@@ -124,3 +125,5 @@ pub(crate) static ARTWORK_DECODED: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) static ARTWORK_LOADED: AtomicU64 = AtomicU64::new(0);
 pub(crate) static ARTWORK_RELEASED: AtomicU64 = AtomicU64::new(0);
+
+pub(crate) static ARTWORK_TRACKED: AtomicUsize = AtomicUsize::new(0);

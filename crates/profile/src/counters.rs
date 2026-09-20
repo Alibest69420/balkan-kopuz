@@ -3,14 +3,15 @@
 use std::sync::atomic::Ordering;
 
 use crate::{
-    ARTWORK_BYTES, ARTWORK_DECODED, ARTWORK_LIVE, ARTWORK_LOADED, ARTWORK_RELEASED, FRAMES,
-    SLOW_FRAMES,
+    ARTWORK_BYTES, ARTWORK_DECODED, ARTWORK_LIVE, ARTWORK_LOADED, ARTWORK_RELEASED,
+    ARTWORK_TRACKED, FRAMES, SLOW_FRAMES,
 };
 
 /// One reading of every counter.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Snapshot {
     pub artwork_live: usize,
+    pub artwork_tracked: usize,
     pub artwork_loaded: u64,
     pub artwork_released: u64,
     pub artwork_bytes: u64,
@@ -25,6 +26,7 @@ impl Counters {
     pub fn snapshot() -> Snapshot {
         Snapshot {
             artwork_live: ARTWORK_LIVE.load(Ordering::Relaxed),
+            artwork_tracked: ARTWORK_TRACKED.load(Ordering::Relaxed),
             artwork_loaded: ARTWORK_LOADED.load(Ordering::Relaxed),
             artwork_released: ARTWORK_RELEASED.load(Ordering::Relaxed),
             artwork_bytes: ARTWORK_BYTES.load(Ordering::Relaxed),
@@ -52,6 +54,11 @@ pub mod artwork {
     pub fn released() {
         ARTWORK_LIVE.fetch_sub(1, Ordering::Relaxed);
         ARTWORK_RELEASED.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// How many covers the sweep can actually reach. Below `live`, something loaded is unreachable.
+    pub fn tracked(count: usize) {
+        ARTWORK_TRACKED.store(count, Ordering::Relaxed);
     }
 }
 
