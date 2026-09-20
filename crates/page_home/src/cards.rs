@@ -48,10 +48,33 @@ pub(crate) enum PlayLook {
     Subtle,
 }
 
-/// Play/pause for an album card: pause while this album is the one playing, and a toggle then.
+/// What a card's play button starts. A track whose album is not in the library still plays.
+#[derive(Clone)]
+pub(crate) enum PlayTarget {
+    Album(String),
+    Track(String),
+}
+
+impl PlayTarget {
+    /// An album card keys and compares on the album; a bare track has only its own key.
+    fn album(&self) -> &str {
+        match self {
+            PlayTarget::Album(id) => id,
+            PlayTarget::Track(_) => "",
+        }
+    }
+
+    fn id(&self) -> &str {
+        match self {
+            PlayTarget::Album(id) | PlayTarget::Track(id) => id,
+        }
+    }
+}
+
+/// Play/pause for a card: pause while this is the thing playing, and a toggle then.
 pub(crate) fn play_button(
     scope: &str,
-    album_id: &str,
+    target: PlayTarget,
     size: Rems,
     look: PlayLook,
     hovered: &Hovered,
@@ -63,10 +86,10 @@ pub(crate) fn play_button(
         .current()
         .map(|track| track.album_id.clone())
         .unwrap_or_default();
+    let album_id = target.album();
     let is_current = !album_id.is_empty() && current == album_id;
     let playing = is_current && PlayerModel::global(cx).read(cx).is_playing();
-    let id = album_id.to_string();
-    let key = SharedString::from(format!("{scope}-play-{album_id}"));
+    let key = SharedString::from(format!("{scope}-play-{}", target.id()));
     let (rest, foreground, hot) = match look {
         PlayLook::Accent => (
             cx.theme().primary,
@@ -84,8 +107,8 @@ pub(crate) fn play_button(
             style::white(style::ACTIVE, cx),
         ),
     };
-    let target = if hovered.contains(&key) { hot } else { rest };
-    let background = motion::color(channel(key.clone(), "bg"), target, window, cx);
+    let tint = if hovered.contains(&key) { hot } else { rest };
+    let background = motion::color(channel(key.clone(), "bg"), tint, window, cx);
     let button = div()
         .id(key.clone())
         .flex()
@@ -104,8 +127,14 @@ pub(crate) fn play_button(
         .on_click(move |_, _, cx| {
             if is_current {
                 PlayerModel::global(cx).update(cx, |player, cx| player.toggle(cx));
-            } else if !id.is_empty() {
-                actions::play_context(QueueContext::Album { id: id.clone() }, Some(0), cx);
+                return;
+            }
+            match &target {
+                PlayTarget::Album(id) => {
+                    actions::play_context(QueueContext::Album { id: id.clone() }, Some(0), cx)
+                }
+                // A recent track whose album the library has no row for; it still plays.
+                PlayTarget::Track(key) => actions::play_tracks(vec![key.clone()], Some(0), cx),
             }
         });
     track_hover(button, key, cx).into_any_element()
@@ -256,7 +285,7 @@ pub(crate) fn album_card(
     let over = hovered.contains(&key);
     let play = play_button(
         scope,
-        &album.id,
+        PlayTarget::Album(album.id.clone()),
         rems(2.5),
         PlayLook::Light,
         hovered,
@@ -308,7 +337,7 @@ pub(crate) fn listen_now_card(
     let over = hovered.contains(&key);
     let play = play_button(
         scope,
-        &album.id,
+        PlayTarget::Album(album.id.clone()),
         rems(2.25),
         PlayLook::Accent,
         hovered,
@@ -371,9 +400,14 @@ pub(crate) fn recent_card(
         .unwrap_or_else(|| recent.track.album.clone());
     let key = SharedString::from(format!("{scope}-{}", recent.track.uid));
     let over = hovered.contains(&key);
+    // A single, or anything the library holds no album row for, plays as the track it is.
+    let target = match album_id.clone() {
+        Some(id) => PlayTarget::Album(id),
+        None => PlayTarget::Track(recent.track.key.clone()),
+    };
     let play = play_button(
         &button_scope,
-        album_id.as_deref().unwrap_or_default(),
+        target,
         rems(2.5),
         PlayLook::Accent,
         hovered,
@@ -390,7 +424,15 @@ pub(crate) fn recent_card(
         window,
         cx,
     );
-    frame(&key, size, album_id.map(|id| Route::Album(id.into())), cx)
+    // Without an album row there is no album page to open, so the card goes to the artist.
+    let route = match album_id {
+        Some(id) => Route::Album(id.into()),
+        None => Route::Artist {
+            name: recent.track.artist.clone().into(),
+            channel: None,
+        },
+    };
+    frame(&key, size, Some(route), cx)
         .child(
             div()
                 .relative()
@@ -534,7 +576,7 @@ pub(crate) fn album_row(
     let id = album.id.clone();
     let play = play_button(
         scope,
-        &album.id,
+        PlayTarget::Album(album.id.clone()),
         rems(2.),
         PlayLook::Subtle,
         hovered,
