@@ -4,7 +4,7 @@ use std::sync::atomic::Ordering;
 
 use crate::{
     ARTWORK_BYTES, ARTWORK_DECODED, ARTWORK_LIVE, ARTWORK_LOADED, ARTWORK_RELEASED,
-    ARTWORK_TRACKED, FRAMES, SLOW_FRAMES,
+    ARTWORK_TRACKED, REBUILDS,
 };
 
 /// One reading of every counter.
@@ -16,8 +16,7 @@ pub struct Snapshot {
     pub artwork_released: u64,
     pub artwork_bytes: u64,
     pub artwork_decoded: u64,
-    pub frames: u64,
-    pub slow_frames: u64,
+    pub rebuilds: u64,
 }
 
 pub struct Counters;
@@ -31,8 +30,7 @@ impl Counters {
             artwork_released: ARTWORK_RELEASED.load(Ordering::Relaxed),
             artwork_bytes: ARTWORK_BYTES.load(Ordering::Relaxed),
             artwork_decoded: ARTWORK_DECODED.load(Ordering::Relaxed),
-            frames: FRAMES.load(Ordering::Relaxed),
-            slow_frames: SLOW_FRAMES.load(Ordering::Relaxed),
+            rebuilds: REBUILDS.load(Ordering::Relaxed),
         }
     }
 }
@@ -62,15 +60,12 @@ pub mod artwork {
     }
 }
 
-/// Frame accounting, for callers that time their own work.
-pub mod frames {
+/// How many times the view tree has been rebuilt, which is the notify-storm signal.
+pub mod rebuilds {
     use super::*;
 
-    pub fn count() -> (u64, u64) {
-        (
-            FRAMES.load(Ordering::Relaxed),
-            SLOW_FRAMES.load(Ordering::Relaxed),
-        )
+    pub fn count() -> u64 {
+        REBUILDS.load(Ordering::Relaxed)
     }
 }
 

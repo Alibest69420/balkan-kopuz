@@ -180,7 +180,7 @@ impl Shell {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let _frame = profile::Frame::new();
+        let _rebuild = profile::Rebuild::new();
         let connected = self.connection.read(cx).is_connected();
         let chrome = Chrome::global(cx).read(cx);
         let fullscreen = chrome.is_fullscreen();

@@ -40,6 +40,11 @@ const SORT_CONTROL: &str = "albums-sort-frame";
 /// Every album, as tiles or as rows.
 pub struct Albums {
     albums: Entity<Query<AlbumPage>>,
+    // Deduped and sorted once per change. Render used to rebuild all of this every frame, and a
+    // card hover notifies, so moving the pointer across the grid re-sorted the whole library.
+    visible: Vec<AlbumInfo>,
+    same_title: HashMap<String, Vec<String>>,
+    sort_fields: Vec<AlbumSortField>,
     scroll: UniformListScrollHandle,
     // Which card the pointer is over, and whose menu is open: both drive tweens.
     hovered: Option<String>,
@@ -64,16 +69,20 @@ impl Albums {
         let subscriptions = vec![
             cx.observe(&albums, |this, _, cx| {
                 this.sync_empty_library(cx);
-                cx.notify();
+                this.rebuild(cx);
             }),
             cx.observe(&sources, |this, _, cx| {
                 this.sync_empty_library(cx);
                 cx.notify();
             }),
-            cx.observe(&config, |_, _, cx| cx.notify()),
+            // The sort lives in config, so a change there is a change to the order.
+            cx.observe(&config, |this, _, cx| this.rebuild(cx)),
         ];
         Self {
             albums,
+            visible: Vec::new(),
+            same_title: HashMap::new(),
+            sort_fields: Vec::new(),
             scroll: UniformListScrollHandle::new(),
             hovered: None,
             menu_open: None,
@@ -81,6 +90,30 @@ impl Albums {
             synced: false,
             _subscriptions: subscriptions,
         }
+    }
+
+    /// Dedupe by title, sort, and note which fields are worth offering — on change, not per frame.
+    ///
+    /// A server splits one release across same-titled albums, so the grid shows each title once
+    /// and the menu acts on every album behind it.
+    fn rebuild(&mut self, cx: &mut Context<Self>) {
+        let all = self.all_albums(cx);
+        self.same_title.clear();
+        for album in &all {
+            self.same_title
+                .entry(title_key(album))
+                .or_default()
+                .push(album.id.clone());
+        }
+        let mut seen = HashSet::with_capacity(all.len());
+        self.visible = all
+            .iter()
+            .filter(|album| seen.insert(title_key(album)))
+            .cloned()
+            .collect();
+        sort::sort(&mut self.visible, &criteria(cx));
+        self.sort_fields = sort::available_fields(&all);
+        cx.notify();
     }
 
     /// A source that syncs and holds nothing yet gets one pull, the way a first visit should.
@@ -187,13 +220,8 @@ impl Albums {
         cx.notify();
     }
 
-    fn sort_control(
-        &self,
-        albums: &[AlbumInfo],
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let available = sort::available_fields(albums);
+    fn sort_control(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let available = self.sort_fields.clone();
         let primary = criteria(cx).first().copied();
         let label = match primary {
             Some(criterion) => SharedString::from(format!(
@@ -271,11 +299,8 @@ impl Albums {
     }
 
     /// One virtualized band: a row of tiles in grid mode, a single album in list mode.
-    #[allow(clippy::too_many_arguments)]
     fn band(
-        &mut self,
-        visible: &[AlbumInfo],
-        same_title: &HashMap<String, Vec<String>>,
+        &self,
         index: usize,
         columns: usize,
         grid: bool,
@@ -283,13 +308,14 @@ impl Albums {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let first = index * columns;
-        let last = (first + columns).min(visible.len());
+        let last = (first + columns).min(self.visible.len());
         let mut cards: Vec<AnyElement> = Vec::with_capacity(last.saturating_sub(first));
-        for album in &visible[first..last] {
+        for album in &self.visible[first..last] {
             let target = MenuTarget {
                 id: album.id.clone(),
                 title: album.title.clone(),
-                same_title: same_title
+                same_title: self
+                    .same_title
                     .get(&title_key(album))
                     .cloned()
                     .unwrap_or_default(),
@@ -318,34 +344,17 @@ impl Albums {
 
 impl Render for Albums {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let all = self.all_albums(cx);
+        let _timing = profile::render("albums");
         let settled = self.albums.read(cx).is_settled();
         let grid = view_mode(cx) == AlbumViewMode::Grid;
-
-        // A server splits one release across same-titled albums, so the grid shows each title once.
-        let mut same_title: HashMap<String, Vec<String>> = HashMap::new();
-        for album in &all {
-            same_title
-                .entry(title_key(album))
-                .or_default()
-                .push(album.id.clone());
-        }
-        let mut seen = HashSet::new();
-        let mut visible: Vec<AlbumInfo> = all
-            .iter()
-            .filter(|album| seen.insert(title_key(album)))
-            .cloned()
-            .collect();
-        sort::sort(&mut visible, &criteria(cx));
-
         widgets::scroll::smooth_list("albums-scroll", &self.scroll, window, cx);
-        let empty = visible.is_empty();
+        let empty = self.visible.is_empty();
         // A tile row is the virtualized unit, so the grid builds a screenful instead of the library.
         let columns = match grid {
             true => self.tile_columns(),
             false => 1,
         };
-        let rows = visible.len().div_ceil(columns.max(1));
+        let rows = self.visible.len().div_ceil(columns.max(1));
 
         v_flex()
             .size_full()
@@ -361,7 +370,7 @@ impl Render for Albums {
                     .gap_2()
                     .mb_4()
                     .child(self.view_toggle(window, cx))
-                    .child(self.sort_control(&all, window, cx)),
+                    .child(self.sort_control(window, cx)),
             )
             .child(div().flex_1().min_h_0().pb_8().map(|body| {
                 match (empty, settled) {
@@ -377,17 +386,7 @@ impl Render for Albums {
                             rows,
                             cx.processor(move |this, range: std::ops::Range<usize>, window, cx| {
                                 range
-                                    .map(|index| {
-                                        this.band(
-                                            &visible,
-                                            &same_title,
-                                            index,
-                                            columns,
-                                            grid,
-                                            window,
-                                            cx,
-                                        )
-                                    })
+                                    .map(|index| this.band(index, columns, grid, window, cx))
                                     .collect()
                             }),
                         )

@@ -65,5 +65,10 @@ fn compare(
 }
 
 fn compare_text(left: &str, right: &str) -> Ordering {
-    left.trim().to_lowercase().cmp(&right.trim().to_lowercase())
+    // Case-insensitive without allocating: a comparator runs O(n log n) times, and two Strings
+    // per comparison is tens of thousands of allocations across one library sort.
+    left.trim()
+        .chars()
+        .flat_map(char::to_lowercase)
+        .cmp(right.trim().chars().flat_map(char::to_lowercase))
 }

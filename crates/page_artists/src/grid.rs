@@ -6,9 +6,9 @@ use api::{AlbumPage, ArtistPage, Table, TrackPage};
 use config::{AlbumViewMode, ArtistSortField};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::{
-    App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
-    ParentElement as _, Render, ScrollHandle, SharedString, StatefulInteractiveElement as _,
-    Styled as _, Subscription, Task, Window, div, px,
+    AnyElement, App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _,
+    IntoElement, ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _,
+    Styled as _, Subscription, Task, UniformListScrollHandle, Window, div, px, uniform_list,
 };
 use store::{ConfigModel, Link, Navigator, Query, Route};
 use widgets::format::t;
@@ -18,6 +18,10 @@ use crate::controls::{self, ViewModeKey};
 use crate::names::{self, ArtistEntry};
 
 const TILE: f32 = 160.;
+// `gap-8` between tiles, so a column costs this much width.
+const TILE_GAP: gpui_kit::Pixels = px(32.);
+// Until the list has been laid out once there is no measured width to divide.
+const TILE_COLUMNS_FALLBACK: usize = 5;
 /// `group-hover:scale-110` on the photo.
 const PHOTO_ZOOM: f32 = 1.10;
 /// `duration-500`, slower than anything `widgets::motion` names.
@@ -28,7 +32,10 @@ pub struct Artists {
     albums: Entity<Query<AlbumPage>>,
     artists: Entity<Query<ArtistPage>>,
     samples: Entity<Query<TrackPage>>,
-    scroll: ScrollHandle,
+    scroll: UniformListScrollHandle,
+    // Built on change, not per frame: grid_entries walks every album, sample credit and artist,
+    // normalising each one, and render runs on every playhead tick.
+    entries: Vec<ArtistEntry>,
     // What the last photo request asked for; the answer dirties Tracks, which would ask again forever.
     asked: Vec<String>,
     _refresh: Option<Task<()>>,
@@ -62,13 +69,15 @@ impl Artists {
             cx.observe(&albums, |this, _, cx| this.reread(cx)),
             cx.observe(&artists, |this, _, cx| this.reread(cx)),
             cx.observe(&samples, |this, _, cx| this.reread(cx)),
-            cx.observe(&ConfigModel::global(cx), |_, _, cx| cx.notify()),
+            // The sort and the view mode live in config, so a change there reorders the grid.
+            cx.observe(&ConfigModel::global(cx), |this, _, cx| this.reread(cx)),
         ];
         Self {
             albums,
             artists,
             samples,
-            scroll: ScrollHandle::new(),
+            scroll: UniformListScrollHandle::new(),
+            entries: Vec::new(),
             asked: Vec::new(),
             _refresh: None,
             _subscriptions: subscriptions,
@@ -76,6 +85,7 @@ impl Artists {
     }
 
     fn reread(&mut self, cx: &mut Context<Self>) {
+        self.entries = self.build_entries(cx);
         cx.notify();
         self.request_photos(cx);
     }
@@ -110,7 +120,53 @@ impl Artists {
         self.albums.read(cx).is_settled() && self.samples.read(cx).is_settled()
     }
 
-    fn entries(&self, cx: &App) -> Vec<ArtistEntry> {
+    /// How many tiles fit across, from the width the list reported at its last layout.
+    fn tile_columns(&self) -> usize {
+        let width: Pixels = self.scroll.0.borrow().base_handle.bounds().size.width;
+        if width <= px(0.) {
+            return TILE_COLUMNS_FALLBACK;
+        }
+        let pitch = px(TILE) + TILE_GAP;
+        (((width + TILE_GAP) / pitch) as usize).max(1)
+    }
+
+    /// One virtualized band: a row of tiles in grid mode, a single artist in list mode.
+    fn band(
+        &mut self,
+        index: usize,
+        columns: usize,
+        mode: AlbumViewMode,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let first = index * columns;
+        let last = (first + columns).min(self.entries.len());
+        let entries = self.entries[first..last].to_vec();
+        match mode {
+            AlbumViewMode::Grid => div()
+                .flex()
+                .w_full()
+                .items_start()
+                .gap_8()
+                .pb_8()
+                .children(
+                    entries
+                        .iter()
+                        .map(|entry| tile(entry, window, cx).into_any_element()),
+                )
+                .into_any_element(),
+            AlbumViewMode::List => div()
+                .w_full()
+                .children(
+                    entries
+                        .iter()
+                        .map(|entry| row(entry, cx).into_any_element()),
+                )
+                .into_any_element(),
+        }
+    }
+
+    fn build_entries(&self, cx: &App) -> Vec<ArtistEntry> {
         let albums = self
             .albums
             .read(cx)
@@ -136,10 +192,17 @@ impl Artists {
 
 impl Render for Artists {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        widgets::scroll::smooth("artists-scroll", &self.scroll, window, cx);
-        let entries = self.entries(cx);
+        let _timing = profile::render("artists");
+        widgets::scroll::smooth_list("artists-scroll", &self.scroll, window, cx);
         let settled = self.is_settled(cx);
         let mode = controls::config(cx).artists_view_mode;
+        let empty = self.entries.is_empty();
+        // A band of tiles is the virtualized unit, so the grid builds a screenful of the library.
+        let columns = match mode {
+            AlbumViewMode::Grid => self.tile_columns(),
+            AlbumViewMode::List => 1,
+        };
+        let rows = self.entries.len().div_ceil(columns.max(1));
 
         v_flex()
             .size_full()
@@ -158,39 +221,32 @@ impl Render for Artists {
                         cx,
                     )),
             )
-            .child(match (settled, entries.is_empty()) {
+            .child(match (settled, empty) {
                 (false, true) => Loading.into_any_element(),
                 (true, true) => EmptyState::new(t("artists"))
                     .icon(icons::MIC)
                     .detail(t("no_tracks_found"))
                     .into_any_element(),
                 _ => div()
-                    .id("artists-scroll")
                     .flex_1()
                     .min_h_0()
                     .pb_20()
-                    .overflow_y_scroll()
-                    .track_scroll(&self.scroll)
-                    .child(match mode {
-                        AlbumViewMode::Grid => grid(&entries, window, cx),
-                        AlbumViewMode::List => list(&entries, cx),
-                    })
+                    .child(
+                        uniform_list(
+                            "artists-scroll",
+                            rows,
+                            cx.processor(move |this, range: std::ops::Range<usize>, window, cx| {
+                                range
+                                    .map(|index| this.band(index, columns, mode, window, cx))
+                                    .collect()
+                            }),
+                        )
+                        .track_scroll(&self.scroll)
+                        .size_full(),
+                    )
                     .into_any_element(),
             })
     }
-}
-
-fn grid(entries: &[ArtistEntry], window: &mut Window, cx: &mut App) -> gpui_kit::AnyElement {
-    let tiles: Vec<_> = entries
-        .iter()
-        .map(|entry| tile(entry, window, cx).into_any_element())
-        .collect();
-    div()
-        .flex()
-        .flex_wrap()
-        .gap_8()
-        .children(tiles)
-        .into_any_element()
 }
 
 /// `rounded-full` photo that zooms under the pointer, and a centred label that goes accent.
@@ -257,35 +313,32 @@ fn tile(entry: &ArtistEntry, window: &mut Window, cx: &mut App) -> impl IntoElem
         .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
 }
 
-fn list(entries: &[ArtistEntry], cx: &App) -> gpui_kit::AnyElement {
-    v_flex()
-        .gap_2()
-        .children(entries.iter().map(|entry| {
-            let name = SharedString::from(entry.name.clone());
-            h_flex()
-                .id(SharedString::from(format!("artist-row-{}", entry.name)))
-                .gap_3()
-                .px_3()
-                .py_2()
-                .rounded(style::radius_lg())
-                .bg(style::white(style::RAISED, cx))
-                .hover(|row| row.bg(style::white(style::HOVER, cx)))
-                .child(
-                    Cover::new(entry.artwork.as_ref())
-                        .size(px(48.))
-                        .rounded(px(24.))
-                        .placeholder(icons::MIC),
-                )
-                .child(div().flex_1().min_w_0().truncate().child(name.clone()))
-                .on_click(move |_, _, cx| {
-                    Navigator::navigate(
-                        Route::Artist {
-                            name: name.clone(),
-                            channel: None,
-                        },
-                        cx,
-                    )
-                })
-        }))
-        .into_any_element()
+/// One artist as a row, for the list view.
+fn row(entry: &ArtistEntry, cx: &App) -> impl IntoElement {
+    let name = SharedString::from(entry.name.clone());
+    h_flex()
+        .id(SharedString::from(format!("artist-row-{}", entry.name)))
+        .gap_3()
+        .px_3()
+        .py_2()
+        .mb_2()
+        .rounded(style::radius_lg())
+        .bg(style::white(style::RAISED, cx))
+        .hover(|row| row.bg(style::white(style::HOVER, cx)))
+        .child(
+            Cover::new(entry.artwork.as_ref())
+                .size(px(48.))
+                .rounded(px(24.))
+                .placeholder(icons::MIC),
+        )
+        .child(div().flex_1().min_w_0().truncate().child(name.clone()))
+        .on_click(move |_, _, cx| {
+            Navigator::navigate(
+                Route::Artist {
+                    name: name.clone(),
+                    channel: None,
+                },
+                cx,
+            )
+        })
 }
