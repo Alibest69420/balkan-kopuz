@@ -293,9 +293,10 @@ impl MediaServers {
         }
     }
 
-    /// Signing in again on a server already active: anything but a browser flow asks for a password.
+    /// Signing in again on a server already active. `sign_in` reads None once a source holds any
+    /// credentials, so asking it here offered a password box for a service that has no password.
     fn sign_in_again(&mut self, source: &SourceInfo, window: &mut Window, cx: &mut Context<Self>) {
-        match source.sign_in {
+        match source.reauth {
             SignInKind::Browser => self.authenticate(source.id.clone(), cx),
             _ => self.open_login(source, window, cx),
         }
