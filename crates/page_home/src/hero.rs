@@ -68,7 +68,6 @@ impl Home {
         };
         let background = cx.theme().background;
         let light = ButtonCustomVariant::new(cx)
-            .color(cx.theme().foreground)
             .foreground(background)
             .hover(style::white(style::TEXT_STRONG, cx))
             .active(style::white(style::TEXT_STRONG, cx));
@@ -139,6 +138,7 @@ impl Home {
                                 .child(
                                     Button::new("hero-play")
                                         .custom(light)
+                                        .bg(cx.theme().foreground)
                                         .h_12()
                                         .px_8()
                                         .rounded_full()
@@ -188,29 +188,29 @@ impl Home {
             cx.theme().foreground
         };
         let tint = motion::color(channel("hero-favorite", "tint"), tint, window, cx);
-        let chip = ButtonCustomVariant::new(cx)
-            .color(style::white(style::HOVER, cx))
-            .foreground(tint)
-            .hover(style::white(style::ACTIVE, cx))
-            .active(style::white(style::ACTIVE, cx));
-        Button::new("hero-favorite")
-            .custom(chip)
-            .size_11()
-            .rounded_full()
-            .border_1()
-            .border_color(style::white(style::ACTIVE, cx))
-            .icon(icons::icon(icons::HEART))
-            .on_click(move |_, _, cx| {
-                let keys = keys.clone();
-                FavoritesModel::global(cx).update(cx, |favorites, cx| {
-                    for key in keys.into_iter().filter(|key| !key.is_empty()) {
-                        if favorites.is_favorite(&key) != target {
-                            favorites.set(key, target, cx);
-                        }
+        style::dress(
+            Button::new("hero-favorite"),
+            style::white(style::HOVER, cx),
+            style::white(style::ACTIVE, cx),
+            tint,
+            style::white(style::ACTIVE, cx),
+            cx,
+        )
+        .size_11()
+        .rounded_full()
+        .border_1()
+        .icon(icons::icon(icons::HEART))
+        .on_click(move |_, _, cx| {
+            let keys = keys.clone();
+            FavoritesModel::global(cx).update(cx, |favorites, cx| {
+                for key in keys.into_iter().filter(|key| !key.is_empty()) {
+                    if favorites.is_favorite(&key) != target {
+                        favorites.set(key, target, cx);
                     }
-                });
-            })
-            .into_any_element()
+                }
+            });
+        })
+        .into_any_element()
     }
 
     fn resize_handle(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {

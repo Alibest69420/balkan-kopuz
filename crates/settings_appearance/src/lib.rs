@@ -35,7 +35,7 @@ fn select_width() -> gpui_kit::Rems {
 /// `bg-white/10 hover:bg-white/20`, the quiet button the settings rows use.
 fn soft(cx: &App) -> ButtonCustomVariant {
     ButtonCustomVariant::new(cx)
-        .color(style::white(style::HOVER, cx))
+        .color(style::rest(style::white(style::HOVER, cx)))
         .hover(style::white(style::ACTIVE, cx))
         .active(style::white(style::ACTIVE, cx))
         .foreground(cx.theme().foreground)

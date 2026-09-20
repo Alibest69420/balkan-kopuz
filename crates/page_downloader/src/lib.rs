@@ -205,7 +205,7 @@ impl Downloader {
                 Button::new("downloader-start")
                     .custom(
                         ButtonCustomVariant::new(cx)
-                            .color(style::white(style::HOVER, cx))
+                            .color(style::rest(style::white(style::HOVER, cx)))
                             .foreground(cx.theme().foreground)
                             .hover(style::white(style::ACTIVE, cx))
                             .active(style::white(style::ACTIVE, cx)),
@@ -248,7 +248,7 @@ impl Downloader {
                         cx,
                     );
                     let chip = ButtonCustomVariant::new(cx)
-                        .color(wash)
+                        .color(style::rest(wash))
                         .foreground(label)
                         .hover(if selected {
                             wash

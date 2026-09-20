@@ -119,7 +119,7 @@ impl SidePanelView {
             // on the way out.
             .custom(
                 ButtonCustomVariant::new(cx)
-                    .color(wash)
+                    .color(style::rest(wash))
                     .hover(wash)
                     .active(wash)
                     .foreground(label),

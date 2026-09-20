@@ -368,23 +368,22 @@ impl Render for QueuePanel {
             .when(!self.auto_follow, |panel| {
                 panel.child(
                     div().absolute().bottom_4().right_4().child(
-                        Button::new("queue-jump-to-current")
-                            // The variant's color is the ring; the scrim stays on the instance style.
-                            .custom(style::button(
-                                style::white(style::BORDER, cx),
-                                style::black(0.6, cx),
-                                style::white(style::TEXT_STRONG, cx),
-                                cx,
-                            ))
-                            .with_size(JUMP_GLYPH * (4. / 3.))
-                            .size(JUMP_BUTTON)
-                            .rounded(JUMP_BUTTON / 2.)
-                            .icon(icons::icon(icons::REFRESH))
-                            .bg(style::black(0.4, cx))
-                            .border_1()
-                            .shadow_lg()
-                            .tooltip(t("jump_to_current_song"))
-                            .on_click(cx.listener(|this, _, _, cx| this.rearm(cx))),
+                        style::dress(
+                            Button::new("queue-jump-to-current"),
+                            style::black(0.4, cx),
+                            style::black(0.6, cx),
+                            style::white(style::TEXT_STRONG, cx),
+                            style::white(style::BORDER, cx),
+                            cx,
+                        )
+                        .with_size(JUMP_GLYPH * (4. / 3.))
+                        .size(JUMP_BUTTON)
+                        .rounded(JUMP_BUTTON / 2.)
+                        .icon(icons::icon(icons::REFRESH))
+                        .border_1()
+                        .shadow_lg()
+                        .tooltip(t("jump_to_current_song"))
+                        .on_click(cx.listener(|this, _, _, cx| this.rearm(cx))),
                     ),
                 )
             })

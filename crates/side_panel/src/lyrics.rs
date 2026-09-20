@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use api::{LyricLineView, LyricsView};
 use gpui_kit::base::StyledExt as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -685,23 +685,22 @@ impl Render for LyricsPanel {
             .when(synced && !self.auto_sync, |panel| {
                 panel.child(
                     div().absolute().bottom_4().right_4().child(
-                        Button::new("lyrics-sync")
-                            // The variant's color is the ring; the scrim stays on the instance style.
-                            .custom(style::button(
-                                style::white(style::BORDER, cx),
-                                style::black(SYNC_SCRIM + style::ACTIVE, cx),
-                                style::white(style::TEXT_STRONG, cx),
-                                cx,
-                            ))
-                            .with_size(SYNC_GLYPH * (4. / 3.))
-                            .size(SYNC_BUTTON)
-                            .rounded(SYNC_BUTTON / 2.)
-                            .icon(icons::icon(icons::REFRESH))
-                            .bg(style::black(SYNC_SCRIM, cx))
-                            .border_1()
-                            .shadow_lg()
-                            .tooltip(t("jump_to_current_song"))
-                            .on_click(cx.listener(|this, _, _, cx| this.rearm(cx))),
+                        style::dress(
+                            Button::new("lyrics-sync"),
+                            style::black(SYNC_SCRIM, cx),
+                            style::black(SYNC_SCRIM + style::ACTIVE, cx),
+                            style::white(style::TEXT_STRONG, cx),
+                            style::white(style::BORDER, cx),
+                            cx,
+                        )
+                        .with_size(SYNC_GLYPH * (4. / 3.))
+                        .size(SYNC_BUTTON)
+                        .rounded(SYNC_BUTTON / 2.)
+                        .icon(icons::icon(icons::REFRESH))
+                        .border_1()
+                        .shadow_lg()
+                        .tooltip(t("jump_to_current_song"))
+                        .on_click(cx.listener(|this, _, _, cx| this.rearm(cx))),
                     ),
                 )
             })

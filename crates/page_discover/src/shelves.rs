@@ -529,6 +529,7 @@ impl Shelves {
                             .active(style::white(0.8, cx))
                             .shadow(true),
                     )
+                    .bg(cx.theme().foreground)
                     .rounded(px(999.))
                     .with_size(px(40.))
                     .loading(loading)
@@ -633,7 +634,7 @@ impl Shelves {
         Button::new((if back { "left" } else { "right" }, shelf))
             .custom(
                 ButtonCustomVariant::new(cx)
-                    .color(background)
+                    .color(style::rest(background))
                     .foreground(cx.theme().foreground)
                     .hover(background)
                     .active(style::white(style::HOVER, cx)),

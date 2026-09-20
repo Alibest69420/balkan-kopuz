@@ -85,6 +85,7 @@ impl FullscreenPlayer {
                             .active(style::black(0.6, cx))
                             .shadow(true),
                     )
+                    .bg(scrim)
                     .rounded(px(999.))
                     .with_size(px(36.))
                     .icon(icons::icon(icons::CHEVRON_LEFT))

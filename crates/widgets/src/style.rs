@@ -152,18 +152,10 @@ pub fn text_9() -> Pixels {
     px(9.)
 }
 
-/// A Button that wears exactly the colours it is handed, in every state.
-///
-/// `Button::render` refines its own hover style *over* the base, while an instance `.bg()` or
-/// `.text_color()` only refines the base — so anything set that way is overpainted for exactly as
-/// long as the pointer is on it. Worse, `.ghost()` and `.text()` hardcode their hovered
-/// foreground (`accent_foreground` and `foreground`), so a `.text_color()` on one of those is
-/// discarded the moment it is hovered, tween or no tween.
-///
-/// `fill`, `hover` and `ink` therefore go to the variant, which every state layer reads.
+/// A borderless Button's colours in every state; a fill above 0.2 alpha, or a ring, needs [`dress`].
 pub fn button(fill: Hsla, hover: Hsla, ink: Hsla, cx: &App) -> ButtonCustomVariant {
     ButtonCustomVariant::new(cx)
-        .color(fill)
+        .color(rest(fill))
         .hover(hover)
         .active(hover)
         .foreground(ink)
@@ -179,4 +171,37 @@ pub fn quiet_button(ink: Hsla, cx: &App) -> ButtonCustomVariant {
 pub fn bare_button(ink: Hsla, cx: &App) -> ButtonCustomVariant {
     let clear = gpui_kit::transparent_black();
     button(clear, clear, ink, cx)
+}
+
+/// gpui-component rests a custom variant's `color` at a fifth of its alpha; hover and active paint whole.
+const VARIANT_REST: f32 = 0.2;
+
+/// What to hand `.color()` so a borderless `fill` of at most 0.2 alpha rests as given; the border reads it whole.
+pub fn rest(fill: Hsla) -> Hsla {
+    let mut compensated = fill;
+    compensated.a = (fill.a / VARIANT_REST).min(1.);
+    compensated
+}
+
+/// `fill` rests on the instance at any alpha; the variant's `color` is the border in every state, so it takes `edge` whole.
+pub fn dress(
+    button: gpui_kit::component::button::Button,
+    fill: Hsla,
+    hover: Hsla,
+    ink: Hsla,
+    edge: Hsla,
+    cx: &App,
+) -> gpui_kit::component::button::Button {
+    use gpui_kit::Styled as _;
+    use gpui_kit::component::button::ButtonVariants as _;
+    button
+        .custom(
+            ButtonCustomVariant::new(cx)
+                .color(edge)
+                .hover(hover)
+                .active(hover)
+                .foreground(ink),
+        )
+        .bg(fill)
+        .border_color(edge)
 }

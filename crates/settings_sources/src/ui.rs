@@ -29,7 +29,7 @@ const COMMAND_BG: f32 = 0.79;
 /// `bg-white/10 hover:bg-white/20`: the quiet button these cards are built from.
 pub fn soft(cx: &App) -> ButtonCustomVariant {
     ButtonCustomVariant::new(cx)
-        .color(style::white(style::HOVER, cx))
+        .color(style::rest(style::white(style::HOVER, cx)))
         .hover(style::white(style::ACTIVE, cx))
         .active(style::white(style::ACTIVE, cx))
         .foreground(cx.theme().foreground)

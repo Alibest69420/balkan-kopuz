@@ -358,7 +358,7 @@ impl Favorites {
                             Button::new("favorites-refresh")
                                 .custom(
                                     ButtonCustomVariant::new(cx)
-                                        .color(style::white(style::HOVER, cx))
+                                        .color(style::rest(style::white(style::HOVER, cx)))
                                         .foreground(style::white(0.8, cx))
                                         .hover(style::white(style::ACTIVE, cx))
                                         .active(style::white(style::ACTIVE, cx)),

@@ -348,7 +348,7 @@ impl FullscreenPlayer {
         Button::new(id)
             .custom(
                 ButtonCustomVariant::new(cx)
-                    .color(style::white(style::HOVER, cx))
+                    .color(style::rest(style::white(style::HOVER, cx)))
                     .foreground(foreground)
                     .hover(style::white(0.15, cx))
                     .active(style::white(style::ACTIVE, cx)),

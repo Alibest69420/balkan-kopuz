@@ -543,7 +543,7 @@ impl Render for ThemeEditor {
                                     Button::new("delete-theme")
                                         .custom(
                                             ButtonCustomVariant::new(cx)
-                                                .color(danger.opacity(0.2))
+                                                .color(style::rest(danger.opacity(0.2)))
                                                 .hover(danger.opacity(0.3))
                                                 .active(danger.opacity(0.3))
                                                 .foreground(danger),

@@ -231,38 +231,37 @@ impl Playlists {
         let active = keys.iter().any(|key| downloads.read(cx).is_active(key));
         let stored = !keys.is_empty() && keys.iter().all(|key| downloads.read(cx).is_stored(key));
         let corner = capabilities.downloads.then(|| {
-            Button::new(SharedString::from(format!("download-{}", playlist.id)))
-                // The variant's color is the border; the scrim stays on the instance style.
-                .custom(style::button(
-                    style::white(style::BORDER, cx),
-                    style::black(0.4, cx),
-                    style::white(style::TEXT_SECONDARY, cx),
-                    cx,
-                ))
-                .xsmall()
-                .size_8()
-                .rounded_full()
-                .bg(style::black(0.4, cx))
-                .border_1()
-                .icon(icons::icon(if stored {
-                    icons::TRASH
-                } else {
-                    icons::DOWNLOAD
-                }))
-                .loading(active)
-                .on_click(move |_, _, cx| {
-                    let keys = keys.clone();
-                    DownloadsModel::global(cx).update(cx, |downloads, cx| {
-                        if stored {
-                            for key in keys {
-                                downloads.remove(key, cx);
-                            }
-                        } else {
-                            downloads.download(keys, cx);
+            style::dress(
+                Button::new(SharedString::from(format!("download-{}", playlist.id))),
+                style::black(0.4, cx),
+                style::black(0.4, cx),
+                style::white(style::TEXT_SECONDARY, cx),
+                style::white(style::BORDER, cx),
+                cx,
+            )
+            .xsmall()
+            .size_8()
+            .rounded_full()
+            .border_1()
+            .icon(icons::icon(if stored {
+                icons::TRASH
+            } else {
+                icons::DOWNLOAD
+            }))
+            .loading(active)
+            .on_click(move |_, _, cx| {
+                let keys = keys.clone();
+                DownloadsModel::global(cx).update(cx, |downloads, cx| {
+                    if stored {
+                        for key in keys {
+                            downloads.remove(key, cx);
                         }
-                    });
-                })
-                .into_any_element()
+                    } else {
+                        downloads.download(keys, cx);
+                    }
+                });
+            })
+            .into_any_element()
         });
         crate::cards::playlist_card(playlist, None)
             .subtitle(format!(

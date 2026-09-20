@@ -14,7 +14,7 @@ use gpui_kit::{
 use link::Link;
 use store::{ConfigModel, Notices, Query};
 use widgets::format::{t, t_with, text};
-use widgets::{FieldChanged, SchemaForm};
+use widgets::{FieldChanged, SchemaForm, style};
 
 use crate::ui;
 
@@ -157,13 +157,15 @@ impl Integrations {
                             .small()
                             .map(|button| {
                                 if configured {
-                                    button.custom(
-                                        ButtonCustomVariant::new(cx)
-                                            .color(success.opacity(0.2))
-                                            .hover(success.opacity(0.2))
-                                            .active(success.opacity(0.2))
-                                            .foreground(success),
-                                    )
+                                    button
+                                        .custom(
+                                            ButtonCustomVariant::new(cx)
+                                                .color(style::rest(success.opacity(0.2)))
+                                                .hover(success.opacity(0.2))
+                                                .active(success.opacity(0.2))
+                                                .foreground(success),
+                                        )
+                                        .bg(success.opacity(0.2))
                                 } else {
                                     button.custom(ui::soft(cx))
                                 }

@@ -395,6 +395,7 @@ impl AlbumDetail {
                     .active(accent)
                     .foreground(cx.theme().primary_foreground),
             )
+            .when(!keys.is_empty(), |button| button.bg(cx.theme().primary))
             .tooltip(t("play"))
             .disabled(keys.is_empty())
             .on_click(move |_, _, cx| actions::play_all(keys.clone(), cx))

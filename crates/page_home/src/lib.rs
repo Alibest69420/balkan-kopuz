@@ -516,7 +516,7 @@ impl Home {
                 |header| {
                     header
                         .action(
-                            outlined(pill(Button::new("home-reset").custom(chip(cx))), cx)
+                            outlined(pill(Button::new("home-reset")), cx)
                                 .icon(icons::icon(icons::REFRESH))
                                 .label(t("reset_home"))
                                 .on_click(cx.listener(|this, _, _, cx| this.reset_sections(cx))),
@@ -535,7 +535,7 @@ impl Home {
                 },
                 |header| {
                     header.action(
-                        outlined(pill(Button::new("home-customize").custom(chip(cx))), cx)
+                        outlined(pill(Button::new("home-customize")), cx)
                             .icon(icons::icon(icons::SETTINGS))
                             .label(t("customize_home"))
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -743,17 +743,20 @@ fn pill(button: Button) -> Button {
         .font_weight(FontWeight::SEMIBOLD)
 }
 
-/// `border border-white/10`, which only the quiet pills wear.
+/// `border border-white/10` around a [`chip`], which only the quiet pills wear.
 fn outlined(button: Button, cx: &App) -> Button {
+    let edge = style::white(style::BORDER, cx);
     button
+        .custom(chip(cx).color(edge))
+        .bg(style::white(style::RAISED, cx))
         .border_1()
-        .border_color(style::white(style::BORDER, cx))
+        .border_color(edge)
 }
 
 /// `bg-white/5 hover:bg-white/15 text-white/70`: a quiet control in the chrome.
 fn chip(cx: &App) -> ButtonCustomVariant {
     ButtonCustomVariant::new(cx)
-        .color(style::white(style::RAISED, cx))
+        .color(style::rest(style::white(style::RAISED, cx)))
         .foreground(style::white(0.7, cx))
         .hover(style::white(0.15, cx))
         .active(style::white(style::ACTIVE, cx))
@@ -785,7 +788,7 @@ fn toggle_chip(
     let color = motion::color(channel(id.clone(), "bg"), color, window, cx);
     let foreground = motion::color(channel(id, "fg"), foreground, window, cx);
     ButtonCustomVariant::new(cx)
-        .color(color)
+        .color(style::rest(color))
         .foreground(foreground)
         .hover(hover)
         .active(hover)

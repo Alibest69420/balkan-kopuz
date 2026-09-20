@@ -214,7 +214,7 @@ impl Radio {
         Button::new(id)
             .custom(
                 ButtonCustomVariant::new(cx)
-                    .color(style::white(style::HOVER, cx))
+                    .color(style::rest(style::white(style::HOVER, cx)))
                     .foreground(style::slate_400(cx))
                     .hover(style::white(style::ACTIVE, cx))
                     .active(style::white(style::ACTIVE, cx)),

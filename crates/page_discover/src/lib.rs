@@ -462,6 +462,7 @@ impl DiscoverArtist {
                                             .hover(shuffle_color)
                                             .active(style::white(0.8, cx)),
                                     )
+                                    .bg(shuffle_color)
                                     .rounded(px(999.))
                                     .icon(icons::icon(icons::SHUFFLE).xsmall())
                                     .label(t("shuffle"))
