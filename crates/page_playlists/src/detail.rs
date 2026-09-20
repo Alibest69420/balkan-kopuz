@@ -156,9 +156,32 @@ impl PlaylistDetail {
             }
             TrackListEvent::RemoveFromPlaylist(index) => {
                 let index = *index as u32;
-                actions::run(cx, move |api| async move {
-                    api.remove_playlist_track(id, index).await
+                let removed = self.list.read(cx).keys().get(index as usize).cloned();
+                let last = (self.list.read(cx).keys().len() as u32).saturating_sub(1);
+                actions::run(cx, {
+                    let id = id.clone();
+                    move |api| async move { api.remove_playlist_track(id, index).await }
                 });
+                let Some(key) = removed else { return };
+                // Re-adding appends, so the undo puts the row back where it was as well.
+                store::Notices::undo(
+                    widgets::format::t("track_removed_from_playlist"),
+                    move |cx| {
+                        let (id, key) = (id.clone(), key.clone());
+                        actions::run(cx, move |api| async move {
+                            api.add_playlist_tracks(id.clone(), vec![key]).await?;
+                            api.reorder_playlist(
+                                id,
+                                PlaylistReorder {
+                                    from: last,
+                                    to: index,
+                                },
+                            )
+                            .await
+                        });
+                    },
+                    cx,
+                );
             }
             TrackListEvent::Delete(keys) => {
                 let keys = keys.clone();

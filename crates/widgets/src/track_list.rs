@@ -804,11 +804,7 @@ impl Render for TrackList {
                 let keys = this.action_keys();
                 let favorites = FavoritesModel::global(cx);
                 let all = keys.iter().all(|key| favorites.read(cx).is_favorite(key));
-                favorites.update(cx, |favorites, cx| {
-                    for key in keys {
-                        favorites.set(key, !all, cx);
-                    }
-                });
+                store::actions::set_favorites(keys, !all, cx);
             }))
             .on_action(cx.listener(|this, _: &RemoveSelection, window, cx| {
                 this.remove_selection(window, cx)

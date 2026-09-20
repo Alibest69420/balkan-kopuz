@@ -58,8 +58,9 @@ anyway. Severities are the auditors'. Tick items as they land.
       command leaves the play glyph flipped and the playhead ticking; a failed
       queue move leaves the row where it was dropped while the real order
       differs. `store/src/player.rs:259`, `store/src/queue.rs:204`.
-- [ ] **A download batch finishing is never acknowledged** and the failed-track
-      list is destroyed with the card. `overlays/src/lib.rs:72`.
+- [x] **A download batch finishing is never acknowledged** and the failed-track
+      list is destroyed with the card. The queue now lives in `DownloadsModel`,
+      outlives the job, and ends with a summary toast that opens the popover.
 
 ## Rough — works, feels unfinished
 
@@ -73,15 +74,15 @@ anyway. Severities are the auditors'. Tick items as they land.
       not even the `EmptyState` widget. Favorites is the counter-example.
 - [x] Long titles truncate with no tooltip, anywhere.
 - [ ] Playlist detail has no loading state, no empty state, no column header.
-- [ ] Cancelling a job has no pending state and swallows its failure.
-- [ ] The scan banner cannot be cancelled, unlike the download card.
+- [x] Cancelling a job has no pending state and swallows its failure.
+- [x] The scan banner cannot be cancelled, unlike the download card.
 - [x] Browser sign-in shows nothing while the browser is open — click, then
       nothing, for as long as it takes. Now a spinner and "Waiting for your
       browser…", with a toast on success.
 - [x] If the config read fails every settings control renders enabled and dead.
       The page says so instead, and swaps in when the daemon answers.
 - [x] The sidebar status dot latches at its first probe and then lies.
-- [ ] Error toasts auto-dismiss in 5s and never dedupe.
+- [x] Error toasts auto-dismiss in 5s and never dedupe.
 - [ ] Every page fetches the entire library; paging is a TODO.
 
 ## Polish

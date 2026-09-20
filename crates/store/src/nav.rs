@@ -179,6 +179,11 @@ impl Navigator {
         self.intent
     }
 
+    /// Take the intent, so asking for the same one again is a fresh request, not a no-op.
+    pub fn take_intent(&mut self) -> Option<&'static str> {
+        self.intent.take()
+    }
+
     pub fn can_go_back(&self) -> bool {
         !self.back.is_empty()
     }

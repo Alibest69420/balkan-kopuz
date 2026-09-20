@@ -282,7 +282,7 @@ impl QueuePanel {
                             .tooltip(t("remove"))
                             .on_click(move |_, _, cx| {
                                 cx.stop_propagation();
-                                QueueModel::global(cx).update(cx, |queue, cx| queue.remove(at, cx));
+                                store::actions::queue_remove(at, cx);
                             }),
                     ),
             )

@@ -1,8 +1,14 @@
+use std::collections::{HashMap, HashSet};
+use std::time::Duration;
+
 use api::{ApiEvent, ErrorBody, ErrorCode, JobKind, JobProgress, JobState};
-use gpui_kit::{App, Context, Entity, EventEmitter, Subscription, Task};
+use gpui_kit::{App, Context, Entity, EventEmitter, SharedString, Subscription, Task};
 use link::Link;
 
-use crate::notices::Notices;
+use crate::notices::{Notice, Notices};
+
+/// How long a finished job stays on the activity list with its outcome.
+pub const LINGER: Duration = Duration::from_secs(5);
 
 /// A job reached its terminal state.
 #[derive(Debug, Clone)]
@@ -13,9 +19,40 @@ pub struct JobEvent {
     pub error: Option<ErrorBody>,
 }
 
+/// A job that has just stopped, kept on the list for [`LINGER`] so its outcome can be read.
+#[derive(Debug, Clone)]
+pub struct Finished {
+    pub id: String,
+    pub kind: JobKind,
+    pub ok: bool,
+    pub message: Option<SharedString>,
+}
+
+/// The name a job kind answers to in `layout.notifications.jobs` and in `job_<kind>` strings.
+pub fn kind_key(kind: JobKind) -> &'static str {
+    match kind {
+        JobKind::Scan => "scan",
+        JobKind::LibrarySync => "library_sync",
+        JobKind::FavoritesSync => "favorites_sync",
+        JobKind::PlaylistSync => "playlist_sync",
+        JobKind::Download => "download",
+        JobKind::UrlDownload => "url_download",
+        JobKind::Unknown => "job",
+    }
+}
+
+/// What a job kind is called, for a line that names it.
+pub fn kind_label(kind: JobKind) -> SharedString {
+    SharedString::from(i18n::t(&format!("job_{}", kind_key(kind))))
+}
+
 /// Progress of the daemon's long-running work, by kind.
 pub struct JobsModel {
     running: Vec<JobProgress>,
+    /// Cancelled, but still on the daemon's list: the Stop chip reads *Stopping…* until it leaves.
+    stopping: HashSet<String>,
+    recent: Vec<Finished>,
+    _linger: HashMap<String, Task<()>>,
     _fetch: Option<Task<()>>,
     _subscription: Subscription,
 }
@@ -48,12 +85,25 @@ impl JobsModel {
                 error,
             } => {
                 this.running.retain(|running| &running.id != id);
+                this.stopping.remove(id);
+                this.remember(id.clone(), *kind, *ok, error.as_ref(), cx);
                 crate::notify(cx);
                 // A job that fails says so. Upstream drops this, which is why a sync against
                 // expired credentials spins for a moment and then goes quiet.
-                if !*ok && let Some(failure) = error.as_ref() {
-                    Notices::error(failure.message.clone(), cx);
-                }
+                let notice = match (ok, error.as_ref()) {
+                    (false, Some(failure)) => {
+                        Notice::new(api::NoticeLevel::Error, failure.message.clone())
+                    }
+                    (false, None) => Notice::new(
+                        api::NoticeLevel::Error,
+                        i18n::t_with("job_failed", &[("job", kind_label(*kind).to_string())]),
+                    ),
+                    (true, _) => Notice::new(
+                        api::NoticeLevel::Info,
+                        i18n::t_with("job_finished", &[("job", kind_label(*kind).to_string())]),
+                    ),
+                };
+                this.say(notice.kind(kind_key(*kind)), cx);
                 cx.emit(JobEvent {
                     id: id.clone(),
                     kind: *kind,
@@ -66,9 +116,46 @@ impl JobsModel {
         });
         Self {
             running: Vec::new(),
+            stopping: HashSet::new(),
+            recent: Vec::new(),
+            _linger: HashMap::new(),
             _fetch: None,
             _subscription: subscription,
         }
+    }
+
+    fn say(&self, notice: Notice, cx: &mut Context<Self>) {
+        let notices = Notices::global(cx);
+        notices.update(cx, |notices, cx| notices.say(notice, cx));
+    }
+
+    /// Keep a stopped job on the list briefly, so its outcome is readable where it was running.
+    fn remember(
+        &mut self,
+        id: String,
+        kind: JobKind,
+        ok: bool,
+        error: Option<&ErrorBody>,
+        cx: &mut Context<Self>,
+    ) {
+        self.recent.retain(|finished| finished.id != id);
+        self.recent.push(Finished {
+            id: id.clone(),
+            kind,
+            ok,
+            message: error.map(|failure| SharedString::from(failure.message.clone())),
+        });
+        let evicted = id.clone();
+        let task = cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(LINGER).await;
+            this.update(cx, |this, cx| {
+                this.recent.retain(|finished| finished.id != evicted);
+                this._linger.remove(&evicted);
+                crate::notify(cx);
+            })
+            .ok();
+        });
+        self._linger.insert(id, task);
     }
 
     fn reseed(&mut self, cx: &mut Context<Self>) {
@@ -88,6 +175,8 @@ impl JobsModel {
                         message: job.message,
                     })
                     .collect();
+                this.stopping
+                    .retain(|id| this.running.iter().any(|job| &job.id == id));
                 crate::notify(cx);
             })
             .ok();
@@ -106,6 +195,15 @@ impl JobsModel {
         &self.running
     }
 
+    /// Jobs that stopped within the last [`LINGER`], newest last.
+    pub fn recent(&self) -> &[Finished] {
+        &self.recent
+    }
+
+    pub fn is_stopping(&self, id: &str) -> bool {
+        self.stopping.contains(id)
+    }
+
     /// Start a job; a kind already running answers `Conflict`, which is not an error here.
     pub fn start(&mut self, kind: JobKind, cx: &mut Context<Self>) {
         let call = Link::global(cx).call(move |api| async move { api.start_job(kind).await });
@@ -122,9 +220,48 @@ impl JobsModel {
         .detach();
     }
 
+    /// Ask the daemon to stop a job. The chip says *Stopping…* until the job actually leaves.
     pub fn cancel(&mut self, id: String, cx: &mut Context<Self>) {
-        Link::global(cx).fire(cx, "cancel job", move |api| async move {
-            api.cancel_job(id).await
+        if !self.stopping.insert(id.clone()) {
+            return;
+        }
+        crate::notify(cx);
+        let call = Link::global(cx).call({
+            let id = id.clone();
+            move |api| async move { api.cancel_job(id).await }
         });
+        cx.spawn(async move |this, cx| {
+            // A refused cancel used to vanish, leaving Stop looking like it had worked.
+            if let Err(error) = call.await {
+                this.update(cx, |this, cx| {
+                    this.stopping.remove(&id);
+                    crate::notify(cx);
+                })
+                .ok();
+                cx.update(|cx| Notices::error(crate::human(&error), cx));
+            }
+        })
+        .detach();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_job_kind_has_a_name_to_configure_and_translate() {
+        for kind in [
+            JobKind::Scan,
+            JobKind::LibrarySync,
+            JobKind::FavoritesSync,
+            JobKind::PlaylistSync,
+            JobKind::Download,
+            JobKind::UrlDownload,
+            JobKind::Unknown,
+        ] {
+            assert!(!kind_key(kind).is_empty());
+        }
+        assert_eq!(kind_key(JobKind::Scan), "scan");
     }
 }

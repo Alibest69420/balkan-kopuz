@@ -142,6 +142,9 @@ pub enum ConnectionStatus {
 /// Supervises the daemon socket and relays its event stream.
 pub struct Connection {
     status: ConnectionStatus,
+    /// Failed probes since the last time the daemon answered, for the banner's "attempt 3".
+    attempts: u32,
+    retry: futures::channel::mpsc::UnboundedSender<()>,
     link: Link,
     _supervisor: Task<()>,
 }
@@ -150,6 +153,7 @@ impl EventEmitter<ApiEvent> for Connection {}
 
 impl Connection {
     fn new(link: Link, cx: &mut Context<Self>) -> Self {
+        let (retry, mut retries) = futures::channel::mpsc::unbounded();
         let supervisor = cx.spawn({
             let link = link.clone();
             async move |this, cx| {
@@ -158,17 +162,24 @@ impl Connection {
                     if let Err(error) = probe.await {
                         let unreachable = ConnectionStatus::Unreachable(error);
                         if this
-                            .update(cx, |this, cx| this.set_status(unreachable, cx))
+                            .update(cx, |this, cx| {
+                                this.attempts = this.attempts.saturating_add(1);
+                                this.set_status(unreachable, cx);
+                                cx.notify();
+                            })
                             .is_err()
                         {
                             return;
                         }
-                        cx.background_executor().timer(RETRY_INTERVAL).await;
+                        let timer = cx.background_executor().timer(RETRY_INTERVAL);
+                        // "Retry now" is the same wait, cut short.
+                        futures::future::select(Box::pin(timer), Box::pin(retries.next())).await;
                         continue;
                     }
 
                     let mut events = relay_events(&link);
                     let attached = this.update(cx, |this, cx| {
+                        this.attempts = 0;
                         this.set_status(ConnectionStatus::Connected, cx);
                         cx.emit(ApiEvent::Resync);
                     });
@@ -193,6 +204,8 @@ impl Connection {
         });
         Self {
             status: ConnectionStatus::Connecting,
+            attempts: 0,
+            retry,
             link,
             _supervisor: supervisor,
         }
@@ -200,6 +213,15 @@ impl Connection {
 
     pub fn status(&self) -> &ConnectionStatus {
         &self.status
+    }
+
+    pub fn attempts(&self) -> u32 {
+        self.attempts
+    }
+
+    /// Stop waiting out the retry interval and probe the daemon again now.
+    pub fn retry_now(&self) {
+        let _ = self.retry.unbounded_send(());
     }
 
     pub fn is_connected(&self) -> bool {

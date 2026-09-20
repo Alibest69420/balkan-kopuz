@@ -1,22 +1,66 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use api::{DownloadItemState, JobKind, Table};
-use gpui_kit::{App, Context, Entity, Subscription, Task};
+use api::{DownloadItemState, DownloadItemStatus, JobKind, Table};
+use gpui_kit::{App, Context, Entity, EventEmitter, SharedString, Subscription, Task};
 use link::Link;
 
 use crate::invalidation::{Invalidation, TablesChanged};
 use crate::jobs::{JobEvent, JobsModel};
 use crate::notices::Notices;
 
+/// Where one row of the download queue has got to. `Done` is this client's: the daemon
+/// forgets a finished item, and the row has to stay reachable after the batch ends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ItemState {
+    Queued,
+    Downloading,
+    Failed,
+    Done,
+}
+
+impl From<DownloadItemState> for ItemState {
+    fn from(state: DownloadItemState) -> Self {
+        match state {
+            DownloadItemState::Queued => ItemState::Queued,
+            DownloadItemState::Downloading => ItemState::Downloading,
+            DownloadItemState::Failed => ItemState::Failed,
+        }
+    }
+}
+
+/// One requested download, named the way a row shows it.
+#[derive(Debug, Clone)]
+pub struct DownloadItem {
+    pub key: String,
+    pub title: SharedString,
+    pub artist: SharedString,
+    pub state: ItemState,
+}
+
+/// A batch reached its end; the chrome turns it into the summary toast.
+#[derive(Debug, Clone, Copy)]
+pub struct BatchFinished {
+    pub downloaded: usize,
+    pub failed: usize,
+}
+
 /// Which tracks have an offline copy, and what the running download batch is doing.
 pub struct DownloadsModel {
     stored: HashSet<String>,
     active: HashMap<String, DownloadItemState>,
+    /// The batch as rows, kept past the end of the job so the failures stay reachable.
+    queue: Vec<DownloadItem>,
+    /// The job the rows belong to, so the next batch starts a fresh list.
+    job: Option<String>,
+    batch: Option<BatchFinished>,
     _fetch: Option<Task<()>>,
     _statuses: Option<Task<()>>,
+    _titles: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
+
+impl EventEmitter<BatchFinished> for DownloadsModel {}
 
 impl DownloadsModel {
     pub fn global(cx: &App) -> Entity<Self> {
@@ -33,13 +77,26 @@ impl DownloadsModel {
                 }
             }),
             cx.observe(&jobs, |this, jobs, cx| {
-                if jobs.read(cx).is_running(JobKind::Download) {
-                    this.refresh_statuses(cx);
+                let Some(id) = jobs
+                    .read(cx)
+                    .progress(JobKind::Download)
+                    .map(|job| job.id.clone())
+                else {
+                    return;
+                };
+                // A new job is a new batch: the rows of the last one stop being the answer.
+                if this.job.as_ref() != Some(&id) {
+                    this.job = Some(id);
+                    this.queue.clear();
+                    this.batch = None;
                 }
+                this.refresh_statuses(cx);
             }),
             cx.subscribe(&jobs, |this, _, event: &JobEvent, cx| {
                 if event.kind == JobKind::Download {
                     this.active.clear();
+                    this.job = None;
+                    this.finish_batch(cx);
                     this.refetch(cx);
                 }
             }),
@@ -47,8 +104,12 @@ impl DownloadsModel {
         Self {
             stored: HashSet::new(),
             active: HashMap::new(),
+            queue: Vec::new(),
+            job: None,
+            batch: None,
             _fetch: None,
             _statuses: None,
+            _titles: None,
             _subscriptions: subscriptions,
         }
     }
@@ -76,14 +137,98 @@ impl DownloadsModel {
                 this._statuses = None;
                 if let Ok(statuses) = statuses {
                     this.active = statuses
-                        .into_iter()
-                        .map(|status| (status.key, status.state))
+                        .iter()
+                        .map(|status| (status.key.clone(), status.state))
                         .collect();
+                    this.sync_queue(&statuses, cx);
                     crate::notify(cx);
                 }
             })
             .ok();
         }));
+    }
+
+    /// The batch reports keys; a row wants a title, so the library is asked once per new key.
+    fn sync_queue(&mut self, statuses: &[DownloadItemStatus], cx: &mut Context<Self>) {
+        // A key the daemon has stopped reporting is done, not gone: the row says so and stays.
+        for item in self.queue.iter_mut() {
+            let reported = statuses.iter().any(|status| status.key == item.key);
+            if !reported && item.state != ItemState::Failed {
+                item.state = ItemState::Done;
+            }
+        }
+        for status in statuses {
+            match self.queue.iter_mut().find(|item| item.key == status.key) {
+                Some(item) => item.state = status.state.into(),
+                None => self.queue.push(DownloadItem {
+                    key: status.key.clone(),
+                    title: SharedString::from(status.key.clone()),
+                    artist: SharedString::default(),
+                    state: status.state.into(),
+                }),
+            }
+        }
+        self.name_rows(cx);
+    }
+
+    fn name_rows(&mut self, cx: &mut Context<Self>) {
+        if self._titles.is_some() {
+            return;
+        }
+        let unnamed: Vec<String> = self
+            .queue
+            .iter()
+            .filter(|item| item.title == item.key.as_str())
+            .map(|item| item.key.clone())
+            .collect();
+        if unnamed.is_empty() {
+            return;
+        }
+        let call =
+            Link::global(cx).call(move |api| async move { api.tracks_by_keys(unnamed).await });
+        self._titles = Some(cx.spawn(async move |this, cx| {
+            let tracks = call.await;
+            this.update(cx, |this, cx| {
+                this._titles = None;
+                let Ok(tracks) = tracks else { return };
+                for track in tracks {
+                    let Some(item) = this.queue.iter_mut().find(|item| item.key == track.key)
+                    else {
+                        continue;
+                    };
+                    if !track.title.is_empty() {
+                        item.title = SharedString::from(track.title);
+                    }
+                    item.artist = SharedString::from(track.artist);
+                }
+                crate::notify(cx);
+            })
+            .ok();
+        }));
+    }
+
+    /// The job stopped: whatever had not failed is done, and the count is worth saying once.
+    fn finish_batch(&mut self, cx: &mut Context<Self>) {
+        if self.queue.is_empty() {
+            return;
+        }
+        for item in self.queue.iter_mut() {
+            if item.state != ItemState::Failed {
+                item.state = ItemState::Done;
+            }
+        }
+        let failed = self
+            .queue
+            .iter()
+            .filter(|item| item.state == ItemState::Failed)
+            .count();
+        let summary = BatchFinished {
+            downloaded: self.queue.len() - failed,
+            failed,
+        };
+        self.batch = Some(summary);
+        crate::notify(cx);
+        cx.emit(summary);
     }
 
     pub fn is_stored(&self, key: &str) -> bool {
@@ -107,6 +252,50 @@ impl DownloadsModel {
 
     pub fn active(&self) -> &HashMap<String, DownloadItemState> {
         &self.active
+    }
+
+    /// The batch as rows: what is queued, what is going, what failed, what is done.
+    pub fn queue(&self) -> &[DownloadItem] {
+        &self.queue
+    }
+
+    /// The outcome of the last batch, until a new one starts.
+    pub fn batch(&self) -> Option<BatchFinished> {
+        self.batch
+    }
+
+    pub fn failed_keys(&self) -> Vec<String> {
+        self.queue
+            .iter()
+            .filter(|item| item.state == ItemState::Failed)
+            .map(|item| item.key.clone())
+            .collect()
+    }
+
+    /// Put the failures back on the daemon's queue, as their own batch.
+    pub fn retry_failed(&mut self, cx: &mut Context<Self>) {
+        let keys = self.failed_keys();
+        if keys.is_empty() {
+            return;
+        }
+        for item in self.queue.iter_mut() {
+            if item.state == ItemState::Failed {
+                item.state = ItemState::Queued;
+            }
+        }
+        self.batch = None;
+        crate::notify(cx);
+        self.download(keys, cx);
+    }
+
+    /// Forget the rows of a batch that is no longer running.
+    pub fn clear_queue(&mut self, cx: &mut Context<Self>) {
+        if self.queue.is_empty() && self.batch.is_none() {
+            return;
+        }
+        self.queue.clear();
+        self.batch = None;
+        crate::notify(cx);
     }
 
     pub fn download(&mut self, keys: Vec<String>, cx: &mut Context<Self>) {
