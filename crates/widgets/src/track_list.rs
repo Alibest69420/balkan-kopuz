@@ -170,9 +170,16 @@ impl TrackList {
 
     pub fn set_rows(&mut self, rows: Vec<TrackInfo>, cx: &mut Context<Self>) {
         let keys: HashSet<&String> = rows.iter().map(|row| &row.key).collect();
+        let was_selecting = self.selecting;
         self.selected.retain(|key| keys.contains(key));
+        // Re-sorting drops every key, and selection mode outliving the selection leaves a
+        // "0 selected" pill over the list while clicks tick checkboxes instead of playing.
+        self.selecting = !self.selected.is_empty();
         self.rows = rows;
         cx.notify();
+        if was_selecting != self.selecting {
+            cx.emit(TrackListEvent::SelectionChanged);
+        }
     }
 
     pub fn rows(&self) -> &[TrackInfo] {

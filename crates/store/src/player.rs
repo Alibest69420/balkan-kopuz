@@ -16,8 +16,15 @@ pub struct PlayerModel {
     // Local instant at which the daemon clock read `state.now_ms`.
     observed_at: Instant,
     optimistic_playing: Option<bool>,
+    // The level to come back to when unmuting, so it is never a jump to full volume.
+    muted_from: f32,
     _subscription: Subscription,
 }
+
+/// Anything at or below this is silence; f32 comparison needs a floor.
+const SILENT: f32 = f32::EPSILON;
+/// Where unmuting lands when nothing was remembered, rather than 100%.
+const DEFAULT_UNMUTE: f32 = 0.5;
 
 impl PlayerModel {
     pub fn global(cx: &App) -> Entity<Self> {
@@ -33,6 +40,7 @@ impl PlayerModel {
             state: PlayerState::default(),
             observed_at: Instant::now(),
             optimistic_playing: None,
+            muted_from: DEFAULT_UNMUTE,
             _subscription: subscription,
         }
     }
@@ -228,6 +236,36 @@ impl PlayerModel {
             },
             cx,
         );
+    }
+
+    /// The same, and remembered: this is the level the app opens at next time.
+    pub fn set_volume_saved(&mut self, volume: f32, cx: &mut Context<Self>) {
+        let volume = volume.clamp(0.0, 1.0);
+        self.set_volume(volume, cx);
+        crate::ConfigModel::global(cx).update(cx, |config, cx| {
+            if config.is_loaded() && config.config().volume != volume {
+                config.update(cx, |config| config.volume = volume);
+            }
+        });
+    }
+
+    /// Mute, or come back to the level muting left. Unmuting must never be a jump to full
+    /// volume: someone wearing headphones pays for that.
+    pub fn toggle_mute(&mut self, cx: &mut Context<Self>) {
+        let level = self.volume();
+        if level > SILENT {
+            self.muted_from = level;
+            self.set_volume_saved(0., cx);
+        } else if self.muted_from > SILENT {
+            self.set_volume_saved(self.muted_from, cx);
+        } else {
+            self.set_volume_saved(DEFAULT_UNMUTE, cx);
+        }
+    }
+
+    /// Nudge by `step`, for a wheel over a volume control.
+    pub fn nudge_volume(&mut self, step: f32, cx: &mut Context<Self>) {
+        self.set_volume_saved(self.volume() + step, cx);
     }
 
     pub fn set_shuffle(&mut self, shuffle: bool, cx: &mut Context<Self>) {

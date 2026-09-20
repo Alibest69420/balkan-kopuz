@@ -16,7 +16,7 @@ use gpui_kit::{
 };
 use store::{ConfigModel, JobsModel, Navigator, Query, Route, SourcesModel, actions};
 use widgets::format::t;
-use widgets::{Cover, Loading, PageHeader, icons, motion, style};
+use widgets::{Cover, Loading, PageHeader, dialogs, icons, motion, style};
 
 use crate::clear_variant;
 use crate::ops;
@@ -288,6 +288,7 @@ impl Albums {
         for album in &visible[first..last] {
             let target = MenuTarget {
                 id: album.id.clone(),
+                title: album.title.clone(),
                 same_title: same_title
                     .get(&title_key(album))
                     .cloned()
@@ -589,6 +590,8 @@ fn row(
 #[derive(Clone)]
 struct MenuTarget {
     id: String,
+    // Named in the delete confirmation, so it says what goes rather than "this album".
+    title: String,
     same_title: Vec<String>,
 }
 
@@ -623,21 +626,42 @@ fn album_menu(
         t("remove_from_cache")
     };
     menu.separator().item(
-        PopupMenuItem::new(delete_label)
-            .icon(icons::icon(icons::TRASH))
-            .on_click({
-                let id = target.id.clone();
-                let same_title = target.same_title.clone();
-                move |_, _, cx| {
-                    if capabilities.delete_from_disk {
-                        ops::delete_album(id.clone(), true, cx);
-                    } else {
-                        for cached in &same_title {
-                            ops::delete_album(cached.clone(), false, cx);
-                        }
+        PopupMenuItem::element({
+            let label = delete_label.clone();
+            move |_, cx| {
+                h_flex()
+                    .gap_2()
+                    .items_center()
+                    // Erasing files should not look like the queue item above it.
+                    .text_color(cx.theme().danger)
+                    .child(icons::icon(icons::TRASH))
+                    .child(label.clone())
+                    .into_any_element()
+            }
+        })
+        .on_click({
+            let id = target.id.clone();
+            let title = SharedString::from(target.title.clone());
+            let same_title = target.same_title.clone();
+            move |_, window, cx| {
+                let id = id.clone();
+                let same_title = same_title.clone();
+                // Only the disk delete is irreversible; dropping cached rows re-syncs.
+                if !capabilities.delete_from_disk {
+                    for cached in &same_title {
+                        ops::delete_album(cached.clone(), false, cx);
                     }
+                    return;
                 }
-            }),
+                dialogs::confirm_delete(
+                    t("delete_album"),
+                    title.clone(),
+                    move |cx| ops::delete_album(id.clone(), true, cx),
+                    window,
+                    cx,
+                );
+            }
+        }),
     )
 }
 

@@ -53,8 +53,6 @@ pub struct FullscreenPlayer {
     seeking: bool,
     // Which link, pill or chevron the pointer is on, so its colour can tween rather than snap.
     pub(crate) hovered: Option<&'static str>,
-    // The level a mute returns to, so unmuting restores what the user had.
-    premute: Option<f32>,
     _lyrics: Option<Subscription>,
     _subscriptions: Vec<Subscription>,
 }
@@ -91,7 +89,6 @@ impl FullscreenPlayer {
             lyrics_key: String::new(),
             seeking: false,
             hovered: None,
-            premute: None,
             _lyrics: None,
             _subscriptions: subscriptions,
         }
@@ -171,23 +168,21 @@ impl FullscreenPlayer {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let SliderEvent::Change(value) = event {
-            let level = value.end().clamp(0., 1.);
-            self.premute = None;
-            PlayerModel::global(cx).update(cx, |player, cx| player.set_volume(level, cx));
+        match event {
+            SliderEvent::Change(value) => {
+                let level = value.end().clamp(0., 1.);
+                PlayerModel::global(cx).update(cx, |player, cx| player.set_volume(level, cx));
+            }
+            // Saved on release, so a level set here survives the next daemon start.
+            SliderEvent::Release(value) => {
+                let level = value.end().clamp(0., 1.);
+                PlayerModel::global(cx).update(cx, |player, cx| player.set_volume_saved(level, cx));
+            }
         }
     }
 
     fn toggle_mute(&mut self, cx: &mut Context<Self>) {
-        let player = PlayerModel::global(cx);
-        let volume = player.read(cx).volume();
-        let level = if volume > 0. {
-            self.premute = Some(volume);
-            0.
-        } else {
-            self.premute.take().unwrap_or(1.)
-        };
-        player.update(cx, |player, cx| player.set_volume(level, cx));
+        PlayerModel::global(cx).update(cx, |player, cx| player.toggle_mute(cx));
     }
 
     /// The daemon finds the words; this only says which track they are for.
