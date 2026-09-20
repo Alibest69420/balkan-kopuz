@@ -85,7 +85,7 @@ impl MetadataDialog {
                     Some(track) => this.adopt(track, window, cx),
                     None => tracing::warn!(key = %this.key, "the track has no row to show"),
                 },
-                Err(error) => Notices::error(error.to_string(), cx),
+                Err(error) => Notices::error(store::human(&error), cx),
             })
             .ok();
         });
@@ -175,21 +175,17 @@ impl MetadataDialog {
 
     /// The editor sends the whole desired state, so a blank number clears that tag.
     fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let track_number = self
-            .value(&self.track_number, cx)
-            .trim()
-            .parse::<u32>()
-            .ok();
-        let disc_number = self.value(&self.disc_number, cx).trim().parse::<u32>().ok();
+        let track_number = numbered(&self.value(&self.track_number, cx));
+        let disc_number = numbered(&self.value(&self.disc_number, cx));
         let patch = TrackMetadataPatch {
             key: self.key.clone(),
             title: Some(self.value(&self.title, cx)),
             artist: Some(self.value(&self.artist, cx)),
             album: Some(self.value(&self.album, cx)),
-            clear_track_number: track_number.is_none(),
-            track_number,
-            clear_disc_number: disc_number.is_none(),
-            disc_number,
+            clear_track_number: track_number == Numbered::Cleared,
+            track_number: track_number.value(),
+            clear_disc_number: disc_number == Numbered::Cleared,
+            disc_number: disc_number.value(),
             cover: ArtworkChange::Keep,
         };
         let cover = self.cover.clone();
@@ -206,6 +202,7 @@ impl MetadataDialog {
                         .await;
                     match read {
                         Ok(bytes) => ArtworkChange::Set(bytes),
+                        // Reading the picked file, not a daemon call: its own message is the one to show.
                         Err(error) => {
                             cx.update(|_, cx| Notices::error(error.to_string(), cx))
                                 .ok();
@@ -224,7 +221,7 @@ impl MetadataDialog {
             let updated = call.await;
             this.update_in(cx, |this, window, cx| match updated {
                 Ok(track) => this.adopt(track, window, cx),
-                Err(error) => Notices::error(error.to_string(), cx),
+                Err(error) => Notices::error(store::human(&error), cx),
             })
             .ok();
         }));
@@ -451,5 +448,54 @@ impl Render for MetadataDialog {
                 )
             })
             .into_any_element()
+    }
+}
+
+/// What a number field is asking for. Empty means clear the tag; a number means set it.
+///
+/// Anything else — "A1", "03/12", a stray letter — used to parse to None and therefore *clear*
+/// the tag the user was editing. Silently erasing a value someone was trying to set is the worst
+/// available reading, so an unparseable field leaves the tag exactly as it was.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Numbered {
+    Cleared,
+    Set(u32),
+    Unreadable,
+}
+
+impl Numbered {
+    fn value(self) -> Option<u32> {
+        match self {
+            Numbered::Set(number) => Some(number),
+            _ => None,
+        }
+    }
+}
+
+fn numbered(text: &str) -> Numbered {
+    let text = text.trim();
+    if text.is_empty() {
+        return Numbered::Cleared;
+    }
+    match text.parse::<u32>() {
+        Ok(number) => Numbered::Set(number),
+        Err(_) => Numbered::Unreadable,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_number_that_will_not_parse_never_clears_the_tag() {
+        assert_eq!(numbered(""), Numbered::Cleared);
+        assert_eq!(numbered("   "), Numbered::Cleared);
+        assert_eq!(numbered("7"), Numbered::Set(7));
+        assert_eq!(numbered(" 7 "), Numbered::Set(7));
+        for typo in ["A1", "03/12", "1-2", "one"] {
+            assert_eq!(numbered(typo), Numbered::Unreadable, "{typo}");
+            assert_eq!(numbered(typo).value(), None, "{typo}");
+        }
     }
 }

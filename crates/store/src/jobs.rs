@@ -116,7 +116,7 @@ impl JobsModel {
                 ..
             }) => {}
             Err(error) => {
-                cx.update(|cx| Notices::error(error.to_string(), cx));
+                cx.update(|cx| Notices::error(crate::human(&error), cx));
             }
         })
         .detach();

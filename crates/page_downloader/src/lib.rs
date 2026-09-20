@@ -171,7 +171,7 @@ impl Downloader {
             }
             Err(error) => {
                 tracing::warn!(%error, "saving a downloader setting failed");
-                this.update(cx, |_, cx| Notices::error(error.to_string(), cx))
+                this.update(cx, |_, cx| Notices::error(store::human(&error), cx))
                     .ok();
             }
         })
@@ -189,7 +189,7 @@ impl Downloader {
             }
             Err(error) => {
                 tracing::warn!(%error, "clearing the download history failed");
-                this.update(cx, |_, cx| Notices::error(error.to_string(), cx))
+                this.update(cx, |_, cx| Notices::error(store::human(&error), cx))
                     .ok();
             }
         })

@@ -88,7 +88,7 @@ impl FavoritesModel {
                         this.keys.insert(key);
                     }
                     cx.notify();
-                    Notices::error(error.to_string(), cx);
+                    Notices::error(crate::human(&error), cx);
                 })
                 .ok();
             }

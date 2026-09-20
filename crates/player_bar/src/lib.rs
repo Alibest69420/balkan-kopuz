@@ -228,7 +228,7 @@ impl PlayerBar {
             store::Link::global(cx).call(move |api| async move { api.dont_recommend(key).await });
         cx.spawn(async move |_, cx| {
             if let Err(error) = call.await {
-                cx.update(|cx| store::Notices::error(error.to_string(), cx));
+                cx.update(|cx| store::Notices::error(store::human(&error), cx));
             }
             cx.update(|cx| PlayerModel::global(cx).update(cx, |player, cx| player.next(cx)));
         })

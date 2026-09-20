@@ -83,7 +83,7 @@ impl SourcesModel {
                     this.refetch(cx);
                     ConfigModel::global(cx).update(cx, |config, cx| config.reload(cx));
                 }
-                Err(error) => Notices::error(error.to_string(), cx),
+                Err(error) => Notices::error(crate::human(&error), cx),
             })
             .ok();
         })

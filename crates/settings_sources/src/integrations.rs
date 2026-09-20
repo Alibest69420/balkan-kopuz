@@ -32,7 +32,7 @@ fn write_settings(
             cx.update(|cx| query.update(cx, |query, cx| query.refresh(cx)));
         }
         Err(error) => {
-            cx.update(|cx| Notices::error(error.to_string(), cx));
+            cx.update(|cx| Notices::error(store::human(&error), cx));
         }
     })
     .detach();

@@ -46,7 +46,7 @@ pub fn with_album_keys(
             cx.update(|cx| then(keys, cx));
         }
         Err(error) => {
-            cx.update(|cx| Notices::error(error.to_string(), cx));
+            cx.update(|cx| Notices::error(store::human(&error), cx));
         }
     })
     .detach();
@@ -66,7 +66,7 @@ pub fn add_album_to_playlist(id: String, window: &mut Window, cx: &mut App) {
                     .ok();
             }
             Err(error) => {
-                cx.update(|_, cx| Notices::error(error.to_string(), cx))
+                cx.update(|_, cx| Notices::error(store::human(&error), cx))
                     .ok();
             }
         })
@@ -119,6 +119,7 @@ pub fn pick_album_cover(id: String, cx: &mut App) {
                     })
                 });
             }
+            // Reading the picked file, not a daemon call: its own message is the one to show.
             Err(error) => {
                 cx.update(|cx| Notices::error(error.to_string(), cx));
             }
@@ -155,7 +156,7 @@ pub fn share_album(browse_id: Option<String>, first_key: Option<String>, cx: &mu
                 Notices::info("Link copied", cx);
             }
             Ok(None) => Notices::error("No public page for this album", cx),
-            Err(error) => Notices::error(error.to_string(), cx),
+            Err(error) => Notices::error(store::human(&error), cx),
         });
     })
     .detach();

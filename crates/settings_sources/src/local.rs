@@ -28,7 +28,7 @@ pub fn write_directories(id: String, directories: Vec<String>, cx: &mut App) {
             });
         }
         Err(error) => {
-            cx.update(|cx| Notices::error(error.to_string(), cx));
+            cx.update(|cx| Notices::error(store::human(&error), cx));
         }
     })
     .detach();
@@ -131,7 +131,7 @@ impl LocalLibraries {
                 });
             }
             Err(error) => {
-                cx.update(|cx| Notices::error(error.to_string(), cx));
+                cx.update(|cx| Notices::error(store::human(&error), cx));
             }
         })
         .detach();

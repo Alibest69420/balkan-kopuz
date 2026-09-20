@@ -50,7 +50,7 @@ fn write_setting(id: String, value: FieldValue, cx: &mut App) {
             });
         }
         Err(error) => {
-            cx.update(|cx| Notices::error(error.to_string(), cx));
+            cx.update(|cx| Notices::error(store::human(&error), cx));
         }
     })
     .detach();
@@ -276,7 +276,7 @@ impl MediaServers {
                         .ok();
                 }
                 Err(error) => {
-                    cx.update(|_, cx| Notices::error(error.to_string(), cx))
+                    cx.update(|_, cx| Notices::error(store::human(&error), cx))
                         .ok();
                 }
             }
@@ -360,7 +360,7 @@ impl MediaServers {
                 });
             }
             Err(error) => {
-                cx.update(|cx| Notices::error(error.to_string(), cx));
+                cx.update(|cx| Notices::error(store::human(&error), cx));
             }
         })
         .detach();

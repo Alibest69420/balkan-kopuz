@@ -229,7 +229,7 @@ impl FullscreenPlayer {
             let result = call.await;
             cx.update(|cx| {
                 if let Err(error) = result {
-                    Notices::error(error.to_string(), cx);
+                    Notices::error(store::human(&error), cx);
                 }
                 PlayerModel::global(cx).update(cx, |player, cx| player.next(cx));
             });

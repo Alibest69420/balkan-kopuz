@@ -110,7 +110,7 @@ impl ConfigModel {
                 match result {
                     Ok(view) if this.edits == edits => this.adopt(view, cx),
                     Ok(_) => {}
-                    Err(error) => Notices::error(error.to_string(), cx),
+                    Err(error) => Notices::error(crate::human(&error), cx),
                 }
             })
             .ok();

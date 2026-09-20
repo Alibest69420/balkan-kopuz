@@ -187,7 +187,7 @@ impl Radio {
                     } else {
                         this.pinned.remove(&id);
                     }
-                    Notices::error(error.to_string(), cx);
+                    Notices::error(store::human(&error), cx);
                     cx.notify();
                 }
             })

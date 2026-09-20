@@ -42,6 +42,23 @@ pub fn all() -> api::Page {
     }
 }
 
+/// What to put in front of a person when a call fails.
+///
+/// `ApiError`'s `Display` is `"{code:?}: {message}"`, so every toast in the app used to open with
+/// a Rust enum variant — "Unavailable: transport error: connection refused". The daemon's own
+/// sentence is the useful half; the code is for the log.
+pub fn human(error: &api::ApiError) -> gpui_kit::SharedString {
+    match error.code {
+        // The one failure the message cannot explain, because there is nobody to write it.
+        api::ErrorCode::DaemonGone => gpui_kit::SharedString::from(i18n::t("daemon_unreachable")),
+        // A code with no message is the daemon's bug, not something to translate around.
+        _ if error.message.trim().is_empty() => {
+            gpui_kit::SharedString::from(format!("{:?}", error.code))
+        }
+        _ => gpui_kit::SharedString::from(error.message.clone()),
+    }
+}
+
 struct Handle<T>(Entity<T>);
 
 impl<T: 'static> Global for Handle<T> {}

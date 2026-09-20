@@ -215,6 +215,7 @@ impl PlaylistDetail {
                         .await
                     })
                 }),
+                // Reading the picked file, not a daemon call: its own message is the one to show.
                 Err(error) => cx.update(|cx| Notices::error(error.to_string(), cx)),
             }
         })

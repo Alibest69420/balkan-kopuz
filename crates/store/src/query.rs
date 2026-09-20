@@ -91,7 +91,14 @@ impl<T: Send + 'static> Query<T> {
                     }
                     Err(error) => {
                         tracing::debug!(%error, "query failed");
+                        // A page reading a failed query renders "nothing here", which reads as an
+                        // empty library rather than a refused call. Say so once per new failure;
+                        // a daemon outage refreshes every query and would otherwise toast each.
+                        let fresh = this.error.as_ref() != Some(&error);
                         this.error = Some(error);
+                        if fresh && let Some(error) = this.error.as_ref() {
+                            crate::Notices::error(crate::human(error), cx);
+                        }
                     }
                 }
                 cx.notify();

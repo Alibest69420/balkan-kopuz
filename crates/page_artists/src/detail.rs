@@ -1028,7 +1028,7 @@ fn with_album_keys(id: String, cx: &mut App, then: impl FnOnce(Vec<String>, &mut
             cx.update(|cx| then(keys, cx));
         }
         Err(error) => {
-            cx.update(|cx| Notices::error(error.to_string(), cx));
+            cx.update(|cx| Notices::error(store::human(&error), cx));
         }
     })
     .detach();
