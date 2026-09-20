@@ -239,6 +239,7 @@ fn frame(
     route: Option<Route>,
     cx: &mut Context<Home>,
 ) -> Stateful<Div> {
+    profile::elements::built();
     let card = v_flex()
         .id(key.clone())
         .group(key.clone())

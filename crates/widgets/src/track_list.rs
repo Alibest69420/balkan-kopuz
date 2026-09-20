@@ -485,8 +485,9 @@ impl TrackList {
         let cover = style::to_px(style::row_cover(), window);
         let menu_open = self.menu_open.as_deref() == Some(key.as_str());
         // `transition-colors` on the row: the playing tint and the selection wash tween, hover does not.
+        profile::elements::built();
         let wash = motion::color(
-            motion::id("row-wash", &key),
+            motion::row_id("row-wash", index),
             if playing {
                 style::accent(style::PLAYING, cx)
             } else if selected {
@@ -498,7 +499,7 @@ impl TrackList {
             cx,
         );
         let title_color = motion::color(
-            motion::id("row-title", &key),
+            motion::row_id("row-title", index),
             if playing {
                 accent
             } else {
@@ -508,7 +509,7 @@ impl TrackList {
             cx,
         );
         let badge = motion::amount(
-            motion::id("row-badge", &key),
+            motion::row_id("row-badge", index),
             if stored && !playing { 1. } else { 0. },
             motion::FAST,
             window,

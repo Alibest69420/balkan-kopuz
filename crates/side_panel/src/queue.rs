@@ -306,14 +306,14 @@ impl QueuePanel {
         if queue.current().is_some_and(|track| track.is_radio()) {
             return None;
         }
-        let position = queue.position().unwrap_or(0) as usize + 1;
-        let count = queue.len();
-        let total: u64 = queue
-            .items()
-            .iter()
-            .filter_map(|track| track.duration_secs())
-            .fold(0, |sum, secs| sum.saturating_add(secs));
-        let label = format!("{position}/{count} • {}", duration(total * 1000));
+        let summary = queue.summary();
+        // Nothing current still reads as the first row, the way it always has.
+        let position = summary.position.max(1);
+        let label = format!(
+            "{position}/{} • {}",
+            summary.count,
+            duration(summary.total_ms)
+        );
 
         Some(
             div()

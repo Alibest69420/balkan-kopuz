@@ -129,6 +129,16 @@ pub fn id(prefix: &str, key: impl std::fmt::Display) -> ElementId {
     ElementId::Name(format!("{prefix}-{key}").into())
 }
 
+/// The same for a row of a list, keyed by slot: a `NamedInteger` allocates nothing per frame.
+pub fn row_id(prefix: &'static str, index: usize) -> ElementId {
+    ElementId::from((prefix, index))
+}
+
+/// One of an element's channels, keyed off an id it already holds: a clone, not a `format!`.
+pub fn channel(key: &gpui_kit::SharedString, channel: u64) -> ElementId {
+    ElementId::NamedInteger(key.clone(), channel)
+}
+
 /// Fades in on the frame an element first renders, since a transition adopts its first target at once.
 pub fn enter(
     id: impl Into<ElementId>,

@@ -386,6 +386,7 @@ fn arrow(
 
 impl Render for Sidebar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let _timing = profile::render("sidebar");
         let (order, show_switcher) = {
             let config = ConfigModel::global(cx).read(cx);
             (

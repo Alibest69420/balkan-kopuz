@@ -10,6 +10,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+profile = { path = "../profile" }
 api = { workspace = true }
 config = { workspace = true }
 i18n = { workspace = true }

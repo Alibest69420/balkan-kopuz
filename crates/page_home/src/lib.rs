@@ -676,6 +676,7 @@ impl Skin {
 
 impl Render for Home {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let _timing = profile::render("home");
         widgets::scroll::smooth("home-scroll", &self.scroll.page, window, cx);
         let (skin, sections) = {
             let model = ConfigModel::global(cx);

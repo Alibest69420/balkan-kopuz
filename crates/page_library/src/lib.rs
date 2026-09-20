@@ -390,6 +390,7 @@ impl Library {
 
 impl Render for Library {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let _timing = profile::render("library");
         let capabilities = SourcesModel::global(cx).read(cx).capabilities();
         let covers = ConfigModel::global(cx).read(cx).config().show_row_images;
         let jobs = JobsModel::global(cx);

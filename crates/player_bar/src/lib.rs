@@ -329,6 +329,7 @@ fn seekable_duration_ms(cx: &App) -> Option<u64> {
 
 impl Render for PlayerBar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let _timing = profile::render("player_bar");
         let (bar_is_fullscreen, over_art) = {
             let config = ConfigModel::global(cx);
             let config = config.read(cx);

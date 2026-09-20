@@ -296,18 +296,20 @@ impl Albums {
         let first = index * columns;
         let last = (first + columns).min(self.visible.len());
         let mut cards: Vec<AnyElement> = Vec::with_capacity(last.saturating_sub(first));
-        for album in &self.visible[first..last] {
+        for (offset, album) in self.visible[first..last].iter().enumerate() {
+            let slot = first + offset;
             let target = Target::Album {
                 id: album.id.clone().into(),
                 title: album.title.clone().into(),
             };
             let hovered = self.hovered.as_deref() == Some(album.id.as_str());
+            profile::elements::built();
             cards.push(match grid {
                 true => {
                     let open = self.menu_open.as_deref() == Some(album.id.as_str());
-                    card(album, target, hovered, open, window, cx).into_any_element()
+                    card(album, slot, target, hovered, open, window, cx).into_any_element()
                 }
-                false => row(album, target, hovered, window, cx).into_any_element(),
+                false => row(album, slot, target, hovered, window, cx).into_any_element(),
             });
         }
         match grid {
@@ -382,6 +384,7 @@ impl Render for Albums {
 /// The `.vcard` grid tile: a padded raised card whose menu appears on hover.
 fn card(
     album: &AlbumInfo,
+    slot: usize,
     target: Target,
     hovered: bool,
     menu_open: bool,
@@ -391,16 +394,16 @@ fn card(
     let menu_target = target.clone();
     let route = Route::Album(album.id.clone().into());
     let wash = style::white(if hovered { style::HOVER } else { style::RAISED }, cx);
-    let background = motion::color(motion::id("album-card-bg", &album.id), wash, window, cx);
+    let background = motion::color(motion::row_id("album-card-bg", slot), wash, window, cx);
     let dots = motion::amount(
-        motion::id("album-card-menu", &album.id),
+        motion::row_id("album-card-menu", slot),
         if hovered || menu_open { 1. } else { 0. },
         motion::FAST,
         window,
         cx,
     );
     div()
-        .id(SharedString::from(format!("album-card-{}", album.id)))
+        .id(("album-card", slot))
         .relative()
         .w(TILE)
         .p_4()
@@ -419,14 +422,14 @@ fn card(
         }))
         .child(
             div()
-                .id(SharedString::from(format!("album-card-open-{}", album.id)))
+                .id(("album-card-open", slot))
                 .cursor_pointer()
                 .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
                 .child(
                     Cover::new(album.artwork.as_ref())
                         .size(TILE_COVER)
                         .rounded(cx.theme().radius * 2.)
-                        .zoom(motion::id("album-card-cover", &album.id), hovered)
+                        .zoom(motion::row_id("album-card-cover", slot), hovered)
                         .placeholder(icons::DISC),
                 )
                 .child(
@@ -484,6 +487,7 @@ fn card(
 /// The same card as `.view-list` restyles it: a compact row.
 fn row(
     album: &AlbumInfo,
+    slot: usize,
     target: Target,
     hovered: bool,
     window: &mut Window,
@@ -492,9 +496,9 @@ fn row(
     let menu_target = target.clone();
     let route = Route::Album(album.id.clone().into());
     let wash = style::white(if hovered { style::HOVER } else { style::RAISED }, cx);
-    let background = motion::color(motion::id("album-row-bg", &album.id), wash, window, cx);
+    let background = motion::color(motion::row_id("album-row-bg", slot), wash, window, cx);
     h_flex()
-        .id(SharedString::from(format!("album-row-{}", album.id)))
+        .id(("album-row", slot))
         .w_full()
         .gap_3()
         .items_center()
@@ -518,7 +522,7 @@ fn row(
             Cover::new(album.artwork.as_ref())
                 .size(ROW_COVER)
                 .rounded(cx.theme().radius * 1.5)
-                .zoom(motion::id("album-row-cover", &album.id), hovered)
+                .zoom(motion::row_id("album-row-cover", slot), hovered)
                 .placeholder(icons::DISC),
         )
         .child(

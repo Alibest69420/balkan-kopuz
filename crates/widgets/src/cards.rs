@@ -14,6 +14,12 @@ use crate::icons;
 use crate::motion;
 use crate::style;
 
+/// The tile's own element and its three transition channels, keyed off its id rather than formatted.
+const ROOT: u64 = 0;
+const HOVER: u64 = 1;
+const WASH: u64 = 2;
+const COVER: u64 = 3;
+
 /// A cover tile with a title and a subtitle: the shape of every grid in the app.
 #[derive(IntoElement)]
 pub struct Tile {
@@ -99,17 +105,18 @@ impl RenderOnce for Tile {
             style::to_px(style::radius_xl(), window)
         };
         let round = self.round;
+        profile::elements::built();
         // A tile is low-cardinality, so its hover is worth tracking: the wash and the zoom need it.
-        let pointer = window.use_keyed_state(motion::id("tile-hover", &self.id), cx, |_, _| false);
+        let pointer = window.use_keyed_state(motion::channel(&self.id, HOVER), cx, |_, _| false);
         let hovered = *pointer.read(cx);
         let wash = motion::color(
-            motion::id("tile-bg", &self.id),
+            motion::channel(&self.id, WASH),
             style::white(if hovered { style::RAISED } else { 0. }, cx),
             window,
             cx,
         );
         v_flex()
-            .id(SharedString::from(format!("tile-{}", self.id)))
+            .id(motion::channel(&self.id, ROOT))
             .flex_shrink_0()
             .gap_3()
             .p_2()
@@ -132,7 +139,7 @@ impl RenderOnce for Tile {
                             .size(self.size)
                             .rounded(radius)
                             .placeholder(self.placeholder)
-                            .zoom(motion::id("tile-cover", &self.id), hovered)
+                            .zoom(motion::channel(&self.id, COVER), hovered)
                             .zoom_speed(self.zoom_speed),
                     )
                     .children(self.overlay),
