@@ -34,6 +34,8 @@ const LYRICS_OFFSET_STEP_MS: f32 = 50.0;
 
 pub struct PlaybackSettings {
     artwork: Entity<SchemaForm>,
+    // The specs the form was last built from, so a refresh does not rebuild it under the caret.
+    artwork_specs: Option<Vec<FieldSpec>>,
     artwork_settings: Entity<Query<Vec<FieldSpec>>>,
     crossfade: Entity<SliderState>,
     volume_scroll: Entity<SliderState>,
@@ -105,6 +107,7 @@ impl PlaybackSettings {
         Self {
             section: None,
             artwork,
+            artwork_specs: None,
             artwork_settings,
             crossfade,
             volume_scroll,
@@ -146,8 +149,17 @@ impl PlaybackSettings {
             return;
         };
         let locked = ConfigModel::global(cx).read(cx).locked_keys().to_vec();
+        // `set_specs` rebuilds every input from scratch, and saving one field refreshes this
+        // query — so without the guard, tabbing from one artwork field to the next saved the
+        // first, refetched, and swapped the second's input out from under the caret.
+        let changed = self.artwork_specs.as_ref() != Some(&specs);
+        if changed {
+            self.artwork_specs = Some(specs.clone());
+        }
         self.artwork.update(cx, |form, cx| {
-            form.set_specs(specs, window, cx);
+            if changed {
+                form.set_specs(specs, window, cx);
+            }
             form.set_locked(locked, cx);
         });
     }

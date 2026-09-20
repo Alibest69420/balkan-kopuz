@@ -403,6 +403,14 @@ impl LyricsPanel {
         });
     }
 
+    /// Whether the line being sung carries per-word timing, and so has a fill that wants frames.
+    fn has_karaoke(&self, active: Option<usize>) -> bool {
+        let (Lyrics::Synced { lines, .. }, Some(active)) = (&self.lyrics, active) else {
+            return false;
+        };
+        lines.get(active).is_some_and(|line| line.chunks.len() > 1)
+    }
+
     /// Advance the glide, answering whether another frame is owed.
     fn follow(&mut self, active: Option<usize>) -> bool {
         let moved = active != self.active;
@@ -661,8 +669,12 @@ impl Render for LyricsPanel {
         };
 
         let synced = matches!(self.lyrics, Lyrics::Synced { .. });
-        // Both the karaoke fill and the glide want frames the playhead's quarter-second tick has not.
-        if synced && (playing || settling) {
+        // A frame request notifies, and a notify marks every ancestor dirty — so this re-renders
+        // the whole window, routed page included, at refresh rate. Ask only when something really
+        // moves between playhead ticks: the glide, or a line carrying per-word timing to fill.
+        // Line-synced words change at most once a line, which the quarter-second tick covers.
+        let filling = playing && self.has_karaoke(active);
+        if synced && (filling || settling) {
             window.request_animation_frame();
         }
 

@@ -67,18 +67,22 @@ impl Equalizer {
         let mut subscriptions = vec![
             cx.observe_in(&config, window, |this, _, window, cx| this.sync(window, cx)),
             cx.subscribe(&preamp, |_, _, event: &SliderEvent, cx| {
-                if let SliderEvent::Change(value) = event {
-                    let mut settings = current(cx);
-                    settings.preamp_db = value.end();
-                    apply(settings, cx);
-                }
+                let (value, settled) = match event {
+                    SliderEvent::Change(value) => (value, false),
+                    SliderEvent::Release(value) => (value, true),
+                };
+                let mut settings = current(cx);
+                settings.preamp_db = value.end();
+                apply(settings, settled, cx);
             }),
         ];
         for (index, band) in bands.iter().enumerate() {
             subscriptions.push(cx.subscribe(band, move |_, _, event: &SliderEvent, cx| {
-                if let SliderEvent::Change(value) = event {
-                    set_band(index, value.end(), cx);
-                }
+                let (value, settled) = match event {
+                    SliderEvent::Change(value) => (value, false),
+                    SliderEvent::Release(value) => (value, true),
+                };
+                set_band(index, value.end(), settled, cx);
             }));
         }
 
@@ -165,7 +169,7 @@ impl Render for Equalizer {
                             .on_change(cx.listener(|_, checked: &bool, _, cx| {
                                 let mut settings = current(cx);
                                 settings.enabled = *checked;
-                                apply(settings, cx);
+                                apply(settings, true, cx);
                             })),
                     )
                     .child(
@@ -291,16 +295,43 @@ fn current(cx: &App) -> EqualizerSettings {
     ConfigModel::global(cx).read(cx).config().equalizer.clone()
 }
 
+/// How often a drag may reach the daemon. `SliderEvent::Change` fires continuously while the
+/// pointer moves, so dragging one band was sending dozens of previews a second down the socket.
+/// The config write behind this is already debounced; the preview was not.
+const PREVIEW_INTERVAL: std::time::Duration = std::time::Duration::from_millis(40);
+
+/// When the last preview went out.
+#[derive(Default)]
+struct LastPreview(Option<std::time::Instant>);
+
+impl gpui_kit::Global for LastPreview {}
+
+fn preview_due(cx: &mut App) -> bool {
+    let now = std::time::Instant::now();
+    let last = cx.default_global::<LastPreview>().0;
+    let due = last.is_none_or(|last| now.duration_since(last) >= PREVIEW_INTERVAL);
+    if due {
+        cx.default_global::<LastPreview>().0 = Some(now);
+    }
+    due
+}
+
 /// Save the curve and let the engine play it at once; a preview is not persisted, the write is.
-fn apply(settings: EqualizerSettings, cx: &mut App) {
+///
+/// `settled` is a drag that has ended, which always previews: throttling the last event of a
+/// drag would leave the engine on a stale curve until the debounced config write caught up.
+fn apply(settings: EqualizerSettings, settled: bool, cx: &mut App) {
     let preview = settings.clone();
     write_config(cx, move |config| config.equalizer = settings);
+    if !settled && !preview_due(cx) {
+        return;
+    }
     Link::global(cx).fire(cx, "preview equalizer", move |api| async move {
         api.preview_equalizer(preview).await
     });
 }
 
-fn set_band(index: usize, gain: f32, cx: &mut App) {
+fn set_band(index: usize, gain: f32, settled: bool, cx: &mut App) {
     let mut settings = current(cx);
     let mut bands = settings.resolved_bands();
     let Some(band) = bands.get_mut(index) else {
@@ -309,16 +340,17 @@ fn set_band(index: usize, gain: f32, cx: &mut App) {
     *band = gain.clamp(BAND_MIN_DB, BAND_MAX_DB);
     settings.bands = bands;
     settings.preset = EqPreset::Custom;
-    apply(settings, cx);
+    apply(settings, settled, cx);
 }
 
+/// A preset is one jump, not a drag, so it previews immediately.
 fn set_preset(preset: EqPreset, cx: &mut App) {
     let mut settings = current(cx);
     settings.preset = preset;
     if let Some(preamp_db) = preset.default_preamp_db() {
         settings.preamp_db = preamp_db;
     }
-    apply(settings, cx);
+    apply(settings, true, cx);
 }
 
 fn preset_label(preset: EqPreset) -> SharedString {
