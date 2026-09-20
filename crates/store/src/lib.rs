@@ -17,6 +17,7 @@ mod query;
 mod queue;
 mod signin;
 mod sources;
+mod target;
 
 use gpui_kit::{App, AppContext as _, Entity, Global};
 
@@ -37,6 +38,7 @@ pub use query::Query;
 pub use queue::QueueModel;
 pub use signin::{register_password_form, start_sign_in};
 pub use sources::SourcesModel;
+pub use target::{Kind, Target};
 
 /// How the app is meant to look, for a view that only reads it.
 pub fn layout(cx: &App) -> &Layout {
