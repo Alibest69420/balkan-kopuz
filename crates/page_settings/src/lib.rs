@@ -8,6 +8,7 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled, Window, div, rems,
 };
 use settings_appearance::AppearanceSettings;
+use settings_interface::InterfaceSettings;
 use settings_playback::PlaybackSettings;
 use settings_sources::SourceSettings;
 use store::ConfigModel;
@@ -37,6 +38,7 @@ fn channel(prefix: &'static str, slug: &'static str) -> ElementId {
 pub enum Category {
     General,
     Appearance,
+    Interface,
     Library,
     Connectivity,
     Offline,
@@ -49,6 +51,7 @@ impl Category {
     pub const ALL: &'static [Category] = &[
         Category::General,
         Category::Appearance,
+        Category::Interface,
         Category::Library,
         Category::Connectivity,
         Category::Offline,
@@ -62,6 +65,7 @@ impl Category {
         match self {
             Category::General => "general",
             Category::Appearance => "appearance",
+            Category::Interface => "interface",
             Category::Library => "library",
             Category::Connectivity => "connectivity",
             Category::Offline => "offline",
@@ -82,6 +86,7 @@ impl Category {
         t(match self {
             Category::General => "settings_general",
             Category::Appearance => "settings_customization",
+            Category::Interface => "settings_interface",
             Category::Library => "settings_library",
             Category::Connectivity => "settings_connectivity",
             Category::Offline => "settings_offline",
@@ -95,6 +100,7 @@ impl Category {
         match self {
             Category::General => icons::SETTINGS,
             Category::Appearance => icons::GRID,
+            Category::Interface => icons::ROWS,
             Category::Library => icons::LIBRARY,
             Category::Connectivity => icons::SPEAKER,
             Category::Offline => icons::DOWNLOAD,
@@ -110,6 +116,7 @@ pub struct Settings {
     hovered: Option<Category>,
     scroll: gpui_kit::ScrollHandle,
     appearance: Entity<AppearanceSettings>,
+    interface: Entity<InterfaceSettings>,
     sources: Entity<SourceSettings>,
     playback: Entity<PlaybackSettings>,
 }
@@ -124,6 +131,7 @@ impl Settings {
             hovered: None,
             scroll: gpui_kit::ScrollHandle::new(),
             appearance: cx.new(|cx| AppearanceSettings::new(window, cx)),
+            interface: cx.new(|cx| InterfaceSettings::new(window, cx)),
             sources: cx.new(|cx| SourceSettings::new(window, cx)),
             playback: cx.new(|cx| PlaybackSettings::new(window, cx)),
         };
@@ -139,6 +147,8 @@ impl Settings {
             Category::General | Category::Appearance => self
                 .appearance
                 .update(cx, |panel, cx| panel.show(section, cx)),
+            // The Interface panel draws whatever registered itself; it has no sections to pick.
+            Category::Interface => {}
             Category::Library | Category::Connectivity => {
                 self.sources.update(cx, |panel, cx| panel.show(section, cx))
             }
@@ -152,6 +162,7 @@ impl Settings {
     fn panel(&self) -> AnyElement {
         match self.category {
             Category::Appearance | Category::General => self.appearance.clone().into_any_element(),
+            Category::Interface => self.interface.clone().into_any_element(),
             Category::Library | Category::Connectivity => self.sources.clone().into_any_element(),
             Category::Offline | Category::Metadata | Category::Player | Category::Tools => {
                 self.playback.clone().into_any_element()

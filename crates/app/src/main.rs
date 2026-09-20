@@ -73,6 +73,7 @@ fn main() -> anyhow::Result<()> {
             store::init(cx);
             metadata_dialog::register(cx);
             settings_sources::register(cx);
+            settings_interface::init(cx);
             theme::apply_named("default", None, cx);
             keymap(cx);
 
