@@ -49,6 +49,11 @@ impl JobsModel {
             } => {
                 this.running.retain(|running| &running.id != id);
                 cx.notify();
+                // A job that fails says so. Upstream drops this, which is why a sync against
+                // expired credentials spins for a moment and then goes quiet.
+                if !*ok && let Some(failure) = error.as_ref() {
+                    Notices::error(failure.message.clone(), cx);
+                }
                 cx.emit(JobEvent {
                     id: id.clone(),
                     kind: *kind,
