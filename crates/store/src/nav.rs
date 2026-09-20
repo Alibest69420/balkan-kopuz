@@ -142,4 +142,15 @@ impl Navigator {
     pub fn navigate(route: Route, cx: &mut App) {
         Self::global(cx).update(cx, |this, cx| this.go(route, cx));
     }
+
+    /// What a back chevron does: pop history, or go to `fallback` if there is none to pop.
+    ///
+    /// Navigating to the parent instead would push onto the back stack, so pressing back would
+    /// walk further forward — and from a page reached sideways it lands somewhere never visited.
+    pub fn back_or(fallback: Route, cx: &mut App) {
+        Self::global(cx).update(cx, |this, cx| match this.can_go_back() {
+            true => this.go_back(cx),
+            false => this.go(fallback, cx),
+        });
+    }
 }

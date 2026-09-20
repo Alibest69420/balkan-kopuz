@@ -129,12 +129,17 @@ impl Shell {
         });
     }
 
+    /// Dismiss the innermost thing that is open, so Escape always undoes the most recent step.
     pub fn escape(&mut self, cx: &mut Context<Self>) {
         Chrome::global(cx).update(cx, |chrome, cx| {
             if chrome.is_quick_search_open() {
                 chrome.set_quick_search(false, cx);
+            } else if chrome.is_compact() {
+                chrome.set_compact(false, cx);
             } else if chrome.is_fullscreen() {
                 chrome.set_fullscreen(false, cx);
+            } else if chrome.panel().is_some() {
+                chrome.set_panel(None, cx);
             }
         });
     }
@@ -144,23 +149,31 @@ impl Shell {
     }
 
     /// While the daemon is unreachable there is nothing to show, so say so and offer to start it.
+    ///
+    /// The first probe is not a failure. This used to head every state with "Can't reach the kopuz
+    /// daemon", so an ordinary cold start read as an error before anything had gone wrong.
     fn connection_screen(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let message = match self.connection.read(cx).status() {
-            ConnectionStatus::Unreachable(error) => error.to_string(),
-            _ => i18n::t("connecting"),
+        let failure = match self.connection.read(cx).status() {
+            ConnectionStatus::Unreachable(error) => Some(store::human(error)),
+            _ => None,
         };
         v_flex()
             .size_full()
             .items_center()
             .justify_center()
             .gap_3()
-            .child(div().text_lg().child(i18n::t("daemon_unreachable")))
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(message),
-            )
+            .child(div().text_lg().child(match failure.is_some() {
+                true => i18n::t("daemon_unreachable"),
+                false => i18n::t("connecting"),
+            }))
+            .when_some(failure, |screen, message| {
+                screen.child(
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(message),
+                )
+            })
             .child(
                 Button::new("start-daemon")
                     .primary()
@@ -170,8 +183,11 @@ impl Shell {
                             link::Address::Socket(path) => Some(path.clone()),
                             link::Address::Tcp(_) => None,
                         };
+                        // Silently logging this left the button looking broken, so it got
+                        // pressed again, spawning another daemon each time.
                         if let Err(error) = link::spawn_daemon(socket) {
                             tracing::error!(%error, "could not start the daemon");
+                            Notices::error(error.to_string(), cx);
                         }
                     }),
             )
@@ -184,7 +200,9 @@ impl Render for Shell {
         let connected = self.connection.read(cx).is_connected();
         let chrome = Chrome::global(cx).read(cx);
         let fullscreen = chrome.is_fullscreen();
-        let compact = chrome.is_compact();
+        // A disconnect outranks compact: a mini player with nothing behind it would keep showing
+        // the last track it saw, with no way to learn the daemon had gone.
+        let compact = chrome.is_compact() && connected;
         let panel_open = chrome.panel().is_some();
         let quick_search_open = chrome.is_quick_search_open();
         // The side panel is drag-resizable, so it owns the slot's width.
@@ -200,59 +218,72 @@ impl Render for Shell {
         let route = Navigator::global(cx).read(cx).current().clone();
         let page = self.router.page(&route, window, cx);
 
-        if compact {
-            return div()
+        // Compact swaps the body and nothing else. It used to return early, above the key context
+        // and the dialog, sheet and notification layers, so the mini player had no shortcuts, no
+        // toasts and no dialogs — and, being above the `connected` check, went on showing the last
+        // track forever when the daemon went away.
+        let body = if compact {
+            self.mini_player.clone().into_any_element()
+        } else {
+            v_flex()
                 .size_full()
-                .bg(cx.theme().background)
-                .text_color(cx.theme().foreground)
-                .child(self.mini_player.clone())
-                .into_any_element();
-        }
+                .child(
+                    h_flex()
+                        .flex_1()
+                        .min_h_0()
+                        .items_stretch()
+                        .when(!fullscreen, |body| body.child(self.sidebar.clone()))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .relative()
+                                .map(|content| {
+                                    if !connected {
+                                        content.child(self.connection_screen(cx))
+                                    } else if fullscreen {
+                                        content.child(self.fullscreen.clone())
+                                    } else {
+                                        content.child(page)
+                                    }
+                                })
+                                .child(self.overlays.clone()),
+                        )
+                        .when(panel_open && connected, |body| {
+                            body.child(div().w(panel_width).child(self.side_panel.clone()))
+                        }),
+                )
+                .when(show_player_bar, |window_body| {
+                    window_body.child(self.player_bar.clone())
+                })
+                .into_any_element()
+        };
 
         div()
             .size_full()
             .track_focus(&self.focus)
             .key_context("Shell")
-            .on_action(cx.listener(|this, _: &TogglePlayback, _, cx| this.toggle_playback(cx)))
+            .on_action(cx.listener(|this, _: &TogglePlayback, window, cx| {
+                // Space belongs to whatever has focus. A binding is dispatched before the key
+                // listeners that turn space into a click, so without this a focused button, switch
+                // or checkbox would toggle playback instead of activating. Declining the action
+                // lets the keystroke carry on to those listeners.
+                if window
+                    .focused(cx)
+                    .is_some_and(|focused| focused != this.focus)
+                {
+                    cx.propagate();
+                    return;
+                }
+                this.toggle_playback(cx);
+            }))
             .on_action(cx.listener(|this, _: &QuickSearch, _, cx| this.toggle_quick_search(cx)))
             .on_action(cx.listener(|this, _: &Escape, _, cx| this.escape(cx)))
             .on_action(cx.listener(|this, _: &Back, _, cx| this.go_back(cx)))
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
-            .child(
-                v_flex()
-                    .size_full()
-                    .child(
-                        h_flex()
-                            .flex_1()
-                            .min_h_0()
-                            .items_stretch()
-                            .when(!fullscreen, |body| body.child(self.sidebar.clone()))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .relative()
-                                    .map(|content| {
-                                        if !connected {
-                                            content.child(self.connection_screen(cx))
-                                        } else if fullscreen {
-                                            content.child(self.fullscreen.clone())
-                                        } else {
-                                            content.child(page)
-                                        }
-                                    })
-                                    .child(self.overlays.clone()),
-                            )
-                            .when(panel_open && connected, |body| {
-                                body.child(div().w(panel_width).child(self.side_panel.clone()))
-                            }),
-                    )
-                    .when(show_player_bar, |window_body| {
-                        window_body.child(self.player_bar.clone())
-                    }),
-            )
-            .when(quick_search_open, |shell| {
+            .child(body)
+            .when(quick_search_open && !compact, |shell| {
                 shell.child(self.quick_search.clone())
             })
             .children(Root::render_dialog_layer(window, cx))

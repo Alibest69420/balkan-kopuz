@@ -62,7 +62,8 @@ impl RenderOnce for PageHeader {
                             Button::new("page-back")
                                 .ghost()
                                 .icon(crate::icons::icon(icons::CHEVRON_LEFT))
-                                .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx)),
+                                // Pop history; the route is only where to land with none to pop.
+                                .on_click(move |_, _, cx| Navigator::back_or(route.clone(), cx)),
                         )
                     })
                     .child(

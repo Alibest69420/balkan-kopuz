@@ -10,6 +10,8 @@ use crate::shell::Shell;
 #[derive(Default)]
 pub struct Router {
     pages: HashMap<String, AnyView>,
+    // Least recently visited first, so the cache can drop one page instead of all of them.
+    order: Vec<String>,
 }
 
 // Enough for a back-and-forth between a grid and a few details before anything is rebuilt.
@@ -20,19 +22,32 @@ impl Router {
     pub fn page(&mut self, route: &Route, window: &mut Window, cx: &mut Context<Shell>) -> AnyView {
         let key = route.key();
         if let Some(page) = self.pages.get(&key) {
-            return page.clone();
+            let page = page.clone();
+            self.touch(key);
+            return page;
         }
-        if self.pages.len() >= CACHED_PAGES {
-            self.pages.clear();
+        // Evict the oldest, not the lot. A route key carries its parameters, so nine album visits
+        // was enough to flush everything: going back then rebuilt the grid from scratch, scroll
+        // position and all, and only ever on the ninth visit.
+        while self.pages.len() >= CACHED_PAGES && !self.order.is_empty() {
+            let oldest = self.order.remove(0);
+            self.pages.remove(&oldest);
         }
         let page = build(route, window, cx);
-        self.pages.insert(key, page.clone());
+        self.pages.insert(key.clone(), page.clone());
+        self.touch(key);
         page
+    }
+
+    fn touch(&mut self, key: String) {
+        self.order.retain(|held| held != &key);
+        self.order.push(key);
     }
 
     /// Drop cached pages, for a source switch that makes every page's contents wrong.
     pub fn clear(&mut self) {
         self.pages.clear();
+        self.order.clear();
     }
 }
 
