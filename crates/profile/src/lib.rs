@@ -9,7 +9,7 @@ use tracing_subscriber::util::SubscriberInitExt as _;
 mod counters;
 mod heap;
 
-pub use counters::{Counters, Snapshot, artwork, images, rebuilds};
+pub use counters::{Counters, Snapshot, artwork, elements, images, notifies, rebuilds};
 pub use heap::Heap;
 
 /// Kept alive for the process; dropping it is what flushes the trace file.
@@ -53,9 +53,75 @@ pub fn init() -> Session {
 /// How often the heartbeat reports, since a profiler nobody reads is worth nothing.
 pub const HEARTBEAT: Duration = Duration::from_secs(5);
 
+/// One interval's rates, for a reader that wants the numbers rather than a log line.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Pulse {
+    pub counters: Snapshot,
+    pub allocated_mb: u64,
+    pub resident_mb: u64,
+    pub rebuilds_per_s: f32,
+    pub notifies_per_s: f32,
+    /// Elements built per rebuild of the window, which is what a frame actually costs.
+    pub elements_per_frame: f32,
+}
+
+/// Turns the running totals into rates by remembering the last reading; one per reader.
+pub struct Meter {
+    heap: Heap,
+    last: Instant,
+    previous: Snapshot,
+}
+
+impl Default for Meter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Meter {
+    pub fn new() -> Self {
+        Self {
+            heap: Heap::new(),
+            last: Instant::now(),
+            previous: Counters::snapshot(),
+        }
+    }
+
+    pub fn sample(&mut self) -> Pulse {
+        let counters = Counters::snapshot();
+        let (allocated, resident) = self.heap.read();
+        // A zero interval would divide by nothing; the first sample can land in the same instant.
+        let seconds = self.last.elapsed().as_secs_f32().max(0.001);
+        let rebuilds = counters.rebuilds.saturating_sub(self.previous.rebuilds);
+        let notifies = counters.notifies.saturating_sub(self.previous.notifies);
+        let elements = counters.elements.saturating_sub(self.previous.elements);
+        self.last = Instant::now();
+        self.previous = counters;
+        Pulse {
+            counters,
+            allocated_mb: allocated / 1_048_576,
+            resident_mb: resident / 1_048_576,
+            rebuilds_per_s: rebuilds as f32 / seconds,
+            notifies_per_s: notifies as f32 / seconds,
+            elements_per_frame: elements as f32 / rebuilds.max(1) as f32,
+        }
+    }
+}
+
+/// The costliest views since the last report, worst first, left in place for the next reader.
+pub fn worst(limit: usize) -> Vec<(&'static str, SectionStat)> {
+    let mut sections: Vec<(&'static str, SectionStat)> = {
+        let held = SECTIONS.lock().unwrap_or_else(|held| held.into_inner());
+        held.iter().map(|(name, stat)| (*name, *stat)).collect()
+    };
+    sections.sort_unstable_by_key(|(_, stat)| std::cmp::Reverse(stat.total_us));
+    sections.truncate(limit);
+    sections
+}
+
 /// Reports the heap and the counters; drive it from a timer, not from a render.
 pub struct Heartbeat {
-    heap: Heap,
+    meter: Meter,
 }
 
 impl Default for Heartbeat {
@@ -66,16 +132,18 @@ impl Default for Heartbeat {
 
 impl Heartbeat {
     pub fn new() -> Self {
-        Self { heap: Heap::new() }
+        Self {
+            meter: Meter::new(),
+        }
     }
 
-    /// Logs one line of what the process is holding.
+    /// Logs one line of what the process is holding, and the four costliest views.
     pub fn report(&mut self) {
-        let counters = Counters::snapshot();
-        let (allocated, resident) = self.heap.read();
+        let pulse = self.meter.sample();
+        let counters = pulse.counters;
         tracing::info!(
-            allocated_mb = allocated / 1_048_576,
-            resident_mb = resident / 1_048_576,
+            allocated_mb = pulse.allocated_mb,
+            resident_mb = pulse.resident_mb,
             artwork_live = counters.artwork_live,
             artwork_tracked = counters.artwork_tracked,
             artwork_loaded = counters.artwork_loaded,
@@ -83,22 +151,23 @@ impl Heartbeat {
             artwork_bytes_mb = counters.artwork_bytes / 1_048_576,
             artwork_decoded_mb = counters.artwork_decoded / 1_048_576,
             rebuilds = counters.rebuilds,
+            rebuilds_per_s = pulse.rebuilds_per_s,
+            notifies_per_s = pulse.notifies_per_s,
+            elements_per_frame = pulse.elements_per_frame,
             "profile"
         );
-        // The renders since the last report, worst first; then cleared, so each line is an interval.
-        let mut sections: Vec<(&'static str, SectionStat)> = {
-            let mut held = SECTIONS.lock().unwrap_or_else(|held| held.into_inner());
-            let taken = held.iter().map(|(name, stat)| (*name, *stat)).collect();
-            held.clear();
-            taken
-        };
-        sections.sort_unstable_by_key(|(_, stat)| std::cmp::Reverse(stat.total_us));
-        for (name, stat) in sections.into_iter().take(4) {
+        let sections = worst(4);
+        // Cleared after reading, so each line covers one interval rather than the whole run.
+        SECTIONS
+            .lock()
+            .unwrap_or_else(|held| held.into_inner())
+            .clear();
+        for (name, stat) in sections {
             tracing::info!(
                 view = name,
                 renders = stat.calls,
-                total_ms = stat.total_us / 1000,
-                worst_ms = stat.worst_us / 1000,
+                total_ms = stat.total_us as f32 / 1000.,
+                worst_ms = stat.worst_us as f32 / 1000.,
                 "render"
             );
         }
@@ -166,6 +235,8 @@ pub(crate) static SECTIONS: std::sync::Mutex<
 > = std::sync::Mutex::new(std::collections::BTreeMap::new());
 
 pub(crate) static REBUILDS: AtomicU64 = AtomicU64::new(0);
+pub(crate) static NOTIFIES: AtomicU64 = AtomicU64::new(0);
+pub(crate) static ELEMENTS: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) static ARTWORK_LIVE: AtomicUsize = AtomicUsize::new(0);
 pub(crate) static ARTWORK_BYTES: AtomicU64 = AtomicU64::new(0);

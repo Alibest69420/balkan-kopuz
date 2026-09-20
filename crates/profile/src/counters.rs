@@ -4,7 +4,7 @@ use std::sync::atomic::Ordering;
 
 use crate::{
     ARTWORK_BYTES, ARTWORK_DECODED, ARTWORK_LIVE, ARTWORK_LOADED, ARTWORK_RELEASED,
-    ARTWORK_TRACKED, REBUILDS,
+    ARTWORK_TRACKED, ELEMENTS, NOTIFIES, REBUILDS,
 };
 
 /// One reading of every counter.
@@ -17,6 +17,8 @@ pub struct Snapshot {
     pub artwork_bytes: u64,
     pub artwork_decoded: u64,
     pub rebuilds: u64,
+    pub notifies: u64,
+    pub elements: u64,
 }
 
 pub struct Counters;
@@ -31,6 +33,8 @@ impl Counters {
             artwork_bytes: ARTWORK_BYTES.load(Ordering::Relaxed),
             artwork_decoded: ARTWORK_DECODED.load(Ordering::Relaxed),
             rebuilds: REBUILDS.load(Ordering::Relaxed),
+            notifies: NOTIFIES.load(Ordering::Relaxed),
+            elements: ELEMENTS.load(Ordering::Relaxed),
         }
     }
 }
@@ -66,6 +70,33 @@ pub mod rebuilds {
 
     pub fn count() -> u64 {
         REBUILDS.load(Ordering::Relaxed)
+    }
+}
+
+/// Every `cx.notify()` on a shared model, which is the storm that rebuilds the window.
+pub mod notifies {
+    use super::*;
+
+    /// Call it beside the notify, not instead of it.
+    pub fn record() {
+        NOTIFIES.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn count() -> u64 {
+        NOTIFIES.load(Ordering::Relaxed)
+    }
+}
+
+/// Elements a frame builds, counted where building one costs something: a list row, a grid tile.
+pub mod elements {
+    use super::*;
+
+    pub fn built() {
+        ELEMENTS.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn count() -> u64 {
+        ELEMENTS.load(Ordering::Relaxed)
     }
 }
 
