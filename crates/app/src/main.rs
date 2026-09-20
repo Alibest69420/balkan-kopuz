@@ -8,6 +8,7 @@ use gpui_kit::{
 };
 use shell::{Back, Escape, QuickSearch, Shell, TogglePlayback};
 
+/// The bindings whose handlers live here or on the list; `commands::keymap` binds the registry's.
 fn keymap(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("space", TogglePlayback, Some("Shell")),
@@ -22,7 +23,6 @@ fn keymap(cx: &mut App) {
         // Shell when there is no selection to clear.
         KeyBinding::new("down", widgets::track_list::CursorDown, Some("TrackList")),
         KeyBinding::new("up", widgets::track_list::CursorUp, Some("TrackList")),
-        KeyBinding::new("enter", widgets::track_list::ActivateRow, Some("TrackList")),
         KeyBinding::new("cmd-a", widgets::track_list::SelectAll, Some("TrackList")),
         KeyBinding::new("ctrl-a", widgets::track_list::SelectAll, Some("TrackList")),
         KeyBinding::new(
@@ -74,8 +74,12 @@ fn main() -> anyhow::Result<()> {
             metadata_dialog::register(cx);
             settings_sources::register(cx);
             settings_interface::init(cx);
+            page_playlists::register(cx);
+            commands::init(cx);
             theme::apply_named("default", None, cx);
             keymap(cx);
+            // After store::init, since the registry reads the saved keystroke overrides.
+            commands::keymap(cx);
 
             let options = WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::centered(

@@ -27,6 +27,7 @@ pub struct Shell {
     quick_search: Entity<quick_search::QuickSearch>,
     mini_player: Entity<fullscreen::MiniPlayer>,
     overlays: Entity<overlays::Overlays>,
+    first_run: Entity<onboarding::FirstRun>,
     // The theme these were applied for, so config edits reapply only on a change.
     applied_theme: (String, Option<config::CustomTheme>),
     // On its own timer: GPUI only renders on a change, and an idle app is when covers want releasing.
@@ -59,8 +60,11 @@ impl Shell {
         let config = ConfigModel::global(cx);
         let sources = SourcesModel::global(cx);
         let notices = Notices::global(cx);
+        let first_run = cx.new(|cx| onboarding::FirstRun::new(window, cx));
 
         let subscriptions = vec![
+            // Unmounted, the guide's own notify has no ancestor to dirty, so it would never appear.
+            cx.observe(&first_run, |_, _, cx| cx.notify()),
             cx.observe(&connection, |_, _, cx| cx.notify()),
             cx.observe(&navigator, |_, _, cx| cx.notify()),
             cx.observe(&chrome, |_, _, cx| cx.notify()),
@@ -112,6 +116,7 @@ impl Shell {
             quick_search: cx.new(|cx| quick_search::QuickSearch::new(window, cx)),
             mini_player: cx.new(|cx| fullscreen::MiniPlayer::new(window, cx)),
             overlays: cx.new(|cx| overlays::Overlays::new(window, cx)),
+            first_run,
             applied_theme: (String::new(), None),
             _heartbeat: Self::heartbeat(window, cx),
             _subscriptions: subscriptions,
@@ -203,6 +208,7 @@ impl Render for Shell {
         // A disconnect outranks compact: a mini player with nothing behind it would keep showing
         // the last track it saw, with no way to learn the daemon had gone.
         let compact = chrome.is_compact() && connected;
+        let first_run = self.first_run.read(cx).showing(cx);
         let panel_open = chrome.panel().is_some();
         let quick_search_open = chrome.is_quick_search_open();
         // The side panel is drag-resizable, so it owns the slot's width.
@@ -243,6 +249,8 @@ impl Render for Shell {
                                         content.child(self.connection_screen(cx))
                                     } else if fullscreen {
                                         content.child(self.fullscreen.clone())
+                                    } else if first_run {
+                                        content.child(self.first_run.clone())
                                     } else {
                                         content.child(page)
                                     }

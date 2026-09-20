@@ -3803,6 +3803,7 @@ name = "kopuz-gpui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "commands",
  "fullscreen",
  "gpui-kit",
  "kopuz-api",
@@ -3810,6 +3811,7 @@ dependencies = [
  "kopuz-i18n",
  "link",
  "metadata_dialog",
+ "onboarding",
  "overlays",
  "page_activity",
  "page_albums",

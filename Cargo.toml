@@ -17,6 +17,7 @@ i18n = { package = "kopuz-i18n", git = "https://github.com/Kopuz-org/kopuz", rev
 
 gpui-kit = "0.6.4"
 
+commands = { path = "crates/commands" }
 link = { path = "crates/link" }
 store = { path = "crates/store" }
 widgets = { path = "crates/widgets" }
