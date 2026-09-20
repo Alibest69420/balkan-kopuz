@@ -19,7 +19,7 @@ anyway. Severities are the auditors'. Tick items as they land.
       `app/src/main.rs:56` calls `cx.quit()` before a window exists, so from a
       desktop icon it appears to do nothing. `Connection` already models
       `Unreachable` and would retry.
-- [ ] **Nothing can be dragged to the queue.** `TrackDrag` is declared and the
+- [x] **Nothing can be dragged to the queue.** `TrackDrag` is declared and the
       queue registers `on_drop` + a drop-target highlight, but no row ever calls
       `.on_drag` — `widgets/src/track_list.rs:117`, `side_panel/src/queue.rs:83`.
       A port regression; the original drags rows.
@@ -34,10 +34,10 @@ anyway. Severities are the auditors'. Tick items as they land.
       drops vanished keys but never re-evaluates `selecting`
       (`widgets/src/track_list.rs:171`), so re-sorting with select-all on leaves
       the pill over a spinner and clicks toggle checkboxes instead of playing.
-- [ ] **Multi-select is unreachable on Search, Genre and Playlist detail**, and
+- [x] **Multi-select is unreachable on Search, Genre and Playlist detail**, and
       there is no ctrl-click or shift-click anywhere — ranges must be ticked one
       checkbox at a time. `widgets/src/track_list.rs:312`.
-- [ ] **No keyboard navigation in any list.** Nothing but the shell holds a
+- [x] **No keyboard navigation in any list.** Nothing but the shell holds a
       focus handle. No arrows, no Enter, no ctrl-a; Escape does not clear a
       selection. Quick-search already does this properly and is the model.
 - [ ] **Library's column header looks sortable and is inert.** Same
@@ -51,7 +51,7 @@ anyway. Severities are the auditors'. Tick items as they land.
       ● Connecting…". `app/src/shell.rs:147`.
 - [x] **"Start Daemon" has no visible effect and swallows its failure**, so it
       gets clicked repeatedly, spawning a process each time. `app/src/shell.rs:165`.
-- [ ] **A dismissed playback error stays dismissed forever**, keyed on the
+- [x] **A dismissed playback error stays dismissed forever**, keyed on the
       message string — the same failure never speaks again.
       `overlays/src/lib.rs:54`.
 - [ ] **Player and queue edits are fire-and-forget with no rollback.** A failed
@@ -72,14 +72,14 @@ anyway. Severities are the auditors'. Tick items as they land.
       every hover, because hover calls `cx.notify()`. `page_albums/src/grid.rs:320`.
 - [ ] Empty states name the emptiness and stop. Library's is a bare italic line,
       not even the `EmptyState` widget. Favorites is the counter-example.
-- [ ] Long titles truncate with no tooltip, anywhere.
+- [x] Long titles truncate with no tooltip, anywhere.
 - [ ] Playlist detail has no loading state, no empty state, no column header.
 - [ ] Cancelling a job has no pending state and swallows its failure.
 - [ ] The scan banner cannot be cancelled, unlike the download card.
 - [ ] Browser sign-in shows nothing while the browser is open — click, then
       nothing, for as long as it takes.
 - [ ] If the config read fails every settings control renders enabled and dead.
-- [ ] The sidebar status dot latches at its first probe and then lies.
+- [x] The sidebar status dot latches at its first probe and then lies.
 - [ ] Error toasts auto-dismiss in 5s and never dedupe.
 - [ ] Every page fetches the entire library; paging is a TODO.
 
