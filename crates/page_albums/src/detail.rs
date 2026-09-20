@@ -366,12 +366,10 @@ impl AlbumDetail {
             .flex_shrink_0()
             .rounded_full()
             .bg(background)
-            .when_some(ring, |frame, colour| {
-                frame.border_1().border_color(colour)
-            })
-            .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
-                this.track_hover(id, *hovered, cx)
-            }))
+            .when_some(ring, |frame, colour| frame.border_1().border_color(colour))
+            .on_hover(
+                cx.listener(move |this, hovered: &bool, _, cx| this.track_hover(id, *hovered, cx)),
+            )
             .child(button.size_full().custom(clear_variant(ink, cx)))
     }
 
@@ -525,9 +523,9 @@ impl AlbumDetail {
             .id(COVER)
             .relative()
             .flex_shrink_0()
-            .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
-                this.track_hover(COVER, *hovered, cx)
-            }))
+            .on_hover(
+                cx.listener(|this, hovered: &bool, _, cx| this.track_hover(COVER, *hovered, cx)),
+            )
             .child(
                 Cover::new(album.artwork.as_ref())
                     .size(size)
@@ -567,22 +565,37 @@ impl AlbumDetail {
             })
     }
 
-    /// `text-sm font-bold text-white/60 hover:text-white hover:underline`.
-    fn artist_link(&self, artist: &str, id: &'static str, cx: &Context<Self>) -> impl IntoElement {
+    /// `text-sm font-bold text-white/60 hover:text-white hover:underline transition-colors`.
+    fn artist_link(
+        &self,
+        artist: &str,
+        id: &'static str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let name = SharedString::from(artist.to_string());
         let route = Route::Artist {
             name: name.clone(),
             channel: None,
         };
-        let foreground = cx.theme().foreground;
+        let target = if self.hovered == Some(id) {
+            cx.theme().foreground
+        } else {
+            style::white(style::TEXT_SECONDARY, cx)
+        };
+        let ink = motion::color(motion::id(id, "ink"), target, window, cx);
         div()
             .id(id)
             .truncate()
             .max_w_full()
             .text_sm()
             .font_weight(gpui_kit::FontWeight::BOLD)
-            .text_color(style::white(style::TEXT_SECONDARY, cx))
-            .hover(move |link| link.text_color(foreground).underline())
+            .text_color(ink)
+            // The rule has nothing to tween, so it stays a plain hover refinement.
+            .hover(|link| link.underline())
+            .on_hover(
+                cx.listener(move |this, hovered: &bool, _, cx| this.track_hover(id, *hovered, cx)),
+            )
             .cursor_pointer()
             .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
             .child(name)
@@ -785,6 +798,7 @@ impl AlbumDetail {
                             .child(div().mb_2().child(self.artist_link(
                                 &album.artist,
                                 "album-artist",
+                                window,
                                 cx,
                             )))
                             .child(
@@ -924,6 +938,7 @@ impl AlbumDetail {
                                     .child(self.artist_link(
                                         &view.artist,
                                         "album-remote-artist",
+                                        window,
                                         cx,
                                     ))
                                     .child(
@@ -991,12 +1006,7 @@ impl AlbumDetail {
                                         )
                                     })
                                     .child(self.play_button(REMOTE_ACTION, cx))
-                                    .child(self.shuffle_button(
-                                        REMOTE_SECONDARY,
-                                        true,
-                                        window,
-                                        cx,
-                                    ))
+                                    .child(self.shuffle_button(REMOTE_SECONDARY, true, window, cx))
                                     .child({
                                         let button = Self::round_button(
                                             "album-remote-share",

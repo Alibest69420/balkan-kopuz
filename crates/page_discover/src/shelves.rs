@@ -456,7 +456,7 @@ impl Shelves {
         let radio = SourcesModel::global(cx).read(cx).capabilities().track_radio;
         let hover_id = SharedString::from(format!("song-{shelf}-{key}"));
         let hovered = self.hovered_tile.as_ref() == Some(&hover_id);
-        let overlay = self.song_overlay(&key, hovered, window, cx);
+        let overlay = self.song_overlay(shelf, &key, hovered, window, cx);
         div()
             .id(hover_id.clone())
             .flex_shrink_0()
@@ -543,6 +543,7 @@ impl Shelves {
 
     fn song_overlay(
         &self,
+        shelf: usize,
         key: &str,
         hovered: bool,
         window: &mut Window,
@@ -554,7 +555,7 @@ impl Shelves {
             icons::PLAY
         };
         let reveal = motion::amount(
-            SharedString::from(format!("song-reveal-{key}")),
+            SharedString::from(format!("song-reveal-{shelf}-{key}")),
             if hovered { 1. } else { 0. },
             motion::MEDIUM,
             window,
@@ -613,7 +614,7 @@ impl Shelves {
         };
         let side = if back { "back" } else { "forward" };
         let title = &self.views[shelf].shelf.title;
-        let id = SharedString::from(format!("nudge-{title}-{side}"));
+        let id = SharedString::from(format!("nudge-{shelf}-{title}-{side}"));
         let hovered = self.hovered_nudge.as_ref() == Some(&id);
         let target = if hovered {
             style::white(style::HOVER, cx)

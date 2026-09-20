@@ -247,11 +247,7 @@ impl Activity {
                     .justify_center()
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(style::white(0.5, cx))
-                    .child(
-                        div()
-                            .opacity(1. - reveal)
-                            .child((index + 1).to_string()),
-                    )
+                    .child(div().opacity(1. - reveal).child((index + 1).to_string()))
                     .child(
                         div()
                             .absolute()

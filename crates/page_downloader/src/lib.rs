@@ -17,7 +17,7 @@ use gpui_kit::{
 };
 use store::{JobEvent, JobsModel, Link, Notices, Query};
 use widgets::format::{t, t_with, text};
-use widgets::{EmptyState, FieldChanged, PageHeader, SchemaForm, icons, style};
+use widgets::{EmptyState, FieldChanged, PageHeader, SchemaForm, icons, motion, style};
 
 /// The downloader page: a URL, a format, the daemon's own options, and what has been fetched.
 pub struct Downloader {
@@ -217,7 +217,7 @@ impl Downloader {
             )
     }
 
-    fn format_chips(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn format_chips(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let picked = self.format(cx);
         let formats = self.formats.read(cx).value().cloned().unwrap_or_default();
         h_flex().gap_2().flex_wrap().children(
@@ -226,19 +226,36 @@ impl Downloader {
                 .map(|option| {
                     let selected = picked.as_deref() == Some(option.value.as_str());
                     let value = option.value.clone();
-                    let chip = if selected {
-                        ButtonCustomVariant::new(cx)
-                            .color(style::white(style::ACTIVE, cx))
-                            .foreground(cx.theme().foreground)
-                            .hover(style::white(style::ACTIVE, cx))
-                            .active(style::white(style::ACTIVE, cx))
-                    } else {
-                        ButtonCustomVariant::new(cx)
-                            .color(style::white(style::RAISED, cx))
-                            .foreground(style::slate_400(cx))
-                            .hover(style::white(style::HOVER, cx))
-                            .active(style::white(style::HOVER, cx))
-                    };
+                    // `transition-colors` as the pick moves from one chip to the next.
+                    let wash = motion::color(
+                        SharedString::from(format!("format-wash-{}", option.value)),
+                        if selected {
+                            style::white(style::ACTIVE, cx)
+                        } else {
+                            style::white(style::RAISED, cx)
+                        },
+                        window,
+                        cx,
+                    );
+                    let label = motion::color(
+                        SharedString::from(format!("format-label-{}", option.value)),
+                        if selected {
+                            cx.theme().foreground
+                        } else {
+                            style::slate_400(cx)
+                        },
+                        window,
+                        cx,
+                    );
+                    let chip = ButtonCustomVariant::new(cx)
+                        .color(wash)
+                        .foreground(label)
+                        .hover(if selected {
+                            wash
+                        } else {
+                            style::white(style::HOVER, cx)
+                        })
+                        .active(style::white(style::HOVER, cx));
                     Button::new(SharedString::from(format!("format-{}", option.value)))
                         .custom(chip)
                         .rounded(ButtonRounded::Large)
@@ -270,12 +287,29 @@ impl Downloader {
             .child(div().flex_1().child(failure))
     }
 
-    fn active_row(&self, progress: &JobProgress, cx: &Context<Self>) -> AnyElement {
+    fn active_row(
+        &self,
+        progress: &JobProgress,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let processing = progress.phase == "processing";
         let percent = match (progress.current, progress.total) {
             (Some(current), Some(total)) if total > 0 => current as f32 * 100.0 / total as f32,
             _ => 0.0,
         };
+        // `transition-all duration-300` on the bar, so a jumped percentage still slides.
+        let filled = motion::amount("downloader-progress", percent, motion::SLOW, window, cx);
+        let bar = motion::color(
+            "downloader-progress-color",
+            if processing {
+                cx.theme().warning.opacity(0.6)
+            } else {
+                style::white(0.5, cx)
+            },
+            window,
+            cx,
+        );
         let status = if processing {
             t("downloader_status_processing")
         } else if progress.phase == "downloading" {
@@ -316,13 +350,11 @@ impl Downloader {
                             .child(status),
                     )
                     .when(percent > 0.0, |column| {
-                        column.child(Progress::new("downloader-progress").value(percent).color(
-                            if processing {
-                                cx.theme().warning.opacity(0.6)
-                            } else {
-                                style::white(0.5, cx)
-                            },
-                        ))
+                        column.child(
+                            Progress::new("downloader-progress")
+                                .value(filled)
+                                .color(bar),
+                        )
                     }),
             )
             .into_any_element()
@@ -415,7 +447,7 @@ fn row(cx: &Context<Downloader>) -> gpui_kit::Div {
 }
 
 impl Render for Downloader {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let formats = self.formats.read(cx).value().cloned().unwrap_or_default();
         let history = self.history.read(cx).value().cloned().unwrap_or_default();
         let progress = JobsModel::global(cx)
@@ -444,7 +476,7 @@ impl Render for Downloader {
                     ),
             )
             .child(self.url_row(cx))
-            .child(self.format_chips(cx))
+            .child(self.format_chips(window, cx))
             .when_some(self.failure.clone(), |page, failure| {
                 page.child(self.failure_box(failure, cx))
             })
@@ -489,7 +521,7 @@ impl Render for Downloader {
                                 ),
                             )
                         })
-                        .children(progress.map(|progress| self.active_row(&progress, cx)))
+                        .children(progress.map(|progress| self.active_row(&progress, window, cx)))
                         .children(
                             history
                                 .iter()

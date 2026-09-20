@@ -7,21 +7,35 @@ use std::collections::HashSet;
 
 use api::{AlbumPage, ArtistPage, JobKind, Table, TrackFilter, TrackPage, TrackSort};
 use config::{SortCriterion, TrackSortField};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AppContext as _, Context, Entity, FontWeight, IntoElement, ParentElement as _, Render,
-    SharedString, Styled, Subscription, Window, div, px,
+    App, AppContext as _, Context, Entity, FontWeight, Hsla, InteractiveElement as _, IntoElement,
+    ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled,
+    Subscription, Window, div, px, transparent_black,
 };
 use store::{ConfigModel, JobsModel, PlaylistsModel, Query, SourcesModel, actions};
 use widgets::format::t;
 use widgets::track_list::{TrackActions, TrackList, TrackListEvent, TrackListOptions};
-use widgets::{PageHeader, columns, icons, playlist_picker, style};
+use widgets::{PageHeader, columns, icons, motion, playlist_picker, style};
 
 use crate::stats::StatCard;
+
+// The header action tracks its own hover, since a Button cannot carry a tween.
+const REFRESH: &str = "library-refresh-frame";
+
+/// A Button that paints nothing of its own, so the frame around it can own the tween.
+fn clear_variant(ink: Hsla, cx: &App) -> ButtonCustomVariant {
+    let clear = transparent_black();
+    ButtonCustomVariant::new(cx)
+        .color(clear)
+        .hover(clear)
+        .active(clear)
+        .foreground(ink)
+}
 
 pub struct Library {
     tracks: Entity<Query<TrackPage>>,
@@ -29,6 +43,8 @@ pub struct Library {
     artists: Entity<Query<ArtistPage>>,
     list: Entity<TrackList>,
     sort: Vec<SortCriterion<TrackSortField>>,
+    // Which chrome control the pointer is over; it drives their tweens.
+    control: Option<&'static str>,
     // The empty-library pull runs once per visit, like the Dioxus page's `has_fetched`.
     auto_synced: bool,
     _subscriptions: Vec<Subscription>,
@@ -100,6 +116,7 @@ impl Library {
             artists,
             list,
             sort,
+            control: None,
             auto_synced: false,
             _subscriptions: subscriptions,
         };
@@ -229,8 +246,23 @@ impl Library {
         });
     }
 
+    /// A leave for a control that is no longer the hovered one would clear its successor.
+    fn track_control(&mut self, id: &'static str, hovered: bool, cx: &mut Context<Self>) {
+        if !hovered && self.control != Some(id) {
+            return;
+        }
+        self.control = hovered.then_some(id);
+        cx.notify();
+    }
+
     /// The floating pill the Dioxus page drops over the list while rows are picked.
-    fn selection_bar(&self, count: usize, cx: &mut Context<Self>) -> impl IntoElement {
+    fn selection_bar(
+        &self,
+        count: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let fade = motion::enter("library-selection-bar", motion::MEDIUM, window, cx);
         let deletable = SourcesModel::global(cx)
             .read(cx)
             .capabilities()
@@ -253,6 +285,7 @@ impl Library {
             .right_0()
             .flex()
             .justify_center()
+            .opacity(fade)
             .child(
                 h_flex()
                     .gap_4()
@@ -343,7 +376,7 @@ impl Library {
 }
 
 impl Render for Library {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let capabilities = SourcesModel::global(cx).read(cx).capabilities();
         let covers = ConfigModel::global(cx).read(cx).config().show_row_images;
         let jobs = JobsModel::global(cx);
@@ -384,6 +417,17 @@ impl Render for Library {
         let faint = style::white(style::TEXT_FAINT, cx);
         let spinner = move |size: gpui_kit::Pixels| Spinner::new().color(faint).with_size(size);
 
+        let refreshable = capabilities.scan_folders || capabilities.sync;
+        let lit = self.control == Some(REFRESH);
+        let refresh_wash = style::white(if lit { style::HOVER } else { 0. }, cx);
+        let refresh_target = if lit {
+            cx.theme().foreground
+        } else {
+            style::white(style::TEXT_SECONDARY, cx)
+        };
+        let refresh_bg = motion::color(motion::id(REFRESH, "bg"), refresh_wash, window, cx);
+        let refresh_ink = motion::color(motion::id(REFRESH, "ink"), refresh_target, window, cx);
+
         v_flex()
             .size_full()
             .relative()
@@ -391,15 +435,26 @@ impl Render for Library {
             .pt_8()
             .child(
                 PageHeader::new(t("your_library")).action(
-                    Button::new("library-refresh")
-                        .ghost()
-                        .icon(icons::icon(icons::REFRESH))
-                        .rounded(cx.theme().radius_full())
+                    div()
+                        .id(REFRESH)
                         .size_9()
-                        .text_color(style::white(style::TEXT_SECONDARY, cx))
-                        .tooltip(refresh_hint)
-                        .disabled(!capabilities.scan_folders && !capabilities.sync)
-                        .on_click(cx.listener(|this, _, _, cx| this.refresh(cx))),
+                        .flex_shrink_0()
+                        .rounded_full()
+                        .bg(refresh_bg)
+                        .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+                            this.track_control(REFRESH, *hovered, cx)
+                        }))
+                        .child(
+                            Button::new("library-refresh")
+                                // A Button paints its own hover, so the frame carries the wash.
+                                .custom(clear_variant(refresh_ink, cx))
+                                .icon(icons::icon(icons::REFRESH))
+                                .rounded(cx.theme().radius_full())
+                                .size_full()
+                                .tooltip(refresh_hint)
+                                .disabled(!refreshable)
+                                .on_click(cx.listener(|this, _, _, cx| this.refresh(cx))),
+                        ),
                 ),
             )
             .child(
@@ -440,7 +495,12 @@ impl Render for Library {
                                     .child(t("tracks")),
                             ),
                     )
-                    .child(sort::control(self.sort.clone(), cx)),
+                    .child(sort::control(
+                        self.sort.clone(),
+                        self.control == Some(sort::CONTROL),
+                        window,
+                        cx,
+                    )),
             )
             .child(self.column_header(covers, cx))
             .child(v_flex().flex_1().min_h_0().map(|body| {
@@ -472,7 +532,7 @@ impl Render for Library {
                 }
             }))
             .when(selecting, |page| {
-                page.child(self.selection_bar(selected, cx))
+                page.child(self.selection_bar(selected, window, cx))
             })
     }
 }

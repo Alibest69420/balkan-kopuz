@@ -373,6 +373,8 @@ impl ArtistDetail {
             !keys.is_empty() && keys.iter().all(|key| downloads.is_stored(key))
         };
         let busy = JobsModel::global(cx).read(cx).is_running(JobKind::Download);
+        let playable = !keys.is_empty();
+        let downloadable = playable && !busy;
         let (photo_hot, photo_hover) = controls::hovered("artist-photo-hover", window, cx);
         let scrim = motion::amount(
             "artist-photo-scrim",
@@ -398,7 +400,9 @@ impl ArtistDetail {
             window,
             cx,
         );
+        // A disabled Button registers no hover listener, so its flag would stay stuck where it was.
         let (play_hot, play_hover) = controls::hovered("artist-play-hover", window, cx);
+        let play_hot = play_hot && playable;
         let play_fill = motion::color(
             "artist-play-fill",
             if play_hot {
@@ -413,6 +417,7 @@ impl ArtistDetail {
         // These buttons carry no border; `tweened` still wants a colour for the edge it would paint.
         let clear = style::white(0., cx);
         let (download_hot, download_hover) = controls::hovered("artist-download-hover", window, cx);
+        let download_hot = download_hot && downloadable;
         let download_fill = motion::color(
             "artist-download-fill",
             style::white(if download_hot { style::HOVER } else { 0. }, cx),
@@ -526,19 +531,18 @@ impl ArtistDetail {
                         let play = round_button("artist-play", icons::PLAY)
                             .on_hover(controls::track(play_hover))
                             .tooltip(t("play"))
-                            .disabled(keys.is_empty())
+                            .disabled(!playable)
                             .on_click({
                                 let keys = keys.clone();
                                 move |_, _, cx| actions::play_all(keys.clone(), cx)
                             });
-                        if keys.is_empty() {
-                            play.primary()
-                        } else {
+                        if playable {
                             controls::tweened(play, play_fill, play_text, clear, cx)
+                        } else {
+                            play.primary()
                         }
                     })
                     .when(capabilities.downloads, |row| {
-                        let live = !busy && !keys.is_empty();
                         let download = Button::new("artist-download-all")
                             .size_12()
                             .rounded_full()
@@ -554,12 +558,12 @@ impl ArtistDetail {
                             } else {
                                 t("download_offline")
                             })
-                            .disabled(!live)
+                            .disabled(!downloadable)
                             .on_click({
                                 let keys = keys.clone();
                                 move |_, _, cx| set_downloaded(keys.clone(), !stored, cx)
                             });
-                        row.child(if live {
+                        row.child(if downloadable {
                             controls::tweened(
                                 download,
                                 download_fill,
@@ -781,15 +785,6 @@ impl ArtistDetail {
             .child(body)
             .into_any_element()
     }
-}
-
-/// A `Button` owns its hover style, so its `transition-colors` has to be tweened from a frame outside it.
-fn hover_shell(id: &'static str, hover: Entity<bool>, button: Button) -> impl IntoElement {
-    div()
-        .id(id)
-        .rounded_full()
-        .on_hover(controls::track(hover))
-        .child(button)
 }
 
 /// `w-14 h-14 rounded-full` with a `text-xl` glyph: the showcase's shuffle and play.

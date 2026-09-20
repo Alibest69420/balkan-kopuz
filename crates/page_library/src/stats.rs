@@ -1,9 +1,9 @@
 use gpui_kit::component::{Icon, h_flex, v_flex};
 use gpui_kit::{
-    App, FontWeight, IntoElement, ParentElement as _, RenderOnce, SharedString, Styled, Window,
-    div, px,
+    App, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, RenderOnce,
+    SharedString, StatefulInteractiveElement as _, Styled, Window, div, px,
 };
-use widgets::style;
+use widgets::{motion, style};
 
 /// One of the four counters the library opens with.
 #[derive(IntoElement)]
@@ -24,8 +24,24 @@ impl StatCard {
 }
 
 impl RenderOnce for StatCard {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        // A card has no entity behind it, so its hover lives in the element's own keyed state.
+        let hover =
+            window.use_keyed_state(motion::id("stat-card-hover", self.icon), cx, |_, _| false);
+        let lit = *hover.read(cx);
+        let alpha = if lit {
+            style::BORDER
+        } else {
+            style::BORDER_SOFT
+        };
+        let border = motion::color(
+            motion::id("stat-card-border", self.icon),
+            style::white(alpha, cx),
+            window,
+            cx,
+        );
         h_flex()
+            .id(motion::id("stat-card", self.icon))
             .flex_1()
             .min_w_0()
             .gap_4()
@@ -33,7 +49,16 @@ impl RenderOnce for StatCard {
             .p_5()
             .rounded(style::radius_xl())
             .border_1()
-            .border_color(style::white(style::BORDER_SOFT, cx))
+            .border_color(border)
+            .on_hover(move |hovered: &bool, _, cx| {
+                let hovered = *hovered;
+                hover.update(cx, |lit, cx| {
+                    if *lit != hovered {
+                        *lit = hovered;
+                        cx.notify();
+                    }
+                })
+            })
             .child(
                 div()
                     .flex()

@@ -1,14 +1,21 @@
 //! The stacked sort control: one submenu per criterion, writing `cfg.library_sort`.
 
 use config::{SortCriterion, SortDirection, TrackSortField};
-use gpui_kit::component::button::{
-    Button, ButtonCustomVariant, ButtonRounded, ButtonVariants as _,
-};
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
-use gpui_kit::{App, Context, IntoElement, SharedString, Styled as _, Window};
+use gpui_kit::component::{ActiveTheme as _, h_flex};
+use gpui_kit::{
+    App, Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
+    StatefulInteractiveElement as _, Styled as _, Window,
+};
 use store::ConfigModel;
 use widgets::format::t;
-use widgets::{icons, style};
+use widgets::{icons, motion, style};
+
+use crate::{Library, clear_variant};
+
+/// The sort button tracks its own hover, since a Button cannot carry a tween.
+pub const CONTROL: &str = "library-sort-frame";
 
 type Criteria = Vec<SortCriterion<TrackSortField>>;
 
@@ -144,16 +151,24 @@ fn menu(
 }
 
 /// The button and its stacked criteria menu; `criteria` is `cfg.library_sort`.
-pub fn control(criteria: Criteria, cx: &App) -> impl IntoElement {
+pub fn control(
+    criteria: Criteria,
+    hovered: bool,
+    window: &mut Window,
+    cx: &mut Context<Library>,
+) -> impl IntoElement {
     let first = criteria.first().copied();
-    // A Button paints its own hover, so its colours come from a variant, never `.hover`.
-    let variant = ButtonCustomVariant::new(cx)
-        .color(style::white(style::RAISED, cx))
-        .hover(style::white(style::HOVER, cx))
-        .active(style::white(style::HOVER, cx))
-        .foreground(style::white(0.7, cx));
+    let wash = style::white(if hovered { style::HOVER } else { style::RAISED }, cx);
+    let target = if hovered {
+        cx.theme().foreground
+    } else {
+        style::white(0.7, cx)
+    };
+    let background = motion::color(motion::id(CONTROL, "bg"), wash, window, cx);
+    let ink = motion::color(motion::id(CONTROL, "ink"), target, window, cx);
     let button = Button::new("library-sort")
-        .custom(variant)
+        // A Button paints its own hover, so the frame carries the wash and the variant the ink.
+        .custom(clear_variant(ink, cx))
         .icon(icons::icon(first.map_or(icons::SORT, |criterion| {
             direction_icon(criterion.direction)
         })))
@@ -163,11 +178,18 @@ pub fn control(criteria: Criteria, cx: &App) -> impl IntoElement {
             }
             None => t("sort_by"),
         })
-        .rounded(ButtonRounded::Large)
         .h_7()
         .px_3()
-        .text_xs()
+        .text_xs();
+    h_flex()
+        .id(CONTROL)
+        .flex_shrink_0()
+        .rounded(style::radius_lg())
+        .bg(background)
         .border_1()
-        .border_color(style::white(style::BORDER_SOFT, cx));
-    button.dropdown_menu(move |popup, window, cx| menu(&criteria, popup, window, cx))
+        .border_color(style::white(style::BORDER_SOFT, cx))
+        .on_hover(
+            cx.listener(|this, hovered: &bool, _, cx| this.track_control(CONTROL, *hovered, cx)),
+        )
+        .child(button.dropdown_menu(move |popup, window, cx| menu(&criteria, popup, window, cx)))
 }

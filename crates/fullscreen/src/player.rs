@@ -459,7 +459,11 @@ impl FullscreenPlayer {
         );
         let repeat_tint = motion::color(
             "fs-repeat-tint",
-            if loop_mode == LoopMode::None { idle } else { lit },
+            if loop_mode == LoopMode::None {
+                idle
+            } else {
+                lit
+            },
             window,
             cx,
         );
@@ -499,7 +503,9 @@ impl FullscreenPlayer {
                     .mb_3()
                     .items_center()
                     .justify_between()
-                    .child(controls::shuffle_button(shuffle, shuffle_tint, cx).with_size(ACTION_SIZE))
+                    .child(
+                        controls::shuffle_button(shuffle, shuffle_tint, cx).with_size(ACTION_SIZE),
+                    )
                     .child(
                         h_flex()
                             .gap_4()
@@ -516,7 +522,9 @@ impl FullscreenPlayer {
                                     .rounded(px(999.)),
                             ),
                     )
-                    .child(controls::repeat_button(loop_mode, repeat_tint, cx).with_size(ACTION_SIZE)),
+                    .child(
+                        controls::repeat_button(loop_mode, repeat_tint, cx).with_size(ACTION_SIZE),
+                    ),
             )
             .child(
                 h_flex()
@@ -691,9 +699,7 @@ impl Render for FullscreenPlayer {
                     .child(self.stage(collapsed, window, cx))
                     .when(!collapsed, |row| row.child(self.panel(window, cx))),
             )
-            .when(collapsed, |view| {
-                view.child(self.expand_button(window, cx))
-            })
+            .when(collapsed, |view| view.child(self.expand_button(window, cx)))
     }
 }
 

@@ -4,7 +4,7 @@ use std::path::Path;
 
 use api::{ArtworkTarget, ArtworkUpload, PlaylistCapability, PlaylistReorder, Table, TrackInfo};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{Sizable as _, Size, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, Size, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AppContext as _, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
@@ -17,7 +17,9 @@ use store::{
 };
 use widgets::format::{t, t_with};
 use widgets::track_list::{TrackActions, TrackList, TrackListEvent};
-use widgets::{Cover, EmptyState, Loading, icons, style};
+use widgets::{Cover, EmptyState, Loading, icons, motion, style};
+
+use crate::cards::{hovered, track, tweened};
 
 /// `w-64 h-64`: the showcase cover.
 const HERO: Pixels = px(256.);
@@ -236,7 +238,7 @@ impl PlaylistDetail {
 }
 
 impl Render for PlaylistDetail {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let playlists = PlaylistsModel::global(cx);
         let loaded = playlists.read(cx).is_loaded();
         let playlist = playlists.read(cx).playlist(&self.id).cloned();
@@ -261,6 +263,56 @@ impl Render for PlaylistDetail {
                 .iter()
                 .all(|key| downloads.read(cx).is_stored(key.as_str()));
         let name = SharedString::from(playlist.name.clone());
+        // These buttons carry no border; `tweened` still wants a colour for the edge it would paint.
+        let clear = style::white(0., cx);
+        let (play_hot, play_hover) = hovered("play-playlist-hover", window, cx);
+        let play_fill = motion::color(
+            "play-playlist-fill",
+            if play_hot {
+                cx.theme().primary_hover
+            } else {
+                cx.theme().primary
+            },
+            window,
+            cx,
+        );
+        let play_text = cx.theme().primary_foreground;
+        let (radio_hot, radio_hover) = hovered("playlist-radio-hover", window, cx);
+        let radio_fill = motion::color(
+            "playlist-radio-fill",
+            style::white(if radio_hot { style::HOVER } else { 0. }, cx),
+            window,
+            cx,
+        );
+        let radio_text = motion::color(
+            "playlist-radio-text",
+            if radio_hot {
+                cx.theme().foreground
+            } else {
+                style::slate_400(cx)
+            },
+            window,
+            cx,
+        );
+        // A loading Button registers no hover listener, so its flag would stay stuck where it was.
+        let (download_hot, download_hover) = hovered("playlist-download-hover", window, cx);
+        let download_hot = download_hot && !active;
+        let (delete_hot, delete_hover) = hovered("playlist-delete-hover", window, cx);
+        let outline = |hot: bool, cx: &mut Context<Self>| {
+            (
+                style::white(if hot { style::HOVER } else { 0. }, cx),
+                style::white(if hot { 1. } else { 0.70 }, cx),
+                style::white(if hot { 0.40 } else { style::ACTIVE }, cx),
+            )
+        };
+        let (download_fill, download_text, download_edge) = outline(download_hot, cx);
+        let download_fill = motion::color("playlist-download-fill", download_fill, window, cx);
+        let download_text = motion::color("playlist-download-text", download_text, window, cx);
+        let download_edge = motion::color("playlist-download-edge", download_edge, window, cx);
+        let (delete_fill, delete_text, delete_edge) = outline(delete_hot, cx);
+        let delete_fill = motion::color("playlist-delete-fill", delete_fill, window, cx);
+        let delete_text = motion::color("playlist-delete-text", delete_text, window, cx);
+        let delete_edge = motion::color("playlist-delete-edge", delete_edge, window, cx);
 
         v_flex()
             .size_full()
@@ -314,37 +366,42 @@ impl Render for PlaylistDetail {
                                     .gap_4()
                                     .items_center()
                                     .flex_wrap()
-                                    .child(
+                                    .child(tweened(
                                         round_button("play-playlist", icons::PLAY)
-                                            .primary()
+                                            .on_hover(track(play_hover))
                                             .tooltip(t("play"))
                                             .on_click({
                                                 let keys = keys.clone();
                                                 move |_, _, cx| actions::play_all(keys.clone(), cx)
                                             }),
-                                    )
+                                        play_fill,
+                                        play_text,
+                                        clear,
+                                        cx,
+                                    ))
                                     .when(capabilities.playlist_radio, |row| {
                                         let id = self.id.to_string();
-                                        row.child(
+                                        row.child(tweened(
                                             round_button("playlist-radio", icons::RADIO)
-                                                .ghost()
-                                                .text_color(style::slate_400(cx))
+                                                .on_hover(track(radio_hover))
                                                 .tooltip(t("start_radio"))
                                                 .on_click(move |_, _, cx| {
                                                     actions::start_playlist_radio(id.clone(), cx)
                                                 }),
-                                        )
+                                            radio_fill,
+                                            radio_text,
+                                            clear,
+                                            cx,
+                                        ))
                                     })
                                     .when(capabilities.downloads, |row| {
                                         let keys = keys.clone();
-                                        row.child(
+                                        row.child(tweened(
                                             Button::new("playlist-download")
-                                                .ghost()
                                                 .size_12()
                                                 .rounded_full()
                                                 .border_1()
-                                                .border_color(style::white(style::ACTIVE, cx))
-                                                .text_color(style::white(0.70, cx))
+                                                .on_hover(track(download_hover))
                                                 .icon(icons::icon(if stored {
                                                     icons::TRASH
                                                 } else {
@@ -371,20 +428,22 @@ impl Render for PlaylistDetail {
                                                         },
                                                     );
                                                 }),
-                                        )
+                                            download_fill,
+                                            download_text,
+                                            download_edge,
+                                            cx,
+                                        ))
                                     })
                                     .when(
                                         capabilities.playlists != PlaylistCapability::None,
                                         |row| {
                                             let name = name.clone();
-                                            row.child(
+                                            row.child(tweened(
                                                 Button::new("playlist-delete")
-                                                    .ghost()
                                                     .size_12()
                                                     .rounded_full()
                                                     .border_1()
-                                                    .border_color(style::white(style::ACTIVE, cx))
-                                                    .text_color(style::white(0.70, cx))
+                                                    .on_hover(track(delete_hover))
                                                     .icon(icons::icon(icons::TRASH))
                                                     .tooltip(t("delete_playlist"))
                                                     .on_click(cx.listener(
@@ -392,7 +451,11 @@ impl Render for PlaylistDetail {
                                                             this.delete(window, cx, name.clone())
                                                         },
                                                     )),
-                                            )
+                                                delete_fill,
+                                                delete_text,
+                                                delete_edge,
+                                                cx,
+                                            ))
                                         },
                                     ),
                             ),

@@ -23,7 +23,7 @@ use store::{ConfigModel, JobsModel, Query, SourcesModel, actions};
 use widgets::format::{t, t_with};
 use widgets::{
     EmptyState, Loading, TrackActions, TrackList, TrackListEvent, TrackListOptions, columns, icons,
-    style,
+    motion, style,
 };
 
 // Filtering re-sorts the whole list, so a keystroke settles first; the Dioxus search bar used the same delay.
@@ -41,6 +41,8 @@ pub struct Favorites {
     refs: Vec<String>,
     query: String,
     sort: sort::State,
+    // The column header under the pointer, so its tint tweens rather than snaps.
+    hovered_header: Option<sort::Field>,
     loaded: usize,
     // The header draws an album column only while the list does.
     show_album: bool,
@@ -89,6 +91,7 @@ impl Favorites {
             refs: Vec::new(),
             query: String::new(),
             sort: None,
+            hovered_header: None,
             loaded: 0,
             show_album: options.show_album,
             _filter_delay: None,
@@ -378,13 +381,13 @@ impl Favorites {
     }
 
     /// The select-all row and the sortable column header, built from the row's own column frame.
-    fn columns(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    fn columns(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let all_selected = self.all_selected(cx);
         let show_album = self.show_album;
-        let title = self.sort_header(sort::Field::Title, cx);
-        let artist = self.sort_header(sort::Field::Artist, cx);
-        let album = self.sort_header(sort::Field::Album, cx);
-        let duration = self.sort_header(sort::Field::Duration, cx);
+        let title = self.sort_header(sort::Field::Title, window, cx);
+        let artist = self.sort_header(sort::Field::Artist, window, cx);
+        let album = self.sort_header(sort::Field::Album, window, cx);
+        let duration = self.sort_header(sort::Field::Duration, window, cx);
         v_flex()
             .child(
                 h_flex()
@@ -429,21 +432,38 @@ impl Favorites {
             .into_any_element()
     }
 
-    fn sort_header(&self, field: sort::Field, cx: &mut Context<Self>) -> AnyElement {
+    fn sort_header(
+        &self,
+        field: sort::Field,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let active = matches!(self.sort, Some((sorted, _)) if sorted == field);
-        let color = if active {
-            cx.theme().foreground
-        } else {
-            style::slate_500(cx)
-        };
-        let hover = cx.theme().foreground;
+        let lit = active || self.hovered_header == Some(field);
+        let color = motion::color(
+            field.id(),
+            if lit {
+                cx.theme().foreground
+            } else {
+                style::slate_500(cx)
+            },
+            window,
+            cx,
+        );
         h_flex()
             .id(field.id())
             .gap_1()
             .items_center()
             .cursor_pointer()
             .text_color(color)
-            .hover(|header| header.text_color(hover))
+            .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
+                if *hovered {
+                    this.hovered_header = Some(field);
+                } else if this.hovered_header == Some(field) {
+                    this.hovered_header = None;
+                }
+                cx.notify();
+            }))
             .map(|header| {
                 // The duration column is too narrow for a word, so it reads as a clock.
                 if field == sort::Field::Duration {
@@ -457,9 +477,9 @@ impl Favorites {
             .into_any_element()
     }
 
-    fn body(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    fn body(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         if !self.list.read(cx).rows().is_empty() {
-            let columns = self.columns(cx);
+            let columns = self.columns(window, cx);
             return v_flex()
                 .flex_1()
                 .min_h_0()
@@ -500,9 +520,9 @@ impl Favorites {
 }
 
 impl Render for Favorites {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let sync_status = self.sync_status(cx);
-        let body = self.body(cx);
+        let body = self.body(window, cx);
         let selection_bar = self.selection_bar(cx);
         v_flex()
             .size_full()

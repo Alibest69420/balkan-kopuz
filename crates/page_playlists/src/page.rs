@@ -6,7 +6,7 @@ use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Context, FontWeight, Hsla, InteractiveElement as _, IntoElement,
+    AnyElement, App, ClickEvent, Context, FontWeight, InteractiveElement as _, IntoElement,
     ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
     Subscription, Window, div, px,
 };
@@ -14,7 +14,7 @@ use store::{DownloadsModel, JobsModel, PlaylistsModel, SourcesModel, actions};
 use widgets::format::t;
 use widgets::{EmptyState, Loading, PageHeader, icons, motion, style};
 
-use crate::cards::{Card, card_grid, folder_card, hovered, playlist_card, track};
+use crate::cards::{Card, card_grid, folder_card, hovered, playlist_card, track, tweened};
 use crate::dialogs;
 
 pub struct Playlists {
@@ -22,27 +22,15 @@ pub struct Playlists {
     _subscriptions: Vec<Subscription>,
 }
 
-/// `w-10 h-10 rounded-full text-white/60`: the two buttons beside the page title.
-fn round_action(id: &'static str, fill: Hsla, text: Hsla) -> Button {
-    Button::new(id)
-        .ghost()
-        .size_10()
-        .rounded_full()
-        .bg(fill)
-        .text_color(text)
-}
-
-/// A `Button` owns its hover style, so its `transition-colors` is tweened on a frame outside it.
-///
-/// `fill` and `text` are the resting and hovered `white/N` alphas the original classes name.
-fn hover_shell(
+/// One chrome button's `transition-colors`: `fill` and `text` are its resting and hovered `white/N`.
+fn tweened_chrome(
     id: &'static str,
+    button: Button,
     fill: (f32, f32),
     text: (f32, f32),
     window: &mut Window,
     cx: &mut App,
-    button: impl FnOnce(Hsla, Hsla) -> Button,
-) -> impl IntoElement {
+) -> Button {
     let (hot, hover) = hovered(SharedString::from(format!("{id}-hover")), window, cx);
     let background = motion::color(
         SharedString::from(format!("{id}-fill")),
@@ -56,11 +44,18 @@ fn hover_shell(
         window,
         cx,
     );
-    div()
-        .id(SharedString::from(format!("{id}-shell")))
-        .flex_shrink_0()
-        .on_hover(track(hover))
-        .child(button(background, foreground))
+    tweened(
+        button.on_hover(track(hover)),
+        background,
+        foreground,
+        style::white(0., cx),
+        cx,
+    )
+}
+
+/// `w-10 h-10 rounded-full text-white/60`: the two buttons beside the page title.
+fn round_action(id: &'static str) -> Button {
+    Button::new(id).size_10().rounded_full()
 }
 
 impl Playlists {
@@ -102,37 +97,33 @@ impl Playlists {
         });
         PageHeader::new(t("playlists"))
             .when(capabilities.folders, |header| {
-                header.action(hover_shell(
+                header.action(tweened_chrome(
                     "new-folder",
+                    round_action("new-folder")
+                        .icon(icons::icon(icons::FOLDER))
+                        .tooltip(t("new_folder"))
+                        .on_click(|_, _, cx| {
+                            let name = t("new_folder").to_string();
+                            actions::run(cx, move |api| async move {
+                                api.create_playlist_folder(name).await
+                            });
+                        }),
                     (0., style::HOVER),
                     (style::TEXT_SECONDARY, 1.),
                     window,
                     cx,
-                    |fill, text| {
-                        round_action("new-folder", fill, text)
-                            .icon(icons::icon(icons::FOLDER))
-                            .tooltip(t("new_folder"))
-                            .on_click(|_, _, cx| {
-                                let name = t("new_folder").to_string();
-                                actions::run(cx, move |api| async move {
-                                    api.create_playlist_folder(name).await
-                                });
-                            })
-                    },
                 ))
             })
-            .action(hover_shell(
+            .action(tweened_chrome(
                 "add-playlist",
+                round_action("add-playlist")
+                    .icon(icons::icon(icons::PLUS))
+                    .tooltip(t("add_playlist"))
+                    .on_click(add),
                 (0., style::HOVER),
                 (style::TEXT_SECONDARY, 1.),
                 window,
                 cx,
-                move |fill, text| {
-                    round_action("add-playlist", fill, text)
-                        .icon(icons::icon(icons::PLUS))
-                        .tooltip(t("add_playlist"))
-                        .on_click(add)
-                },
             ))
     }
 
@@ -316,30 +307,36 @@ impl Playlists {
                             .child(SharedString::from(format!("{total} playlists synced")))
                     }),
             )
-            .child(hover_shell(
-                "refresh-playlists",
-                (style::HOVER, style::ACTIVE),
-                (0.80, 0.80),
-                window,
-                cx,
-                move |fill, text| {
-                    Button::new("refresh-playlists")
+            .child({
+                let refresh = Button::new("refresh-playlists")
+                    .xsmall()
+                    .px_3()
+                    .py_1()
+                    // `Button::rounded` is in pixels, so the Rems helper cannot travel here.
+                    .rounded(px(8.))
+                    .icon(icons::icon(icons::REFRESH))
+                    .label(t("refresh"))
+                    .disabled(syncing)
+                    .on_click(|_, _, cx| {
+                        JobsModel::global(cx)
+                            .update(cx, |jobs, cx| jobs.start(JobKind::PlaylistSync, cx));
+                    });
+                if syncing {
+                    refresh
                         .ghost()
-                        .xsmall()
-                        .px_3()
-                        .py_1()
-                        // `Button::rounded` is in pixels, so the Rems helper cannot travel here.
-                        .rounded(px(8.))
-                        .when(!syncing, |button| button.bg(fill).text_color(text))
-                        .icon(icons::icon(icons::REFRESH))
-                        .label(t("refresh"))
-                        .disabled(syncing)
-                        .on_click(|_, _, cx| {
-                            JobsModel::global(cx)
-                                .update(cx, |jobs, cx| jobs.start(JobKind::PlaylistSync, cx));
-                        })
-                },
-            ))
+                        .bg(style::white(style::HOVER, cx))
+                        .text_color(style::white(0.80, cx))
+                } else {
+                    tweened_chrome(
+                        "refresh-playlists",
+                        refresh,
+                        (style::HOVER, style::ACTIVE),
+                        (0.80, 0.80),
+                        window,
+                        cx,
+                    )
+                }
+            })
     }
 }
 

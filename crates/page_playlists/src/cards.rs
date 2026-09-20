@@ -3,14 +3,14 @@
 use std::time::Duration;
 
 use api::{ArtworkRef, PlaylistCapability, PlaylistFolderInfo, PlaylistInfo};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, Div, ElementId, Entity, FontWeight, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, RenderOnce, SharedString, StatefulInteractiveElement as _,
-    Styled as _, Window, div, px,
+    AnyElement, App, Div, ElementId, Entity, FontWeight, Hsla, InteractiveElement as _,
+    IntoElement, ParentElement as _, Pixels, RenderOnce, SharedString,
+    StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
 use store::{Navigator, Route, SourcesModel, actions};
 use widgets::format::{t, t_with};
@@ -37,6 +37,21 @@ pub(crate) fn hovered(
     let state = window.use_keyed_state(id, cx, |_, _| false);
     let hovered = *state.read(cx);
     (hovered, state)
+}
+
+/// A `Button` paints its own hover style over the instance one, so the variant is handed the tween too.
+pub(crate) fn tweened(button: Button, fill: Hsla, text: Hsla, edge: Hsla, cx: &App) -> Button {
+    button
+        .custom(
+            ButtonCustomVariant::new(cx)
+                .color(edge)
+                .hover(fill)
+                .active(fill)
+                .foreground(text),
+        )
+        .bg(fill)
+        .border_color(edge)
+        .text_color(text)
 }
 
 /// The `on_hover` listener that keeps a [`hovered`] flag in step with the pointer.

@@ -155,9 +155,7 @@ fn pill(cx: &App) -> Div {
         .border_color(style::white(style::BORDER_SOFT, cx))
 }
 
-/// One half of a pill: `h-7 px-3 text-xs rounded-md`, dim until it is the chosen one.
-///
-/// `transition-all`: the fill and the label tween as the selection moves between the halves.
+/// One half of a pill: `h-7 px-3 text-xs rounded-md`, `transition-all` as the selection moves.
 fn segment(id: &'static str, selected: bool, window: &mut Window, cx: &mut App) -> Button {
     let (hot, hover) = hovered(SharedString::from(format!("{id}-hover")), window, cx);
     let fill = motion::color(

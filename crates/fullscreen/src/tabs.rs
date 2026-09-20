@@ -192,9 +192,9 @@ impl FullscreenPlayer {
             .cursor_pointer()
             .bg(wash)
             .text_color(text)
-            .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
-                this.set_hover(id, *hovered, cx)
-            }))
+            .on_hover(
+                cx.listener(move |this, hovered: &bool, _, cx| this.set_hover(id, *hovered, cx)),
+            )
             .child(label)
     }
 
@@ -232,8 +232,10 @@ impl FullscreenPlayer {
             .map(duration)
             .unwrap_or_else(|| "--:--".into());
         // The wash and the title follow which row is playing; hover stays instant in a virtual list.
+        // A queue may hold one track twice, so the slot disambiguates the channel.
+        let slot = SharedString::from(format!("{}-{index}", track.key));
         let wash = motion::color(
-            SharedString::from(format!("fs-queue-wash-{}", track.key)),
+            SharedString::from(format!("fs-queue-wash-{slot}")),
             if current {
                 style::accent(style::PLAYING, cx)
             } else {
@@ -243,7 +245,7 @@ impl FullscreenPlayer {
             cx,
         );
         let title_color = motion::color(
-            SharedString::from(format!("fs-queue-title-{}", track.key)),
+            SharedString::from(format!("fs-queue-title-{slot}")),
             if current {
                 cx.theme().primary
             } else {

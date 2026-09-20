@@ -308,3 +308,19 @@ MOTION PASS (after all motion agents land):
       drag must track the pointer exactly while the collapse snap tweens.
 - [ ] A tweenable slider fill: nothing in widgets can tween a Slider's bar, so
       the seek and volume fills sit outside the motion system.
+- [ ] **`motion::tweened(button, fill, text, edge, cx)`** — asked for by three
+      agents independently, and each wrote a private copy. A Button's own hover
+      refinement paints over an instance `.bg()`, so a naive `.bg(tween)` snaps
+      on hover-in and only tweens on the way out; the fix is a
+      ButtonCustomVariant whose `hover`/`active` get the SAME tweened colour.
+      Without it half of `transition-colors` is silently lost on every button.
+- [ ] **`motion::hover_flag(id, window, cx)`** + its listener — five private
+      copies now exist. Must be built on `window.use_keyed_state`, since a
+      `RenderOnce` (Card, Tile, SettingRow) has no `cx.listener`.
+- [ ] `motion::SNAP` (120ms) and `SLOWER` (500ms): the settings rows are 120ms
+      and several covers are `duration-500`; feature crates import
+      `std::time::Duration` to say so.
+- [ ] A zoom clip frame helper — `div().size(base).rounded(r).overflow_hidden()
+      .flex().items_center().justify_center()` is repeated at ~6 sites.
+- [ ] Press feedback: `active:scale-95` is on nearly every Kopuz button and has
+      no story at all. A one-frame wash darken would cover it uniformly.

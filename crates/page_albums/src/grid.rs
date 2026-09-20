@@ -12,12 +12,13 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _,
     IntoElement, ParentElement as _, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement as _, Styled, Subscription, Window, div, px, transparent_black,
+    StatefulInteractiveElement as _, Styled, Subscription, Window, div, px,
 };
 use store::{ConfigModel, JobsModel, Navigator, Query, Route, SourcesModel, actions};
 use widgets::format::t;
 use widgets::{Cover, Loading, PageHeader, icons, motion, style};
 
+use crate::clear_variant;
 use crate::ops;
 use crate::sort;
 
@@ -156,9 +157,11 @@ impl Albums {
             .justify_center()
             .rounded(style::radius_md())
             .bg(background)
-            .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
-                this.track_control(id, *hovered, cx)
-            }))
+            .on_hover(
+                cx.listener(move |this, hovered: &bool, _, cx| {
+                    this.track_control(id, *hovered, cx)
+                }),
+            )
             .child(
                 Button::new(SharedString::from(format!("{id}-button")))
                     .xsmall()
@@ -238,9 +241,11 @@ impl Albums {
                         for direction in [SortDirection::Asc, SortDirection::Desc] {
                             menu = menu.item(
                                 PopupMenuItem::new(sort::direction_label(direction))
-                                    .checked(primary.is_some_and(|criterion| {
-                                        criterion.direction == direction
-                                    }))
+                                    .checked(
+                                        primary.is_some_and(|criterion| {
+                                            criterion.direction == direction
+                                        }),
+                                    )
                                     .on_click(move |_, _, cx| set_sort_direction(direction, cx)),
                             );
                         }

@@ -422,59 +422,82 @@ impl Radio {
     }
 
     /// A directory row: play it, or pin it into the selected table.
-    fn directory_row(&self, station: &RadioStationInfo, cx: &mut Context<Self>) -> AnyElement {
+    fn directory_row(
+        &self,
+        station: &RadioStationInfo,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let pinned = self.pinned.contains(&station.id);
         let station_id = station.id.clone();
         let stream_id = first_stream(station);
         let toggle_id = station.id.clone();
         let muted = style::slate_400(cx);
-        Self::card(SharedString::from(format!("directory-{}", station.id)), cx)
-            .flex()
-            .items_start()
-            .gap_4()
-            .on_click(
-                cx.listener(move |_, _, _, cx| play(station_id.clone(), stream_id.clone(), cx)),
-            )
-            .child(
-                Cover::new(station.artwork.as_ref())
-                    .size(ART)
-                    .rounded(ART_RADIUS)
-                    .placeholder(icons::RADIO),
-            )
-            .child(
-                v_flex()
-                    .flex_1()
-                    .min_w_0()
-                    .gap_0p5()
-                    .child(
-                        div()
-                            .truncate()
-                            .text_base()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(t(&station.name)),
-                    )
-                    .child(
-                        div()
-                            .truncate()
-                            .text_xs()
-                            .text_color(muted)
-                            .child(t(&station.description)),
-                    )
-                    .child(h_flex().gap_2().mt_2().children(self.tags(station, cx))),
-            )
-            .child(
-                Button::new(SharedString::from(format!("pin-{}", station.id)))
-                    .ghost()
-                    .rounded(px(999.))
-                    .with_size(px(36.))
-                    .icon(icons::icon(if pinned { icons::CHECK } else { icons::PLUS }).xsmall())
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        cx.stop_propagation();
-                        this.toggle_pin(toggle_id.clone(), cx);
-                    })),
-            )
-            .child(self.play_button(station, cx))
-            .into_any_element()
+        // The pin's answer is a round trip away, so the check mark lights as it arrives.
+        let pin_tint = motion::color(
+            SharedString::from(format!("pin-tint-{}", station.id)),
+            if pinned {
+                cx.theme().success
+            } else {
+                style::slate_400(cx)
+            },
+            window,
+            cx,
+        );
+        self.card(
+            SharedString::from(format!("directory-{}", station.id)),
+            window,
+            cx,
+        )
+        .flex()
+        .items_start()
+        .gap_4()
+        .on_click(cx.listener(move |_, _, _, cx| play(station_id.clone(), stream_id.clone(), cx)))
+        .child(
+            Cover::new(station.artwork.as_ref())
+                .size(ART)
+                .rounded(ART_RADIUS)
+                .placeholder(icons::RADIO),
+        )
+        .child(
+            v_flex()
+                .flex_1()
+                .min_w_0()
+                .gap_0p5()
+                .child(
+                    div()
+                        .truncate()
+                        .text_base()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(t(&station.name)),
+                )
+                .child(
+                    div()
+                        .truncate()
+                        .text_xs()
+                        .text_color(muted)
+                        .child(t(&station.description)),
+                )
+                .child(h_flex().gap_2().mt_2().children(self.tags(station, cx))),
+        )
+        .child(
+            Button::new(SharedString::from(format!("pin-{}", station.id)))
+                .custom(
+                    ButtonCustomVariant::new(cx)
+                        .foreground(pin_tint)
+                        .hover(style::white(style::HOVER, cx))
+                        .active(style::white(style::ACTIVE, cx)),
+                )
+                .rounded(px(999.))
+                .with_size(px(36.))
+                .icon(icons::icon(if pinned { icons::CHECK } else { icons::PLUS }).xsmall())
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.toggle_pin(toggle_id.clone(), cx);
+                })),
+        )
+        .child(self.play_button(station, cx))
+        .into_any_element()
     }
 
     /// `text-sm font-bold uppercase tracking-wider text-slate-400`, less the two GPUI cannot draw.
@@ -488,7 +511,7 @@ impl Radio {
             .child(label)
     }
 
-    fn selected(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    fn selected(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let query = self.query.trim().to_lowercase();
         let stations: Vec<RadioStationInfo> = self
             .stations
@@ -509,7 +532,7 @@ impl Radio {
                     v_flex().w_full().gap_3().mb_8().children(
                         stations
                             .iter()
-                            .map(|station| self.pinned_row(station, cx))
+                            .map(|station| self.pinned_row(station, window, cx))
                             .collect::<Vec<_>>(),
                     ),
                 )
@@ -517,7 +540,7 @@ impl Radio {
         )
     }
 
-    fn browser(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn browser(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let query = self.directory.read(cx);
         let loading = query.is_loading() || !query.is_settled();
         let error = query.error().map(|error| error.to_string());
@@ -552,7 +575,7 @@ impl Radio {
             .children(
                 results
                     .iter()
-                    .map(|station| self.directory_row(station, cx))
+                    .map(|station| self.directory_row(station, window, cx))
                     .collect::<Vec<_>>(),
             )
             .into_any_element()
@@ -560,10 +583,10 @@ impl Radio {
 }
 
 impl Render for Radio {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let searching = !self.query.trim().is_empty();
-        let selected = self.selected(cx);
-        let browser = self.browser(cx);
+        let selected = self.selected(window, cx);
+        let browser = self.browser(window, cx);
         v_flex()
             .size_full()
             .px_8()
