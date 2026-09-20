@@ -1,5 +1,5 @@
 use api::{SourceCapabilities, SourceInfo, Table};
-use gpui_kit::{App, Context, Entity, Subscription, Task};
+use gpui_kit::{App, Context, Entity, Subscription, Task, Window};
 use link::Link;
 
 use crate::config::ConfigModel;
@@ -73,15 +73,21 @@ impl SourcesModel {
             .unwrap_or_default()
     }
 
-    /// Make `id` active; the refetch that follows invalidates every read.
-    pub fn switch(&mut self, id: String, cx: &mut Context<Self>) {
+    /// Make `id` active, and start whichever sign-in the daemon says it still needs.
+    ///
+    /// That answer rides on `switch_source` and used to be dropped on the floor, so switching to
+    /// a service whose sign-in is a browser — YouTube Music, Spotify, Apple Music, SoundCloud —
+    /// silently did nothing at all, and the only control left to press was a password form for a
+    /// service that has no password.
+    pub fn switch(&mut self, id: String, window: &mut Window, cx: &mut Context<Self>) {
         let call = Link::global(cx).call(move |api| async move { api.switch_source(id).await });
-        cx.spawn(async move |this, cx| {
+        cx.spawn_in(window, async move |this, cx| {
             let result = call.await;
-            this.update(cx, |this, cx| match result {
-                Ok(_) => {
+            this.update_in(cx, |this, window, cx| match result {
+                Ok(source) => {
                     this.refetch(cx);
                     ConfigModel::global(cx).update(cx, |config, cx| config.reload(cx));
+                    crate::signin::start_sign_in(&source, window, cx);
                 }
                 Err(error) => Notices::error(crate::human(&error), cx),
             })

@@ -21,6 +21,14 @@ use local::LocalLibraries;
 use registries::RadioRegistries;
 use servers::MediaServers;
 
+/// Let a source switched from anywhere — the sidebar included — open the password form.
+///
+/// Which sign-in a source takes is the daemon's answer and rides on the switch; the form it may
+/// need lives in this crate, so `store` is handed a way to reach it.
+pub fn register(cx: &mut gpui_kit::App) {
+    store::register_password_form(login::open, cx);
+}
+
 pub struct SourceSettings {
     local: Entity<LocalLibraries>,
     registries: Entity<RadioRegistries>,

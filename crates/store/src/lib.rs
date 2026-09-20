@@ -14,6 +14,7 @@ mod player;
 mod playlists;
 mod query;
 mod queue;
+mod signin;
 mod sources;
 
 use gpui_kit::{App, AppContext as _, Entity, Global};
@@ -32,6 +33,7 @@ pub use player::{PlayerModel, Playhead};
 pub use playlists::PlaylistsModel;
 pub use query::Query;
 pub use queue::QueueModel;
+pub use signin::{register_password_form, start_sign_in};
 pub use sources::SourcesModel;
 
 /// Every row of a listing, the way the Dioxus frontend asks for "all".

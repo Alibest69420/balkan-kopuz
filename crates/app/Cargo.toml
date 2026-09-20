@@ -38,6 +38,7 @@ page_activity = { path = "../page_activity" }
 page_radio = { path = "../page_radio" }
 page_downloader = { path = "../page_downloader" }
 page_settings = { path = "../page_settings" }
+settings_sources = { path = "../settings_sources" }
 sidebar = { path = "../sidebar" }
 player_bar = { path = "../player_bar" }
 side_panel = { path = "../side_panel" }

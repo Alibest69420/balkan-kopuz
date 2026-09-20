@@ -232,6 +232,15 @@ impl MediaServers {
         if self.probed.as_deref() == Some(source.id.as_str()) {
             return;
         }
+        tracing::info!(
+            id = %source.id,
+            service = ?source.service.as_ref().map(|service| service.id.clone()),
+            authenticated = source.authenticated,
+            anonymous = source.anonymous,
+            sign_in = ?source.sign_in,
+            reauth = ?source.reauth,
+            "active server"
+        );
         self.probed = Some(source.id.clone());
         self.probing = Some(source.id.clone());
         cx.notify();
@@ -296,6 +305,15 @@ impl MediaServers {
     /// Signing in again on a server already active. `sign_in` reads None once a source holds any
     /// credentials, so asking it here offered a password box for a service that has no password.
     fn sign_in_again(&mut self, source: &SourceInfo, window: &mut Window, cx: &mut Context<Self>) {
+        tracing::info!(
+            id = %source.id,
+            service = ?source.service.as_ref().map(|service| service.id.clone()),
+            authenticated = source.authenticated,
+            anonymous = source.anonymous,
+            sign_in = ?source.sign_in,
+            reauth = ?source.reauth,
+            "sign-in again"
+        );
         match source.reauth {
             SignInKind::Browser => self.authenticate(source.id.clone(), cx),
             _ => self.open_login(source, window, cx),

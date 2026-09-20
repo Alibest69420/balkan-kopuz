@@ -3813,6 +3813,7 @@ dependencies = [
  "player_bar",
  "profile",
  "quick_search",
+ "settings_sources",
  "side_panel",
  "sidebar",
  "store",

@@ -203,11 +203,13 @@ impl LocalLibraries {
                                         .label(t("switch_to_local_library"))
                                         .on_click(cx.listener({
                                             let id = id.clone();
-                                            move |_, _, _, cx| {
-                                                SourcesModel::global(cx)
-                                                    .update(cx, |sources, cx| {
-                                                        sources.switch(id.clone(), cx)
-                                                    });
+                                            move |_, _, window, cx| {
+                                                SourcesModel::global(cx).update(
+                                                    cx,
+                                                    |sources, cx| {
+                                                        sources.switch(id.clone(), window, cx)
+                                                    },
+                                                );
                                             }
                                         })),
                                 )
@@ -375,8 +377,9 @@ impl AddLibrary {
                 // A library is added to be used, so it becomes the active source.
                 Ok(source) => {
                     cx.update(|window, cx| {
-                        SourcesModel::global(cx)
-                            .update(cx, |sources, cx| sources.switch(source.id.clone(), cx));
+                        SourcesModel::global(cx).update(cx, |sources, cx| {
+                            sources.switch(source.id.clone(), window, cx)
+                        });
                         window.close_dialog(cx);
                     })
                     .ok();

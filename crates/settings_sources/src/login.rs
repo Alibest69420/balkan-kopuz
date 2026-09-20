@@ -16,6 +16,32 @@ use widgets::format::{t, t_with};
 
 use crate::ui;
 
+/// Open the sign-in dialog for `server_id`, whoever asked for it.
+///
+/// The settings page keeps a form of its own; this builds one on the spot, so a source switched
+/// from the sidebar can collect a password without the settings page being open.
+pub fn open(server_id: String, service: SharedString, window: &mut Window, cx: &mut gpui_kit::App) {
+    let form = cx.new(|cx| LoginForm::new(window, cx));
+    form.update(cx, |form, cx| {
+        form.reset(server_id, service, window, cx);
+    });
+    window.open_dialog(cx, move |dialog, _, cx| {
+        dialog
+            .title(form.read(cx).title())
+            .w(ui::dialog_width())
+            .on_ok({
+                let form = form.clone();
+                move |_, window, cx| {
+                    form.update(cx, |form, cx| form.submit(window, cx));
+                    false
+                }
+            })
+            .overlay_closable(false)
+            .child(form.clone())
+            .footer(gpui_kit::div())
+    });
+}
+
 pub struct LoginForm {
     server_id: String,
     service: SharedString,

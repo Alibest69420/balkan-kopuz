@@ -262,8 +262,11 @@ fn row(
             )
         })
         .on_click(move |_, window, cx| {
-            SourcesModel::global(cx).update(cx, |sources, cx| sources.switch(id.clone(), cx));
+            // Dismiss first: the switch may open a sign-in dialog, which should not land behind
+            // this popover.
             state.update(cx, |popover, cx| popover.dismiss(window, cx));
+            SourcesModel::global(cx)
+                .update(cx, |sources, cx| sources.switch(id.clone(), window, cx));
         })
         .into_any_element()
 }
