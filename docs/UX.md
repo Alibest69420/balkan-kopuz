@@ -23,7 +23,7 @@ anyway. Severities are the auditors'. Tick items as they land.
       queue registers `on_drop` + a drop-target highlight, but no row ever calls
       `.on_drag` — `widgets/src/track_list.rs:117`, `side_panel/src/queue.rs:83`.
       A port regression; the original drags rows.
-- [ ] **Playlist reorder is dead end to end.** The page computes `reorder`, the
+- [x] **Playlist reorder is dead end to end.** The page computes `reorder`, the
       list declares `TrackListEvent::Reorder`, the handler calls the API — and
       `row_menu` never reads the flag, so nothing emits it.
       `widgets/src/track_list.rs:100`, `page_playlists/src/detail.rs:173`.
@@ -88,7 +88,7 @@ anyway. Severities are the auditors'. Tick items as they land.
 - [ ] Albums sort button never shows direction; artist-detail headers give no
       hint they are clickable.
 - [ ] Nothing in a grid marks what is currently playing.
-- [ ] A cover that fails to load shows a blank square, not the placeholder.
+- [x] A cover that fails to load shows a blank square, not the placeholder.
 - [ ] A daemon notice with no `en.ftl` entry renders its raw snake_case key.
 
 ## Confirmed good, leave alone
@@ -100,3 +100,19 @@ only the messaging about it is thin. Favorites is the model page: tri-state
 column sort, debounced filter, three distinct actionable empty states. The
 now-playing row treatment is clear. The row's dots menu and context menu are
 built from one closure, so they cannot drift.
+
+## Also fixed, found while fixing the above
+
+- Equalizer previews were a daemon call per pointer move; throttled, with the
+  release always sent so a drag never ends on a stale curve.
+- The artwork settings form rebuilt its inputs on every settled read, so tabbing
+  between fields swapped the next one out from under the caret.
+- The lyrics panel asked for an animation frame whenever a synced track played,
+  re-rendering the whole window at refresh rate rather than at the playhead's
+  four ticks a second.
+- The queue had no way to remove a row, though `QueueModel::remove` existed.
+- A non-numeric track or disc number was read as "clear this tag".
+- Re-sign-in offered a password box for a service whose sign-in is a browser,
+  because `sign_in` reads `None` once a source holds any credentials. The daemon
+  gained `SourceInfo.reauth`, which answers for the service rather than the
+  current state.
