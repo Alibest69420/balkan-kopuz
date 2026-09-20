@@ -202,6 +202,12 @@ impl TrackList {
         self.selecting
     }
 
+    /// How many rows are selected, without cloning every key to count them: `selected_keys` walks
+    /// all rows and allocates a String each, and render paths only ever wanted the number.
+    pub fn selected_count(&self) -> usize {
+        self.selected.len()
+    }
+
     pub fn clear_selection(&mut self, cx: &mut Context<Self>) {
         self.selected.clear();
         self.selecting = false;
@@ -625,6 +631,48 @@ fn row_menu(
             }),
     );
 
+    // The page already handles Reorder and the daemon already takes it; nothing emitted it, so a
+    // source that supports reordering offered no way to reorder — no handle, no menu entry.
+    if row_actions.reorder {
+        let last = list.upgrade().map(|list| list.read(cx).rows.len());
+        menu = menu.separator();
+        if index > 0 {
+            menu = menu.item(
+                gpui_kit::component::menu::PopupMenuItem::new(t("move_up"))
+                    .icon(crate::icons::icon(icons::CHEVRON_UP))
+                    .on_click({
+                        let list = list.clone();
+                        move |_, _, cx| {
+                            list.update(cx, |_, cx| {
+                                cx.emit(TrackListEvent::Reorder {
+                                    from: index,
+                                    to: index - 1,
+                                })
+                            })
+                            .ok();
+                        }
+                    }),
+            );
+        }
+        if last.is_some_and(|last| index + 1 < last) {
+            menu = menu.item(
+                gpui_kit::component::menu::PopupMenuItem::new(t("move_down"))
+                    .icon(crate::icons::icon(icons::CHEVRON_DOWN))
+                    .on_click({
+                        let list = list.clone();
+                        move |_, _, cx| {
+                            list.update(cx, |_, cx| {
+                                cx.emit(TrackListEvent::Reorder {
+                                    from: index,
+                                    to: index + 1,
+                                })
+                            })
+                            .ok();
+                        }
+                    }),
+            );
+        }
+    }
     if row_actions.remove_from_playlist {
         menu = menu.separator().item(
             gpui_kit::component::menu::PopupMenuItem::new(t("remove_from_playlist"))

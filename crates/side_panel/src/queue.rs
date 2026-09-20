@@ -273,6 +273,16 @@ impl QueuePanel {
                                 QueueModel::global(cx)
                                     .update(cx, |queue, cx| queue.move_item(at, at + 1, cx));
                             }),
+                    )
+                    .child(
+                        // QueueModel::remove existed and nothing called it, so a track queued by
+                        // mistake could only be escaped by replacing the whole queue.
+                        reorder_button(("queue-remove", index), icons::CLOSE, cx)
+                            .tooltip(t("remove"))
+                            .on_click(move |_, _, cx| {
+                                cx.stop_propagation();
+                                QueueModel::global(cx).update(cx, |queue, cx| queue.remove(at, cx));
+                            }),
                     ),
             )
             .child(

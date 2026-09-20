@@ -89,6 +89,7 @@ impl RenderOnce for Cover {
             .rounded
             .unwrap_or_else(|| style::to_px(style::radius(cx), window));
         let glyph = px((self.size.as_f32() * 0.22).max(12.));
+        let placeholder = self.placeholder;
         // The frame keeps its size and clips; only the picture inside it grows.
         let drawn = match self.zoom.clone() {
             Some((id, hovered)) => motion::zoom_by(
@@ -118,7 +119,15 @@ impl RenderOnce for Cover {
                         .flex_shrink_0()
                         // The frame's mask is a rect, so the picture rounds its own corners.
                         .rounded(radius)
-                        .object_fit(ObjectFit::Cover),
+                        .object_fit(ObjectFit::Cover)
+                        // A cover that will not load is otherwise a blank square, which reads as
+                        // one that is merely slow.
+                        .with_fallback(move || {
+                            Icon::default()
+                                .path(placeholder)
+                                .size(glyph)
+                                .into_any_element()
+                        }),
                 ),
                 None => frame.child(
                     Icon::default()

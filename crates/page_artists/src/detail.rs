@@ -584,7 +584,7 @@ impl ArtistDetail {
     }
 
     fn column_header(&mut self, count: usize, cx: &mut Context<Self>) -> AnyElement {
-        let all_selected = count > 0 && count == self.list.read(cx).selected_keys().len();
+        let all_selected = count > 0 && count == self.list.read(cx).selected_count();
         // Built from the row's own cells, so each sort label sits over its column.
         columns::frame()
             .text_xs()

@@ -39,9 +39,12 @@ fn clear_variant(ink: Hsla, cx: &App) -> ButtonCustomVariant {
 
 pub struct Library {
     tracks: Entity<Query<TrackPage>>,
-    albums: Entity<Query<AlbumPage>>,
+    // Held so the query keeps running; the count it feeds lives in album_count.
+    _albums: Entity<Query<AlbumPage>>,
     artists: Entity<Query<ArtistPage>>,
     list: Entity<TrackList>,
+    // Distinct album titles, counted when the albums change rather than on every render.
+    album_count: usize,
     sort: Vec<SortCriterion<TrackSortField>>,
     // Which chrome control the pointer is over; it drives their tweens.
     control: Option<&'static str>,
@@ -96,7 +99,20 @@ impl Library {
         let list = cx.new(TrackList::new);
         let subscriptions = vec![
             cx.observe(&tracks, |this, _, cx| this.adopt_tracks(cx)),
-            cx.observe(&albums, |_, _, cx| cx.notify()),
+            cx.observe(&albums, |this, albums, cx| {
+                this.album_count = albums
+                    .read(cx)
+                    .value()
+                    .map(|page| {
+                        page.albums
+                            .iter()
+                            .map(|album| album.title.to_lowercase())
+                            .collect::<HashSet<_>>()
+                            .len()
+                    })
+                    .unwrap_or(0);
+                cx.notify();
+            }),
             cx.observe(&artists, |_, _, cx| cx.notify()),
             cx.observe(&playlists, |_, _, cx| cx.notify()),
             cx.observe(&jobs, |_, _, cx| cx.notify()),
@@ -112,7 +128,8 @@ impl Library {
 
         let mut page = Self {
             tracks,
-            albums,
+            _albums: albums,
+            album_count: 0,
             artists,
             list,
             sort,
@@ -385,18 +402,9 @@ impl Render for Library {
 
         let total = self.total(cx);
         let track_count = total.unwrap_or(0) as usize;
-        let album_count = self
-            .albums
-            .read(cx)
-            .value()
-            .map(|page| {
-                page.albums
-                    .iter()
-                    .map(|album| album.title.to_lowercase())
-                    .collect::<HashSet<_>>()
-                    .len()
-            })
-            .unwrap_or(0);
+        // Counted when the albums change, not here: this is one number on a stat card, and
+        // building a lowercase set over 2500 titles for it ran on every render.
+        let album_count = self.album_count;
         let artist_count = self
             .artists
             .read(cx)
@@ -405,7 +413,7 @@ impl Render for Library {
             .unwrap_or(0);
         let playlist_count = PlaylistsModel::global(cx).read(cx).playlists().len();
 
-        let selected = self.list.read(cx).selected_keys().len();
+        let selected = self.list.read(cx).selected_count();
         let selecting = self.list.read(cx).is_selecting();
         let all_selected = track_count > 0 && selected >= track_count;
         let refresh_hint = if capabilities.scan_folders {

@@ -199,7 +199,7 @@ impl Favorites {
 
     fn all_selected(&self, cx: &Context<Self>) -> bool {
         let list = self.list.read(cx);
-        !list.rows().is_empty() && list.selected_keys().len() == list.rows().len()
+        !list.rows().is_empty() && list.selected_count() == list.rows().len()
     }
 
     fn toggle_select_all(&mut self, cx: &mut Context<Self>) {
@@ -218,7 +218,7 @@ impl Favorites {
     }
 
     fn selection_bar(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let count = self.list.read(cx).selected_keys().len();
+        let count = self.list.read(cx).selected_count();
         if count == 0 {
             return None;
         }
