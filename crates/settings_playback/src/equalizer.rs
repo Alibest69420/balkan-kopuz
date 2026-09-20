@@ -12,9 +12,9 @@ use gpui_kit::{
 use link::Link;
 use store::ConfigModel;
 use widgets::format::t;
+use widgets::settings::Toggle;
 use widgets::{motion, style};
 
-use crate::row::Toggle;
 use crate::{set_slider, write_config};
 
 /// `border-white/8` around the band graph.

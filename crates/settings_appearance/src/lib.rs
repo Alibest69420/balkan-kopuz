@@ -1,6 +1,5 @@
 //! Settings → General and Appearance, plus the custom theme editor embedded under them.
 
-mod row;
 mod theme_editor;
 
 use config::{AppConfig, BackBehavior, PlayerBarPosition};
@@ -14,10 +13,10 @@ use gpui_kit::{
     ParentElement as _, PathPromptOptions, Render, SharedString, Styled, Subscription, Window, div,
     rems,
 };
-use row::{SettingRow, Toggle, section};
 use store::ConfigModel;
 use theme_editor::ThemeEditor;
 use widgets::format::t;
+use widgets::settings::{SettingRow, Toggle, section};
 use widgets::{icons, style};
 
 /// `text-white/80`, what a slider's value reads in.

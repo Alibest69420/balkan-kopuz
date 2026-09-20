@@ -10,6 +10,7 @@ pub mod motion;
 pub mod playlist_picker;
 pub mod schema_form;
 pub mod scroll;
+pub mod settings;
 pub mod states;
 pub mod style;
 pub mod track_list;
@@ -19,6 +20,7 @@ pub use cover::Cover;
 pub use format::{duration, t, t_with, text, total_duration};
 pub use header::PageHeader;
 pub use schema_form::{FieldChanged, SchemaForm};
+pub use settings::{Section, SettingRow, Toggle, section};
 pub use states::{EmptyState, Loading};
 pub use track_list::{
     TrackActions, TrackDrag, TrackList, TrackListEvent, TrackListOptions, columns,

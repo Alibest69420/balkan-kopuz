@@ -1,7 +1,6 @@
 //! Settings: offline downloads, metadata, the player and the tools category.
 
 mod equalizer;
-mod row;
 
 use api::schema::FieldSpec;
 use config::{
@@ -19,9 +18,9 @@ use gpui_kit::{
     ParentElement as _, Render, SharedString, Styled, Subscription, Window, div, rems,
 };
 use link::Link;
-use row::{SettingRow, Toggle, section};
 use store::{ConfigModel, PlayerModel, Query};
 use widgets::format::t;
+use widgets::settings::{SettingRow, Toggle, section};
 use widgets::{FieldChanged, SchemaForm, style};
 
 /// `text-white/80`, what a slider's value reads in.

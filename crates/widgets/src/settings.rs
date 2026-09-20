@@ -1,10 +1,9 @@
 //! The settings card and the rows inside it, as `docs/STYLING.md` maps `.settings-section`.
 
-// Copied verbatim into the sibling settings crates until this shape moves into `widgets`.
-#![allow(dead_code)]
-
 use std::rc::Rc;
 
+use gpui_kit::component::button::Button;
+use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -12,10 +11,45 @@ use gpui_kit::{
     ParentElement, Rems, RenderOnce, SharedString, StatefulInteractiveElement as _, Styled, Window,
     div, px, rems,
 };
-use widgets::format::t;
-use widgets::icons;
-use widgets::motion;
-use widgets::style;
+
+use crate::format::t;
+use crate::{icons, motion, style};
+
+/// `w-55`, the width every enumerated setting's trigger shares.
+pub fn select_width() -> Rems {
+    rems(13.75)
+}
+
+/// One control shape for every enumerated setting: a button that drops its options down.
+pub fn choice<T: Clone + PartialEq + 'static>(
+    id: impl Into<ElementId>,
+    current: &T,
+    options: Vec<(T, SharedString)>,
+    change: impl Fn(T, &mut App) + Clone + 'static,
+) -> AnyElement {
+    let label = options
+        .iter()
+        .find(|(value, _)| value == current)
+        .map(|(_, label)| label.clone())
+        .unwrap_or_else(|| t("choose"));
+    Button::new(id)
+        .outline()
+        .w(select_width())
+        .justify_between()
+        .icon(icons::icon(icons::CHEVRON_DOWN))
+        .label(label)
+        .dropdown_menu(move |mut menu, _, _| {
+            for (value, label) in &options {
+                let value = value.clone();
+                let change = change.clone();
+                menu = menu.item(PopupMenuItem::new(label.clone()).on_click(move |_, _, cx| {
+                    change(value.clone(), cx);
+                }));
+            }
+            menu
+        })
+        .into_any_element()
+}
 
 /// `.settings-section`: `border-white/11` over `bg-black/78`.
 const CARD_BORDER: f32 = 0.11;

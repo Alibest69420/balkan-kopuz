@@ -5,7 +5,6 @@ mod integrations;
 mod local;
 mod login;
 mod registries;
-mod row;
 mod servers;
 mod ui;
 

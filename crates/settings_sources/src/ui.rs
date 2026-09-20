@@ -11,7 +11,7 @@ use gpui_kit::{
 use widgets::format::t;
 use widgets::{icons, motion, style};
 
-pub use crate::row::section;
+pub use widgets::settings::section;
 
 // Flathub refuses `org.freedesktop.Flatpak` in the manifest, so the user grants it by hand.
 const HOST_ACCESS_COMMAND: &str =
