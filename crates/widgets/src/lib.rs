@@ -6,6 +6,7 @@ pub mod dialogs;
 pub mod format;
 pub mod header;
 pub mod icons;
+pub mod menus;
 pub mod motion;
 pub mod playlist_picker;
 pub mod schema_form;

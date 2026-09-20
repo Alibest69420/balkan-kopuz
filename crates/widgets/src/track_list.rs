@@ -8,22 +8,21 @@ use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::menu::ContextMenuExt as _;
 use gpui_kit::component::menu::DropdownMenu as _;
 use gpui_kit::component::menu::PopupMenu;
-use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AppContext as _, ClickEvent, Context, EventEmitter, FocusHandle, Focusable, FontWeight,
-    InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString,
+    App, AppContext as _, ClickEvent, Context, EventEmitter, FocusHandle, Focusable, FontWeight,
+    Global, InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString,
     StatefulInteractiveElement as _, Styled, UniformListScrollHandle, WeakEntity, Window, actions,
     div, px, uniform_list,
 };
-use store::{DownloadsModel, FavoritesModel, Navigator, PlayerModel, Route, SourcesModel, actions};
+use store::{DownloadsModel, FavoritesModel, Navigator, PlayerModel, Route, Target};
 
 use crate::cover::Cover;
-use crate::dialogs;
 use crate::format::{duration, t};
 use crate::icons;
+use crate::menus;
 use crate::motion;
-use crate::playlist_picker;
 use crate::style;
 
 // The row is the hover group, so the number can step aside for the play glyph.
@@ -136,6 +135,58 @@ impl Render for TrackDrag {
     }
 }
 
+/// The row a menu is being built for, so a list-scoped command can emit back through the list.
+#[derive(Clone)]
+pub struct RowScope {
+    pub list: WeakEntity<TrackList>,
+    pub index: usize,
+    pub rows: usize,
+    pub actions: TrackActions,
+}
+
+#[derive(Default)]
+struct OpenRow(Option<RowScope>);
+
+impl Global for OpenRow {}
+
+fn set_row_scope(scope: RowScope, cx: &mut App) {
+    cx.set_global(OpenRow(Some(scope)));
+}
+
+/// The row whose menu was built last; `None` when the menu belongs to something that is not a row.
+pub fn row_scope(cx: &App) -> Option<RowScope> {
+    cx.try_global::<OpenRow>().and_then(|open| open.0.clone())
+}
+
+/// Forget the row scope, so a menu opened elsewhere cannot inherit the last row's.
+pub fn clear_row_scope(cx: &mut App) {
+    cx.set_global(OpenRow(None));
+}
+
+impl RowScope {
+    pub fn reorder(&self, to: usize, cx: &mut App) {
+        let from = self.index;
+        self.list
+            .update(cx, |_, cx| cx.emit(TrackListEvent::Reorder { from, to }))
+            .ok();
+    }
+
+    pub fn remove_from_playlist(&self, cx: &mut App) {
+        let index = self.index;
+        self.list
+            .update(cx, |_, cx| {
+                cx.emit(TrackListEvent::RemoveFromPlaylist(index))
+            })
+            .ok();
+    }
+
+    pub fn delete(&self, keys: Vec<String>, cx: &mut App) {
+        self.list
+            .update(cx, |_, cx| cx.emit(TrackListEvent::Delete(keys)))
+            .ok();
+    }
+}
+
 /// The shared track list: virtualized rows, selection, and the row menu.
 pub struct TrackList {
     rows: Vec<TrackInfo>,
@@ -155,7 +206,17 @@ pub struct TrackList {
 
 actions!(
     track_list,
-    [CursorUp, CursorDown, ActivateRow, SelectAll, ClearSelection]
+    [
+        CursorUp,
+        CursorDown,
+        ActivateRow,
+        SelectAll,
+        ClearSelection,
+        PlayNextSelection,
+        QueueSelection,
+        FavoriteSelection,
+        RemoveSelection
+    ]
 );
 
 impl EventEmitter<TrackListEvent> for TrackList {}
@@ -234,6 +295,80 @@ impl TrackList {
 
     pub fn is_selecting(&self) -> bool {
         self.selecting
+    }
+
+    /// What a row's menu acts on: the whole selection when the row is in it, else the row alone.
+    fn row_target(&self, index: usize) -> Target {
+        let Some(row) = self.rows.get(index) else {
+            return Target::None;
+        };
+        if !self.selected.contains(&row.key) {
+            return Target::track(row.key.clone(), row.title.clone());
+        }
+        let keys: Vec<SharedString> = self
+            .rows
+            .iter()
+            .filter(|candidate| self.selected.contains(&candidate.key))
+            .map(|candidate| SharedString::from(candidate.key.clone()))
+            .collect();
+        // "Title +3" rather than a count, which would need a plural form per locale.
+        let label = match keys.len() {
+            0 | 1 => SharedString::from(row.title.clone()),
+            many => SharedString::from(format!("{} +{}", row.title, many - 1)),
+        };
+        Target::tracks(keys, label)
+    }
+
+    /// What the keyboard acts on: the selection when there is one, else the row under the cursor.
+    pub fn focus_target(&self) -> Target {
+        let index = self
+            .rows
+            .iter()
+            .position(|row| self.selected.contains(&row.key))
+            .or(self.cursor);
+        index.map_or(Target::None, |index| self.row_target(index))
+    }
+
+    fn action_keys(&self) -> Vec<String> {
+        match self.selected.is_empty() {
+            false => self.selected_keys(),
+            true => self
+                .cursor
+                .and_then(|index| self.rows.get(index))
+                .map(|row| vec![row.key.clone()])
+                .unwrap_or_default(),
+        }
+    }
+
+    /// The Delete key: take the cursor row out of its playlist, or off disk once confirmed.
+    fn remove_selection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let keys = self.action_keys();
+        if keys.is_empty() {
+            cx.propagate();
+            return;
+        }
+        if self.row_actions.remove_from_playlist {
+            if let Some(index) = self.cursor {
+                cx.emit(TrackListEvent::RemoveFromPlaylist(index));
+            }
+            return;
+        }
+        if !self.row_actions.delete {
+            cx.propagate();
+            return;
+        }
+        let label = self.focus_target().label();
+        let list = cx.entity().downgrade();
+        crate::dialogs::confirm_delete(
+            t("delete"),
+            label,
+            move |_, cx| {
+                list.update(cx, |_, cx| cx.emit(TrackListEvent::Delete(keys.clone())))
+                    .ok();
+            },
+            window,
+            cx,
+        );
     }
 
     /// How many rows are selected, without cloning every key to count them: `selected_keys` walks
@@ -381,12 +516,17 @@ impl TrackList {
         );
         // One builder, so the dots button and the right-click menu cannot drift apart.
         let menu = {
-            let track = track.clone();
-            let actions = self.row_actions;
-            let list = cx.entity().downgrade();
+            let target = self.row_target(index);
+            let scope = RowScope {
+                list: cx.entity().downgrade(),
+                index,
+                rows: self.rows.len(),
+                actions: self.row_actions,
+            };
             Rc::new(
                 move |popup, window: &mut Window, cx: &mut Context<PopupMenu>| {
-                    row_menu(popup, &track, index, actions, list.clone(), window, cx)
+                    set_row_scope(scope.clone(), cx);
+                    menus::build(target.clone(), popup, window, cx)
                 },
             )
         };
@@ -639,233 +779,6 @@ impl TrackList {
     }
 }
 
-fn row_menu(
-    menu: PopupMenu,
-    track: &TrackInfo,
-    index: usize,
-    row_actions: TrackActions,
-    list: WeakEntity<TrackList>,
-    _: &mut Window,
-    cx: &mut Context<PopupMenu>,
-) -> PopupMenu {
-    let capabilities = SourcesModel::global(cx).read(cx).capabilities();
-    let favorite = FavoritesModel::global(cx).read(cx).is_favorite(&track.key);
-    let stored = DownloadsModel::global(cx).read(cx).is_stored(&track.key);
-    let key = track.key.clone();
-    let artist = track.artist.clone();
-    let album_id = track.album_id.clone();
-
-    let mut menu = menu
-        .item(
-            gpui_kit::component::menu::PopupMenuItem::new(t("play_next"))
-                .icon(crate::icons::icon(icons::QUEUE_NEXT))
-                .on_click({
-                    let key = key.clone();
-                    move |_, _, cx| actions::play_next(vec![key.clone()], cx)
-                }),
-        )
-        .item(
-            gpui_kit::component::menu::PopupMenuItem::new(t("add_to_queue"))
-                .icon(crate::icons::icon(icons::QUEUE_ADD))
-                .on_click({
-                    let key = key.clone();
-                    move |_, _, cx| actions::append(vec![key.clone()], cx)
-                }),
-        )
-        .item(
-            gpui_kit::component::menu::PopupMenuItem::new(t("add_to_playlist"))
-                .icon(crate::icons::icon(icons::PLUS))
-                .on_click({
-                    let key = key.clone();
-                    move |_, window, cx| playlist_picker::open(vec![key.clone()], window, cx)
-                }),
-        )
-        .item(
-            gpui_kit::component::menu::PopupMenuItem::new(if favorite {
-                t("remove_from_favorites")
-            } else {
-                t("add_to_favorites")
-            })
-            .icon(crate::icons::icon(icons::HEART))
-            .on_click({
-                let key = key.clone();
-                move |_, _, cx| {
-                    FavoritesModel::global(cx)
-                        .update(cx, |favorites, cx| favorites.toggle(key.clone(), cx))
-                }
-            }),
-        );
-
-    if capabilities.track_radio {
-        menu = menu.item(
-            gpui_kit::component::menu::PopupMenuItem::new(t("start_radio"))
-                .icon(crate::icons::icon(icons::RADIO))
-                .on_click({
-                    let key = key.clone();
-                    move |_, _, cx| actions::start_track_radio(key.clone(), cx)
-                }),
-        );
-    }
-    if capabilities.downloads {
-        menu = menu.item(
-            gpui_kit::component::menu::PopupMenuItem::new(if stored {
-                t("remove_download")
-            } else {
-                t("download_offline")
-            })
-            .icon(crate::icons::icon(icons::DOWNLOAD))
-            .on_click({
-                let key = key.clone();
-                move |_, _, cx| {
-                    DownloadsModel::global(cx).update(cx, |downloads, cx| {
-                        if stored {
-                            downloads.remove(key.clone(), cx);
-                        } else {
-                            downloads.download(vec![key.clone()], cx);
-                        }
-                    })
-                }
-            }),
-        );
-    }
-
-    menu = menu.separator().item(
-        gpui_kit::component::menu::PopupMenuItem::new(t("go_to_artist"))
-            .icon(crate::icons::icon(icons::MIC))
-            .on_click(move |_, _, cx| {
-                Navigator::navigate(
-                    Route::Artist {
-                        name: artist.clone().into(),
-                        channel: None,
-                    },
-                    cx,
-                )
-            }),
-    );
-    if !album_id.is_empty() {
-        menu = menu.item(
-            gpui_kit::component::menu::PopupMenuItem::new(t("go_to_album"))
-                .icon(crate::icons::icon(icons::DISC))
-                .on_click(move |_, _, cx| {
-                    Navigator::navigate(Route::Album(album_id.clone().into()), cx)
-                }),
-        );
-    }
-    menu = menu.item(
-        gpui_kit::component::menu::PopupMenuItem::new(t("share"))
-            .icon(crate::icons::icon(icons::SHARE))
-            .on_click({
-                let key = key.clone();
-                move |_, _, cx| actions::share_track(key.clone(), cx)
-            }),
-    );
-    menu = menu.item(
-        gpui_kit::component::menu::PopupMenuItem::new(t("view_metadata"))
-            .icon(crate::icons::icon(icons::EDIT))
-            .on_click({
-                let key = key.clone();
-                let editable = capabilities.edit_tags;
-                move |_, window, cx| dialogs::open_track_metadata(key.clone(), editable, window, cx)
-            }),
-    );
-
-    // The page already handles Reorder and the daemon already takes it; nothing emitted it, so a
-    // source that supports reordering offered no way to reorder — no handle, no menu entry.
-    if row_actions.reorder {
-        let last = list.upgrade().map(|list| list.read(cx).rows.len());
-        menu = menu.separator();
-        if index > 0 {
-            menu = menu.item(
-                gpui_kit::component::menu::PopupMenuItem::new(t("move_up"))
-                    .icon(crate::icons::icon(icons::CHEVRON_UP))
-                    .on_click({
-                        let list = list.clone();
-                        move |_, _, cx| {
-                            list.update(cx, |_, cx| {
-                                cx.emit(TrackListEvent::Reorder {
-                                    from: index,
-                                    to: index - 1,
-                                })
-                            })
-                            .ok();
-                        }
-                    }),
-            );
-        }
-        if last.is_some_and(|last| index + 1 < last) {
-            menu = menu.item(
-                gpui_kit::component::menu::PopupMenuItem::new(t("move_down"))
-                    .icon(crate::icons::icon(icons::CHEVRON_DOWN))
-                    .on_click({
-                        let list = list.clone();
-                        move |_, _, cx| {
-                            list.update(cx, |_, cx| {
-                                cx.emit(TrackListEvent::Reorder {
-                                    from: index,
-                                    to: index + 1,
-                                })
-                            })
-                            .ok();
-                        }
-                    }),
-            );
-        }
-    }
-    if row_actions.remove_from_playlist {
-        menu = menu.separator().item(
-            gpui_kit::component::menu::PopupMenuItem::new(t("remove_from_playlist"))
-                .icon(crate::icons::icon(icons::CLOSE))
-                .on_click({
-                    let list = list.clone();
-                    move |_, _, cx| {
-                        list.update(cx, |_, cx| {
-                            cx.emit(TrackListEvent::RemoveFromPlaylist(index))
-                        })
-                        .ok();
-                    }
-                }),
-        );
-    }
-    if row_actions.delete {
-        menu = menu.item(
-            gpui_kit::component::menu::PopupMenuItem::element({
-                let label = t("delete");
-                move |_, cx| {
-                    // Taking a file off disk should not look like the item above it.
-                    h_flex()
-                        .gap_2()
-                        .items_center()
-                        .text_color(cx.theme().danger)
-                        .child(crate::icons::icon(icons::TRASH))
-                        .child(label.clone())
-                        .into_any_element()
-                }
-            })
-            .on_click({
-                let key = key.clone();
-                let title = SharedString::from(track.title.clone());
-                move |_, window, cx| {
-                    let key = key.clone();
-                    let list = list.clone();
-                    crate::dialogs::confirm_delete(
-                        t("delete"),
-                        title.clone(),
-                        move |_, cx| {
-                            list.update(cx, |_, cx| {
-                                cx.emit(TrackListEvent::Delete(vec![key.clone()]))
-                            })
-                            .ok();
-                        },
-                        window,
-                        cx,
-                    );
-                }
-            }),
-        );
-    }
-    menu
-}
-
 impl Render for TrackList {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let count = self.rows.len();
@@ -880,6 +793,25 @@ impl Render for TrackList {
             .on_action(cx.listener(|this, _: &CursorUp, _, cx| this.move_cursor(-1, cx)))
             .on_action(cx.listener(|this, _: &ActivateRow, _, cx| this.activate_cursor(cx)))
             .on_action(cx.listener(|this, _: &SelectAll, _, cx| this.select_all(cx)))
+            .on_action(cx.listener(|this, _: &PlayNextSelection, _, cx| {
+                store::actions::play_next(this.action_keys(), cx)
+            }))
+            .on_action(cx.listener(|this, _: &QueueSelection, _, cx| {
+                store::actions::append(this.action_keys(), cx)
+            }))
+            .on_action(cx.listener(|this, _: &FavoriteSelection, _, cx| {
+                let keys = this.action_keys();
+                let favorites = FavoritesModel::global(cx);
+                let all = keys.iter().all(|key| favorites.read(cx).is_favorite(key));
+                favorites.update(cx, |favorites, cx| {
+                    for key in keys {
+                        favorites.set(key, !all, cx);
+                    }
+                });
+            }))
+            .on_action(cx.listener(|this, _: &RemoveSelection, window, cx| {
+                this.remove_selection(window, cx)
+            }))
             .on_action(cx.listener(|this, _: &ClearSelection, _, cx| {
                 if this.selecting {
                     this.clear_selection(cx);

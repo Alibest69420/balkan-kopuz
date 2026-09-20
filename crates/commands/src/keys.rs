@@ -1,0 +1,136 @@
+//! Bindings and the handlers behind them: one keymap generated from the registry, overrides applied.
+
+use gpui_kit::{
+    App, DummyKeyboardMapper, KeyBinding, KeyBindingContextPredicate, NoAction, actions,
+};
+use store::Target;
+
+use crate::registry::{all, get};
+
+actions!(
+    kopuz_commands,
+    [
+        NextTrack,
+        PreviousTrack,
+        SeekForward,
+        SeekBackward,
+        VolumeUp,
+        VolumeDown,
+        ToggleMute,
+        ToggleLyrics,
+        ToggleQueue,
+        ToggleFullscreen,
+        ToggleMiniPlayer,
+        GoForward,
+        GoHome,
+        GoLibrary,
+        GoDiscover,
+        GoRadio,
+        OpenSettings,
+    ]
+);
+
+/// Bare keys the Shell claims; typing one into a field must type it, so the field declines them.
+const SUPPRESS_IN_INPUT: &[&str] = &["m", "l", "q", "f", "/", "?", "left", "right"];
+/// Seeking with the arrows is wrong while a list is being walked with them.
+const SUPPRESS_IN_LIST: &[&str] = &["left", "right"];
+
+/// Run a command from a keystroke, through whichever window is in front.
+fn fire(id: &'static str, cx: &mut App) {
+    let Some(command) = get(id) else {
+        tracing::warn!(id, "a binding names a command that is not registered");
+        return;
+    };
+    let Some(window) = cx.active_window() else {
+        return;
+    };
+    window
+        .update(cx, |_, window, cx| {
+            command.perform(Target::None, window, cx)
+        })
+        .ok();
+}
+
+/// The app-wide handlers; they run last, so anything with focus gets the keystroke first.
+pub(crate) fn register_handlers(cx: &mut App) {
+    cx.on_action(|_: &NextTrack, cx| fire("player.next", cx));
+    cx.on_action(|_: &PreviousTrack, cx| fire("player.previous", cx));
+    cx.on_action(|_: &SeekForward, cx| fire("player.seek_forward", cx));
+    cx.on_action(|_: &SeekBackward, cx| fire("player.seek_backward", cx));
+    cx.on_action(|_: &VolumeUp, cx| fire("player.volume_up", cx));
+    cx.on_action(|_: &VolumeDown, cx| fire("player.volume_down", cx));
+    cx.on_action(|_: &ToggleMute, cx| fire("player.mute", cx));
+    cx.on_action(|_: &ToggleLyrics, cx| fire("view.lyrics", cx));
+    cx.on_action(|_: &ToggleQueue, cx| fire("view.queue", cx));
+    cx.on_action(|_: &ToggleFullscreen, cx| fire("view.fullscreen", cx));
+    cx.on_action(|_: &ToggleMiniPlayer, cx| fire("view.mini_player", cx));
+    cx.on_action(|_: &GoForward, cx| fire("nav.forward", cx));
+    cx.on_action(|_: &GoHome, cx| fire("nav.home", cx));
+    cx.on_action(|_: &GoLibrary, cx| fire("nav.library", cx));
+    cx.on_action(|_: &GoDiscover, cx| fire("nav.discover", cx));
+    cx.on_action(|_: &GoRadio, cx| fire("nav.radio", cx));
+    cx.on_action(|_: &OpenSettings, cx| fire("app.settings", cx));
+}
+
+fn bind(keystroke: &str, action: Box<dyn gpui_kit::Action>, context: &str) -> Option<KeyBinding> {
+    let predicate = match KeyBindingContextPredicate::parse(context) {
+        Ok(predicate) => Some(std::rc::Rc::new(predicate)),
+        Err(error) => {
+            tracing::error!(%error, context, "unparsable key context");
+            return None;
+        }
+    };
+    match KeyBinding::load(
+        keystroke,
+        action,
+        predicate,
+        false,
+        None,
+        &DummyKeyboardMapper,
+    ) {
+        Ok(binding) => Some(binding),
+        Err(error) => {
+            tracing::error!(%error, keystroke, "unparsable keystroke");
+            None
+        }
+    }
+}
+
+/// Install every default binding, with `Layout::shortcuts` overriding a command's first keystroke.
+pub fn keymap(cx: &mut App) {
+    let overrides = store::layout(cx).shortcuts.clone();
+    let mut bindings = Vec::new();
+    for command in all() {
+        let Some(action) = command.action else {
+            continue;
+        };
+        let Some(first) = command.keys.first() else {
+            continue;
+        };
+        match overrides.get(command.id) {
+            Some(keystroke) => bindings.extend(bind(keystroke, action(), first.context)),
+            None => {
+                for binding in command.keys {
+                    bindings.extend(bind(binding.keystroke, action(), binding.context));
+                }
+            }
+        }
+    }
+    for keystroke in SUPPRESS_IN_INPUT {
+        bindings.extend(bind(keystroke, Box::new(NoAction), "Input"));
+    }
+    for keystroke in SUPPRESS_IN_LIST {
+        bindings.extend(bind(keystroke, Box::new(NoAction), "TrackList"));
+    }
+    cx.bind_keys(bindings);
+}
+
+/// The keystroke a command answers to now, for a row that shows its shortcut.
+pub fn keystroke_for(id: &str, cx: &App) -> Option<String> {
+    if let Some(keystroke) = store::layout(cx).shortcuts.get(id) {
+        return Some(keystroke.clone());
+    }
+    get(id)
+        .and_then(|command| command.keys.first())
+        .map(|binding| binding.keystroke.to_string())
+}
