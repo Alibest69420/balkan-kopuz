@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use api::{ApiEvent, Table};
 use gpui_kit::{App, Context, Entity, EventEmitter, Subscription, Task};
@@ -7,6 +7,9 @@ use link::Link;
 
 // Scans and syncs invalidate in bursts; this caps refetches at a few per second.
 const FLUSH_DELAY: Duration = Duration::from_millis(150);
+
+// Under a stream of invalidations the useful refetch rate is this, not the daemon's event rate.
+const MIN_PERIOD: Duration = Duration::from_millis(1000);
 
 /// Tables whose reads went stale; `all` after a resync or a source switch.
 #[derive(Debug, Clone, Default)]
@@ -28,6 +31,7 @@ impl TablesChanged {
 /// Coalesces `LibraryInvalidated` events into [`TablesChanged`] for queries and models.
 pub struct Invalidation {
     dirty: HashSet<Table>,
+    flushed_at: Instant,
     flush: Option<Task<()>>,
     _subscription: Subscription,
 }
@@ -50,6 +54,9 @@ impl Invalidation {
         });
         Self {
             dirty: HashSet::new(),
+            flushed_at: Instant::now()
+                .checked_sub(MIN_PERIOD)
+                .unwrap_or_else(Instant::now),
             flush: None,
             _subscription: subscription,
         }
@@ -59,8 +66,9 @@ impl Invalidation {
     pub fn mark(&mut self, table: Table, cx: &mut Context<Self>) {
         self.dirty.insert(table);
         if self.flush.is_none() {
+            let wait = FLUSH_DELAY.max(MIN_PERIOD.saturating_sub(self.flushed_at.elapsed()));
             self.flush = Some(cx.spawn(async move |this, cx| {
-                cx.background_executor().timer(FLUSH_DELAY).await;
+                cx.background_executor().timer(wait).await;
                 this.update(cx, |this, cx| this.flush(cx)).ok();
             }));
         }
@@ -69,6 +77,7 @@ impl Invalidation {
     pub fn invalidate_all(&mut self, cx: &mut Context<Self>) {
         self.dirty.clear();
         self.flush = None;
+        self.flushed_at = Instant::now();
         cx.emit(TablesChanged {
             tables: Vec::new(),
             all: true,
@@ -77,8 +86,10 @@ impl Invalidation {
 
     fn flush(&mut self, cx: &mut Context<Self>) {
         self.flush = None;
+        self.flushed_at = Instant::now();
         let tables: Vec<Table> = self.dirty.drain().collect();
         if !tables.is_empty() {
+            tracing::debug!(?tables, "invalidation flush");
             cx.emit(TablesChanged { tables, all: false });
         }
     }

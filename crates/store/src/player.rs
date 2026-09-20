@@ -70,11 +70,11 @@ impl PlayerModel {
                 {
                     fading.position_ms = *position_ms;
                 }
-                cx.notify();
+                crate::notify(cx);
             }
             ApiEvent::PlayerBuffered { token, ranges } if Some(*token) == self.token() => {
                 self.state.buffered = ranges.clone();
-                cx.notify();
+                crate::notify(cx);
             }
             ApiEvent::Resync => self.refetch(cx),
             _ => {}
@@ -95,7 +95,7 @@ impl PlayerModel {
         self.state = state;
         self.observed_at = Instant::now();
         self.optimistic_playing = None;
-        cx.notify();
+        crate::notify(cx);
     }
 
     fn token(&self) -> Option<u64> {
@@ -188,19 +188,19 @@ impl PlayerModel {
 
     pub fn toggle(&mut self, cx: &mut Context<Self>) {
         self.optimistic_playing = Some(!self.is_playing());
-        cx.notify();
+        crate::notify(cx);
         send(PlayerCommand::Toggle, cx);
     }
 
     pub fn play(&mut self, cx: &mut Context<Self>) {
         self.optimistic_playing = Some(true);
-        cx.notify();
+        crate::notify(cx);
         send(PlayerCommand::Play, cx);
     }
 
     pub fn pause(&mut self, cx: &mut Context<Self>) {
         self.optimistic_playing = Some(false);
-        cx.notify();
+        crate::notify(cx);
         send(PlayerCommand::Pause, cx);
     }
 
@@ -222,14 +222,14 @@ impl PlayerModel {
             at_ms: self.daemon_now_ms(),
             playing: self.is_playing(),
         });
-        cx.notify();
+        crate::notify(cx);
         send(PlayerCommand::Seek { position_ms }, cx);
     }
 
     /// `volume` is 0.0..=1.0.
     pub fn set_volume(&mut self, volume: f32, cx: &mut Context<Self>) {
         self.state.volume = volume.clamp(0.0, 1.0);
-        cx.notify();
+        crate::notify(cx);
         send(
             PlayerCommand::SetVolume {
                 volume: self.state.volume,
@@ -270,7 +270,7 @@ impl PlayerModel {
 
     pub fn set_shuffle(&mut self, shuffle: bool, cx: &mut Context<Self>) {
         self.state.queue.shuffle = shuffle;
-        cx.notify();
+        crate::notify(cx);
         send(
             PlayerCommand::SetMode {
                 shuffle: Some(shuffle),
@@ -283,7 +283,7 @@ impl PlayerModel {
     pub fn cycle_loop_mode(&mut self, cx: &mut Context<Self>) {
         let loop_mode = self.state.queue.loop_mode.next();
         self.state.queue.loop_mode = loop_mode;
-        cx.notify();
+        crate::notify(cx);
         send(
             PlayerCommand::SetMode {
                 shuffle: None,
@@ -302,7 +302,10 @@ fn send(command: PlayerCommand, cx: &App) {
 
 /// Notifies a few times a second while playback runs; observe it (not [`PlayerModel`]) for anything that tracks the position.
 pub struct Playhead {
+    playing: bool,
+    visible: bool,
     _ticker: Option<Task<()>>,
+    _visibility: Option<Subscription>,
     _subscription: Subscription,
 }
 
@@ -314,17 +317,37 @@ impl Playhead {
     pub(crate) fn new(cx: &mut Context<Self>) -> Self {
         let player = PlayerModel::global(cx);
         let subscription = cx.observe(&player, |this, player, cx| {
-            let playing = player.read(cx).is_playing();
-            match (playing, this._ticker.is_some()) {
-                (true, false) => this._ticker = Some(Self::tick(cx)),
-                (false, true) => this._ticker = None,
-                _ => {}
-            }
-            cx.notify();
+            this.playing = player.read(cx).is_playing();
+            this.retick(cx);
+            crate::notify(cx);
         });
         Self {
+            playing: false,
+            visible: true,
             _ticker: None,
+            _visibility: None,
             _subscription: subscription,
+        }
+    }
+
+    /// The tick runs only while something is moving and someone can see it.
+    fn retick(&mut self, cx: &mut Context<Self>) {
+        match (self.playing && self.visible, self._ticker.is_some()) {
+            (true, false) => self._ticker = Some(Self::tick(cx)),
+            (false, true) => self._ticker = None,
+            _ => {}
+        }
+    }
+
+    fn set_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
+        if self.visible == visible {
+            return;
+        }
+        self.visible = visible;
+        self.retick(cx);
+        // Back on screen the position is up to a tick behind: catch it up rather than wait.
+        if visible {
+            crate::notify(cx);
         }
     }
 
@@ -332,10 +355,44 @@ impl Playhead {
         cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(PLAYHEAD_TICK).await;
-                if this.update(cx, |_, cx| cx.notify()).is_err() {
-                    return;
+                let unwatched = this.update(cx, |this, cx| {
+                    if this.visible {
+                        crate::notify(cx);
+                    }
+                    this._visibility.is_none()
+                });
+                match unwatched {
+                    Ok(true) => Self::watch_window(&this, cx),
+                    Ok(false) => {}
+                    Err(_) => return,
                 }
             }
         })
+    }
+
+    /// Installed on the first tick that finds a window, since the models are built before there is one.
+    fn watch_window(this: &gpui_kit::WeakEntity<Self>, cx: &mut gpui_kit::AsyncApp) {
+        let Some(playhead) = this.upgrade() else {
+            return;
+        };
+        cx.update(|cx| {
+            let Some(handle) = cx.windows().first().copied() else {
+                return;
+            };
+            handle
+                .update(cx, |_, window, cx| {
+                    playhead.update(cx, |this, cx| {
+                        this.visible = window.is_visible();
+                        tracing::debug!(visible = this.visible, "playhead watching the window");
+                        this._visibility = Some(cx.observe_window_visibility(
+                            window,
+                            |this, visibility, _, cx| {
+                                this.set_visible(visibility.is_visible(), cx);
+                            },
+                        ));
+                    });
+                })
+                .ok();
+        });
     }
 }

@@ -19,6 +19,7 @@ pub struct Query<T> {
     value: Option<T>,
     error: Option<ApiError>,
     loading: bool,
+    stale: bool,
     generation: u64,
     _task: Option<Task<()>>,
     _subscription: Subscription,
@@ -46,6 +47,7 @@ impl<T: Send + 'static> Query<T> {
             value: None,
             error: None,
             loading: false,
+            stale: false,
             generation: 0,
             _task: None,
             _subscription: subscription,
@@ -56,7 +58,7 @@ impl<T: Send + 'static> Query<T> {
         query
     }
 
-    /// Point the query at new inputs; the old value is dropped since it answers a different question.
+    /// Point the query at new inputs, keeping the old value on screen — marked [`Query::is_stale`] — until the new one lands.
     pub fn set_fetch<Fut>(
         &mut self,
         fetch: impl Fn(Arc<dyn KopuzApi>) -> Fut + 'static,
@@ -65,9 +67,13 @@ impl<T: Send + 'static> Query<T> {
         Fut: Future<Output = Result<T, ApiError>> + Send + 'static,
     {
         self.fetch = box_fetch(fetch);
-        self.value = None;
         self.error = None;
+        self.stale = self.value.is_some();
         self.refresh(cx);
+        // refresh() stays quiet while a value is held, but the inputs just changed: say so.
+        if self.stale {
+            crate::notify(cx);
+        }
     }
 
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
@@ -76,7 +82,10 @@ impl<T: Send + 'static> Query<T> {
         let fetch = self.fetch.clone();
         let call = Link::global(cx).call(move |api| fetch(api));
         self.loading = true;
-        cx.notify();
+        // A value already on screen makes this notify a whole-window rebuild for nothing.
+        if self.value.is_none() {
+            crate::notify(cx);
+        }
         self._task = Some(cx.spawn(async move |this, cx| {
             let result = call.await;
             this.update(cx, |this, cx| {
@@ -84,6 +93,7 @@ impl<T: Send + 'static> Query<T> {
                     return;
                 }
                 this.loading = false;
+                this.stale = false;
                 match result {
                     Ok(value) => {
                         this.value = Some(value);
@@ -101,7 +111,7 @@ impl<T: Send + 'static> Query<T> {
                         }
                     }
                 }
-                cx.notify();
+                crate::notify(cx);
             })
             .ok();
         }));
@@ -122,6 +132,11 @@ impl<T: 'static> Query<T> {
         self.loading
     }
 
+    /// The held value answers the *previous* inputs: dim it rather than blanking the page.
+    pub fn is_stale(&self) -> bool {
+        self.stale
+    }
+
     /// The first answer (or failure) has arrived.
     pub fn is_settled(&self) -> bool {
         self.value.is_some() || self.error.is_some()
@@ -131,7 +146,7 @@ impl<T: 'static> Query<T> {
     pub fn update_value(&mut self, cx: &mut Context<Self>, edit: impl FnOnce(&mut T)) {
         if let Some(value) = self.value.as_mut() {
             edit(value);
-            cx.notify();
+            crate::notify(cx);
         }
     }
 }

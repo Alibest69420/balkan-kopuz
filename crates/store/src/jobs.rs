@@ -39,7 +39,7 @@ impl JobsModel {
                     Some(running) => *running = progress.clone(),
                     None => this.running.push(progress.clone()),
                 }
-                cx.notify();
+                crate::notify(cx);
             }
             ApiEvent::JobFinished {
                 id,
@@ -48,7 +48,7 @@ impl JobsModel {
                 error,
             } => {
                 this.running.retain(|running| &running.id != id);
-                cx.notify();
+                crate::notify(cx);
                 // A job that fails says so. Upstream drops this, which is why a sync against
                 // expired credentials spins for a moment and then goes quiet.
                 if !*ok && let Some(failure) = error.as_ref() {
@@ -88,7 +88,7 @@ impl JobsModel {
                         message: job.message,
                     })
                     .collect();
-                cx.notify();
+                crate::notify(cx);
             })
             .ok();
         }));

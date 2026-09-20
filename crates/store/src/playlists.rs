@@ -40,7 +40,7 @@ impl PlaylistsModel {
             this.update(cx, |this, cx| {
                 this.catalog = catalog;
                 this.loaded = true;
-                cx.notify();
+                crate::notify(cx);
             })
             .ok();
         }));

@@ -37,10 +37,18 @@ pub use palette::Swatches;
 pub use player::{PlayerModel, Playhead};
 pub use playlists::PlaylistsModel;
 pub use query::Query;
-pub use queue::QueueModel;
-pub use signin::{register_password_form, start_sign_in};
+pub use queue::{QueueModel, QueueSummary};
+pub use signin::{
+    browser as browser_sign_in, is_waiting_for_browser, register_password_form, start_sign_in,
+};
 pub use sources::SourcesModel;
 pub use target::{Kind, Target};
+
+/// `cx.notify()`, counted: a shared model's notify dirties every ancestor, so the profiler wants it.
+pub(crate) fn notify<T: 'static>(cx: &mut gpui_kit::Context<T>) {
+    profile::notifies::record();
+    cx.notify();
+}
 
 /// How the app is meant to look, for a view that only reads it.
 pub fn layout(cx: &App) -> &Layout {

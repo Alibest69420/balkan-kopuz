@@ -42,7 +42,7 @@ impl FavoritesModel {
             this.update(cx, |this, cx| {
                 this.keys = view.refs.into_iter().collect();
                 this.loaded = true;
-                cx.notify();
+                crate::notify(cx);
             })
             .ok();
         }));
@@ -73,7 +73,7 @@ impl FavoritesModel {
             self.keys.remove(&key)
         };
         if changed {
-            cx.notify();
+            crate::notify(cx);
         }
         let call = Link::global(cx).call({
             let key = key.clone();
@@ -87,7 +87,7 @@ impl FavoritesModel {
                     } else {
                         this.keys.insert(key);
                     }
-                    cx.notify();
+                    crate::notify(cx);
                     Notices::error(crate::human(&error), cx);
                 })
                 .ok();

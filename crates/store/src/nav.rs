@@ -120,21 +120,21 @@ impl Navigator {
         }
         self.back.push(std::mem::replace(&mut self.current, route));
         self.forward.clear();
-        cx.notify();
+        crate::notify(cx);
     }
 
     pub fn go_back(&mut self, cx: &mut Context<Self>) {
         if let Some(route) = self.back.pop() {
             self.forward
                 .push(std::mem::replace(&mut self.current, route));
-            cx.notify();
+            crate::notify(cx);
         }
     }
 
     pub fn go_forward(&mut self, cx: &mut Context<Self>) {
         if let Some(route) = self.forward.pop() {
             self.back.push(std::mem::replace(&mut self.current, route));
-            cx.notify();
+            crate::notify(cx);
         }
     }
 

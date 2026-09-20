@@ -53,26 +53,26 @@ impl Chrome {
         } else {
             Some(panel)
         };
-        cx.notify();
+        crate::notify(cx);
     }
 
     pub fn set_panel(&mut self, panel: Option<SidePanel>, cx: &mut Context<Self>) {
         self.panel = panel;
-        cx.notify();
+        crate::notify(cx);
     }
 
     pub fn set_fullscreen(&mut self, fullscreen: bool, cx: &mut Context<Self>) {
         self.fullscreen = fullscreen;
-        cx.notify();
+        crate::notify(cx);
     }
 
     pub fn set_compact(&mut self, compact: bool, cx: &mut Context<Self>) {
         self.compact = compact;
-        cx.notify();
+        crate::notify(cx);
     }
 
     pub fn set_quick_search(&mut self, open: bool, cx: &mut Context<Self>) {
         self.quick_search = open;
-        cx.notify();
+        crate::notify(cx);
     }
 }

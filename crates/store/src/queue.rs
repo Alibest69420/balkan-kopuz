@@ -2,9 +2,19 @@ use api::{ApiEvent, QueueEdit, QueueSnapshot, TrackInfo};
 use gpui_kit::{App, Context, Entity, Subscription, Task};
 use link::Link;
 
+/// What the queue adds up to: "3/57 • 3:41:02" without folding every row per frame.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct QueueSummary {
+    /// One-based place of the current row; zero when nothing is current.
+    pub position: usize,
+    pub count: usize,
+    pub total_ms: u64,
+}
+
 /// The whole queue in play order, refetched whenever its revision moves.
 pub struct QueueModel {
     snapshot: QueueSnapshot,
+    summary: QueueSummary,
     generation: u64,
     _fetch: Option<Task<()>>,
     _subscription: Subscription,
@@ -24,10 +34,30 @@ impl QueueModel {
         });
         Self {
             snapshot: QueueSnapshot::default(),
+            summary: QueueSummary::default(),
             generation: 0,
             _fetch: None,
             _subscription: subscription,
         }
+    }
+
+    /// Recomputed where the queue changes, which is rarely; reading it is what happens per frame.
+    fn resummarize(&mut self) {
+        let total_ms = self
+            .snapshot
+            .items
+            .iter()
+            .filter_map(|track| track.duration_secs())
+            .fold(0u64, |sum, secs| sum.saturating_add(secs * 1000));
+        self.summary = QueueSummary {
+            position: self.snapshot.position.map_or(0, |at| at as usize + 1),
+            count: self.snapshot.items.len(),
+            total_ms,
+        };
+    }
+
+    pub fn summary(&self) -> QueueSummary {
+        self.summary
     }
 
     fn refetch(&mut self, cx: &mut Context<Self>) {
@@ -39,7 +69,8 @@ impl QueueModel {
             this.update(cx, |this, cx| {
                 if this.generation == generation {
                     this.snapshot = snapshot;
-                    cx.notify();
+                    this.resummarize();
+                    crate::notify(cx);
                 }
             })
             .ok();
@@ -89,7 +120,8 @@ impl QueueModel {
 
     pub fn jump(&mut self, index: u32, cx: &mut Context<Self>) {
         self.snapshot.position = Some(index);
-        cx.notify();
+        self.resummarize();
+        crate::notify(cx);
         edit(QueueEdit::Jump { index }, cx);
     }
 
@@ -98,7 +130,7 @@ impl QueueModel {
         if (from as usize) < items.len() && (to as usize) < items.len() {
             let item = items.remove(from as usize);
             items.insert(to as usize, item);
-            cx.notify();
+            crate::notify(cx);
         }
         edit(QueueEdit::Move { from, to }, cx);
     }

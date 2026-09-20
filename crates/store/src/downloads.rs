@@ -59,7 +59,7 @@ impl DownloadsModel {
             let Ok(keys) = call.await else { return };
             this.update(cx, |this, cx| {
                 this.stored = keys.into_iter().collect();
-                cx.notify();
+                crate::notify(cx);
             })
             .ok();
         }));
@@ -79,7 +79,7 @@ impl DownloadsModel {
                         .into_iter()
                         .map(|status| (status.key, status.state))
                         .collect();
-                    cx.notify();
+                    crate::notify(cx);
                 }
             })
             .ok();
@@ -121,7 +121,7 @@ impl DownloadsModel {
 
     pub fn remove(&mut self, key: String, cx: &mut Context<Self>) {
         self.stored.remove(&key);
-        cx.notify();
+        crate::notify(cx);
         let call = Link::global(cx).call(move |api| async move { api.remove_download(key).await });
         cx.spawn(async move |this, cx| {
             if let Err(error) = call.await {

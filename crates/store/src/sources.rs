@@ -48,7 +48,7 @@ impl SourcesModel {
         let after = self.active().map(|source| source.id.clone());
         let switched = self.loaded && before != after;
         self.loaded = true;
-        cx.notify();
+        crate::notify(cx);
         if switched {
             Invalidation::global(cx).update(cx, |invalidation, cx| invalidation.invalidate_all(cx));
         }
