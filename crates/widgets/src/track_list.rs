@@ -520,12 +520,22 @@ impl TrackList {
                     })
                     .child(
                         div()
+                            .id(("title", index))
                             .flex_1()
                             .min_w_0()
                             .truncate()
                             .text_sm()
                             .font_weight(FontWeight::MEDIUM)
                             .text_color(title_color)
+                            // Truncated text is otherwise unrecoverable: narrow the window or meet
+                            // a long "Artist feat. Artist" credit and the rest is simply gone.
+                            .tooltip({
+                                let title = title.clone();
+                                move |window, cx| {
+                                    gpui_kit::component::tooltip::Tooltip::new(title.clone())
+                                        .build(window, cx)
+                                }
+                            })
                             .child(title.clone()),
                     ),
             )
@@ -549,6 +559,13 @@ impl TrackList {
                             )
                         }
                     })
+                    .tooltip({
+                        let artist = artist.clone();
+                        move |window, cx| {
+                            gpui_kit::component::tooltip::Tooltip::new(artist.clone())
+                                .build(window, cx)
+                        }
+                    })
                     .child(div().flex_1().min_w_0().truncate().child(artist.clone())),
             )
             .when(self.options.show_album, |row| {
@@ -565,6 +582,13 @@ impl TrackList {
                                     cx.stop_propagation();
                                     Navigator::navigate(Route::Album(album_id.clone().into()), cx);
                                 }
+                            }
+                        })
+                        .tooltip({
+                            let album = album.clone();
+                            move |window, cx| {
+                                gpui_kit::component::tooltip::Tooltip::new(album.clone())
+                                    .build(window, cx)
                             }
                         })
                         .child(div().flex_1().min_w_0().truncate().child(album.clone())),

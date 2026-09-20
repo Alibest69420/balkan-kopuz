@@ -85,6 +85,31 @@ impl Sidebar {
             }),
             cx.observe(&ConfigModel::global(cx), |_, _, cx| cx.notify()),
             cx.observe(&Navigator::global(cx), |_, _, cx| cx.notify()),
+            // The probe runs once per source id, so without these the dot kept whatever it found
+            // the first time — green long after the server stopped answering, and green right
+            // through a daemon disconnect, since a reconnect keeps the same active source.
+            cx.subscribe(
+                &Link::connection(cx),
+                |this, _, event: &api::ApiEvent, cx| match event {
+                    api::ApiEvent::SourceStatus { source, state }
+                        if this.probed.as_deref() == Some(source.as_str()) =>
+                    {
+                        this.status = match state {
+                            SourceState::Online => Status::Online,
+                            _ => Status::Offline,
+                        };
+                        cx.notify();
+                    }
+                    // A reattach says nothing about the source behind it, so ask again.
+                    api::ApiEvent::Resync => {
+                        this.probed = None;
+                        let sources = SourcesModel::global(cx);
+                        this.probe(&sources, cx);
+                        cx.notify();
+                    }
+                    _ => {}
+                },
+            ),
         ];
         let mut this = Self {
             width: DEFAULT_WIDTH,
