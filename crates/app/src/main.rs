@@ -6,7 +6,7 @@ use gpui_kit::{
     App, AppContext as _, Bounds, KeyBinding, TitlebarOptions, WindowBounds, WindowOptions, px,
     size,
 };
-use shell::{Back, Escape, QuickSearch, Shell, TogglePlayback};
+use shell::{Back, Escape, Forward, QuickSearch, Shell, TogglePlayback, TogglePlaylistsPanel};
 
 /// The bindings whose handlers live here or on the list; `commands::keymap` binds the registry's.
 fn keymap(cx: &mut App) {
@@ -16,11 +16,16 @@ fn keymap(cx: &mut App) {
         KeyBinding::new("ctrl-k", QuickSearch, Some("Shell")),
         KeyBinding::new("escape", Escape, Some("Shell")),
         KeyBinding::new("alt-left", Back, Some("Shell")),
+        KeyBinding::new("alt-right", Forward, Some("Shell")),
+        KeyBinding::new("ctrl-b", TogglePlaylistsPanel, Some("Shell")),
         KeyBinding::new(
             "ctrl-shift-p",
             debug_overlay::ToggleDebugOverlay,
             Some("Shell"),
         ),
+        // The bar walks its tabs with left and right; without these the Shell seeks instead.
+        KeyBinding::new("left", gpui_kit::NoAction, Some("NavBar")),
+        KeyBinding::new("right", gpui_kit::NoAction, Some("NavBar")),
         // Bindings beat key listeners, so without this the Shell's space would
         // toggle playback instead of typing one; NoAction suppresses it.
         KeyBinding::new("space", gpui_kit::NoAction, Some("Input")),
@@ -79,6 +84,9 @@ fn main() -> anyhow::Result<()> {
             metadata_dialog::register(cx);
             settings_sources::register(cx);
             settings_interface::init(cx);
+            topbar::register_settings(cx);
+            playlists_panel::register_settings(cx);
+            palette::register_settings(cx);
             page_playlists::register(cx);
             commands::init(cx);
             theme::apply_named("default", None, cx);
@@ -87,11 +95,9 @@ fn main() -> anyhow::Result<()> {
             commands::keymap(cx);
 
             let options = WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-                    None,
-                    size(px(1350.), px(800.)),
-                    cx,
-                ))),
+                window_bounds: Some(topbar::saved_bounds(cx).unwrap_or_else(|| {
+                    WindowBounds::Windowed(Bounds::centered(None, size(px(1350.), px(800.)), cx))
+                })),
                 window_background: gpui_kit::WindowBackgroundAppearance::Opaque,
                 app_id: Some("kopuz-gpui".into()),
                 titlebar: Some(TitlebarOptions {

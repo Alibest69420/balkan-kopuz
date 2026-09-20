@@ -14,17 +14,28 @@ use store::{Chrome, ConfigModel, Navigator, Notice, Notices, PlayerModel, Source
 
 use crate::router::Router;
 
-actions!(kopuz, [TogglePlayback, QuickSearch, Escape, Back]);
+actions!(
+    kopuz,
+    [
+        TogglePlayback,
+        QuickSearch,
+        Escape,
+        Back,
+        Forward,
+        TogglePlaylistsPanel
+    ]
+);
 
 pub struct Shell {
     router: Router,
     focus: FocusHandle,
     connection: Entity<Connection>,
-    sidebar: Entity<sidebar::Sidebar>,
+    topbar: Entity<topbar::TopBar>,
+    playlists_panel: Entity<playlists_panel::PlaylistsPanel>,
     player_bar: Entity<player_bar::PlayerBar>,
     side_panel: Entity<side_panel::SidePanelView>,
     fullscreen: Entity<fullscreen::FullscreenPlayer>,
-    quick_search: Entity<quick_search::QuickSearch>,
+    quick_search: Entity<palette::Palette>,
     mini_player: Entity<fullscreen::MiniPlayer>,
     overlays: Entity<overlays::Overlays>,
     first_run: Entity<onboarding::FirstRun>,
@@ -110,11 +121,12 @@ impl Shell {
             router: Router::default(),
             focus,
             connection,
-            sidebar: cx.new(|cx| sidebar::Sidebar::new(window, cx)),
+            topbar: cx.new(|cx| topbar::TopBar::new(window, cx)),
+            playlists_panel: cx.new(|cx| playlists_panel::PlaylistsPanel::new(window, cx)),
             player_bar: cx.new(|cx| player_bar::PlayerBar::new(window, cx)),
             side_panel: cx.new(|cx| side_panel::SidePanelView::new(window, cx)),
             fullscreen: cx.new(|cx| fullscreen::FullscreenPlayer::new(window, cx)),
-            quick_search: cx.new(|cx| quick_search::QuickSearch::new(window, cx)),
+            quick_search: cx.new(|cx| palette::Palette::new(window, cx)),
             mini_player: cx.new(|cx| fullscreen::MiniPlayer::new(window, cx)),
             overlays: cx.new(|cx| overlays::Overlays::new(window, cx)),
             first_run,
@@ -211,6 +223,12 @@ impl Render for Shell {
         // the last track it saw, with no way to learn the daemon had gone.
         let compact = chrome.is_compact() && connected;
         let first_run = self.first_run.read(cx).showing(cx);
+        let nav_left =
+            store::layout(cx).nav.position == store::layout::NavPosition::Left && !fullscreen;
+        let bar = (!fullscreen).then(|| self.topbar.clone());
+        let playlists = self.playlists_panel.read(cx);
+        let playlists_open = playlists.is_open(cx) && connected && !fullscreen;
+        let playlists_width = playlists.width();
         let panel_open = chrome.panel().is_some();
         let quick_search_open = chrome.is_quick_search_open();
         // The side panel is drag-resizable, so it owns the slot's width.
@@ -235,12 +253,21 @@ impl Render for Shell {
         } else {
             v_flex()
                 .size_full()
+                .children(bar.clone().filter(|_| !nav_left))
                 .child(
                     h_flex()
                         .flex_1()
                         .min_h_0()
                         .items_stretch()
-                        .when(!fullscreen, |body| body.child(self.sidebar.clone()))
+                        .children(bar.filter(|_| nav_left))
+                        .when(playlists_open, |body| {
+                            body.child(
+                                div()
+                                    .w(playlists_width)
+                                    .flex_shrink_0()
+                                    .child(self.playlists_panel.clone()),
+                            )
+                        })
                         .child(
                             div()
                                 .flex_1()
@@ -254,7 +281,7 @@ impl Render for Shell {
                                     } else if first_run {
                                         content.child(self.first_run.clone())
                                     } else {
-                                        content.child(page)
+                                        content.child(topbar::content_frame().h_full().child(page))
                                     }
                                 })
                                 .child(self.overlays.clone())
@@ -270,7 +297,7 @@ impl Render for Shell {
                 .into_any_element()
         };
 
-        div()
+        topbar::mouse_history(div())
             .size_full()
             .track_focus(&self.focus)
             .key_context("Shell")
@@ -291,6 +318,12 @@ impl Render for Shell {
             .on_action(cx.listener(|this, _: &QuickSearch, _, cx| this.toggle_quick_search(cx)))
             .on_action(cx.listener(|this, _: &Escape, _, cx| this.escape(cx)))
             .on_action(cx.listener(|this, _: &Back, _, cx| this.go_back(cx)))
+            .on_action(cx.listener(|_, _: &Forward, _, cx| {
+                Navigator::global(cx).update(cx, |navigator, cx| navigator.go_forward(cx));
+            }))
+            .on_action(cx.listener(|_, _: &TogglePlaylistsPanel, _, cx| {
+                playlists_panel::toggle(cx);
+            }))
             .on_action(
                 cx.listener(|this, _: &debug_overlay::ToggleDebugOverlay, _, cx| {
                     this.debug_overlay

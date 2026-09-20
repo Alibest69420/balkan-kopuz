@@ -3835,16 +3835,17 @@ dependencies = [
  "page_radio",
  "page_search",
  "page_settings",
+ "palette",
  "player_bar",
+ "playlists_panel",
  "profile",
- "quick_search",
  "settings_interface",
  "settings_sources",
  "side_panel",
- "sidebar",
  "store",
  "theme",
  "tikv-jemallocator",
+ "topbar",
  "tracing",
  "tracing-subscriber",
  "widgets",
@@ -5363,6 +5364,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "palette"
+version = "0.1.0"
+dependencies = [
+ "commands",
+ "gpui-kit",
+ "kopuz-api",
+ "kopuz-i18n",
+ "link",
+ "profile",
+ "settings_interface",
+ "store",
+ "theme",
+ "widgets",
+]
+
+[[package]]
 name = "parking"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5588,6 +5605,21 @@ dependencies = [
  "kopuz-i18n",
  "link",
  "profile",
+ "store",
+ "theme",
+ "tracing",
+ "widgets",
+]
+
+[[package]]
+name = "playlists_panel"
+version = "0.1.0"
+dependencies = [
+ "gpui-kit",
+ "kopuz-api",
+ "kopuz-i18n",
+ "profile",
+ "settings_interface",
  "store",
  "theme",
  "tracing",
@@ -7005,13 +7037,12 @@ name = "sidebar"
 version = "0.1.0"
 dependencies = [
  "gpui-kit",
- "kopuz-api",
  "kopuz-config",
  "kopuz-i18n",
- "link",
  "profile",
  "store",
  "theme",
+ "topbar",
  "tracing",
  "widgets",
 ]
@@ -7929,6 +7960,23 @@ dependencies = [
  "prost-types",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "topbar"
+version = "0.1.0"
+dependencies = [
+ "commands",
+ "gpui-kit",
+ "kopuz-api",
+ "kopuz-i18n",
+ "link",
+ "profile",
+ "settings_interface",
+ "store",
+ "theme",
+ "tracing",
+ "widgets",
 ]
 
 [[package]]
