@@ -1,12 +1,12 @@
 //! The Library and Connectivity settings: local libraries, radio registries, media servers, integrations.
 
-mod add_server;
+pub mod add_server;
 mod integrations;
-mod local;
+pub mod local;
 mod login;
 mod registries;
 mod servers;
-mod ui;
+pub mod ui;
 
 use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder as _;

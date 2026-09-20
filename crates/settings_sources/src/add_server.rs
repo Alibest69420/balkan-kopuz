@@ -115,7 +115,7 @@ impl AddServer {
         self.select(first, window, cx);
     }
 
-    fn select(&mut self, service: ServiceInfo, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn select(&mut self, service: ServiceInfo, window: &mut Window, cx: &mut Context<Self>) {
         let form = cx.new(|cx| SchemaForm::new(service.fields.clone(), window, cx));
         self._form_subscription =
             Some(cx.subscribe(&form, |this, _, _: &FieldChanged, cx| this.recheck(cx)));
