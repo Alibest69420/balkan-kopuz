@@ -6,12 +6,12 @@ anyway. Severities are the auditors'. Tick items as they land.
 
 ## Broken — the feature does not work at all
 
-- [ ] **Compact mode drops the toast, dialog and disconnect layers.**
+- [x] **Compact mode drops the toast, dialog and disconnect layers.**
       `app/src/shell.rs:203` returns early with only the mini player, above both
       the `Root` layers and the `connected` check. In mini-player mode no toast
       can appear, no dialog can open, and a daemon disconnect shows nothing —
       the last track stays on screen forever.
-- [ ] **A failed daemon read renders as "there is nothing here."**
+- [x] **A failed daemon read renders as "there is nothing here."**
       `store/src/query.rs:390` keeps the error but only two call sites ever read
       it. Everywhere else is `value().unwrap_or_default()` + `is_settled()`, so
       a refused call shows "No tracks in your library" / "Album not found".
@@ -30,7 +30,7 @@ anyway. Severities are the auditors'. Tick items as they land.
 
 ## Bad — the feature works but misleads or blocks
 
-- [ ] **Selection sticks at "0 selected" and rows stop playing.** `set_rows`
+- [x] **Selection sticks at "0 selected" and rows stop playing.** `set_rows`
       drops vanished keys but never re-evaluates `selecting`
       (`widgets/src/track_list.rs:171`), so re-sorting with select-all on leaves
       the pill over a spinner and clicks toggle checkboxes instead of playing.
@@ -43,13 +43,13 @@ anyway. Severities are the auditors'. Tick items as they land.
 - [ ] **Library's column header looks sortable and is inert.** Same
       `columns::frame()` as Favorites and Artist detail, which both sort on
       click. `page_library/src/lib.rs:357`.
-- [ ] **Every error reads `DebugEnumVariant: raw message`.** ~20 sites do
+- [x] **Every error reads `DebugEnumVariant: raw message`.** ~20 sites do
       `Notices::error(error.to_string())`. `page_discover/src/shelves.rs:30` is
       the one place that maps a code to human text; that should be the default.
-- [ ] **The connection screen claims failure before anything failed** and never
+- [x] **The connection screen claims failure before anything failed** and never
       says it is retrying: a cold start reads "Can't reach the kopuz daemon /
       ● Connecting…". `app/src/shell.rs:147`.
-- [ ] **"Start Daemon" has no visible effect and swallows its failure**, so it
+- [x] **"Start Daemon" has no visible effect and swallows its failure**, so it
       gets clicked repeatedly, spawning a process each time. `app/src/shell.rs:165`.
 - [ ] **A dismissed playback error stays dismissed forever**, keyed on the
       message string — the same failure never speaks again.
@@ -66,9 +66,9 @@ anyway. Severities are the auditors'. Tick items as they land.
 - [ ] Re-sorting or typing blanks the page to a spinner: `set_fetch` discards
       the held value (`store/src/query.rs:60`). No skeletons anywhere, though
       the theme defines `skeleton.background`.
-- [ ] The artists grid builds every tile; so do the playlists grid, search album
+- [x] The artists grid builds every tile; so do the playlists grid, search album
       results and artist-detail albums. `page_artists/src/grid.rs:183`.
-- [ ] The albums grid re-clones, re-dedupes and re-sorts the whole library on
+- [x] The albums grid re-clones, re-dedupes and re-sorts the whole library on
       every hover, because hover calls `cx.notify()`. `page_albums/src/grid.rs:320`.
 - [ ] Empty states name the emptiness and stop. Library's is a bare italic line,
       not even the `EmptyState` widget. Favorites is the counter-example.

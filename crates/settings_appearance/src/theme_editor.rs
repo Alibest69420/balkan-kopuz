@@ -265,7 +265,23 @@ impl ThemeEditor {
         self.load(Some(id), window, cx);
     }
 
-    fn delete(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// What the selected theme is called, for the confirmation that names what goes.
+    fn editing_name(&self, cx: &Context<Self>) -> SharedString {
+        let Some(id) = self.selected.as_ref() else {
+            return t("delete");
+        };
+        ConfigModel::global(cx)
+            .read(cx)
+            .config()
+            .custom_themes
+            .get(id)
+            .map(|theme| SharedString::from(theme.name.clone()))
+            .unwrap_or_else(|| SharedString::from(id.clone()))
+    }
+
+    /// Only ever reached from the confirmation: this drops the theme and, if it was the one in
+    /// use, puts the app back on the default.
+    fn delete_confirmed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(id) = self.selected.clone() else {
             return;
         };
@@ -534,8 +550,21 @@ impl Render for ThemeEditor {
                                         )
                                         .icon(icons::icon(icons::TRASH))
                                         .label(t("delete"))
+                                        // Deleting the theme in use also resets you to default.
                                         .on_click(cx.listener(|this, _, window, cx| {
-                                            this.delete(window, cx)
+                                            let name = this.editing_name(cx);
+                                            let entity = cx.entity();
+                                            widgets::dialogs::confirm_delete(
+                                                t("delete"),
+                                                name,
+                                                move |window, cx| {
+                                                    entity.update(cx, |this, cx| {
+                                                        this.delete_confirmed(window, cx)
+                                                    });
+                                                },
+                                                window,
+                                                cx,
+                                            );
                                         })),
                                 )
                             }),

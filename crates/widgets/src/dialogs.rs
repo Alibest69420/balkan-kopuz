@@ -40,7 +40,7 @@ pub fn open_track_metadata(key: String, editable: bool, window: &mut Window, cx:
 pub fn confirm_delete(
     title: gpui_kit::SharedString,
     description: impl Into<gpui_kit::SharedString>,
-    delete: impl Fn(&mut App) + 'static,
+    delete: impl Fn(&mut Window, &mut App) + 'static,
     window: &mut Window,
     cx: &mut App,
 ) {
@@ -62,8 +62,8 @@ pub fn confirm_delete(
                     .ok_variant(ButtonVariant::Danger)
                     .cancel_text(crate::format::t("cancel")),
             )
-            .on_ok(move |_, _, cx| {
-                delete(cx);
+            .on_ok(move |_, window, cx| {
+                delete(window, cx);
                 true
             })
     });

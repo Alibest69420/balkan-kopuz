@@ -655,7 +655,7 @@ fn album_menu(
                 dialogs::confirm_delete(
                     t("delete_album"),
                     title.clone(),
-                    move |cx| ops::delete_album(id.clone(), true, cx),
+                    move |_, cx| ops::delete_album(id.clone(), true, cx),
                     window,
                     cx,
                 );

@@ -177,7 +177,7 @@ impl LocalLibraries {
                             .min_w_0()
                             .gap_2()
                             .items_center()
-                            .child(ui::label(name))
+                            .child(ui::label(name.clone()))
                             .when(source.active, |row| {
                                 row.child(ui::active_badge(t("active_local_library"), cx))
                             }),
@@ -212,8 +212,22 @@ impl LocalLibraries {
                                         .disabled(locked)
                                         .on_click(cx.listener({
                                             let id = id.clone();
-                                            move |this: &mut Self, _, _, cx| {
-                                                this.delete(id.clone(), cx)
+                                            let name = name.clone();
+                                            move |_: &mut Self, _, window, cx| {
+                                                let id = id.clone();
+                                                let entity = cx.entity();
+                                                widgets::dialogs::confirm_delete(
+                                                    t("delete"),
+                                                    name.clone(),
+                                                    move |_, cx| {
+                                                        let id = id.clone();
+                                                        entity.update(cx, |this, cx| {
+                                                            this.delete(id, cx)
+                                                        });
+                                                    },
+                                                    window,
+                                                    cx,
+                                                );
                                             }
                                         })),
                                 )

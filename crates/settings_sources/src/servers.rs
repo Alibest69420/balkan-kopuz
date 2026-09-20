@@ -670,7 +670,23 @@ impl MediaServers {
                                     .label(t("delete"))
                                     .on_click(cx.listener({
                                         let id = id.clone();
-                                        move |this: &mut Self, _, _, cx| this.delete(id.clone(), cx)
+                                        let name = SharedString::from(source.name.clone());
+                                        // This takes the server's stored sign-in with it.
+                                        move |_: &mut Self, _, window, cx| {
+                                            let id = id.clone();
+                                            let entity = cx.entity();
+                                            widgets::dialogs::confirm_delete(
+                                                t("delete"),
+                                                name.clone(),
+                                                move |_, cx| {
+                                                    let id = id.clone();
+                                                    entity
+                                                        .update(cx, |this, cx| this.delete(id, cx));
+                                                },
+                                                window,
+                                                cx,
+                                            );
+                                        }
                                     })),
                             ),
                     ),

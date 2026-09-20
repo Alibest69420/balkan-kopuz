@@ -8,7 +8,7 @@ use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::menu::ContextMenuExt as _;
 use gpui_kit::component::menu::DropdownMenu as _;
 use gpui_kit::component::menu::PopupMenu;
-use gpui_kit::component::{ActiveTheme as _, v_flex};
+use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Context, EventEmitter, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
@@ -642,17 +642,39 @@ fn row_menu(
     }
     if row_actions.delete {
         menu = menu.item(
-            gpui_kit::component::menu::PopupMenuItem::new(t("delete"))
-                .icon(crate::icons::icon(icons::TRASH))
-                .on_click({
+            gpui_kit::component::menu::PopupMenuItem::element({
+                let label = t("delete");
+                move |_, cx| {
+                    // Taking a file off disk should not look like the item above it.
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .text_color(cx.theme().danger)
+                        .child(crate::icons::icon(icons::TRASH))
+                        .child(label.clone())
+                        .into_any_element()
+                }
+            })
+            .on_click({
+                let key = key.clone();
+                let title = SharedString::from(track.title.clone());
+                move |_, window, cx| {
                     let key = key.clone();
-                    move |_, _, cx| {
-                        list.update(cx, |_, cx| {
-                            cx.emit(TrackListEvent::Delete(vec![key.clone()]))
-                        })
-                        .ok();
-                    }
-                }),
+                    let list = list.clone();
+                    crate::dialogs::confirm_delete(
+                        t("delete"),
+                        title.clone(),
+                        move |_, cx| {
+                            list.update(cx, |_, cx| {
+                                cx.emit(TrackListEvent::Delete(vec![key.clone()]))
+                            })
+                            .ok();
+                        },
+                        window,
+                        cx,
+                    );
+                }
+            }),
         );
     }
     menu
