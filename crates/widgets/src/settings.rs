@@ -26,9 +26,32 @@ struct Search {
 
 impl Global for Search {}
 
+/// The row the palette sent someone to, so the page can say which one it meant.
+#[derive(Default)]
+struct Highlight(RefCell<Option<SharedString>>);
+
+impl Global for Highlight {}
+
+/// Mark one row by its title; the next jump, or typing in the filter, replaces it.
+pub fn set_highlight(title: Option<SharedString>, cx: &mut App) {
+    if cx.try_global::<Highlight>().is_none() {
+        cx.set_global(Highlight::default());
+    }
+    *cx.global::<Highlight>().0.borrow_mut() = title;
+}
+
+/// Which row is marked, if any.
+pub fn highlighted(cx: &App) -> Option<SharedString> {
+    cx.try_global::<Highlight>()
+        .and_then(|held| held.0.borrow().clone())
+}
+
 /// Filter every settings row by `query`; an empty one puts them all back.
 pub fn set_query(query: &str, cx: &mut App) {
     let trimmed = query.trim().to_lowercase();
+    if !trimmed.is_empty() {
+        set_highlight(None, cx);
+    }
     if cx.try_global::<Search>().is_none() {
         cx.set_global(Search::default());
     }
@@ -144,6 +167,8 @@ const LOCK: f32 = 0.40;
 const TOGGLE_IDLE_HOVER: f32 = 0.70;
 /// `opacity-50` on a locked row's control.
 const LOCKED_OPACITY: f32 = 0.50;
+/// The accent wash the palette leaves on the row it sent someone to.
+const MARKED: f32 = 0.14;
 
 /// `min-h-[3.25rem]`, the height a settings row never goes under.
 pub fn row_height() -> Rems {
@@ -365,13 +390,13 @@ impl SettingRow {
 impl RenderOnce for SettingRow {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let hovered = hover_state(scoped("row-hover", &self.title), window, cx);
+        let marked = highlighted(cx).is_some_and(|held| held == self.title);
         let lift = if *hovered.read(cx) { style::RAISED } else { 0. };
-        let surface = motion::color(
-            scoped("row-bg", &self.title),
-            style::white(lift, cx),
-            window,
-            cx,
-        );
+        let resting = match marked {
+            true => style::accent(MARKED, cx),
+            false => style::white(lift, cx),
+        };
+        let surface = motion::color(scoped("row-bg", &self.title), resting, window, cx);
         let held = motion::amount(
             scoped("row-lock", &self.title),
             if self.locked { LOCKED_OPACITY } else { 1. },
