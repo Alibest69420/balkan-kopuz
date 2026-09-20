@@ -35,6 +35,10 @@ fn one_track(target: &Target, _: &App) -> bool {
     ops::track_keys(target).len() == 1
 }
 
+fn many_tracks(target: &Target, cx: &App) -> bool {
+    ops::track_keys(target).len() > 1 && ops::caps(cx).edit_tags
+}
+
 pub fn all() -> &'static [Command] {
     COMMANDS
 }
@@ -233,6 +237,22 @@ static COMMANDS: &[Command] = &[
                 let editable = ops::caps(cx).edit_tags;
                 widgets::dialogs::open_track_metadata(key, editable, window, cx);
             }
+        },
+        action: None,
+    },
+    Command {
+        id: "track.edit_metadata_batch",
+        labels: &["edit_metadata"],
+        label: |_, _| t("edit_metadata"),
+        icon: Some(icons::EDIT),
+        group: Group::View,
+        section: Section::Go,
+        keys: NO_KEYS,
+        danger: false,
+        applies: TRACKS,
+        available: many_tracks,
+        run: |target, window, cx| {
+            widgets::dialogs::open_batch_metadata(ops::track_keys(&target), window, cx);
         },
         action: None,
     },

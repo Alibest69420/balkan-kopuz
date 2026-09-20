@@ -35,6 +35,7 @@ page_albums = { path = "../page_albums" }
 page_artists = { path = "../page_artists" }
 page_playlists = { path = "../page_playlists" }
 onboarding = { path = "../onboarding" }
+debug_overlay = { path = "../debug_overlay" }
 page_favorites = { path = "../page_favorites" }
 page_activity = { path = "../page_activity" }
 page_radio = { path = "../page_radio" }

@@ -1419,6 +1419,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
+name = "debug_overlay"
+version = "0.1.0"
+dependencies = [
+ "gpui-kit",
+ "profile",
+ "widgets",
+]
+
+[[package]]
 name = "deranged"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3804,6 +3813,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "commands",
+ "debug_overlay",
  "fullscreen",
  "gpui-kit",
  "kopuz-api",
@@ -5265,6 +5275,7 @@ dependencies = [
  "kopuz-config",
  "kopuz-i18n",
  "link",
+ "profile",
  "store",
  "theme",
  "tracing",
@@ -5280,6 +5291,7 @@ dependencies = [
  "kopuz-config",
  "kopuz-i18n",
  "link",
+ "profile",
  "store",
  "theme",
  "tracing",
@@ -5575,6 +5587,7 @@ dependencies = [
  "kopuz-config",
  "kopuz-i18n",
  "link",
+ "profile",
  "store",
  "theme",
  "tracing",
@@ -6996,6 +7009,7 @@ dependencies = [
  "kopuz-config",
  "kopuz-i18n",
  "link",
+ "profile",
  "store",
  "theme",
  "tracing",
@@ -8815,6 +8829,7 @@ dependencies = [
  "kopuz-config",
  "kopuz-i18n",
  "link",
+ "profile",
  "store",
  "theme",
  "tracing",

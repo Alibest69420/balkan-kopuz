@@ -16,6 +16,11 @@ fn keymap(cx: &mut App) {
         KeyBinding::new("ctrl-k", QuickSearch, Some("Shell")),
         KeyBinding::new("escape", Escape, Some("Shell")),
         KeyBinding::new("alt-left", Back, Some("Shell")),
+        KeyBinding::new(
+            "ctrl-shift-p",
+            debug_overlay::ToggleDebugOverlay,
+            Some("Shell"),
+        ),
         // Bindings beat key listeners, so without this the Shell's space would
         // toggle playback instead of typing one; NoAction suppresses it.
         KeyBinding::new("space", gpui_kit::NoAction, Some("Input")),

@@ -28,6 +28,7 @@ pub struct Shell {
     mini_player: Entity<fullscreen::MiniPlayer>,
     overlays: Entity<overlays::Overlays>,
     first_run: Entity<onboarding::FirstRun>,
+    debug_overlay: Entity<debug_overlay::DebugOverlay>,
     // The theme these were applied for, so config edits reapply only on a change.
     applied_theme: (String, Option<config::CustomTheme>),
     // On its own timer: GPUI only renders on a change, and an idle app is when covers want releasing.
@@ -117,6 +118,7 @@ impl Shell {
             mini_player: cx.new(|cx| fullscreen::MiniPlayer::new(window, cx)),
             overlays: cx.new(|cx| overlays::Overlays::new(window, cx)),
             first_run,
+            debug_overlay: cx.new(|cx| debug_overlay::DebugOverlay::new(window, cx)),
             applied_theme: (String::new(), None),
             _heartbeat: Self::heartbeat(window, cx),
             _subscriptions: subscriptions,
@@ -255,7 +257,8 @@ impl Render for Shell {
                                         content.child(page)
                                     }
                                 })
-                                .child(self.overlays.clone()),
+                                .child(self.overlays.clone())
+                                .child(self.debug_overlay.clone()),
                         )
                         .when(panel_open && connected, |body| {
                             body.child(div().w(panel_width).child(self.side_panel.clone()))
@@ -288,6 +291,12 @@ impl Render for Shell {
             .on_action(cx.listener(|this, _: &QuickSearch, _, cx| this.toggle_quick_search(cx)))
             .on_action(cx.listener(|this, _: &Escape, _, cx| this.escape(cx)))
             .on_action(cx.listener(|this, _: &Back, _, cx| this.go_back(cx)))
+            .on_action(
+                cx.listener(|this, _: &debug_overlay::ToggleDebugOverlay, _, cx| {
+                    this.debug_overlay
+                        .update(cx, |overlay, cx| overlay.toggle(cx));
+                }),
+            )
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
             .child(body)
