@@ -287,12 +287,14 @@ impl Library {
         let ink = cx.theme().primary_foreground;
         let rule = style::black(0.2, cx);
         let divider = move || div().w(px(1.)).h_5().flex_shrink_0().bg(rule);
+        // The bar is an accent slab, so its buttons paint nothing of their own; without the
+        // variant a Button's hover layer repaints the glyph in the theme's grey over the accent.
+        let bare = clear_variant(ink, cx);
         let entry = |id: &'static str, icon: &'static str, label: SharedString| {
             Button::new(id)
-                .text()
                 .icon(icons::icon(icon))
                 .label(label)
-                .text_color(ink)
+                .custom(bare)
                 .font_weight(FontWeight::MEDIUM)
         };
         div()
@@ -356,10 +358,9 @@ impl Library {
                     .child(divider())
                     .child(
                         Button::new("selection-cancel")
-                            .text()
                             .icon(icons::icon(icons::CLOSE))
                             .tooltip(t("cancel"))
-                            .text_color(ink)
+                            .custom(clear_variant(ink, cx))
                             .pr_2()
                             .text_lg()
                             .on_click(cx.listener(|this, _, _, cx| {

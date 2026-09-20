@@ -4,7 +4,7 @@ mod lyrics;
 mod queue;
 
 use gpui_kit::base::StyledExt as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Selectable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -47,6 +47,9 @@ impl Render for ResizePanel {
 /// The panel the player bar's queue and lyrics buttons open, rendering whichever tab `Chrome` says.
 pub struct SidePanelView {
     width: Pixels,
+    // Which tab the pointer is on, so its wash can tween toward a hover instead of snapping to
+    // the ghost variant's own grey.
+    hovered: Option<&'static str>,
     queue: Entity<queue::QueuePanel>,
     lyrics: Entity<lyrics::LyricsPanel>,
     _subscriptions: Vec<Subscription>,
@@ -58,6 +61,7 @@ impl SidePanelView {
         let subscriptions = vec![cx.observe(&chrome, |_, _, cx| cx.notify())];
         Self {
             width: DEFAULT_WIDTH,
+            hovered: None,
             queue: cx.new(|cx| queue::QueuePanel::new(window, cx)),
             lyrics: cx.new(|cx| lyrics::LyricsPanel::new(window, cx)),
             _subscriptions: subscriptions,
@@ -79,28 +83,28 @@ impl SidePanelView {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let active = showing == panel;
+        let hovered = self.hovered == Some(id);
         let wash = motion::color(
             channel(id, "wash"),
-            if active {
-                style::white(style::ACTIVE, cx)
-            } else {
-                cx.theme().transparent
+            match (active, hovered) {
+                (true, _) => style::white(style::ACTIVE, cx),
+                (false, true) => style::white(style::RAISED, cx),
+                (false, false) => cx.theme().transparent,
             },
             window,
             cx,
         );
         let label = motion::color(
             channel(id, "label"),
-            if active {
-                cx.theme().foreground
-            } else {
-                style::white(0.5, cx)
+            match (active, hovered) {
+                (true, _) => cx.theme().foreground,
+                (false, true) => style::white(0.8, cx),
+                (false, false) => style::white(0.5, cx),
             },
             window,
             cx,
         );
         Button::new(id)
-            .ghost()
             .xsmall()
             .label(t(key))
             .selected(active)
@@ -109,8 +113,24 @@ impl SidePanelView {
             .rounded(TAB_RADIUS)
             .text_xs()
             .font_medium()
-            .bg(wash)
-            .text_color(label)
+            // The tween goes to every state layer, not to the instance style. A Button's own
+            // hover is refined over the base, so `.bg()` alone was overpainted for exactly as
+            // long as the pointer was on it: the ghost grey flashed in and the tween only ran
+            // on the way out.
+            .custom(
+                ButtonCustomVariant::new(cx)
+                    .color(wash)
+                    .hover(wash)
+                    .active(wash)
+                    .foreground(label),
+            )
+            .on_hover(cx.listener(move |this, over: &bool, _, cx| {
+                let held = over.then_some(id);
+                if this.hovered != held && (*over || this.hovered == Some(id)) {
+                    this.hovered = held;
+                    cx.notify();
+                }
+            }))
             .on_click(cx.listener(move |_, _, _, cx| {
                 Chrome::global(cx).update(cx, |chrome, cx| chrome.set_panel(Some(panel), cx));
             }))
