@@ -54,9 +54,9 @@ pub fn slate_400(cx: &App) -> Hsla {
     cx.theme().muted_foreground
 }
 
-/// `text-slate-500`: the solid mid-grey the artist and album columns use.
+/// `text-slate-500`: the solid mid-grey the artist and album columns use, clamped to AA.
 pub fn slate_500(cx: &App) -> Hsla {
-    parse(&theme::colors(cx).surface).unwrap_or_else(|| cx.theme().muted_foreground)
+    theme::dim_text(cx)
 }
 
 /// `rounded` — 4px.
@@ -120,11 +120,6 @@ impl Skin {
             _ => Skin::Normal,
         }
     }
-}
-
-/// A `#rrggbb` from the palette, which is data rather than a theme role.
-fn parse(color: &str) -> Option<Hsla> {
-    gpui_kit::Rgba::try_from(color).ok().map(Into::into)
 }
 
 /// A rem measure in pixels, for the setters that take `Pixels` (`Cover::size`, `Icon::size`).

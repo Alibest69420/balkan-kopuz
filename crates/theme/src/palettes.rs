@@ -62,7 +62,7 @@ pub const BUILT_IN: &[Palette] = &[
         raised: "#3c3836",
         surface: "#665c54",
         text: "#ebdbb2",
-        text_muted: "#a89984",
+        text_muted: "#aea08d",
         accent: "#458588",
         accent_soft: "#83a598",
         accent_alt: "#fabd2f",
@@ -79,7 +79,7 @@ pub const BUILT_IN: &[Palette] = &[
         raised: "#3c3836",
         surface: "#7c6f64",
         text: "#fbf1c7",
-        text_muted: "#a89984",
+        text_muted: "#aea08d",
         accent: "#83a598",
         accent_soft: "#8ec07c",
         accent_alt: "#458588",
@@ -96,7 +96,7 @@ pub const BUILT_IN: &[Palette] = &[
         raised: "#21222c",
         surface: "#44475a",
         text: "#f8f8f2",
-        text_muted: "#6272a4",
+        text_muted: "#8390b7",
         accent: "#bd93f9",
         accent_soft: "#caa7fc",
         accent_alt: "#bd93f9",
@@ -113,7 +113,7 @@ pub const BUILT_IN: &[Palette] = &[
         raised: "#3b4252",
         surface: "#4c566a",
         text: "#d8dee9",
-        text_muted: "#81a1c1",
+        text_muted: "#97b1cb",
         accent: "#88c0d0",
         accent_soft: "#8fbcbb",
         accent_alt: "#5e81ac",
@@ -147,7 +147,7 @@ pub const BUILT_IN: &[Palette] = &[
         raised: "#1a202b",
         surface: "#3a4a66",
         text: "#afbcbf",
-        text_muted: "#70819f",
+        text_muted: "#7787a4",
         accent: "#379cf6",
         accent_soft: "#6fafff",
         accent_alt: "#6a88ff",
@@ -164,7 +164,7 @@ pub const BUILT_IN: &[Palette] = &[
         raised: "#0d1017",
         surface: "#3d424d",
         text: "#b3b1ad",
-        text_muted: "#626a73",
+        text_muted: "#747d88",
         accent: "#39bae6",
         accent_soft: "#59c2ff",
         accent_alt: "#59c2ff",
@@ -181,7 +181,7 @@ pub const BUILT_IN: &[Palette] = &[
         raised: "#242936",
         surface: "#3e4b59",
         text: "#cbccc6",
-        text_muted: "#707a8c",
+        text_muted: "#87909f",
         accent: "#5ccfe6",
         accent_soft: "#73d0ff",
         accent_alt: "#73d0ff",
@@ -198,7 +198,7 @@ pub const BUILT_IN: &[Palette] = &[
         raised: "#1c1c24",
         surface: "#333738",
         text: "#cdcdcd",
-        text_muted: "#606079",
+        text_muted: "#82829b",
         accent: "#6e94b2",
         accent_soft: "#7e98e8",
         accent_alt: "#90a0b5",
@@ -215,7 +215,7 @@ pub const BUILT_IN: &[Palette] = &[
         raised: "#21252b",
         surface: "#3e4452",
         text: "#abb2bf",
-        text_muted: "#7f848e",
+        text_muted: "#8f939b",
         accent: "#61afef",
         accent_soft: "#61afef",
         accent_alt: "#528bcc",
@@ -266,7 +266,7 @@ pub const BUILT_IN: &[Palette] = &[
         raised: "#2d353b",
         surface: "#414b50",
         text: "#d3c6aa",
-        text_muted: "#859289",
+        text_muted: "#949f97",
         accent: "#7fbbb3",
         accent_soft: "#7fbbb3",
         accent_alt: "#83c092",
@@ -334,7 +334,7 @@ pub const BUILT_IN: &[Palette] = &[
         raised: "#e6e9ef",
         surface: "#bcc0cc",
         text: "#4c4f69",
-        text_muted: "#6c6f85",
+        text_muted: "#65687d",
         accent: "#1e66f5",
         accent_soft: "#209fb5",
         accent_alt: "#1e66f5",
@@ -368,7 +368,7 @@ pub const BUILT_IN: &[Palette] = &[
         raised: "#f8f0dc",
         surface: "#d4cfc4",
         text: "#5c6a72",
-        text_muted: "#829181",
+        text_muted: "#637162",
         accent: "#3a94c5",
         accent_soft: "#35a77c",
         accent_alt: "#3a94c5",
@@ -385,7 +385,7 @@ pub const BUILT_IN: &[Palette] = &[
         raised: "#f3f3f3",
         surface: "#d8d8d8",
         text: "#5c6166",
-        text_muted: "#8a9199",
+        text_muted: "#697079",
         accent: "#399ee6",
         accent_soft: "#55b4d4",
         accent_alt: "#399ee6",
@@ -434,4 +434,64 @@ pub const BUILT_IN: &[Palette] = &[
 /// The palette named by `AppConfig::theme`, if it is a built-in one.
 pub fn palette(name: &str) -> Option<&'static Palette> {
     BUILT_IN.iter().find(|palette| palette.name == name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::contrast::{AA, contrast};
+    use gpui_kit::{Hsla, Rgba};
+
+    fn hex(color: &str) -> Hsla {
+        Rgba::try_from(color)
+            .expect("a palette colour parses")
+            .into()
+    }
+
+    #[test]
+    fn every_palette_names_itself_once() {
+        for palette in BUILT_IN {
+            let named = BUILT_IN.iter().filter(|other| other.name == palette.name);
+            assert_eq!(named.count(), 1, "{}", palette.name);
+        }
+    }
+
+    #[test]
+    fn body_text_clears_aa_on_both_the_page_and_a_card() {
+        for palette in BUILT_IN {
+            for background in [palette.bg, palette.raised] {
+                for text in [palette.text, palette.text_muted] {
+                    let ratio = contrast(hex(text), hex(background));
+                    assert!(
+                        ratio >= AA,
+                        "{}: {text} on {background} is {ratio:.2}",
+                        palette.name
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_dimmest_body_text_is_clamped_into_aa() {
+        for palette in BUILT_IN {
+            let dim = crate::dim_text_of(&palette.into());
+            for background in [palette.bg, palette.raised] {
+                let ratio = contrast(dim, hex(background));
+                assert!(
+                    ratio >= AA,
+                    "{}: {} on {background} clamps to {ratio:.2}",
+                    palette.name,
+                    palette.surface
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_theme_is_dark_when_its_background_is() {
+        for palette in BUILT_IN {
+            assert_eq!(palette.dark, crate::is_dark(palette.bg), "{}", palette.name);
+        }
+    }
 }

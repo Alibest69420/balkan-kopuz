@@ -1,5 +1,7 @@
 //! Kopuz themes over GPUI Component's: the 13 palette tokens a Kopuz theme defines, projected onto the component theme's roles.
 
+mod accent;
+mod contrast;
 mod palettes;
 
 use std::collections::HashMap;
@@ -9,6 +11,8 @@ use config::AppConfig;
 use gpui_kit::component::{Theme, ThemeConfig, ThemeMode};
 use gpui_kit::{App, Window};
 
+pub use accent::{ACCENT_TWEEN, Surface, accent_for, accent_from, swatches, wash_for};
+pub use contrast::{AA, AA_LARGE, contrast, luminance, readable, readable_at, readable_on};
 pub use palettes::{BUILT_IN, palette};
 
 /// A built-in Kopuz theme: the same thirteen colors the themes and the editor use.
@@ -95,20 +99,48 @@ impl Colors {
     }
 }
 
-struct Active(Colors);
+struct Active {
+    colors: Colors,
+    dim_text: gpui_kit::Hsla,
+}
 
 impl gpui_kit::Global for Active {}
 
 /// The palette now showing, for the tokens the component theme has no role for.
 pub fn colors(cx: &App) -> Colors {
     cx.try_global::<Active>()
-        .map(|active| active.0.clone())
+        .map(|active| active.colors.clone())
         .unwrap_or_else(|| palette("default").expect("default theme").into())
+}
+
+/// `text-slate-500`, the dimmest body text: `surface` is a panel colour too, so as text it is clamped to AA.
+pub fn dim_text(cx: &App) -> gpui_kit::Hsla {
+    match cx.try_global::<Active>() {
+        Some(active) => active.dim_text,
+        None => dim_text_of(&colors(cx)),
+    }
+}
+
+fn dim_text_of(colors: &Colors) -> gpui_kit::Hsla {
+    let background = parse(&colors.bg).unwrap_or_else(|| gpui_kit::hsla(0., 0., 0., 1.));
+    let raised = parse(&colors.raised).unwrap_or(background);
+    let surface = parse(&colors.surface)
+        .or_else(|| parse(&colors.text_muted))
+        .unwrap_or(background);
+    // A card is `raised`, the page is `bg`: clamping against each in turn clears whichever is harder.
+    contrast::readable_on(contrast::readable_on(surface, background), raised)
+}
+
+fn parse(color: &str) -> Option<gpui_kit::Hsla> {
+    gpui_kit::Rgba::try_from(color).ok().map(Into::into)
 }
 
 /// Make these colors the active theme, including the scrollbars the Base layer paints.
 pub fn apply(name: &str, colors: &Colors, window: Option<&mut Window>, cx: &mut App) {
-    cx.set_global(Active(colors.clone()));
+    cx.set_global(Active {
+        colors: colors.clone(),
+        dim_text: dim_text_of(colors),
+    });
     let mode = if colors.dark {
         ThemeMode::Dark
     } else {

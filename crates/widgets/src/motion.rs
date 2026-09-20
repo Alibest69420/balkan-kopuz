@@ -45,6 +45,18 @@ pub fn color_over(
     )
 }
 
+/// The accent `surface` wears, eased over a track change; `base` is what the theme would paint.
+pub fn accent(surface: theme::Surface, base: Hsla, window: &mut Window, cx: &mut App) -> Hsla {
+    let target = theme::accent_for(surface, window, cx).unwrap_or(base);
+    color_over(
+        id("accent", surface.key()),
+        target,
+        theme::ACCENT_TWEEN,
+        window,
+        cx,
+    )
+}
+
 /// A length on its way to `target`: the cover zoom a `group-hover:scale-105` reads as.
 pub fn length(
     id: impl Into<ElementId>,
