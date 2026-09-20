@@ -45,3 +45,5 @@ fullscreen = { path = "../fullscreen" }
 quick_search = { path = "../quick_search" }
 overlays = { path = "../overlays" }
 metadata_dialog = { path = "../metadata_dialog" }
+profile = { path = "../profile" }
+tikv-jemallocator = "0.6"

@@ -18,7 +18,7 @@ mod sources;
 
 use gpui_kit::{App, AppContext as _, Entity, Global};
 
-pub use artwork::{ArtworkBytes, ArtworkKey, artwork_source};
+pub use artwork::{ArtworkBytes, ArtworkKey, Residents, artwork_source};
 pub use chrome::{Chrome, SidePanel};
 pub use config::ConfigModel;
 pub use downloads::DownloadsModel;

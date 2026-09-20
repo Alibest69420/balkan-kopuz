@@ -29,6 +29,8 @@ pub struct Shell {
     overlays: Entity<overlays::Overlays>,
     // The theme these were applied for, so config edits reapply only on a change.
     applied_theme: (String, Option<config::CustomTheme>),
+    // Every frame passes through this render, so it is where the profiler counts them.
+    heartbeat: profile::Heartbeat,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -94,6 +96,7 @@ impl Shell {
             mini_player: cx.new(|cx| fullscreen::MiniPlayer::new(window, cx)),
             overlays: cx.new(|cx| overlays::Overlays::new(window, cx)),
             applied_theme: (String::new(), None),
+            heartbeat: profile::Heartbeat::new(),
             _subscriptions: subscriptions,
         }
     }
@@ -160,6 +163,11 @@ impl Shell {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let _frame = profile::Frame::new();
+        if self.heartbeat.tick() {
+            // Covers are released on the heartbeat, not per frame: the sweep sorts what it holds.
+            store::Residents::sweep(window, cx);
+        }
         let connected = self.connection.read(cx).is_connected();
         let chrome = Chrome::global(cx).read(cx);
         let fullscreen = chrome.is_fullscreen();

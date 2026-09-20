@@ -33,12 +33,18 @@ fn daemon_address() -> anyhow::Result<link::Address> {
     Ok(link::Address::Socket(socket))
 }
 
+/// jemalloc, so the profiler can ask the allocator what is held instead of reading RSS.
+#[global_allocator]
+static ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
+/// Hand freed pages back to the OS on a timer, so releasing a cover shows up in RSS rather than
+/// leaving the process looking as large as it ever was.
+#[unsafe(export_name = "malloc_conf")]
+pub static MALLOC_CONF: &[u8] = b"background_thread:true,dirty_decay_ms:5000,muzzy_decay_ms:5000\0";
+
 fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
-        )
-        .init();
+    // Held until main returns: dropping it is what flushes the chrome trace.
+    let _profile = profile::init();
 
     let address = daemon_address()?;
 

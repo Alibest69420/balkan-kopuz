@@ -10,11 +10,13 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+profile = { path = "../profile" }
+tracing = { workspace = true }
 api = { workspace = true }
 config = { workspace = true }
 i18n = { workspace = true }
 link = { workspace = true }
 gpui-kit = { workspace = true }
 futures = { workspace = true }
-tracing = { workspace = true }
 anyhow = { workspace = true }
