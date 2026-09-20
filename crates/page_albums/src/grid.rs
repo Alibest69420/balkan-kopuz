@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 use api::{AlbumInfo, AlbumPage, JobKind, PlaylistCapability, Table};
 use config::{AlbumSortField, AlbumViewMode, SortCriterion, SortDirection};
-use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -248,16 +248,6 @@ impl Albums {
                     }),
             )
     }
-}
-
-/// A Button that paints nothing of its own, so a frame around it can own the tween.
-fn clear_variant(ink: gpui_kit::Hsla, cx: &App) -> ButtonCustomVariant {
-    let clear = transparent_black();
-    ButtonCustomVariant::new(cx)
-        .color(clear)
-        .hover(clear)
-        .active(clear)
-        .foreground(ink)
 }
 
 impl Render for Albums {

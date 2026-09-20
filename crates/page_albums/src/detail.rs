@@ -881,14 +881,11 @@ impl AlbumDetail {
         let browse_id = view.browse_id.clone();
         let first_key = self.rows.first().map(|row| row.key.clone());
 
-        let outlined = |button: Button, cx: &Context<Self>| {
-            let foreground = cx.theme().foreground;
-            let border_hover = style::white(0.3, cx);
-            button
-                .border_1()
-                .border_color(style::white(0.15, cx))
-                .text_color(style::slate_400(cx))
-                .hover(move |button| button.border_color(border_hover).text_color(foreground))
+        let outlined = Chrome {
+            ring: Some((0.15, 0.3)),
+            ink: style::slate_400(cx),
+            wash: false,
+            lit: false,
         };
 
         v_flex()
@@ -916,12 +913,10 @@ impl AlbumDetail {
                             .items_start()
                             .gap_5()
                             .pt_2()
-                            .child(div().shadow_2xl().child(self.cover(
-                                &cover,
-                                REMOTE_COVER,
-                                cx.theme().radius * 2.,
-                                cx,
-                            )))
+                            .child(div().shadow_2xl().child({
+                                let radius = cx.theme().radius * 2.;
+                                self.cover(&cover, REMOTE_COVER, radius, window, cx)
+                            }))
                             .child(
                                 v_flex()
                                     .w_full()
@@ -968,51 +963,66 @@ impl AlbumDetail {
                                     .gap_3()
                                     .items_center()
                                     .flex_wrap()
-                                    .children(self.download_all_button(REMOTE_SECONDARY, cx))
-                                    .child(
-                                        outlined(
-                                            Self::round_button(
-                                                "album-remote-artist-button",
-                                                icons::MIC,
-                                                REMOTE_SECONDARY,
-                                                REMOTE_SECONDARY * 0.36,
-                                                cx,
-                                            ),
+                                    .children(self.download_all_button(
+                                        REMOTE_SECONDARY,
+                                        window,
+                                        cx,
+                                    ))
+                                    .child({
+                                        let button = Self::round_button(
+                                            "album-remote-artist-button",
+                                            icons::MIC,
+                                            REMOTE_SECONDARY,
+                                            REMOTE_SECONDARY * 0.36,
                                             cx,
                                         )
                                         // TODO(i18n): en.ftl has no go-to-artist key.
                                         .tooltip("Go to artist")
-                                        .on_click(
-                                            move |_, _, cx| {
-                                                Navigator::navigate(artist_route.clone(), cx)
-                                            },
-                                        ),
-                                    )
+                                        .on_click(move |_, _, cx| {
+                                            Navigator::navigate(artist_route.clone(), cx)
+                                        });
+                                        self.ringed(
+                                            "album-remote-artist-frame",
+                                            button,
+                                            REMOTE_SECONDARY,
+                                            outlined,
+                                            window,
+                                            cx,
+                                        )
+                                    })
                                     .child(self.play_button(REMOTE_ACTION, cx))
-                                    .child(self.shuffle_button(REMOTE_SECONDARY, true, cx))
-                                    .child(
-                                        outlined(
-                                            Self::round_button(
-                                                "album-remote-share",
-                                                icons::SHARE,
-                                                REMOTE_SECONDARY,
-                                                REMOTE_SECONDARY * 0.36,
-                                                cx,
-                                            ),
+                                    .child(self.shuffle_button(
+                                        REMOTE_SECONDARY,
+                                        true,
+                                        window,
+                                        cx,
+                                    ))
+                                    .child({
+                                        let button = Self::round_button(
+                                            "album-remote-share",
+                                            icons::SHARE,
+                                            REMOTE_SECONDARY,
+                                            REMOTE_SECONDARY * 0.36,
                                             cx,
                                         )
                                         // TODO(i18n): en.ftl has no generic share key.
                                         .tooltip("Share")
-                                        .on_click(
-                                            move |_, _, cx| {
-                                                ops::share_album(
-                                                    browse_id.clone(),
-                                                    first_key.clone(),
-                                                    cx,
-                                                )
-                                            },
-                                        ),
-                                    ),
+                                        .on_click(move |_, _, cx| {
+                                            ops::share_album(
+                                                browse_id.clone(),
+                                                first_key.clone(),
+                                                cx,
+                                            )
+                                        });
+                                        self.ringed(
+                                            "album-remote-share-frame",
+                                            button,
+                                            REMOTE_SECONDARY,
+                                            outlined,
+                                            window,
+                                            cx,
+                                        )
+                                    }),
                             ),
                     )
                     .child(
@@ -1028,18 +1038,18 @@ impl AlbumDetail {
 }
 
 impl Render for AlbumDetail {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let album = self.album.read(cx).value().cloned().flatten();
         let remote = self.remote.read(cx).value().cloned().flatten();
 
         if self.capabilities.albums == AlbumPresentation::Remote {
             if let Some(view) = RemoteView::of(album.as_ref(), remote.as_ref()) {
-                return self.remote_detail(view, cx);
+                return self.remote_detail(view, window, cx);
             }
         } else if let Some(album) = album.clone() {
-            return self.standard_detail(album, cx);
+            return self.standard_detail(album, window, cx);
         } else if let Some(view) = RemoteView::of(None, remote.as_ref()) {
-            return self.remote_detail(view, cx);
+            return self.remote_detail(view, window, cx);
         }
 
         match self.album.read(cx).is_settled() && self.remote.read(cx).is_settled() {

@@ -4,11 +4,11 @@ use config::{
     AlbumSortField, AlbumViewMode, AppConfig, ArtistSortField, ArtistViewOrder, SortCriterion,
     SortDirection,
 };
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{Selectable as _, Sizable as _, h_flex};
 use gpui_kit::{
-    App, Div, ElementId, Entity, IntoElement, ParentElement as _, Pixels, SharedString,
+    App, Div, ElementId, Entity, Hsla, IntoElement, ParentElement as _, Pixels, SharedString,
     Styled as _, Window, px,
 };
 use store::ConfigModel;
@@ -17,8 +17,25 @@ use widgets::{icons, motion, style};
 
 /// `text-white/40`: the resting label of a segmented pill's unselected half.
 const SEGMENT_IDLE: f32 = 0.40;
+/// `hover:text-white/80` on that same half.
+const SEGMENT_HOT: f32 = 0.80;
 /// `rounded-md`, which the shared radius helpers do not carry.
 const SEGMENT_RADIUS: Pixels = px(6.);
+
+/// A `Button` paints its own hover style over the instance one, so the variant is handed the tween too.
+pub(crate) fn tweened(button: Button, fill: Hsla, text: Hsla, edge: Hsla, cx: &App) -> Button {
+    button
+        .custom(
+            ButtonCustomVariant::new(cx)
+                .color(edge)
+                .hover(fill)
+                .active(fill)
+                .foreground(text),
+        )
+        .bg(fill)
+        .border_color(edge)
+        .text_color(text)
+}
 
 /// Hover as a value a tween can read; `.hover()` refines a style instead of reporting the state.
 pub(crate) fn hovered(
@@ -142,6 +159,7 @@ fn pill(cx: &App) -> Div {
 ///
 /// `transition-all`: the fill and the label tween as the selection moves between the halves.
 fn segment(id: &'static str, selected: bool, window: &mut Window, cx: &mut App) -> Button {
+    let (hot, hover) = hovered(SharedString::from(format!("{id}-hover")), window, cx);
     let fill = motion::color(
         SharedString::from(format!("{id}-fill")),
         style::white(if selected { style::HOVER } else { 0. }, cx),
@@ -150,19 +168,30 @@ fn segment(id: &'static str, selected: bool, window: &mut Window, cx: &mut App) 
     );
     let label = motion::color(
         SharedString::from(format!("{id}-label")),
-        style::white(if selected { 1. } else { SEGMENT_IDLE }, cx),
+        style::white(
+            match (selected, hot) {
+                (true, _) => 1.,
+                (false, true) => SEGMENT_HOT,
+                (false, false) => SEGMENT_IDLE,
+            },
+            cx,
+        ),
         window,
         cx,
     );
-    Button::new(id)
-        .ghost()
-        .xsmall()
-        .h_7()
-        .px_3()
-        .rounded(SEGMENT_RADIUS)
-        .selected(selected)
-        .bg(fill)
-        .text_color(label)
+    tweened(
+        Button::new(id)
+            .xsmall()
+            .h_7()
+            .px_3()
+            .rounded(SEGMENT_RADIUS)
+            .selected(selected)
+            .on_hover(track(hover)),
+        fill,
+        label,
+        style::white(0., cx),
+        cx,
+    )
 }
 
 /// Grid ⇄ list, writing `key`'s config field.

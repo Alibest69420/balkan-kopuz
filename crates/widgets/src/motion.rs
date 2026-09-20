@@ -129,3 +129,22 @@ pub fn enter(
     }
     amount(id, if entered { 1. } else { 0. }, duration, window, cx)
 }
+
+/// `scale-105`, the square cards.
+pub const ZOOM_SM: f32 = 1.05;
+/// `scale-110`, the round artist card.
+pub const ZOOM_LG: f32 = 1.10;
+
+/// A cover's hovered size at an explicit factor, for the cards that zoom further.
+pub fn zoom_by(
+    id: impl Into<ElementId>,
+    base: Pixels,
+    factor: f32,
+    hovered: bool,
+    duration: Duration,
+    window: &mut Window,
+    cx: &mut App,
+) -> Pixels {
+    let target = if hovered { base * factor } else { base };
+    length(id, target, duration, window, cx)
+}

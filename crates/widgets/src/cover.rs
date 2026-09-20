@@ -22,6 +22,7 @@ pub struct Cover {
     placeholder: &'static str,
     zoom: Option<(ElementId, bool)>,
     zoom_speed: Duration,
+    zoom_factor: f32,
 }
 
 impl Cover {
@@ -34,6 +35,7 @@ impl Cover {
             placeholder: icons::MUSIC,
             zoom: None,
             zoom_speed: motion::SLOW,
+            zoom_factor: motion::ZOOM_SM,
         }
     }
 
@@ -67,6 +69,12 @@ impl Cover {
         self
     }
 
+    /// How far it zooms; `scale-105` unless the original says otherwise.
+    pub fn zoom_factor(mut self, factor: f32) -> Self {
+        self.zoom_factor = factor;
+        self
+    }
+
     /// How long that zoom takes; `duration-300` unless the original says `duration-500`.
     pub fn zoom_speed(mut self, duration: Duration) -> Self {
         self.zoom_speed = duration;
@@ -83,9 +91,15 @@ impl RenderOnce for Cover {
         let glyph = px((self.size.as_f32() * 0.22).max(12.));
         // The frame keeps its size and clips; only the picture inside it grows.
         let drawn = match self.zoom.clone() {
-            Some((id, hovered)) => {
-                motion::zoom_over(id, self.size, hovered, self.zoom_speed, window, cx)
-            }
+            Some((id, hovered)) => motion::zoom_by(
+                id,
+                self.size,
+                self.zoom_factor,
+                hovered,
+                self.zoom_speed,
+                window,
+                cx,
+            ),
             None => self.size,
         };
         div()
@@ -102,6 +116,8 @@ impl RenderOnce for Cover {
                     img(store::artwork_source(artwork, self.hq))
                         .size(drawn)
                         .flex_shrink_0()
+                        // The frame's mask is a rect, so the picture rounds its own corners.
+                        .rounded(radius)
                         .object_fit(ObjectFit::Cover),
                 ),
                 None => frame.child(

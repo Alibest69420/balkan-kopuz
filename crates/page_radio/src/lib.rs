@@ -19,7 +19,7 @@ use gpui_kit::{
 use link::Link;
 use store::{Notices, Query, actions};
 use widgets::format::t;
-use widgets::{Cover, EmptyState, icons, style};
+use widgets::{Cover, EmptyState, icons, motion, style};
 
 // Typing settles before the directory is searched; the Dioxus page used the same delay.
 const DEBOUNCE: Duration = Duration::from_millis(300);
@@ -82,6 +82,8 @@ pub struct Radio {
     directory: Entity<Query<Vec<RadioStationInfo>>>,
     pinned: HashSet<String>,
     expanded: HashSet<String>,
+    // The card under the pointer, which its wash tweens toward.
+    hovered_card: Option<SharedString>,
     scroll: ScrollHandle,
     _debounce: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
@@ -117,6 +119,7 @@ impl Radio {
             directory,
             pinned: HashSet::new(),
             expanded: HashSet::new(),
+            hovered_card: None,
             scroll: ScrollHandle::new(),
             _debounce: None,
             _subscriptions: subscriptions,
@@ -305,26 +308,59 @@ impl Radio {
             .collect()
     }
 
-    /// `p-4 rounded-xl border border-white/8 hover:bg-white/10`: the shape both lists' rows take.
-    fn card(id: SharedString, cx: &Context<Self>) -> gpui_kit::Stateful<gpui_kit::Div> {
+    fn set_card_hover(&mut self, id: SharedString, hovered: bool, cx: &mut Context<Self>) {
+        if hovered {
+            self.hovered_card = Some(id);
+        } else if self.hovered_card.as_ref() == Some(&id) {
+            self.hovered_card = None;
+        }
+        cx.notify();
+    }
+
+    /// `p-4 rounded-xl border border-white/8 transition-colors hover:bg-white/10`.
+    fn card(
+        &self,
+        id: SharedString,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> gpui_kit::Stateful<gpui_kit::Div> {
+        let hovered = self.hovered_card.as_ref() == Some(&id);
+        let wash = motion::color(
+            SharedString::from(format!("{id}-wash")),
+            if hovered {
+                style::white(style::HOVER, cx)
+            } else {
+                style::white(0., cx)
+            },
+            window,
+            cx,
+        );
         div()
-            .id(id)
+            .id(id.clone())
             .w_full()
             .p_4()
             .rounded(style::radius_xl())
             .border_1()
             .border_color(style::white(0.08, cx))
             .cursor_pointer()
-            .hover(|row| row.bg(style::white(style::HOVER, cx)))
+            .bg(wash)
+            .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
+                this.set_card_hover(id.clone(), *hovered, cx)
+            }))
     }
 
     /// A row of the selected table: the whole row plays, the buttons pick a stream.
-    fn pinned_row(&self, station: &RadioStationInfo, cx: &mut Context<Self>) -> AnyElement {
+    fn pinned_row(
+        &self,
+        station: &RadioStationInfo,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let expanded = self.expanded.contains(&station.id);
         let station_id = station.id.clone();
         let stream_id = first_stream(station);
         let muted = style::slate_400(cx);
-        Self::card(SharedString::from(station.id.clone()), cx)
+        self.card(SharedString::from(station.id.clone()), window, cx)
             .flex()
             .flex_col()
             .on_click(

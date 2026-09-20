@@ -13,7 +13,7 @@ use gpui_kit::{
 };
 use store::{Query, actions};
 use widgets::format::{duration, t};
-use widgets::{Cover, EmptyState, Loading, PageHeader, icons, style};
+use widgets::{Cover, EmptyState, Loading, PageHeader, icons, motion, style};
 
 // The Dioxus list's row height; virtualized rows need one resolved value.
 const ROW_HEIGHT: Pixels = px(60.);
@@ -46,6 +46,8 @@ pub struct Activity {
     row_offset: usize,
     total: usize,
     settled: bool,
+    // The row under the pointer, whose index cross-fades into a play glyph.
+    hovered: Option<SharedString>,
     requested: Option<Page>,
     tracks: Entity<Query<TrackPage>>,
     genres: Entity<Query<HashMap<String, String>>>,
@@ -98,6 +100,7 @@ impl Activity {
             row_offset: 0,
             total: 0,
             settled: false,
+            hovered: None,
             requested: Some(first),
             tracks,
             genres,
@@ -167,7 +170,16 @@ impl Activity {
             .unwrap_or_else(|| "-".into())
     }
 
-    fn row(&self, index: usize, cx: &mut Context<Self>) -> AnyElement {
+    fn set_hover(&mut self, uid: SharedString, hovered: bool, cx: &mut Context<Self>) {
+        if hovered {
+            self.hovered = Some(uid);
+        } else if self.hovered.as_ref() == Some(&uid) {
+            self.hovered = None;
+        }
+        cx.notify();
+    }
+
+    fn row(&self, index: usize, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let Some(track) = index
             .checked_sub(self.row_offset)
             .and_then(|offset| self.rows.get(offset))
@@ -181,10 +193,29 @@ impl Activity {
             .map(|secs| duration(secs * 1000))
             .unwrap_or_else(|| "--:--".into());
         let muted = style::slate_400(cx);
+        let uid = SharedString::from(track.uid.clone());
+        let hovered = self.hovered.as_ref() == Some(&uid);
+        let wash = motion::color(
+            SharedString::from(format!("activity-wash-{uid}")),
+            if hovered {
+                style::white(style::RAISED, cx)
+            } else {
+                style::white(0., cx)
+            },
+            window,
+            cx,
+        );
+        // `group-hover:opacity-0` on the number against `group-hover:opacity-100` on the glyph.
+        let reveal = motion::amount(
+            SharedString::from(format!("activity-play-{uid}")),
+            if hovered { 1. } else { 0. },
+            motion::FAST,
+            window,
+            cx,
+        );
 
         div()
-            .id(SharedString::from(track.uid.clone()))
-            .group(ROW_GROUP)
+            .id(uid.clone())
             .h(ROW_HEIGHT)
             .w_full()
             .flex()
@@ -193,7 +224,10 @@ impl Activity {
             .px_4()
             .cursor_pointer()
             .rounded(style::radius_xl())
-            .hover(|row| row.bg(style::white(style::RAISED, cx)))
+            .bg(wash)
+            .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
+                this.set_hover(uid.clone(), *hovered, cx)
+            }))
             .on_click(cx.listener(move |_, _, _, cx| {
                 actions::play_context(
                     QueueContext::Filter {
@@ -215,7 +249,7 @@ impl Activity {
                     .text_color(style::white(0.5, cx))
                     .child(
                         div()
-                            .group_hover(ROW_GROUP, |number| number.invisible())
+                            .opacity(1. - reveal)
                             .child((index + 1).to_string()),
                     )
                     .child(
@@ -225,10 +259,8 @@ impl Activity {
                             .flex()
                             .items_center()
                             .justify_center()
-                            .invisible()
-                            .group_hover(ROW_GROUP, |play| {
-                                play.visible().text_color(cx.theme().foreground)
-                            })
+                            .opacity(reveal)
+                            .text_color(cx.theme().foreground)
                             .child(icons::icon(icons::PLAY).size(px(14.))),
                     ),
             )
@@ -348,9 +380,6 @@ impl Activity {
     }
 }
 
-// The row's own hover group, so the index can swap for a play glyph.
-const ROW_GROUP: &str = "activity-row";
-
 impl Render for Activity {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let count = self.total;
@@ -393,7 +422,9 @@ impl Render for Activity {
                     count,
                     cx.processor(move |this, range: Range<usize>, window, cx| {
                         this.ensure_window(&range, window, cx);
-                        range.map(|index| this.row(index, cx)).collect::<Vec<_>>()
+                        range
+                            .map(|index| this.row(index, window, cx))
+                            .collect::<Vec<_>>()
                     }),
                 )
                 .track_scroll(&self.scroll)

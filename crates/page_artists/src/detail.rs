@@ -409,6 +409,9 @@ impl ArtistDetail {
             window,
             cx,
         );
+        let play_text = cx.theme().primary_foreground;
+        // These buttons carry no border; `tweened` still wants a colour for the edge it would paint.
+        let clear = style::white(0., cx);
         let (download_hot, download_hover) = controls::hovered("artist-download-hover", window, cx);
         let download_fill = motion::color(
             "artist-download-fill",
@@ -501,14 +504,10 @@ impl ArtistDetail {
                     .gap_4()
                     .items_center()
                     .flex_shrink_0()
-                    .child(hover_shell(
-                        "artist-shuffle-hover",
-                        shuffle_hover,
+                    .child(controls::tweened(
                         round_button("artist-shuffle", icons::SHUFFLE)
-                            .ghost()
                             .selected(shuffle)
-                            .bg(shuffle_fill)
-                            .text_color(shuffle_text)
+                            .on_hover(controls::track(shuffle_hover))
                             .tooltip(if shuffle {
                                 t("shuffle_on")
                             } else {
@@ -518,57 +517,62 @@ impl ArtistDetail {
                                 PlayerModel::global(cx)
                                     .update(cx, |player, cx| player.set_shuffle(!shuffle, cx))
                             }),
+                        shuffle_fill,
+                        shuffle_text,
+                        clear,
+                        cx,
                     ))
-                    .child(hover_shell(
-                        "artist-play-hover",
-                        play_hover,
-                        round_button("artist-play", icons::PLAY)
-                            .primary()
-                            .when(!keys.is_empty(), |button| button.bg(play_fill))
+                    .child({
+                        let play = round_button("artist-play", icons::PLAY)
+                            .on_hover(controls::track(play_hover))
                             .tooltip(t("play"))
                             .disabled(keys.is_empty())
                             .on_click({
                                 let keys = keys.clone();
                                 move |_, _, cx| actions::play_all(keys.clone(), cx)
-                            }),
-                    ))
+                            });
+                        if keys.is_empty() {
+                            play.primary()
+                        } else {
+                            controls::tweened(play, play_fill, play_text, clear, cx)
+                        }
+                    })
                     .when(capabilities.downloads, |row| {
                         let live = !busy && !keys.is_empty();
-                        row.child(hover_shell(
-                            "artist-download-hover",
-                            download_hover,
-                            Button::new("artist-download-all")
+                        let download = Button::new("artist-download-all")
+                            .size_12()
+                            .rounded_full()
+                            .border_1()
+                            .on_hover(controls::track(download_hover))
+                            .icon(icons::icon(if stored {
+                                icons::TRASH
+                            } else {
+                                icons::DOWNLOAD
+                            }))
+                            .tooltip(if stored {
+                                t("remove_download")
+                            } else {
+                                t("download_offline")
+                            })
+                            .disabled(!live)
+                            .on_click({
+                                let keys = keys.clone();
+                                move |_, _, cx| set_downloaded(keys.clone(), !stored, cx)
+                            });
+                        row.child(if live {
+                            controls::tweened(
+                                download,
+                                download_fill,
+                                download_text,
+                                download_edge,
+                                cx,
+                            )
+                        } else {
+                            download
                                 .ghost()
-                                .size_12()
-                                .rounded_full()
-                                .border_1()
-                                .when(live, |button| {
-                                    button
-                                        .bg(download_fill)
-                                        .border_color(download_edge)
-                                        .text_color(download_text)
-                                })
-                                .when(!live, |button| {
-                                    button
-                                        .border_color(style::white(style::ACTIVE, cx))
-                                        .text_color(style::white(0.70, cx))
-                                })
-                                .icon(icons::icon(if stored {
-                                    icons::TRASH
-                                } else {
-                                    icons::DOWNLOAD
-                                }))
-                                .tooltip(if stored {
-                                    t("remove_download")
-                                } else {
-                                    t("download_offline")
-                                })
-                                .disabled(!live)
-                                .on_click({
-                                    let keys = keys.clone();
-                                    move |_, _, cx| set_downloaded(keys.clone(), !stored, cx)
-                                }),
-                        ))
+                                .border_color(style::white(style::ACTIVE, cx))
+                                .text_color(style::white(0.70, cx))
+                        })
                     }),
             )
             .into_any_element()
