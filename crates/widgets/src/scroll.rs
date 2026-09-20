@@ -28,6 +28,10 @@ struct Glide {
 /// arrived since the last frame.
 pub fn smooth(id: impl Into<ElementId>, handle: &ScrollHandle, window: &mut Window, cx: &mut App) {
     let id: ElementId = id.into();
+    // With motion off, leaving the offset alone is exactly GPUI's own scrolling.
+    if motion::span(GLIDE, cx).is_none() {
+        return;
+    }
     let glide = window.use_keyed_state(
         ElementId::Name(format!("{id:?}-glide").into()),
         cx,

@@ -12,16 +12,17 @@ pub const MEDIUM: Duration = Duration::from_millis(200);
 /// `duration-300`, the carousels and the larger reveals.
 pub const SLOW: Duration = Duration::from_millis(300);
 
-/// Tailwind's default curve, `cubic-bezier(0.4, 0, 0.2, 1)`.
-fn curve() -> Transition {
-    Transition::new(FAST).easing(Easing::EaseInOut)
+/// How long a tween may take once the motion preference has had its say; `None` means snap.
+pub fn span(duration: Duration, cx: &App) -> Option<Duration> {
+    let scale = store::layout(cx).motion.scale();
+    (scale > 0.).then(|| duration.mul_f32(scale))
 }
 
 /// A colour on its way to `target`: `transition-colors` for one property.
 ///
 /// `id` must be stable and unique within the element, since it keys the channel.
 pub fn color(id: impl Into<ElementId>, target: Hsla, window: &mut Window, cx: &mut App) -> Hsla {
-    transition(id.into(), target, curve(), window, cx)
+    color_over(id, target, FAST, window, cx)
 }
 
 /// The same over `duration`, for a `duration-300` hover or a slower fade.
@@ -32,6 +33,9 @@ pub fn color_over(
     window: &mut Window,
     cx: &mut App,
 ) -> Hsla {
+    let Some(duration) = span(duration, cx) else {
+        return target;
+    };
     transition(
         id.into(),
         target,
@@ -49,6 +53,9 @@ pub fn length(
     window: &mut Window,
     cx: &mut App,
 ) -> Pixels {
+    let Some(duration) = span(duration, cx) else {
+        return target;
+    };
     transition(
         id.into(),
         target,
@@ -66,6 +73,9 @@ pub fn amount(
     window: &mut Window,
     cx: &mut App,
 ) -> f32 {
+    let Some(duration) = span(duration, cx) else {
+        return target;
+    };
     transition(
         id.into(),
         target,
@@ -115,6 +125,10 @@ pub fn enter(
     cx: &mut App,
 ) -> f32 {
     let id: ElementId = id.into();
+    // Without a tween there is nothing to fade, and the blank first frame would just flicker.
+    if span(duration, cx).is_none() {
+        return 1.;
+    }
     let shown = window.use_keyed_state(
         ElementId::Name(format!("{id:?}-entered").into()),
         cx,
