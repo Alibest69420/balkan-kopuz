@@ -6,6 +6,7 @@ use api::schema::{FieldSpec, FieldValue};
 use api::{ApiEvent, SignInKind, SourceFolderEntry, SourceInfo, SourceKind, SourceState, Table};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -193,6 +194,15 @@ impl MediaServers {
                 _subscription: subscription,
             });
         }
+        // A secret never comes back from the daemon, so a signed-in source is what says one is held.
+        let saved: Vec<String> = match source.authenticated {
+            true => specs
+                .iter()
+                .filter(|field| matches!(field.kind, api::schema::FieldKind::Secret))
+                .map(|field| field.key.clone())
+                .collect(),
+            false => Vec::new(),
+        };
         if let Some(options) = self.options.as_mut() {
             if options.specs != specs {
                 options.specs = specs.clone();
@@ -200,9 +210,10 @@ impl MediaServers {
                     .form
                     .update(cx, |form, cx| form.set_specs(specs, window, cx));
             }
-            options
-                .form
-                .update(cx, |form, cx| form.set_locked(locked, cx));
+            options.form.update(cx, |form, cx| {
+                form.set_locked(locked, cx);
+                form.set_saved(saved, cx);
+            });
         }
         cx.notify();
     }
@@ -320,22 +331,9 @@ impl MediaServers {
         }
     }
 
+    /// The daemon owns the browser window and the token it ends holding; this only asks for it.
     fn authenticate(&mut self, id: String, cx: &mut Context<Self>) {
-        let call =
-            Link::global(cx).call(move |api| async move { api.authenticate_source(id).await });
-        cx.spawn(async move |_, cx| match call.await {
-            Ok(_) => {
-                cx.update(|cx| {
-                    SourcesModel::global(cx).update(cx, |sources, cx| sources.refetch(cx));
-                });
-            }
-            Err(error) => {
-                cx.update(|cx| {
-                    Notices::error(t_with("signin_failed", &[("error", error.to_string())]), cx);
-                });
-            }
-        })
-        .detach();
+        store::browser_sign_in(id, cx);
     }
 
     fn open_login(&mut self, source: &SourceInfo, window: &mut Window, cx: &mut Context<Self>) {
@@ -444,6 +442,7 @@ impl MediaServers {
 
     fn status_line(&self, source: &SourceInfo, cx: &mut Context<Self>) -> AnyElement {
         let status = self.status(source);
+        let waiting = store::is_waiting_for_browser(&source.id, cx);
         let (label, color): (SharedString, Hsla) = match status {
             Status::Connected => (t("connected"), cx.theme().success),
             Status::Connecting => (t("connecting"), cx.theme().warning),
@@ -454,7 +453,21 @@ impl MediaServers {
             .items_center()
             .mt_1()
             .child(div().text_xs().text_color(color).child(label))
-            .when(status == Status::Disconnected, |row| {
+            .when(waiting, |row| {
+                row.child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(Spinner::new().small().color(cx.theme().warning))
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(cx.theme().warning)
+                                .child(t("waiting_for_browser")),
+                        ),
+                )
+            })
+            .when(status == Status::Disconnected && !waiting, |row| {
                 let source = source.clone();
                 row.child(
                     Button::new("server-login")
@@ -759,7 +772,7 @@ impl Render for MediaServers {
             .iter()
             .map(|source| self.server(source, window, cx))
             .collect();
-        ui::section(t("media_servers")).child(
+        ui::section(t("media_servers")).opaque().child(
             ui::card(cx)
                 .when(servers.is_empty(), |card| {
                     card.child(ui::empty(t("no_saved_servers"), cx))

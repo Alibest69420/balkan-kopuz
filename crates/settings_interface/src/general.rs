@@ -1,14 +1,15 @@
 //! The knobs that belong to no single package: motion, accent and how big everything is drawn.
 
+use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::v_flex;
 use gpui_kit::{
-    App, AppContext as _, Context, IntoElement, ParentElement as _, Render, SharedString, Styled,
-    Window,
+    App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
+    Styled, Subscription, Window,
 };
 use store::LayoutModel;
 use store::layout::{Accent, Motion, Section as Group};
 use widgets::format::t;
-use widgets::settings::{SettingRow, choice, section};
+use widgets::settings::{SettingRow, choice, section, select_width};
 
 /// The scale steps the size setting offers, inside `layout::SCALE_RANGE`.
 const STEPS: &[f32] = &[0.8, 0.9, 1.0, 1.1, 1.25, 1.4];
@@ -19,12 +20,37 @@ pub fn register(cx: &mut App) {
         "interface_general",
         0,
         Some(Group::Interface),
-        |_, cx| cx.new(|_| General).into(),
+        |window, cx| cx.new(|cx| General::new(window, cx)).into(),
         cx,
     );
 }
 
-struct General;
+struct General {
+    font: Entity<InputState>,
+    _subscription: Subscription,
+}
+
+impl General {
+    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let held = store::layout(cx).interface.font.clone().unwrap_or_default();
+        let font = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(t("interface_font_placeholder"))
+                .default_value(held)
+        });
+        let subscription = cx.subscribe(&font, |_, state, event: &InputEvent, cx| {
+            if matches!(event, InputEvent::Blur | InputEvent::PressEnter { .. }) {
+                let typed = state.read(cx).value().trim().to_string();
+                let family = (!typed.is_empty()).then_some(typed);
+                LayoutModel::edit(cx, |layout| layout.interface.font = family);
+            }
+        });
+        Self {
+            font,
+            _subscription: subscription,
+        }
+    }
+}
 
 impl Render for General {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -32,49 +58,61 @@ impl Render for General {
         let motion = layout.motion;
         let accent = layout.accent;
         let scale = layout.interface.scale;
-        v_flex().w_full().child(
-            section(t("interface_general"))
-                .child(
-                    SettingRow::new(t("interface_motion"))
-                        .description(t("interface_motion_description"))
-                        .control(choice(
-                            "interface-motion",
-                            &motion,
-                            vec![
-                                (Motion::Full, t("interface_motion_full")),
-                                (Motion::Reduced, t("interface_motion_reduced")),
-                                (Motion::Off, t("interface_motion_off")),
-                            ],
-                            |value, cx| LayoutModel::edit(cx, |layout| layout.motion = value),
-                        )),
-                )
-                .child(
-                    SettingRow::new(t("interface_accent"))
-                        .description(t("interface_accent_description"))
-                        .control(choice(
-                            "interface-accent",
-                            &accent,
-                            vec![
-                                (Accent::On, t("interface_accent_on")),
-                                (Accent::SheetOnly, t("interface_accent_sheet")),
-                                (Accent::Off, t("interface_accent_off")),
-                            ],
-                            |value, cx| LayoutModel::edit(cx, |layout| layout.accent = value),
-                        )),
-                )
-                .child(
-                    SettingRow::new(t("interface_scale"))
-                        .description(t("interface_scale_description"))
-                        .control(choice(
-                            "interface-scale",
-                            &nearest(scale),
-                            STEPS.iter().map(|step| (*step, percent(*step))).collect(),
-                            |value, cx| {
-                                LayoutModel::edit(cx, |layout| layout.interface.scale = value)
-                            },
-                        )),
-                ),
-        )
+        v_flex()
+            .w_full()
+            .child(
+                section(t("interface_general"))
+                    .children(
+                        SettingRow::new(t("interface_motion"))
+                            .description(t("interface_motion_description"))
+                            .control(choice(
+                                "interface-motion",
+                                &motion,
+                                vec![
+                                    (Motion::Full, t("interface_motion_full")),
+                                    (Motion::Reduced, t("interface_motion_reduced")),
+                                    (Motion::Off, t("interface_motion_off")),
+                                ],
+                                |value, cx| LayoutModel::edit(cx, |layout| layout.motion = value),
+                            ))
+                            .shown(cx),
+                    )
+                    .children(
+                        SettingRow::new(t("interface_accent"))
+                            .description(t("interface_accent_description"))
+                            .control(choice(
+                                "interface-accent",
+                                &accent,
+                                vec![
+                                    (Accent::On, t("interface_accent_on")),
+                                    (Accent::SheetOnly, t("interface_accent_sheet")),
+                                    (Accent::Off, t("interface_accent_off")),
+                                ],
+                                |value, cx| LayoutModel::edit(cx, |layout| layout.accent = value),
+                            ))
+                            .shown(cx),
+                    )
+                    .children(
+                        SettingRow::new(t("interface_scale"))
+                            .description(t("interface_scale_description"))
+                            .control(choice(
+                                "interface-scale",
+                                &nearest(scale),
+                                STEPS.iter().map(|step| (*step, percent(*step))).collect(),
+                                |value, cx| {
+                                    LayoutModel::edit(cx, |layout| layout.interface.scale = value)
+                                },
+                            ))
+                            .shown(cx),
+                    )
+                    .children(
+                        SettingRow::new(t("interface_font"))
+                            .description(t("interface_font_description"))
+                            .control(Input::new(&self.font).w(select_width()))
+                            .shown(cx),
+                    ),
+            )
+            .into_any_element()
     }
 }
 

@@ -111,10 +111,21 @@ impl Integrations {
             if held.specs != specs {
                 held.specs = specs.clone();
                 held.form
-                    .update(cx, |form, cx| form.set_specs(specs, window, cx));
+                    .update(cx, |form, cx| form.set_specs(specs.clone(), window, cx));
             }
-            held.form
-                .update(cx, |form, cx| form.set_locked(locked.clone(), cx));
+            // A secret never comes back, so "configured" is the only word on whether one is stored.
+            let saved: Vec<String> = match integration.configured {
+                true => specs
+                    .iter()
+                    .filter(|field| matches!(field.kind, api::schema::FieldKind::Secret))
+                    .map(|field| field.key.clone())
+                    .collect(),
+                false => Vec::new(),
+            };
+            held.form.update(cx, |form, cx| {
+                form.set_locked(locked.clone(), cx);
+                form.set_saved(saved, cx);
+            });
         }
         cx.notify();
     }
@@ -189,7 +200,7 @@ impl Integrations {
 impl Render for Integrations {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let listed = self.listed(cx);
-        ui::section(t("connectivity")).child(
+        ui::section(t("connectivity")).opaque().child(
             ui::card(cx).children(
                 listed
                     .iter()

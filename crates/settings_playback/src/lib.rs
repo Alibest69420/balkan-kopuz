@@ -19,7 +19,7 @@ use gpui_kit::{
 };
 use link::Link;
 use store::{ConfigModel, PlayerModel, Query};
-use widgets::format::t;
+use widgets::format::{t, t_with};
 use widgets::settings::{SettingRow, Toggle, section};
 use widgets::{FieldChanged, SchemaForm, style};
 
@@ -91,17 +91,32 @@ impl PlaybackSettings {
             cx.observe_in(&artwork_settings, window, Self::adopt_artwork),
             cx.subscribe(&artwork, Self::save_artwork),
         ];
-        subscriptions.push(on_slider_change(&crossfade, cx, |value, config| {
-            config.crossfade_seconds = value.clamp(0.0, CROSSFADE_MAX_SECONDS) as u8;
-        }));
-        subscriptions.push(on_slider_change(&volume_scroll, cx, |value, config| {
-            config.volume_scroll_step =
-                value.clamp(VOLUME_STEP_MIN_PERCENT, VOLUME_STEP_MAX_PERCENT) / 100.0;
-        }));
-        subscriptions.push(on_slider_change(&lyrics_offset, cx, |value, config| {
-            config.lyrics_offset_ms =
-                (value as i32).clamp(-LYRICS_OFFSET_LIMIT_MS, LYRICS_OFFSET_LIMIT_MS);
-        }));
+        subscriptions.push(on_slider_change(
+            "crossfade_seconds",
+            &crossfade,
+            cx,
+            |value, config| {
+                config.crossfade_seconds = value.clamp(0.0, CROSSFADE_MAX_SECONDS) as u8;
+            },
+        ));
+        subscriptions.push(on_slider_change(
+            "volume_scroll_step",
+            &volume_scroll,
+            cx,
+            |value, config| {
+                config.volume_scroll_step =
+                    value.clamp(VOLUME_STEP_MIN_PERCENT, VOLUME_STEP_MAX_PERCENT) / 100.0;
+            },
+        ));
+        subscriptions.push(on_slider_change(
+            "lyrics_offset_ms",
+            &lyrics_offset,
+            cx,
+            |value, config| {
+                config.lyrics_offset_ms =
+                    (value as i32).clamp(-LYRICS_OFFSET_LIMIT_MS, LYRICS_OFFSET_LIMIT_MS);
+            },
+        ));
 
         Self {
             section: None,
@@ -194,9 +209,9 @@ impl PlaybackSettings {
                 config.is_locked("offline_quality"),
             )
         };
-        section(t("offline_downloads")).child(
-            SettingRow::new(t("download_quality"))
-                .locked(locked)
+        section(t("offline_downloads")).children(
+            row("offline_quality", t("download_quality"), cx)
+                .description(t("download_quality_description"))
                 .control(choice(
                     "offline-quality",
                     quality,
@@ -204,7 +219,8 @@ impl PlaybackSettings {
                     |quality| SharedString::from(quality.label()),
                     locked,
                     |quality, config| config.offline_quality = quality,
-                )),
+                ))
+                .shown(cx),
         )
     }
 
@@ -236,62 +252,75 @@ impl PlaybackSettings {
         };
 
         section(t("metadata"))
-            .child(div().px_5().py_2p5().child(self.artwork.clone()))
-            .child(
-                SettingRow::new(t("prefer_local_lyrics"))
-                    .locked(settings.prefer_local_locked)
+            .children(widgets::settings::when_unfiltered(
+                div().px_5().py_2p5().child(self.artwork.clone()),
+                cx,
+            ))
+            .children(
+                row("prefer_local_lyrics", t("prefer_local_lyrics"), cx)
+                    .description(t("prefer_local_lyrics_description"))
                     .control(
                         Toggle::new("prefer_local_lyrics")
                             .enabled(settings.prefer_local)
                             .disabled(settings.prefer_local_locked)
                             .on_change(cx.listener(|_, checked: &bool, _, cx| {
                                 let checked = *checked;
-                                write_config(cx, move |config| {
+                                write_key("prefer_local_lyrics", cx, move |config| {
                                     config.prefer_local_lyrics = checked;
                                 });
                             })),
-                    ),
+                    )
+                    .shown(cx),
             )
-            .child(
-                SettingRow::new(t("enable_musixmatch_lyrics"))
-                    .locked(settings.musixmatch_locked)
-                    .control(
-                        Toggle::new("enable_musixmatch_lyrics")
-                            .enabled(settings.musixmatch)
-                            .disabled(settings.musixmatch_locked)
-                            .on_change(cx.listener(|_, checked: &bool, _, cx| {
-                                let checked = *checked;
-                                write_config(cx, move |config| {
-                                    config.enable_musixmatch_lyrics = checked;
-                                });
-                            })),
-                    ),
+            .children(
+                row(
+                    "enable_musixmatch_lyrics",
+                    t("enable_musixmatch_lyrics"),
+                    cx,
+                )
+                .description(t("enable_musixmatch_lyrics_description"))
+                .control(
+                    Toggle::new("enable_musixmatch_lyrics")
+                        .enabled(settings.musixmatch)
+                        .disabled(settings.musixmatch_locked)
+                        .on_change(cx.listener(|_, checked: &bool, _, cx| {
+                            let checked = *checked;
+                            write_key("enable_musixmatch_lyrics", cx, move |config| {
+                                config.enable_musixmatch_lyrics = checked;
+                            });
+                        })),
+                )
+                .shown(cx),
             )
-            .child(
-                SettingRow::new(t("lyrics_offset_auto"))
-                    .description(SharedString::from(format!("{latency_ms} ms")))
-                    .locked(settings.auto_locked)
+            .children(
+                row("lyrics_offset_auto", t("lyrics_offset_auto"), cx)
+                    .description(t_with(
+                        "lyrics_offset_auto_description",
+                        &[("latency", latency_ms.to_string())],
+                    ))
                     .control(
                         Toggle::new("lyrics_offset_auto")
                             .enabled(settings.auto)
                             .disabled(settings.auto_locked)
                             .on_change(cx.listener(|_, checked: &bool, _, cx| {
                                 let checked = *checked;
-                                write_config(cx, move |config| {
+                                write_key("lyrics_offset_auto", cx, move |config| {
                                     config.lyrics_offset_auto = checked;
                                 });
                             })),
-                    ),
+                    )
+                    .shown(cx),
             )
-            .child(
-                SettingRow::new(t("lyrics_offset"))
-                    .locked(settings.offset_locked)
+            .children(
+                row("lyrics_offset_ms", t("lyrics_offset"), cx)
+                    .description(t("lyrics_offset_description"))
                     .control(readout(
                         Slider::new(&self.lyrics_offset)
                             .disabled(settings.offset_locked || settings.auto),
                         offset_label,
                         cx,
-                    )),
+                    ))
+                    .shown(cx),
             )
     }
 
@@ -310,7 +339,6 @@ impl PlaybackSettings {
                 channel_locked: config.is_locked("channel_mode"),
                 device_locked: config.is_locked("device_change_behavior"),
                 sample_rate_locked: config.is_locked("sample_rate_mode"),
-                equalizer_locked: config.is_locked("equalizer"),
             }
         };
         let crossfade_label = if settings.crossfade_seconds == 0 {
@@ -320,65 +348,71 @@ impl PlaybackSettings {
         };
 
         section(t("player_settings"))
-            .child(
-                SettingRow::new(t("crossfade"))
-                    .locked(settings.crossfade_locked)
+            .children(
+                row("crossfade_seconds", t("crossfade"), cx)
+                    .description(t("crossfade_description"))
                     .control(readout(
                         Slider::new(&self.crossfade).disabled(settings.crossfade_locked),
                         crossfade_label,
                         cx,
-                    )),
+                    ))
+                    .shown(cx),
             )
-            .child(
-                SettingRow::new(t("volume_scroll_step"))
-                    .locked(settings.volume_locked)
+            .children(
+                row("volume_scroll_step", t("volume_scroll_step"), cx)
+                    .description(t("volume_scroll_step_description"))
                     .control(readout(
                         Slider::new(&self.volume_scroll).disabled(settings.volume_locked),
                         SharedString::from(format!("{}%", volume_percent(settings.volume_step))),
                         cx,
-                    )),
+                    ))
+                    .shown(cx),
             )
-            .child(
-                SettingRow::new(t("channel_mode"))
-                    .locked(settings.channel_locked)
+            .children(
+                row("channel_mode", t("channel_mode"), cx)
+                    .description(t("channel_mode_description"))
                     .control(choice(
-                        "channel-mode",
+                        "channel_mode",
                         settings.channel_mode,
                         ChannelMode::ALL,
                         channel_mode_label,
                         settings.channel_locked,
                         |mode, config| config.channel_mode = mode,
-                    )),
+                    ))
+                    .shown(cx),
             )
-            .child(
-                SettingRow::new(t("device_change_behavior"))
-                    .locked(settings.device_locked)
+            .children(
+                row("device_change_behavior", t("device_change_behavior"), cx)
+                    .description(t("device_change_behavior_description"))
                     .control(choice(
-                        "device-change-behavior",
+                        "device_change_behavior",
                         settings.device_change,
                         DeviceChangeBehavior::ALL,
                         device_change_label,
                         settings.device_locked,
                         |behavior, config| config.device_change_behavior = behavior,
-                    )),
+                    ))
+                    .shown(cx),
             )
-            .child(
-                SettingRow::new(t("sample_rate_mode"))
-                    .locked(settings.sample_rate_locked)
+            .children(
+                row("sample_rate_mode", t("sample_rate_mode"), cx)
+                    .description(t("sample_rate_mode_description"))
                     .control(choice(
-                        "sample-rate-mode",
+                        "sample_rate_mode",
                         settings.sample_rate,
                         SampleRateMode::ALL,
                         sample_rate_label,
                         settings.sample_rate_locked,
                         |mode, config| config.sample_rate_mode = mode,
-                    )),
+                    ))
+                    .shown(cx),
             )
-            .child(
-                SettingRow::new(t("equalizer"))
-                    .locked(settings.equalizer_locked)
+            .children(
+                row("equalizer", t("equalizer"), cx)
+                    .description(t("equalizer_description"))
                     .stacked()
-                    .control(self.equalizer.clone()),
+                    .control(self.equalizer.clone())
+                    .shown(cx),
             )
     }
 
@@ -394,25 +428,31 @@ impl PlaybackSettings {
         };
         let warning = cx.theme().warning.opacity(0.8);
         section(t("logs"))
-            .child(
-                SettingRow::new(t("enable_tracing")).locked(locked).control(
-                    Toggle::new("tracing_enabled")
-                        .enabled(tracing_enabled)
-                        .disabled(locked)
-                        .on_change(cx.listener(|_, checked: &bool, _, cx| {
-                            let checked = *checked;
-                            write_config(cx, move |config| config.tracing_enabled = checked);
-                        })),
-                ),
+            .children(
+                row("tracing_enabled", t("enable_tracing"), cx)
+                    .description(t("enable_tracing_description"))
+                    .control(
+                        Toggle::new("tracing_enabled")
+                            .enabled(tracing_enabled)
+                            .disabled(locked)
+                            .on_change(cx.listener(|_, checked: &bool, _, cx| {
+                                let checked = *checked;
+                                write_key("tracing_enabled", cx, move |config| {
+                                    config.tracing_enabled = checked
+                                });
+                            })),
+                    )
+                    .shown(cx),
             )
-            .child(
+            .children(widgets::settings::when_unfiltered(
                 div()
                     .px_5()
                     .pb_3()
                     .text_xs()
                     .text_color(warning)
                     .child(t("tracing_warning")),
-            )
+                cx,
+            ))
     }
 }
 
@@ -468,12 +508,24 @@ struct PlayerSettings {
     channel_locked: bool,
     device_locked: bool,
     sample_rate_locked: bool,
-    equalizer_locked: bool,
 }
 
 /// Edit the daemon's settings; the write itself is debounced by [`ConfigModel`].
 pub(crate) fn write_config(cx: &mut App, edit: impl FnOnce(&mut AppConfig)) {
     ConfigModel::global(cx).update(cx, |model, cx| model.update(cx, edit));
+}
+
+/// The same edit, naming the row it belongs to so that row can confirm the write.
+pub(crate) fn write_key(key: &'static str, cx: &mut App, edit: impl FnOnce(&mut AppConfig)) {
+    ConfigModel::global(cx).update(cx, |model, cx| model.update_key(key, cx, edit));
+}
+
+/// One settings row, already told whether its key is pinned and whether its write just landed.
+fn row(key: &'static str, title: SharedString, cx: &App) -> SettingRow {
+    let config = ConfigModel::global(cx).read(cx);
+    SettingRow::new(title)
+        .locked(config.is_locked(key))
+        .saved(config.just_saved(key))
 }
 
 pub(crate) fn set_slider(
@@ -505,6 +557,7 @@ fn slider(
 }
 
 fn on_slider_change(
+    key: &'static str,
     state: &Entity<SliderState>,
     cx: &mut Context<PlaybackSettings>,
     apply: impl Fn(f32, &mut AppConfig) + 'static,
@@ -512,7 +565,7 @@ fn on_slider_change(
     cx.subscribe(state, move |_, _, event: &SliderEvent, cx| {
         if let SliderEvent::Change(value) = event {
             let value = value.end().round();
-            write_config(cx, |config| apply(value, config));
+            write_key(key, cx, |config| apply(value, config));
         }
     })
 }
@@ -534,16 +587,16 @@ fn readout(slider: Slider, label: impl Into<SharedString>, cx: &App) -> impl Int
         )
 }
 
-/// One config value picked from a fixed set of variants.
+/// One config value picked from a fixed set of variants; `key` is both the element id and the setting.
 fn choice<T: Copy + PartialEq + 'static>(
-    id: &'static str,
+    key: &'static str,
     current: T,
     options: &'static [T],
     label: fn(T) -> SharedString,
     locked: bool,
     write: fn(T, &mut AppConfig),
 ) -> impl IntoElement {
-    Button::new(id)
+    Button::new(key)
         .outline()
         .label(label(current))
         .disabled(locked)
@@ -553,7 +606,7 @@ fn choice<T: Copy + PartialEq + 'static>(
                     PopupMenuItem::new(label(option))
                         .checked(option == current)
                         .on_click(move |_, _, cx| {
-                            write_config(cx, |config| write(option, config));
+                            write_key(key, cx, |config| write(option, config));
                         }),
                 );
             }

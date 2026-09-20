@@ -20,6 +20,31 @@ struct PasswordForm(Option<Opener>);
 
 impl Global for PasswordForm {}
 
+/// The sources whose browser flow the daemon is running right now.
+#[derive(Default)]
+struct Waiting(Vec<String>);
+
+impl Global for Waiting {}
+
+/// Whether `id` is waiting on a browser window the daemon opened.
+pub fn is_waiting_for_browser(id: &str, cx: &App) -> bool {
+    cx.try_global::<Waiting>()
+        .is_some_and(|waiting| waiting.0.iter().any(|held| held == id))
+}
+
+fn set_waiting(id: &str, waiting: bool, cx: &mut App) {
+    if cx.try_global::<Waiting>().is_none() {
+        cx.set_global(Waiting::default());
+    }
+    let held = cx.global_mut::<Waiting>();
+    held.0.retain(|other| other != id);
+    if waiting {
+        held.0.push(id.to_string());
+    }
+    // A global has no observers of its own, and the row showing the spinner is somebody else's view.
+    cx.refresh_windows();
+}
+
 /// Register the username/password dialog; the app does this at startup.
 pub fn register_password_form(
     opener: impl Fn(String, SharedString, &mut Window, &mut App) + 'static,
@@ -40,17 +65,23 @@ pub fn start_sign_in(source: &SourceInfo, window: &mut Window, cx: &mut App) {
 /// Ask the daemon to run the browser flow. It owns the window that opens and the token it ends
 /// holding; this only says which source it is for.
 pub fn browser(id: String, cx: &mut App) {
-    let call =
-        crate::Link::global(cx).call(move |api| async move { api.authenticate_source(id).await });
-    cx.spawn(async move |cx| match call.await {
-        Ok(_) => {
-            cx.update(|cx| {
-                SourcesModel::global(cx).update(cx, |sources, cx| sources.refetch(cx));
-            });
-        }
-        Err(error) => {
-            cx.update(|cx| Notices::error(crate::human(&error), cx));
-        }
+    set_waiting(&id, true, cx);
+    let call = {
+        let id = id.clone();
+        crate::Link::global(cx).call(move |api| async move { api.authenticate_source(id).await })
+    };
+    cx.spawn(async move |cx| {
+        let result = call.await;
+        cx.update(|cx| {
+            set_waiting(&id, false, cx);
+            match result {
+                Ok(_) => {
+                    SourcesModel::global(cx).update(cx, |sources, cx| sources.refetch(cx));
+                    Notices::info(i18n::t("signed_in"), cx);
+                }
+                Err(error) => Notices::error(crate::human(&error), cx),
+            }
+        });
     })
     .detach();
 }

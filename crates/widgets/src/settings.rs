@@ -1,19 +1,94 @@
 //! The settings card and the rows inside it, as `docs/STYLING.md` maps `.settings-section`.
 
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use gpui_kit::component::button::Button;
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
-use gpui_kit::component::{Sizable as _, h_flex, v_flex};
+use gpui_kit::component::tooltip::Tooltip;
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, ElementId, Entity, FontWeight, InteractiveElement as _, IntoElement,
+    AnyElement, App, ElementId, Entity, FontWeight, Global, InteractiveElement as _, IntoElement,
     ParentElement, Rems, RenderOnce, SharedString, StatefulInteractiveElement as _, Styled, Window,
     div, px, rems,
 };
 
 use crate::format::t;
 use crate::{icons, motion, style};
+
+/// What the Settings search box is filtering by, and every row title it has seen while filtering.
+#[derive(Default)]
+struct Search {
+    query: RefCell<Option<SharedString>>,
+    index: RefCell<Vec<SharedString>>,
+}
+
+impl Global for Search {}
+
+/// Filter every settings row by `query`; an empty one puts them all back.
+pub fn set_query(query: &str, cx: &mut App) {
+    let trimmed = query.trim().to_lowercase();
+    if cx.try_global::<Search>().is_none() {
+        cx.set_global(Search::default());
+    }
+    let search = cx.global::<Search>();
+    let empty = trimmed.is_empty();
+    *search.query.borrow_mut() = (!empty).then(|| SharedString::from(trimmed));
+    if empty {
+        search.index.borrow_mut().clear();
+    }
+}
+
+/// What Settings is filtering by, lowercased, or nothing when the box is empty.
+pub fn query(cx: &App) -> Option<SharedString> {
+    cx.try_global::<Search>()
+        .and_then(|search| search.query.borrow().clone())
+}
+
+/// The whole of what the filter asks of one line: `query` is already lowercased and trimmed.
+fn hit(field: &str, query: &str) -> bool {
+    field.to_lowercase().contains(query)
+}
+
+/// Whether a row carrying this text survives the filter. Everything survives an empty box.
+pub fn matches(fields: &[&str], cx: &App) -> bool {
+    let Some(query) = query(cx) else {
+        return true;
+    };
+    fields.iter().any(|field| hit(field, query.as_str()))
+}
+
+/// Remember a searchable line, so "nothing matched" can tell itself from "nothing drawn yet".
+fn index(text: &SharedString, cx: &App) {
+    let Some(search) = cx.try_global::<Search>() else {
+        return;
+    };
+    if search.query.borrow().is_none() {
+        return;
+    }
+    let mut index = search.index.borrow_mut();
+    if !index.iter().any(|held| held == text) {
+        index.push(text.clone());
+    }
+}
+
+/// True only once a filtered pass has drawn: before that, an empty page means "not drawn yet".
+pub fn nothing_matched(cx: &App) -> bool {
+    let Some(query) = query(cx) else {
+        return false;
+    };
+    let Some(search) = cx.try_global::<Search>() else {
+        return false;
+    };
+    let index = search.index.borrow();
+    !index.is_empty() && !index.iter().any(|held| hit(held, query.as_str()))
+}
+
+/// Content that is not a searchable row, so a filtered page leaves it out.
+pub fn when_unfiltered<E: IntoElement>(element: E, cx: &App) -> Option<E> {
+    query(cx).is_none().then_some(element)
+}
 
 /// `w-55`, the width every enumerated setting's trigger shares.
 pub fn select_width() -> Rems {
@@ -103,6 +178,7 @@ pub fn section(title: impl Into<SharedString>) -> Section {
     Section {
         title: title.into(),
         rows: Vec::new(),
+        opaque: false,
     }
 }
 
@@ -110,6 +186,15 @@ pub fn section(title: impl Into<SharedString>) -> Section {
 pub struct Section {
     title: SharedString,
     rows: Vec<AnyElement>,
+    opaque: bool,
+}
+
+impl Section {
+    /// Its contents are cards, not searchable rows, so the filter can only go by this title.
+    pub fn opaque(mut self) -> Self {
+        self.opaque = true;
+        self
+    }
 }
 
 impl ParentElement for Section {
@@ -120,6 +205,22 @@ impl ParentElement for Section {
 
 impl RenderOnce for Section {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        index(&self.title, cx);
+        if let Some(query) = query(cx) {
+            let named = hit(&self.title, query.as_str());
+            let keep = if self.opaque {
+                named
+            } else {
+                !self.rows.is_empty()
+            };
+            if !keep {
+                return div().into_any_element();
+            }
+        }
+        let searching = query(cx).is_some();
+        let open = window.use_keyed_state(scoped("section-open", &self.title), cx, |_, _| true);
+        // A filtered pass must not leave a match hidden inside a section that was collapsed earlier.
+        let expanded = searching || *open.read(cx);
         let last = self.rows.len().saturating_sub(1);
         let hovered = hover_state(scoped("section-hover", &self.title), window, cx);
         let header_target = if *hovered.read(cx) {
@@ -151,28 +252,47 @@ impl RenderOnce for Section {
                     .justify_between()
                     .items_center()
                     .bg(header_bg)
+                    .cursor_pointer()
                     .on_hover(track_hover(hovered))
+                    .on_click(move |_, _, cx| {
+                        open.update(cx, |held, cx| {
+                            *held = !*held;
+                            cx.notify();
+                        });
+                    })
                     .child(
                         div()
                             .text_xs()
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(style::white(HEADING, cx))
                             .child(SharedString::from(self.title.to_uppercase())),
+                    )
+                    .child(
+                        icons::icon(if expanded {
+                            icons::CHEVRON_UP
+                        } else {
+                            icons::CHEVRON_DOWN
+                        })
+                        .with_size(style::text_11())
+                        .text_color(style::white(HEADING, cx)),
                     ),
             )
-            .child(
-                v_flex()
-                    .w_full()
-                    .children(self.rows.into_iter().enumerate().map(|(index, row)| {
-                        div()
-                            .w_full()
-                            .when(index % 2 == 1, |band| band.bg(style::white(STRIPE, cx)))
-                            .when(index < last, |band| {
-                                band.border_b_1().border_color(style::white(DIVIDER, cx))
-                            })
-                            .child(row)
-                    })),
-            )
+            .when(expanded, |card| {
+                card.child(
+                    v_flex()
+                        .w_full()
+                        .children(self.rows.into_iter().enumerate().map(|(index, row)| {
+                            div()
+                                .w_full()
+                                .when(index % 2 == 1, |band| band.bg(style::white(STRIPE, cx)))
+                                .when(index < last, |band| {
+                                    band.border_b_1().border_color(style::white(DIVIDER, cx))
+                                })
+                                .child(row)
+                        })),
+                )
+            })
+            .into_any_element()
     }
 }
 
@@ -183,6 +303,7 @@ pub struct SettingRow {
     description: Option<SharedString>,
     locked: bool,
     stacked: bool,
+    saved: bool,
     control: Option<AnyElement>,
 }
 
@@ -193,6 +314,7 @@ impl SettingRow {
             description: None,
             locked: false,
             stacked: false,
+            saved: false,
             control: None,
         }
     }
@@ -200,6 +322,26 @@ impl SettingRow {
     pub fn description(mut self, description: impl Into<SharedString>) -> Self {
         self.description = Some(description.into());
         self
+    }
+
+    /// The debounced write for this key just landed; the row says so and then stops.
+    pub fn saved(mut self, saved: bool) -> Self {
+        self.saved = saved;
+        self
+    }
+
+    /// Nothing when the Settings search box is filtering this row out.
+    pub fn shown(self, cx: &App) -> Option<Self> {
+        let hit = {
+            index(&self.title, cx);
+            let mut fields = vec![self.title.as_str()];
+            if let Some(description) = self.description.as_ref() {
+                index(description, cx);
+                fields.push(description.as_str());
+            }
+            matches(&fields, cx)
+        };
+        hit.then_some(self)
     }
 
     /// A managed settings file pins this row's key; its control is inert and says so.
@@ -255,9 +397,17 @@ impl RenderOnce for SettingRow {
                     )
                     .when(self.locked, |heading| {
                         heading.child(
-                            icons::icon(icons::LOCK)
-                                .with_size(style::text_10())
-                                .text_color(style::white(LOCK, cx)),
+                            div()
+                                .id(scoped("row-lock", &self.title))
+                                .flex_shrink_0()
+                                .tooltip(|window, cx| {
+                                    Tooltip::new(t("setting_managed_by_system")).build(window, cx)
+                                })
+                                .child(
+                                    icons::icon(icons::LOCK)
+                                        .with_size(style::text_10())
+                                        .text_color(style::white(LOCK, cx)),
+                                ),
                         )
                     }),
             )
@@ -269,10 +419,21 @@ impl RenderOnce for SettingRow {
                         .child(description),
                 )
             });
+        let tick = self.saved.then(|| {
+            h_flex()
+                .gap_1()
+                .items_center()
+                .text_size(style::text_10())
+                .text_color(cx.theme().success)
+                .child(icons::icon(icons::CHECK).with_size(style::text_10()))
+                .child(t("setting_saved"))
+        });
         let control = self.control.map(|control| {
-            div()
-                .when(held < 1., |fading| fading.opacity(held))
-                .child(control)
+            h_flex().gap_2().items_center().children(tick).child(
+                div()
+                    .when(held < 1., |fading| fading.opacity(held))
+                    .child(control),
+            )
         });
         if self.stacked {
             v_flex()
@@ -431,5 +592,17 @@ impl RenderOnce for Toggle {
             .child(thumb)
             .child(on)
             .child(off)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::hit;
+
+    #[test]
+    fn the_filter_ignores_case_and_matches_anywhere_in_a_line() {
+        assert!(hit("Volume Scroll Step", "scroll"));
+        assert!(hit("Crossfade", "CROSS".to_lowercase().as_str()));
+        assert!(!hit("Crossfade", "lyrics"));
     }
 }

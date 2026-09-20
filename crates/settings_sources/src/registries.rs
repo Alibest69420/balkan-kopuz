@@ -201,7 +201,7 @@ impl Render for RadioRegistries {
         );
         let expanded = self.expanded;
 
-        ui::section(t("radio")).child(
+        ui::section(t("radio")).opaque().child(
             ui::card(cx)
                 .child(
                     Button::new("registries-toggle")

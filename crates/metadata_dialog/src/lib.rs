@@ -6,13 +6,14 @@ use api::{ArtworkChange, TrackInfo, TrackMetadataPatch};
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::base::motion::{Easing, Presence, Transition};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
+use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Div, Entity, InteractiveElement as _, IntoElement,
     ObjectFit, ParentElement as _, PathPromptOptions, Pixels, Render, SharedString,
-    StatefulInteractiveElement as _, Styled, StyledImage as _, Task, Window, div, img, px,
+    StatefulInteractiveElement as _, Styled, StyledImage as _, Subscription, Task, Window, div,
+    img, px,
 };
 use store::{Link, Notices};
 use widgets::format::{duration, t};
@@ -29,9 +30,12 @@ const LOADING_HEIGHT: Pixels = px(160.);
 const LABEL_TEXT: f32 = 0.35;
 const WARNING_TEXT: f32 = 0.30;
 
+mod batch;
+
 /// Register the dialog so a track row's "View metadata" can open it.
 pub fn register(cx: &mut App) {
     widgets::dialogs::register_track_metadata(open, cx);
+    widgets::dialogs::register_batch_metadata(batch::open, cx);
 }
 
 fn open(key: String, editable: bool, window: &mut Window, cx: &mut App) {
@@ -62,6 +66,9 @@ struct MetadataDialog {
     editable: bool,
     track: Option<TrackInfo>,
     editing: bool,
+    saving: bool,
+    // Why the last write did not land; the editor stays open holding it.
+    failure: Option<SharedString>,
     title: Entity<InputState>,
     artist: Entity<InputState>,
     album: Entity<InputState>,
@@ -70,6 +77,7 @@ struct MetadataDialog {
     cover: CoverEdit,
     _fetch: Task<()>,
     _save: Option<Task<()>>,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl MetadataDialog {
@@ -89,19 +97,29 @@ impl MetadataDialog {
             })
             .ok();
         });
+        let track_number = cx.new(|cx| InputState::new(window, cx));
+        let disc_number = cx.new(|cx| InputState::new(window, cx));
+        // A number that will not parse is flagged as it is typed, not when Save is pressed.
+        let subscriptions = vec![
+            cx.subscribe(&track_number, |_, _, _: &InputEvent, cx| cx.notify()),
+            cx.subscribe(&disc_number, |_, _, _: &InputEvent, cx| cx.notify()),
+        ];
         Self {
             key,
             editable,
             track: None,
             editing: false,
+            saving: false,
+            failure: None,
             title: cx.new(|cx| InputState::new(window, cx)),
             artist: cx.new(|cx| InputState::new(window, cx)),
             album: cx.new(|cx| InputState::new(window, cx)),
-            track_number: cx.new(|cx| InputState::new(window, cx)),
-            disc_number: cx.new(|cx| InputState::new(window, cx)),
+            track_number,
+            disc_number,
             cover: CoverEdit::Keep,
             _fetch: fetch,
             _save: None,
+            _subscriptions: subscriptions,
         }
     }
 
@@ -167,14 +185,28 @@ impl MetadataDialog {
 
     fn cancel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.editing = false;
+        self.failure = None;
         if let Some(track) = self.track.clone() {
             self.adopt(track, window, cx);
         }
         cx.notify();
     }
 
+    /// Which number fields hold something that is neither blank nor a number.
+    fn unreadable(&self, cx: &Context<Self>) -> (bool, bool) {
+        (
+            numbered(&self.value(&self.track_number, cx)) == Numbered::Unreadable,
+            numbered(&self.value(&self.disc_number, cx)) == Numbered::Unreadable,
+        )
+    }
+
     /// The editor sends the whole desired state, so a blank number clears that tag.
     fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let (bad_track, bad_disc) = self.unreadable(cx);
+        // Saving now would leave both tags exactly as they are, which is not what the box says.
+        if self.saving || bad_track || bad_disc {
+            return;
+        }
         let track_number = numbered(&self.value(&self.track_number, cx));
         let disc_number = numbered(&self.value(&self.disc_number, cx));
         let patch = TrackMetadataPatch {
@@ -189,7 +221,8 @@ impl MetadataDialog {
             cover: ArtworkChange::Keep,
         };
         let cover = self.cover.clone();
-        self.editing = false;
+        self.saving = true;
+        self.failure = None;
         cx.notify();
         self._save = Some(cx.spawn_in(window, async move |this, cx| {
             let cover = match cover {
@@ -204,7 +237,7 @@ impl MetadataDialog {
                         Ok(bytes) => ArtworkChange::Set(bytes),
                         // Reading the picked file, not a daemon call: its own message is the one to show.
                         Err(error) => {
-                            cx.update(|_, cx| Notices::error(error.to_string(), cx))
+                            this.update(cx, |this, cx| this.failed(error.to_string(), cx))
                                 .ok();
                             return;
                         }
@@ -219,12 +252,28 @@ impl MetadataDialog {
                 return;
             };
             let updated = call.await;
-            this.update_in(cx, |this, window, cx| match updated {
-                Ok(track) => this.adopt(track, window, cx),
-                Err(error) => Notices::error(store::human(&error), cx),
+            this.update_in(cx, |this, window, cx| {
+                this.saving = false;
+                match updated {
+                    Ok(track) => {
+                        this.editing = false;
+                        this.adopt(track, window, cx);
+                    }
+                    // Closing the editor here threw away every edit the daemon had just refused.
+                    Err(error) => this.failed(store::human(&error), cx),
+                }
             })
             .ok();
         }));
+    }
+
+    /// Keep the editor open holding what was typed, and say why it is still open.
+    fn failed(&mut self, reason: impl Into<SharedString>, cx: &mut Context<Self>) {
+        let reason = reason.into();
+        self.saving = false;
+        self.failure = Some(reason.clone());
+        Notices::error(reason, cx);
+        cx.notify();
     }
 
     fn cover_preview(&self, _: &Context<Self>) -> AnyElement {
@@ -247,18 +296,47 @@ impl MetadataDialog {
     }
 
     fn field(&self, label: SharedString, input: &Entity<InputState>, cx: &Context<Self>) -> Div {
-        v_flex().gap_1().child(caption(label, cx)).child(
-            Input::new(input)
-                .bg(style::white(style::HOVER, cx))
-                .border_color(style::white(style::BORDER, cx))
-                .rounded(style::radius_lg())
-                .px_3()
-                .py_2()
-                .text_sm(),
-        )
+        self.checked_field(label, input, false, cx)
+    }
+
+    /// The same field, with the reason it is holding something that cannot be written.
+    fn checked_field(
+        &self,
+        label: SharedString,
+        input: &Entity<InputState>,
+        problem: bool,
+        cx: &Context<Self>,
+    ) -> Div {
+        let danger = cx.theme().danger;
+        v_flex()
+            .gap_1()
+            .child(caption(label, cx))
+            .child(
+                Input::new(input)
+                    .bg(style::white(style::HOVER, cx))
+                    .border_color(if problem {
+                        danger
+                    } else {
+                        style::white(style::BORDER, cx)
+                    })
+                    .rounded(style::radius_lg())
+                    .px_3()
+                    .py_2()
+                    .text_sm(),
+            )
+            .when(problem, |field| {
+                field.child(
+                    div()
+                        .text_xs()
+                        .text_color(danger)
+                        .child(t("metadata_number_invalid")),
+                )
+            })
     }
 
     fn editor(&self, cx: &Context<Self>) -> AnyElement {
+        let (bad_track, bad_disc) = self.unreadable(cx);
+        let danger = cx.theme().danger;
         v_flex()
             .gap_3()
             .child(self.field(t("title"), &self.title, cx))
@@ -267,17 +345,35 @@ impl MetadataDialog {
             .child(
                 h_flex()
                     .gap_3()
-                    .child(div().flex_1().child(self.field(
+                    .items_start()
+                    .child(div().flex_1().child(self.checked_field(
                         t("track_number"),
                         &self.track_number,
+                        bad_track,
                         cx,
                     )))
-                    .child(div().flex_1().child(self.field(
+                    .child(div().flex_1().child(self.checked_field(
                         t("disc_number"),
                         &self.disc_number,
+                        bad_disc,
                         cx,
                     ))),
             )
+            .when_some(self.failure.clone(), |body, reason| {
+                body.child(
+                    div()
+                        .w_full()
+                        .px_3()
+                        .py_2()
+                        .rounded(style::radius_lg())
+                        .border_1()
+                        .border_color(danger.opacity(0.3))
+                        .bg(danger.opacity(0.1))
+                        .text_sm()
+                        .text_color(danger)
+                        .child(reason),
+                )
+            })
             .child(
                 div()
                     .text_xs()
@@ -355,6 +451,8 @@ impl Render for MetadataDialog {
             return div().h(LOADING_HEIGHT).child(Loading).into_any_element();
         };
         let editing = self.editing;
+        let (bad_track, bad_disc) = self.unreadable(cx);
+        let blocked = bad_track || bad_disc;
         let has_cover = self.has_cover();
         // Keying the fade on the mode makes each switch a fresh entrance rather than a cut.
         let mode = if editing { "edit" } else { "read" };
@@ -435,6 +533,7 @@ impl Render for MetadataDialog {
                             Button::new("metadata-cancel")
                                 .ghost()
                                 .label(t("cancel"))
+                                .disabled(self.saving)
                                 .on_click(
                                     cx.listener(|this, _, window, cx| this.cancel(window, cx)),
                                 ),
@@ -442,7 +541,9 @@ impl Render for MetadataDialog {
                         .child(
                             Button::new("metadata-save")
                                 .primary()
-                                .label(t("save"))
+                                .label(if self.saving { t("saving") } else { t("save") })
+                                .loading(self.saving)
+                                .disabled(self.saving || blocked)
                                 .on_click(cx.listener(|this, _, window, cx| this.save(window, cx))),
                         ),
                 )
@@ -451,11 +552,7 @@ impl Render for MetadataDialog {
     }
 }
 
-/// What a number field is asking for. Empty means clear the tag; a number means set it.
-///
-/// Anything else — "A1", "03/12", a stray letter — used to parse to None and therefore *clear*
-/// the tag the user was editing. Silently erasing a value someone was trying to set is the worst
-/// available reading, so an unparseable field leaves the tag exactly as it was.
+/// What a number field is asking for: blank clears the tag, a number sets it, anything else is a typo.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Numbered {
     Cleared,

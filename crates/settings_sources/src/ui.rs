@@ -139,6 +139,11 @@ pub fn error(text: SharedString, cx: &App) -> Div {
         .child(text)
 }
 
+/// Why one field is wrong, under that field rather than at the foot of the form.
+pub fn field_problem(text: SharedString, cx: &App) -> Div {
+    div().text_xs().text_color(cx.theme().danger).child(text)
+}
+
 /// The "Active" pill on whichever source the daemon is using.
 pub fn active_badge(text: SharedString, cx: &App) -> impl IntoElement {
     div()

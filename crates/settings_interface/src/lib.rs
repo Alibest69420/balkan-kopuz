@@ -1,11 +1,13 @@
 //! Settings → Interface: every knob that changes how the app looks, contributed by the crate that owns it.
 
+mod apply;
 mod general;
 
 use std::rc::Rc;
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{Sizable as _, h_flex, v_flex};
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyView, App, Context, Global, IntoElement, ParentElement as _, Render, SharedString, Styled,
     Window, div,
@@ -57,6 +59,7 @@ pub fn register(
 /// Register the sections this crate owns; call once at startup, before the others.
 pub fn init(cx: &mut App) {
     general::register(cx);
+    apply::watch(cx);
 }
 
 /// One drawn section, with the group its reset button puts back.
@@ -103,6 +106,8 @@ impl Render for InterfaceSettings {
                 .child(EmptyState::new(t("settings_interface")).icon(icons::GRID))
                 .into_any_element();
         }
+        // A filtered page is a list of matching rows; a "put this back" button is not one.
+        let filtering = widgets::settings::query(cx).is_some();
         let sections: Vec<_> = self
             .panels
             .iter()
@@ -111,14 +116,21 @@ impl Render for InterfaceSettings {
                     .w_full()
                     .gap_2()
                     .child(panel.view.clone())
-                    .children(panel.reset.map(|group| reset_row(panel.title, group, cx)))
+                    .children(
+                        panel
+                            .reset
+                            .filter(|_| !filtering)
+                            .map(|group| reset_row(panel.title, group, cx)),
+                    )
             })
             .collect();
         v_flex()
             .w_full()
             .gap_5()
             .children(sections)
-            .child(reset_row("settings_interface", Group::All, cx))
+            .when(!filtering, |panel| {
+                panel.child(reset_row("settings_interface", Group::All, cx))
+            })
             .into_any_element()
     }
 }

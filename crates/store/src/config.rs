@@ -10,13 +10,20 @@ use crate::notices::Notices;
 // Slider drags and typing settle before a write; the Dioxus app used the same delay.
 const SAVE_DELAY: Duration = Duration::from_millis(600);
 
+// How long a settings row says "Saved" before going quiet again.
+const SAVED_FOR: Duration = Duration::from_millis(2200);
+
 /// The daemon's settings surface, edited locally and written back debounced.
 pub struct ConfigModel {
     view: ConfigView,
     loaded: bool,
     // Bumped per local edit, so a save's answer never clobbers a newer edit.
     edits: u64,
+    // The keys edited since the last write went out, then the ones that write carried.
+    pending: Vec<&'static str>,
+    saved: Vec<&'static str>,
     _save: Option<Task<()>>,
+    _tick: Option<Task<()>>,
     _fetch: Option<Task<()>>,
     _subscription: Subscription,
 }
@@ -37,7 +44,10 @@ impl ConfigModel {
             view: ConfigView::default(),
             loaded: false,
             edits: 0,
+            pending: Vec::new(),
+            saved: Vec::new(),
             _save: None,
+            _tick: None,
             _fetch: None,
             _subscription: subscription,
         }
@@ -77,6 +87,30 @@ impl ConfigModel {
         }));
     }
 
+    /// Whether a write for `key` has just landed, which is what a row's "Saved" tick reads.
+    pub fn just_saved(&self, key: &str) -> bool {
+        self.saved.contains(&key)
+    }
+
+    /// A write is on its way out or in flight.
+    pub fn is_saving(&self) -> bool {
+        self._save.is_some()
+    }
+
+    /// The same edit, naming the key it touches so that row can confirm the write.
+    pub fn update_key(
+        &mut self,
+        key: &'static str,
+        cx: &mut Context<Self>,
+        edit: impl FnOnce(&mut AppConfig),
+    ) {
+        if !self.pending.contains(&key) {
+            self.pending.push(key);
+        }
+        self.saved.retain(|held| *held != key);
+        self.update(cx, edit);
+    }
+
     /// Change settings; the write reaches the daemon once edits settle.
     pub fn update(&mut self, cx: &mut Context<Self>, edit: impl FnOnce(&mut AppConfig)) {
         if !self.loaded {
@@ -89,7 +123,7 @@ impl ConfigModel {
             i18n::set_locale(&self.view.config.language);
         }
         self.edits += 1;
-        cx.notify();
+        crate::notify(cx);
         self.schedule_save(cx);
     }
 
@@ -108,10 +142,35 @@ impl ConfigModel {
             this.update(cx, |this, cx| {
                 this._save = None;
                 match result {
-                    Ok(view) if this.edits == edits => this.adopt(view, cx),
-                    Ok(_) => {}
-                    Err(error) => Notices::error(crate::human(&error), cx),
+                    Ok(view) if this.edits == edits => {
+                        this.adopt(view, cx);
+                        this.confirm(cx);
+                    }
+                    Ok(_) => this.confirm(cx),
+                    // The control is showing an edit the daemon never took; put the truth back.
+                    Err(error) => {
+                        Notices::error(crate::human(&error), cx);
+                        this.pending.clear();
+                        this.reload(cx);
+                    }
                 }
+            })
+            .ok();
+        }));
+    }
+
+    /// Mark what the write carried as saved, and take the mark off again a moment later.
+    fn confirm(&mut self, cx: &mut Context<Self>) {
+        self.saved = std::mem::take(&mut self.pending);
+        if self.saved.is_empty() {
+            return;
+        }
+        crate::notify(cx);
+        self._tick = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(SAVED_FOR).await;
+            this.update(cx, |this, cx| {
+                this.saved.clear();
+                crate::notify(cx);
             })
             .ok();
         }));
@@ -123,6 +182,6 @@ impl ConfigModel {
         }
         self.view = view;
         self.loaded = true;
-        cx.notify();
+        crate::notify(cx);
     }
 }

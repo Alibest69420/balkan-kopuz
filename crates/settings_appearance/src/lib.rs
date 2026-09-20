@@ -67,8 +67,9 @@ fn theme_label(id: &str) -> SharedString {
     t(key)
 }
 
-fn edit(cx: &mut App, change: impl FnOnce(&mut AppConfig)) {
-    ConfigModel::global(cx).update(cx, |model, cx| model.update(cx, change));
+/// Edit the daemon's settings, naming the row it belongs to so that row can confirm the write.
+fn edit_key(key: &'static str, cx: &mut App, change: impl FnOnce(&mut AppConfig)) {
+    ConfigModel::global(cx).update(cx, |model, cx| model.update_key(key, cx, change));
 }
 
 fn set_slider(state: &Entity<SliderState>, value: f32, window: &mut Window, cx: &mut App) {
@@ -112,19 +113,23 @@ impl AppearanceSettings {
             cx.subscribe(&darkening, |_, _, event: &SliderEvent, cx| {
                 if let SliderEvent::Change(value) = event {
                     let percent = value.start().round().clamp(0., 95.) as u8;
-                    edit(cx, |cfg| cfg.cover_art_darkening = percent);
+                    edit_key("cover_art_darkening", cx, |cfg| {
+                        cfg.cover_art_darkening = percent
+                    });
                 }
             }),
             cx.subscribe(&blur, |_, _, event: &SliderEvent, cx| {
                 if let SliderEvent::Change(value) = event {
                     let radius = value.start().round().clamp(0., 100.) as u8;
-                    edit(cx, |cfg| cfg.cover_art_blur = radius);
+                    edit_key("cover_art_blur", cx, |cfg| cfg.cover_art_blur = radius);
                 }
             }),
             cx.subscribe(&lyrics_blur, |_, _, event: &SliderEvent, cx| {
                 if let SliderEvent::Change(value) = event {
                     let strength = value.start().round().clamp(10., 200.) as u8;
-                    edit(cx, |cfg| cfg.lyrics_depth_blur_strength = strength);
+                    edit_key("lyrics_depth_blur_strength", cx, |cfg| {
+                        cfg.lyrics_depth_blur_strength = strength
+                    });
                 }
             }),
         ];
@@ -152,9 +157,13 @@ impl AppearanceSettings {
         );
     }
 
+    /// One row: locked when a managed file pins the key, ticked when that key's write just landed.
     fn row(&self, label: SharedString, key: &str, control: AnyElement, cx: &App) -> SettingRow {
-        let locked = ConfigModel::global(cx).read(cx).is_locked(key);
-        SettingRow::new(label).locked(locked).control(control)
+        let config = ConfigModel::global(cx).read(cx);
+        SettingRow::new(label)
+            .locked(config.is_locked(key))
+            .saved(config.just_saved(key))
+            .control(control)
     }
 
     fn toggle(
@@ -170,7 +179,7 @@ impl AppearanceSettings {
             .disabled(locked)
             .on_change(move |value: &bool, _, cx| {
                 let value = *value;
-                edit(cx, |cfg| change(cfg, value));
+                edit_key(key, cx, |cfg| change(cfg, value));
             })
             .into_any_element()
     }
@@ -213,7 +222,7 @@ impl AppearanceSettings {
                     menu =
                         menu.item(PopupMenuItem::new(label.clone()).on_click(move |_, _, cx| {
                             let value = value.clone();
-                            edit(cx, |cfg| change(cfg, value));
+                            edit_key(key, cx, |cfg| change(cfg, value));
                         }));
                 }
                 menu
@@ -279,7 +288,7 @@ impl AppearanceSettings {
                         .label(t("remove"))
                         .disabled(locked)
                         .on_click(move |_, _, cx| {
-                            edit(cx, |cfg| set_path(cfg, key, String::new()));
+                            edit_key(key, cx, |cfg| set_path(cfg, key, String::new()));
                         }),
                 )
             })
@@ -308,7 +317,7 @@ impl AppearanceSettings {
             {
                 let value = path.to_string_lossy().to_string();
                 this.update(cx, |_, cx| {
-                    edit(cx, |cfg| set_path(cfg, key, value));
+                    edit_key(key, cx, |cfg| set_path(cfg, key, value));
                 })
                 .ok();
             }
@@ -317,7 +326,9 @@ impl AppearanceSettings {
     }
 
     fn general(&self, cfg: &AppConfig, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        vec![
+        let mut rows = Vec::new();
+        push(
+            &mut rows,
             self.row(
                 t("auto_check_updates"),
                 "auto_check_updates",
@@ -329,7 +340,11 @@ impl AppearanceSettings {
                 ),
                 cx,
             )
-            .into_any_element(),
+            .description(t("auto_check_updates_description")),
+            cx,
+        );
+        push(
+            &mut rows,
             self.row(
                 t("minimize_to_tray"),
                 "minimize_to_tray",
@@ -341,7 +356,11 @@ impl AppearanceSettings {
                 ),
                 cx,
             )
-            .into_any_element(),
+            .description(t("minimize_to_tray_description")),
+            cx,
+        );
+        push(
+            &mut rows,
             self.row(
                 t("back_behavior"),
                 "back_behavior",
@@ -357,16 +376,27 @@ impl AppearanceSettings {
                 ),
                 cx,
             )
-            .into_any_element(),
-        ]
+            .description(t("back_behavior_description")),
+            cx,
+        );
+        rows
     }
 
     fn appearance(&self, cfg: &AppConfig, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        let mut rows = vec![
-            self.row(t("language"), "language", self.language(cfg, cx), cx)
-                .into_any_element(),
+        let mut rows = Vec::new();
+        push(
+            &mut rows,
+            self.row(t("language"), "language", self.language(cfg, cx), cx),
+            cx,
+        );
+        push(
+            &mut rows,
             self.row(t("appearance"), "theme", self.theme(cfg, cx), cx)
-                .into_any_element(),
+                .description(t("theme_description")),
+            cx,
+        );
+        push(
+            &mut rows,
             self.row(
                 t("cover_art_background"),
                 "cover_art_background",
@@ -378,7 +408,11 @@ impl AppearanceSettings {
                 ),
                 cx,
             )
-            .into_any_element(),
+            .description(t("cover_art_background_description")),
+            cx,
+        );
+        push(
+            &mut rows,
             self.row(
                 t("custom_background"),
                 "custom_background_path",
@@ -390,7 +424,11 @@ impl AppearanceSettings {
                 ),
                 cx,
             )
-            .into_any_element(),
+            .description(t("custom_background_description")),
+            cx,
+        );
+        push(
+            &mut rows,
             self.row(
                 t("custom_font"),
                 "custom_font_path",
@@ -402,11 +440,13 @@ impl AppearanceSettings {
                 ),
                 cx,
             )
-            .into_any_element(),
-        ];
+            .description(t("custom_font_description")),
+            cx,
+        );
 
         if cfg.cover_art_background || !cfg.custom_background_path.is_empty() {
-            rows.push(
+            push(
+                &mut rows,
                 self.row(
                     t("cover_art_darkening"),
                     "cover_art_darkening",
@@ -417,10 +457,11 @@ impl AppearanceSettings {
                         cx,
                     ),
                     cx,
-                )
-                .into_any_element(),
+                ),
+                cx,
             );
-            rows.push(
+            push(
+                &mut rows,
                 self.row(
                     t("cover_art_blur"),
                     "cover_art_blur",
@@ -431,12 +472,13 @@ impl AppearanceSettings {
                         cx,
                     ),
                     cx,
-                )
-                .into_any_element(),
+                ),
+                cx,
             );
         }
 
-        rows.push(
+        push(
+            &mut rows,
             self.row(
                 t("lyrics_depth_blur"),
                 "lyrics_depth_blur",
@@ -447,11 +489,12 @@ impl AppearanceSettings {
                     cx,
                 ),
                 cx,
-            )
-            .into_any_element(),
+            ),
+            cx,
         );
         if cfg.lyrics_depth_blur {
-            rows.push(
+            push(
+                &mut rows,
                 self.row(
                     t("lyrics_depth_blur_strength"),
                     "lyrics_depth_blur_strength",
@@ -462,12 +505,13 @@ impl AppearanceSettings {
                         cx,
                     ),
                     cx,
-                )
-                .into_any_element(),
+                ),
+                cx,
             );
         }
 
-        rows.push(
+        push(
+            &mut rows,
             self.row(
                 t("reduce_animations"),
                 "reduce_animations",
@@ -479,9 +523,11 @@ impl AppearanceSettings {
                 ),
                 cx,
             )
-            .into_any_element(),
+            .description(t("reduce_animations_description")),
+            cx,
         );
-        rows.push(
+        push(
+            &mut rows,
             self.row(
                 t("fullscreen_use_player_bar"),
                 "fullscreen_use_player_bar",
@@ -492,10 +538,11 @@ impl AppearanceSettings {
                     cx,
                 ),
                 cx,
-            )
-            .into_any_element(),
+            ),
+            cx,
         );
-        rows.push(
+        push(
+            &mut rows,
             self.row(
                 t("show_source_toggle"),
                 "show_source_toggle",
@@ -507,9 +554,11 @@ impl AppearanceSettings {
                 ),
                 cx,
             )
-            .into_any_element(),
+            .description(t("show_source_toggle_description")),
+            cx,
         );
-        rows.push(
+        push(
+            &mut rows,
             self.row(
                 t("show_row_images"),
                 "show_row_images",
@@ -521,9 +570,11 @@ impl AppearanceSettings {
                 ),
                 cx,
             )
-            .into_any_element(),
+            .description(t("show_row_images_description")),
+            cx,
         );
-        rows.push(
+        push(
+            &mut rows,
             self.row(
                 t("player_bar_position"),
                 "player_bar_position",
@@ -538,8 +589,8 @@ impl AppearanceSettings {
                     cx,
                 ),
                 cx,
-            )
-            .into_any_element(),
+            ),
+            cx,
         );
         // TODO(parity): titlebar_mode, ui_style (no Vaxry layout), settings_layout and the live theme.
         rows
@@ -578,6 +629,13 @@ impl AppearanceSettings {
             |cfg, value| cfg.theme = value,
             cx,
         )
+    }
+}
+
+/// Keep a row unless the settings search is filtering it out.
+fn push(rows: &mut Vec<AnyElement>, row: SettingRow, cx: &App) {
+    if let Some(row) = row.shown(cx) {
+        rows.push(row.into_any_element());
     }
 }
 
@@ -620,6 +678,7 @@ impl Render for AppearanceSettings {
             .when(self.shows("appearance"), |panel| {
                 panel.child(
                     section(t("theme_editor"))
+                        .opaque()
                         .child(div().px_5().py_4().child(self.editor.clone())),
                 )
             })

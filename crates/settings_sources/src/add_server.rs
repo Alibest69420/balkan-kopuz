@@ -27,6 +27,7 @@ pub struct AddServer {
     services: Entity<Query<Vec<ServiceInfo>>>,
     service: Option<ServiceInfo>,
     name: Entity<InputState>,
+    name_problem: Option<SharedString>,
     form: Option<Entity<SchemaForm>>,
     check: Option<DraftCheck>,
     error: Option<SharedString>,
@@ -64,6 +65,7 @@ impl AddServer {
             services,
             service: None,
             name,
+            name_problem: None,
             form: None,
             check: None,
             error: None,
@@ -88,6 +90,7 @@ impl AddServer {
             .update(cx, |state, cx| state.set_value("", window, cx));
         self.check = None;
         self.error = None;
+        self.name_problem = None;
         self.saving = false;
         self.service = None;
         self.form = None;
@@ -176,6 +179,11 @@ impl AddServer {
                     .as_ref()
                     .map(|check| check.problems.clone())
                     .unwrap_or_default();
+                // The name is this dialog's own field, so its problem has nowhere else to land.
+                this.name_problem = problems
+                    .iter()
+                    .find(|problem| problem.field.as_deref() == Some("name"))
+                    .map(|problem| text(&problem.label));
                 if let Some(form) = this.form.as_ref() {
                     form.update(cx, |form, cx| form.set_problems(problems, cx));
                 }
@@ -289,7 +297,15 @@ impl Render for AddServer {
                     cx,
                 ))
             })
-            .child(Input::new(&self.name).disabled(saving))
+            .child(
+                v_flex()
+                    .w_full()
+                    .gap_1()
+                    .child(Input::new(&self.name).disabled(saving))
+                    .when_some(self.name_problem.clone(), |field, problem| {
+                        field.child(ui::field_problem(problem, cx))
+                    }),
+            )
             .child(
                 Button::new("add-server-service")
                     .outline()

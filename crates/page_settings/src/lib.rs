@@ -1,19 +1,20 @@
 //! Settings: the category rail and the panel it shows; each category lives in its own crate.
 
+use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, ElementId, Entity, FontWeight,
     InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString,
-    StatefulInteractiveElement as _, Styled, Window, div, rems,
+    StatefulInteractiveElement as _, Styled, Subscription, Window, div, rems,
 };
 use settings_appearance::AppearanceSettings;
 use settings_interface::InterfaceSettings;
 use settings_playback::PlaybackSettings;
 use settings_sources::SourceSettings;
 use store::ConfigModel;
-use widgets::format::t;
-use widgets::{PageHeader, icons, motion, style};
+use widgets::format::{t, t_with};
+use widgets::{EmptyState, PageHeader, icons, motion, style};
 
 /// `border-white/9` under the fan, over `bg-black/92`.
 const FAN_BORDER: f32 = 0.09;
@@ -115,10 +116,13 @@ pub struct Settings {
     category: Category,
     hovered: Option<Category>,
     scroll: gpui_kit::ScrollHandle,
+    search: Entity<InputState>,
+    searching: bool,
     appearance: Entity<AppearanceSettings>,
     interface: Entity<InterfaceSettings>,
     sources: Entity<SourceSettings>,
     playback: Entity<PlaybackSettings>,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl Settings {
@@ -126,17 +130,51 @@ impl Settings {
         let category = section
             .and_then(|section| Category::from_slug(&section))
             .unwrap_or(Category::General);
+        let search = cx.new(|cx| InputState::new(window, cx).placeholder(t("settings_search")));
+        // The box is new, so whatever a previous visit was filtering by is not.
+        widgets::settings::set_query("", cx);
+        let subscriptions = vec![
+            cx.subscribe(&search, |this, state, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    let typed = state.read(cx).value().to_string();
+                    this.filter(&typed, cx);
+                }
+            }),
+            cx.observe(&ConfigModel::global(cx), |_, _, cx| cx.notify()),
+        ];
         let mut settings = Self {
             category,
             hovered: None,
             scroll: gpui_kit::ScrollHandle::new(),
+            search,
+            searching: false,
             appearance: cx.new(|cx| AppearanceSettings::new(window, cx)),
             interface: cx.new(|cx| InterfaceSettings::new(window, cx)),
             sources: cx.new(|cx| SourceSettings::new(window, cx)),
             playback: cx.new(|cx| PlaybackSettings::new(window, cx)),
+            _subscriptions: subscriptions,
         };
         settings.select(category, cx);
         settings
+    }
+
+    /// Filtering spans every category, so the panels stop showing one section each while it lasts.
+    fn filter(&mut self, typed: &str, cx: &mut Context<Self>) {
+        widgets::settings::set_query(typed, cx);
+        let searching = widgets::settings::query(cx).is_some();
+        if searching == self.searching {
+            cx.notify();
+            return;
+        }
+        self.searching = searching;
+        if searching {
+            self.appearance.update(cx, |panel, cx| panel.show(None, cx));
+            self.sources.update(cx, |panel, cx| panel.show(None, cx));
+            self.playback.update(cx, |panel, cx| panel.show(None, cx));
+            cx.notify();
+        } else {
+            self.select(self.category, cx);
+        }
     }
 
     /// Show one category, telling its crate which of its sections to draw.
@@ -159,7 +197,28 @@ impl Settings {
         cx.notify();
     }
 
+    /// A category rail entry was clicked; a search that was on is what it replaces.
+    fn choose(&mut self, category: Category, window: &mut Window, cx: &mut Context<Self>) {
+        if self.searching {
+            self.search
+                .update(cx, |state, cx| state.set_value("", window, cx));
+            self.searching = false;
+            widgets::settings::set_query("", cx);
+        }
+        self.select(category, cx);
+    }
+
     fn panel(&self) -> AnyElement {
+        if self.searching {
+            return v_flex()
+                .w_full()
+                .gap_4()
+                .child(self.appearance.clone())
+                .child(self.interface.clone())
+                .child(self.sources.clone())
+                .child(self.playback.clone())
+                .into_any_element();
+        }
         match self.category {
             Category::Appearance | Category::General => self.appearance.clone().into_any_element(),
             Category::Interface => self.interface.clone().into_any_element(),
@@ -240,10 +299,46 @@ impl Settings {
                             cx.notify();
                         }
                     }))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.select(category, cx);
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.choose(category, window, cx);
                     }))
             }))
+    }
+
+    /// The box that filters every category at once.
+    fn search_box(&self, cx: &App) -> impl IntoElement {
+        h_flex()
+            .w_full()
+            .gap_2()
+            .items_center()
+            .mb_4()
+            .px_3()
+            .rounded(style::radius_xl())
+            .border_1()
+            .border_color(style::white(style::BORDER, cx))
+            .bg(style::white(style::RAISED, cx))
+            .child(
+                icons::icon(icons::SEARCH)
+                    .with_size(style::text_11())
+                    .text_color(style::white(style::TEXT_MUTED, cx)),
+            )
+            .child(div().flex_1().min_w_0().child(Input::new(&self.search)))
+    }
+
+    /// Nothing to edit until the daemon has answered; dead controls would save nothing.
+    fn unavailable(&self, cx: &App) -> impl IntoElement {
+        v_flex()
+            .w_full()
+            .py_8()
+            .child(EmptyState::new(t("settings_unavailable")).icon(icons::WARNING))
+            .child(
+                div()
+                    .w_full()
+                    .text_center()
+                    .text_xs()
+                    .text_color(style::white(NOTICE, cx))
+                    .child(t("settings_unavailable_hint")),
+            )
     }
 
     /// The notice a managed settings file puts above the fan.
@@ -276,10 +371,12 @@ impl Settings {
 impl Render for Settings {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         widgets::scroll::smooth("settings-panel", &self.scroll, window, cx);
-        let locked = !ConfigModel::global(cx).read(cx).locked_keys().is_empty();
-        // The page root is the scroller, the way every page that scrolls here is. A nested
-        // `flex_1 min_h_0` child never resolved to a definite height in this slot, so it grew
-        // to its content and had nothing to scroll.
+        let config = ConfigModel::global(cx);
+        let loaded = config.read(cx).is_loaded();
+        let locked = !config.read(cx).locked_keys().is_empty();
+        let empty = self.searching && widgets::settings::nothing_matched(cx);
+        let typed = SharedString::from(self.search.read(cx).value().to_string());
+        // The page root is the scroller: a nested `flex_1 min_h_0` child measured no height here.
         v_flex()
             .id("settings-panel")
             .size_full()
@@ -293,9 +390,21 @@ impl Render for Settings {
                     .px_6()
                     .py_7()
                     .child(PageHeader::new(t("settings")))
-                    .when(locked, |page| page.child(self.managed_notice(cx)))
-                    .child(self.rail(window, cx))
-                    .child(self.panel()),
+                    .map(|page| {
+                        if !loaded {
+                            return page.child(self.unavailable(cx));
+                        }
+                        page.child(self.search_box(cx))
+                            .when(locked, |page| page.child(self.managed_notice(cx)))
+                            .child(self.rail(window, cx))
+                            .when(empty, |page| {
+                                page.child(EmptyState::new(t_with(
+                                    "no_results_found",
+                                    &[("query", typed.to_string())],
+                                )))
+                            })
+                            .child(self.panel())
+                    }),
             )
     }
 }

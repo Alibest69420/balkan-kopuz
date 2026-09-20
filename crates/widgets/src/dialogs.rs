@@ -5,6 +5,7 @@ use std::rc::Rc;
 use gpui_kit::{App, Global, SharedString, Window};
 
 type MetadataOpener = Rc<dyn Fn(String, bool, &mut Window, &mut App)>;
+type BatchMetadataOpener = Rc<dyn Fn(Vec<String>, &mut Window, &mut App)>;
 type RenameOpener =
     Rc<dyn Fn(SharedString, SharedString, Rc<dyn Fn(String, &mut App)>, &mut Window, &mut App)>;
 type FolderOpener = Rc<dyn Fn(String, &mut Window, &mut App)>;
@@ -12,6 +13,7 @@ type FolderOpener = Rc<dyn Fn(String, &mut Window, &mut App)>;
 #[derive(Default)]
 struct Dialogs {
     track_metadata: Option<MetadataOpener>,
+    batch_metadata: Option<BatchMetadataOpener>,
     rename: Option<RenameOpener>,
     folder_picker: Option<FolderOpener>,
 }
@@ -31,6 +33,24 @@ pub fn register_track_metadata(
     cx: &mut App,
 ) {
     dialogs(cx).track_metadata = Some(Rc::new(opener));
+}
+
+/// Register the editor that writes one set of tags across a whole selection.
+pub fn register_batch_metadata(
+    opener: impl Fn(Vec<String>, &mut Window, &mut App) + 'static,
+    cx: &mut App,
+) {
+    dialogs(cx).batch_metadata = Some(Rc::new(opener));
+}
+
+pub fn open_batch_metadata(keys: Vec<String>, window: &mut Window, cx: &mut App) {
+    let opener = cx
+        .try_global::<Dialogs>()
+        .and_then(|dialogs| dialogs.batch_metadata.clone());
+    match opener {
+        Some(opener) => opener(keys, window, cx),
+        None => tracing::warn!("no batch metadata dialog is registered"),
+    }
 }
 
 /// Register the rename prompt: a title, the current name, and what to do with the new one.

@@ -281,7 +281,7 @@ impl Render for LocalLibraries {
             .iter()
             .map(|source| self.library(source, locked, window, cx).into_any_element())
             .collect();
-        ui::section(t("local_libraries")).child(
+        ui::section(t("local_libraries")).opaque().child(
             ui::card(cx).children(rows).child(
                 Button::new("add-local-library")
                     .custom(ui::soft(cx))
