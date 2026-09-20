@@ -11,8 +11,8 @@ use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _,
-    IntoElement, ParentElement as _, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement as _, Styled, Subscription, Window, div, px,
+    IntoElement, ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _,
+    Styled, Subscription, UniformListScrollHandle, Window, div, px, uniform_list,
 };
 use store::{ConfigModel, JobsModel, Navigator, Query, Route, SourcesModel, actions};
 use widgets::format::t;
@@ -29,6 +29,10 @@ const TILE: gpui_kit::Pixels = px(180.);
 // The tile's cover fills it inside `p-4`.
 const TILE_COVER: gpui_kit::Pixels = px(148.);
 const ROW_COVER: gpui_kit::Pixels = px(48.);
+// `gap-6` between tiles, so a column costs this much width.
+const TILE_GAP: gpui_kit::Pixels = px(24.);
+// Until the list has been laid out once there is no measured width to divide.
+const TILE_COLUMNS_FALLBACK: usize = 4;
 
 // The two chrome controls track their own hover, since a Button cannot carry a tween.
 const SORT_CONTROL: &str = "albums-sort-frame";
@@ -36,7 +40,7 @@ const SORT_CONTROL: &str = "albums-sort-frame";
 /// Every album, as tiles or as rows.
 pub struct Albums {
     albums: Entity<Query<AlbumPage>>,
-    scroll: ScrollHandle,
+    scroll: UniformListScrollHandle,
     // Which card the pointer is over, and whose menu is open: both drive tweens.
     hovered: Option<String>,
     menu_open: Option<String>,
@@ -70,7 +74,7 @@ impl Albums {
         ];
         Self {
             albums,
-            scroll: ScrollHandle::new(),
+            scroll: UniformListScrollHandle::new(),
             hovered: None,
             menu_open: None,
             control: None,
@@ -255,6 +259,62 @@ impl Albums {
     }
 }
 
+impl Albums {
+    /// How many tiles fit across, from the width the list reported at its last layout.
+    fn tile_columns(&self) -> usize {
+        let width: Pixels = self.scroll.0.borrow().base_handle.bounds().size.width;
+        if width <= px(0.) {
+            return TILE_COLUMNS_FALLBACK;
+        }
+        // The last tile in a band needs no gap after it.
+        (((width + TILE_GAP) / (TILE + TILE_GAP)) as usize).max(1)
+    }
+
+    /// One virtualized band: a row of tiles in grid mode, a single album in list mode.
+    #[allow(clippy::too_many_arguments)]
+    fn band(
+        &mut self,
+        visible: &[AlbumInfo],
+        same_title: &HashMap<String, Vec<String>>,
+        index: usize,
+        columns: usize,
+        grid: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let first = index * columns;
+        let last = (first + columns).min(visible.len());
+        let mut cards: Vec<AnyElement> = Vec::with_capacity(last.saturating_sub(first));
+        for album in &visible[first..last] {
+            let target = MenuTarget {
+                id: album.id.clone(),
+                same_title: same_title
+                    .get(&title_key(album))
+                    .cloned()
+                    .unwrap_or_default(),
+            };
+            let hovered = self.hovered.as_deref() == Some(album.id.as_str());
+            cards.push(match grid {
+                true => {
+                    let open = self.menu_open.as_deref() == Some(album.id.as_str());
+                    card(album, target, hovered, open, window, cx).into_any_element()
+                }
+                false => row(album, target, hovered, window, cx).into_any_element(),
+            });
+        }
+        match grid {
+            true => h_flex()
+                .w_full()
+                .items_start()
+                .gap_6()
+                .pb_6()
+                .children(cards)
+                .into_any_element(),
+            false => v_flex().w_full().pb_2().children(cards).into_any_element(),
+        }
+    }
+}
+
 impl Render for Albums {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let all = self.all_albums(cx);
@@ -277,24 +337,13 @@ impl Render for Albums {
             .collect();
         sort::sort(&mut visible, &criteria(cx));
 
-        let mut cards: Vec<AnyElement> = Vec::with_capacity(visible.len());
-        for album in &visible {
-            let target = MenuTarget {
-                id: album.id.clone(),
-                same_title: same_title
-                    .get(&title_key(album))
-                    .cloned()
-                    .unwrap_or_default(),
-            };
-            let hovered = self.hovered.as_deref() == Some(album.id.as_str());
-            cards.push(match grid {
-                true => {
-                    let open = self.menu_open.as_deref() == Some(album.id.as_str());
-                    card(album, target, hovered, open, window, cx).into_any_element()
-                }
-                false => row(album, target, hovered, window, cx).into_any_element(),
-            });
-        }
+        let empty = visible.is_empty();
+        // A tile row is the virtualized unit, so the grid builds a screenful instead of the library.
+        let columns = match grid {
+            true => self.tile_columns(),
+            false => 1,
+        };
+        let rows = visible.len().div_ceil(columns.max(1));
 
         v_flex()
             .size_full()
@@ -312,27 +361,39 @@ impl Render for Albums {
                     .child(self.view_toggle(window, cx))
                     .child(self.sort_control(&all, window, cx)),
             )
-            .child(
-                div()
-                    .id("albums-scroll")
-                    .flex_1()
-                    .min_h_0()
-                    .pb_8()
-                    .overflow_y_scroll()
-                    .track_scroll(&self.scroll)
-                    .map(|body| match (cards.is_empty(), settled) {
-                        (true, false) => body.child(Loading),
-                        (true, true) => body.child(
-                            div()
-                                .text_color(style::slate_500(cx))
-                                .child(t("no_albums_found")),
-                        ),
-                        (false, _) if grid => {
-                            body.child(div().flex().flex_wrap().gap_6().children(cards))
-                        }
-                        (false, _) => body.child(v_flex().w_full().gap_2().children(cards)),
-                    }),
-            )
+            .child(div().flex_1().min_h_0().pb_8().map(|body| {
+                match (empty, settled) {
+                    (true, false) => body.child(Loading),
+                    (true, true) => body.child(
+                        div()
+                            .text_color(style::slate_500(cx))
+                            .child(t("no_albums_found")),
+                    ),
+                    (false, _) => body.child(
+                        uniform_list(
+                            "albums-scroll",
+                            rows,
+                            cx.processor(move |this, range: std::ops::Range<usize>, window, cx| {
+                                range
+                                    .map(|index| {
+                                        this.band(
+                                            &visible,
+                                            &same_title,
+                                            index,
+                                            columns,
+                                            grid,
+                                            window,
+                                            cx,
+                                        )
+                                    })
+                                    .collect()
+                            }),
+                        )
+                        .track_scroll(&self.scroll)
+                        .size_full(),
+                    ),
+                }
+            }))
     }
 }
 
