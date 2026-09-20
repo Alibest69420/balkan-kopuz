@@ -66,25 +66,31 @@ impl FullscreenPlayer {
             window,
             cx,
         );
-        div().absolute().right_4().top_1_2().child(
-            Button::new("fs-expand-panel")
-                .custom(
-                    ButtonCustomVariant::new(cx)
-                        .color(scrim)
-                        .foreground(glyph)
-                        .hover(scrim)
-                        .active(style::black(0.6, cx))
-                        .shadow(true),
-                )
-                .rounded(px(999.))
-                .with_size(px(36.))
-                .icon(icons::icon(icons::CHEVRON_LEFT))
-                .tooltip(t("show_side_panel"))
-                .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
-                    this.set_hover("fs-expand-panel", *hovered, cx)
-                }))
-                .on_click(|_, _, cx| set_collapsed(false, cx)),
-        )
+        // The frame owns the hover: a tooltip installs its own, and two on one element panic.
+        div()
+            .id("fs-expand-frame")
+            .absolute()
+            .right_4()
+            .top_1_2()
+            .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+                this.set_hover("fs-expand-panel", *hovered, cx)
+            }))
+            .child(
+                Button::new("fs-expand-panel")
+                    .custom(
+                        ButtonCustomVariant::new(cx)
+                            .color(scrim)
+                            .foreground(glyph)
+                            .hover(scrim)
+                            .active(style::black(0.6, cx))
+                            .shadow(true),
+                    )
+                    .rounded(px(999.))
+                    .with_size(px(36.))
+                    .icon(icons::icon(icons::CHEVRON_LEFT))
+                    .tooltip(t("show_side_panel"))
+                    .on_click(|_, _, cx| set_collapsed(false, cx)),
+            )
     }
 
     fn tab_bar(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
@@ -137,17 +143,20 @@ impl FullscreenPlayer {
                     ),
             )
             .child(
-                div().ml_auto().child(
-                    Button::new("fs-collapse-panel")
-                        .custom(ButtonCustomVariant::new(cx).foreground(collapse))
-                        .with_size(px(32.))
-                        .icon(icons::icon(icons::CHEVRON_RIGHT).small())
-                        .tooltip(t("hide_side_panel"))
-                        .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
-                            this.set_hover("fs-collapse-panel", *hovered, cx)
-                        }))
-                        .on_click(|_, _, cx| set_collapsed(true, cx)),
-                ),
+                div()
+                    .id("fs-collapse-frame")
+                    .ml_auto()
+                    .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+                        this.set_hover("fs-collapse-panel", *hovered, cx)
+                    }))
+                    .child(
+                        Button::new("fs-collapse-panel")
+                            .custom(ButtonCustomVariant::new(cx).foreground(collapse))
+                            .with_size(px(32.))
+                            .icon(icons::icon(icons::CHEVRON_RIGHT).small())
+                            .tooltip(t("hide_side_panel"))
+                            .on_click(|_, _, cx| set_collapsed(true, cx)),
+                    ),
             )
             .into_any_element()
     }

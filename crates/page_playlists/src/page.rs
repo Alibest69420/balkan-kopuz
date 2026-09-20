@@ -30,7 +30,7 @@ fn tweened_chrome(
     text: (f32, f32),
     window: &mut Window,
     cx: &mut App,
-) -> Button {
+) -> impl IntoElement {
     let (hot, hover) = hovered(SharedString::from(format!("{id}-hover")), window, cx);
     let background = motion::color(
         SharedString::from(format!("{id}-fill")),
@@ -44,13 +44,18 @@ fn tweened_chrome(
         window,
         cx,
     );
-    tweened(
-        button.on_hover(track(hover)),
-        background,
-        foreground,
-        style::white(0., cx),
-        cx,
-    )
+    // The frame owns the hover: a Button's tooltip installs an `on_hover` of its own, and two panic.
+    div()
+        .id(SharedString::from(format!("{id}-frame")))
+        .flex()
+        .on_hover(track(hover))
+        .child(tweened(
+            button,
+            background,
+            foreground,
+            style::white(0., cx),
+            cx,
+        ))
 }
 
 /// `w-10 h-10 rounded-full text-white/60`: the two buttons beside the page title.
@@ -326,6 +331,7 @@ impl Playlists {
                         .ghost()
                         .bg(style::white(style::HOVER, cx))
                         .text_color(style::white(0.80, cx))
+                        .into_any_element()
                 } else {
                     tweened_chrome(
                         "refresh-playlists",
@@ -335,6 +341,7 @@ impl Playlists {
                         window,
                         cx,
                     )
+                    .into_any_element()
                 }
             })
     }

@@ -619,16 +619,22 @@ impl FullscreenPlayer {
             .pt_16()
             .w(relative(width))
             .child(
-                div().absolute().top_8().left_8().child(
-                    Button::new("fs-close")
-                        .custom(ButtonCustomVariant::new(cx).foreground(close))
-                        .icon(icons::icon(icons::CHEVRON_DOWN).size(px(24.)))
-                        .tooltip(t("close"))
-                        .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
-                            this.set_hover("fs-close", *hovered, cx)
-                        }))
-                        .on_click(|_, _, cx| Self::close(cx)),
-                ),
+                // The frame owns the hover: a tooltip installs its own, and two on one element panic.
+                div()
+                    .id("fs-close-frame")
+                    .absolute()
+                    .top_8()
+                    .left_8()
+                    .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+                        this.set_hover("fs-close", *hovered, cx)
+                    }))
+                    .child(
+                        Button::new("fs-close")
+                            .custom(ButtonCustomVariant::new(cx).foreground(close))
+                            .icon(icons::icon(icons::CHEVRON_DOWN).size(px(24.)))
+                            .tooltip(t("close"))
+                            .on_click(|_, _, cx| Self::close(cx)),
+                    ),
             )
             .child(cover)
             .when_some(track, |column, track| {

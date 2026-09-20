@@ -148,3 +148,29 @@ pub fn zoom_by(
     let target = if hovered { base * factor } else { base };
     length(id, target, duration, window, cx)
 }
+
+/// Hover as a value a tween can read; `.hover()` refines a style instead of reporting the state.
+pub fn hovered(
+    id: impl Into<ElementId>,
+    window: &mut Window,
+    cx: &mut App,
+) -> (bool, gpui_kit::Entity<bool>) {
+    let state = window.use_keyed_state(id.into(), cx, |_, _| false);
+    let hovered = *state.read(cx);
+    (hovered, state)
+}
+
+/// The `on_hover` listener that keeps a [`hovered`] flag in step with the pointer.
+pub fn track(
+    state: gpui_kit::Entity<bool>,
+) -> impl Fn(&bool, &mut Window, &mut App) + 'static + use<> {
+    move |over, _, cx| {
+        let over = *over;
+        state.update(cx, |flag, cx| {
+            if *flag != over {
+                *flag = over;
+                cx.notify();
+            }
+        });
+    }
+}

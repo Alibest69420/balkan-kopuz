@@ -8,8 +8,8 @@ use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{Selectable as _, Sizable as _, h_flex};
 use gpui_kit::{
-    App, Div, ElementId, Entity, Hsla, IntoElement, ParentElement as _, Pixels, SharedString,
-    Styled as _, Window, px,
+    App, Div, ElementId, Entity, Hsla, InteractiveElement as _, IntoElement, ParentElement as _,
+    Pixels, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
 use store::ConfigModel;
 use widgets::format::t;
@@ -156,7 +156,13 @@ fn pill(cx: &App) -> Div {
 }
 
 /// One half of a pill: `h-7 px-3 text-xs rounded-md`, `transition-all` as the selection moves.
-fn segment(id: &'static str, selected: bool, window: &mut Window, cx: &mut App) -> Button {
+fn segment(
+    id: &'static str,
+    selected: bool,
+    finish: impl FnOnce(Button) -> Button,
+    window: &mut Window,
+    cx: &mut App,
+) -> impl IntoElement {
     let (hot, hover) = hovered(SharedString::from(format!("{id}-hover")), window, cx);
     let fill = motion::color(
         SharedString::from(format!("{id}-fill")),
@@ -177,41 +183,57 @@ fn segment(id: &'static str, selected: bool, window: &mut Window, cx: &mut App) 
         window,
         cx,
     );
-    tweened(
-        Button::new(id)
-            .xsmall()
-            .h_7()
-            .px_3()
-            .rounded(SEGMENT_RADIUS)
-            .selected(selected)
-            .on_hover(track(hover)),
-        fill,
-        label,
-        style::white(0., cx),
-        cx,
-    )
+    // The frame owns the hover: a Button's tooltip installs an `on_hover` of its own, and two panic.
+    div()
+        .id(SharedString::from(format!("{id}-frame")))
+        .flex()
+        .on_hover(track(hover))
+        .child(finish(tweened(
+            Button::new(id)
+                .xsmall()
+                .h_7()
+                .px_3()
+                .rounded(SEGMENT_RADIUS)
+                .selected(selected),
+            fill,
+            label,
+            style::white(0., cx),
+            cx,
+        )))
 }
 
 /// Grid ⇄ list, writing `key`'s config field.
 pub fn view_mode_toggle(key: ViewModeKey, window: &mut Window, cx: &mut App) -> impl IntoElement {
     let mode = key.read(&config(cx));
     pill(cx)
-        .child(
-            segment("view-grid", mode == AlbumViewMode::Grid, window, cx)
-                .icon(icons::icon(icons::GRID))
-                .tooltip(t("view_grid"))
-                .on_click(move |_, _, cx| {
-                    edit(cx, |config| key.write(config, AlbumViewMode::Grid))
-                }),
-        )
-        .child(
-            segment("view-list", mode == AlbumViewMode::List, window, cx)
-                .icon(icons::icon(icons::ROWS))
-                .tooltip(t("view_list"))
-                .on_click(move |_, _, cx| {
-                    edit(cx, |config| key.write(config, AlbumViewMode::List))
-                }),
-        )
+        .child(segment(
+            "view-grid",
+            mode == AlbumViewMode::Grid,
+            |button| {
+                button
+                    .icon(icons::icon(icons::GRID))
+                    .tooltip(t("view_grid"))
+                    .on_click(move |_, _, cx| {
+                        edit(cx, |config| key.write(config, AlbumViewMode::Grid))
+                    })
+            },
+            window,
+            cx,
+        ))
+        .child(segment(
+            "view-list",
+            mode == AlbumViewMode::List,
+            |button| {
+                button
+                    .icon(icons::icon(icons::ROWS))
+                    .tooltip(t("view_list"))
+                    .on_click(move |_, _, cx| {
+                        edit(cx, |config| key.write(config, AlbumViewMode::List))
+                    })
+            },
+            window,
+            cx,
+        ))
 }
 
 /// The stacked sort: the first field decides, the rest break ties, name always last.
@@ -285,22 +307,30 @@ pub fn view_order_toggle(
 ) -> impl IntoElement {
     let tracks = *order == ArtistViewOrder::Tracks;
     pill(cx)
-        .child(
-            segment("order-tracks", tracks, window, cx)
-                .label(t("tracks"))
-                .on_click(|_, _, cx| {
+        .child(segment(
+            "order-tracks",
+            tracks,
+            |button| {
+                button.label(t("tracks")).on_click(|_, _, cx| {
                     edit(cx, |config| {
                         config.artist_view_order = ArtistViewOrder::Tracks
                     })
-                }),
-        )
-        .child(
-            segment("order-albums", !tracks, window, cx)
-                .label(t("albums"))
-                .on_click(|_, _, cx| {
+                })
+            },
+            window,
+            cx,
+        ))
+        .child(segment(
+            "order-albums",
+            !tracks,
+            |button| {
+                button.label(t("albums")).on_click(|_, _, cx| {
                     edit(cx, |config| {
                         config.artist_view_order = ArtistViewOrder::Albums
                     })
-                }),
-        )
+                })
+            },
+            window,
+            cx,
+        ))
 }
