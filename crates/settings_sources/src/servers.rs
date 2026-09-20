@@ -80,6 +80,9 @@ pub struct MediaServers {
     browser: FolderBrowser,
     statuses: HashMap<String, SourceState>,
     switching: Option<String>,
+    // The server the probe last ran for, so a redraw does not re-probe it.
+    probed: Option<String>,
+    probing: Option<String>,
     host_access: Entity<Query<bool>>,
     add: Entity<AddServer>,
     login: Entity<LoginForm>,
@@ -130,6 +133,8 @@ impl MediaServers {
             options: None,
             browser: FolderBrowser::default(),
             statuses: HashMap::new(),
+            probed: None,
+            probing: None,
             switching: None,
             host_access,
             add,
@@ -162,6 +167,7 @@ impl MediaServers {
 
     /// Keep one form over the active server's options, rebuilt only when the daemon's fields change.
     fn sync_options(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.probe_active(window, cx);
         let locked = ConfigModel::global(cx).read(cx).locked_keys().to_vec();
         let active = Self::active(cx).filter(|source| !source.settings.is_empty());
         let Some(source) = active else {
@@ -202,15 +208,49 @@ impl MediaServers {
     }
 
     fn status(&self, source: &SourceInfo) -> Status {
-        if self.switching.as_deref() == Some(source.id.as_str()) {
+        if self.switching.as_deref() == Some(source.id.as_str())
+            || self.probing.as_deref() == Some(source.id.as_str())
+        {
             return Status::Connecting;
         }
         match self.statuses.get(&source.id) {
             Some(SourceState::Online) => Status::Connected,
             Some(_) => Status::Disconnected,
-            None if source.authenticated => Status::Connected,
-            None => Status::Disconnected,
+            // Stored credentials say a sign-in once worked, not that the server answers now.
+            None => Status::Connecting,
         }
+    }
+
+    /// Probe the active server the way the daemon is asked to on a switch, since nothing else
+    /// reports a server that was already unreachable when the page opened.
+    fn probe_active(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(source) = Self::active(cx) else {
+            self.probed = None;
+            self.probing = None;
+            return;
+        };
+        if self.probed.as_deref() == Some(source.id.as_str()) {
+            return;
+        }
+        self.probed = Some(source.id.clone());
+        self.probing = Some(source.id.clone());
+        cx.notify();
+        let id = source.id.clone();
+        let call = Link::global(cx).call(move |api| async move { api.validate_source(id).await });
+        cx.spawn_in(window, async move |this, cx| {
+            let state = call.await;
+            this.update(cx, |this, cx| {
+                if this.probing.as_deref() == Some(source.id.as_str()) {
+                    this.probing = None;
+                }
+                // A probe that could not be made is not a server that answered.
+                this.statuses
+                    .insert(source.id.clone(), state.unwrap_or(SourceState::Offline));
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     /// Make a server active, then pick up whichever sign-in the daemon says it still needs.
