@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use api::LoopMode;
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
+use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _};
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
 use gpui_kit::component::{
     ActiveTheme as _, Disableable as _, Sizable as _, StyledExt as _, h_flex, v_flex,
@@ -23,7 +24,7 @@ use store::{
     SidePanel, SourcesModel, actions,
 };
 use widgets::format::{duration, t};
-use widgets::{Cover, icons, motion, style};
+use widgets::{Cover, icons, menus, motion, style};
 
 // The bar's own height, measured from the Dioxus frontend's `h-24`.
 const BAR_HEIGHT: Pixels = px(96.);
@@ -398,7 +399,11 @@ impl PlayerBar {
             cx,
         );
 
-        h_flex()
+        let target = key
+            .clone()
+            .map(|key| store::Target::track(key, title.clone()));
+        let block = h_flex()
+            .id("now-playing-block")
             .flex_1()
             .min_w_0()
             .gap_4()
@@ -498,6 +503,21 @@ impl PlayerBar {
                     })),
                 )
             })
+            // The bar had no track menu at all, so the only way to queue or share what was playing
+            // was to find the same track somewhere else.
+            .children(target.clone().map(|target| {
+                Button::new("now-playing-menu")
+                    .ghost()
+                    .xsmall()
+                    .icon(icons::icon(icons::MORE))
+                    .dropdown_menu(menus::builder(target))
+            }));
+        match target {
+            Some(target) => block
+                .context_menu(menus::builder(target))
+                .into_any_element(),
+            None => block.into_any_element(),
+        }
     }
 
     fn transport_block(

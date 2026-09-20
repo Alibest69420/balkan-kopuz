@@ -224,10 +224,10 @@ impl PlaylistDetail {
 
     fn delete(&mut self, window: &mut Window, cx: &mut Context<Self>, name: SharedString) {
         let id = self.id.to_string();
-        crate::dialogs::confirm_delete(
+        widgets::dialogs::confirm_delete(
             t("delete_playlist"),
             name,
-            move |cx| {
+            move |_, cx| {
                 let id = id.clone();
                 actions::run(cx, move |api| async move { api.delete_playlist(id).await });
                 Navigator::navigate(Route::Playlists, cx);

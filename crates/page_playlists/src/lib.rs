@@ -7,5 +7,6 @@ mod folder;
 mod page;
 
 pub use detail::PlaylistDetail;
+pub use dialogs::register;
 pub use folder::PlaylistFolder;
 pub use page::Playlists;

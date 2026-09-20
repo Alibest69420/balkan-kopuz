@@ -1,12 +1,11 @@
 //! The albums grid: every album the library holds, deduped by title.
 
-use std::collections::HashMap;
 use std::collections::HashSet;
 
-use api::{AlbumInfo, AlbumPage, JobKind, PlaylistCapability, Table};
+use api::{AlbumInfo, AlbumPage, JobKind, Table};
 use config::{AlbumSortField, AlbumViewMode, SortCriterion, SortDirection};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenu, PopupMenuItem};
+use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -14,12 +13,11 @@ use gpui_kit::{
     IntoElement, ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _,
     Styled, Subscription, UniformListScrollHandle, Window, div, px, uniform_list,
 };
-use store::{ConfigModel, JobsModel, Navigator, Query, Route, SourcesModel, actions};
+use store::{ConfigModel, JobsModel, Navigator, Query, Route, SourcesModel, Target};
 use widgets::format::t;
-use widgets::{Cover, Loading, PageHeader, dialogs, icons, motion, style};
+use widgets::{Cover, Loading, PageHeader, icons, menus, motion, style};
 
 use crate::clear_variant;
-use crate::ops;
 use crate::sort;
 
 // TODO(offline): filtering the grid to downloaded albums waits on an offline seam the checklist flags as wrong.
@@ -43,7 +41,6 @@ pub struct Albums {
     // Deduped and sorted once per change. Render used to rebuild all of this every frame, and a
     // card hover notifies, so moving the pointer across the grid re-sorted the whole library.
     visible: Vec<AlbumInfo>,
-    same_title: HashMap<String, Vec<String>>,
     sort_fields: Vec<AlbumSortField>,
     scroll: UniformListScrollHandle,
     // Which card the pointer is over, and whose menu is open: both drive tweens.
@@ -81,7 +78,6 @@ impl Albums {
         Self {
             albums,
             visible: Vec::new(),
-            same_title: HashMap::new(),
             sort_fields: Vec::new(),
             scroll: UniformListScrollHandle::new(),
             hovered: None,
@@ -93,18 +89,8 @@ impl Albums {
     }
 
     /// Dedupe by title, sort, and note which fields are worth offering — on change, not per frame.
-    ///
-    /// A server splits one release across same-titled albums, so the grid shows each title once
-    /// and the menu acts on every album behind it.
     fn rebuild(&mut self, cx: &mut Context<Self>) {
         let all = self.all_albums(cx);
-        self.same_title.clear();
-        for album in &all {
-            self.same_title
-                .entry(title_key(album))
-                .or_default()
-                .push(album.id.clone());
-        }
         let mut seen = HashSet::with_capacity(all.len());
         self.visible = all
             .iter()
@@ -311,14 +297,9 @@ impl Albums {
         let last = (first + columns).min(self.visible.len());
         let mut cards: Vec<AnyElement> = Vec::with_capacity(last.saturating_sub(first));
         for album in &self.visible[first..last] {
-            let target = MenuTarget {
-                id: album.id.clone(),
-                title: album.title.clone(),
-                same_title: self
-                    .same_title
-                    .get(&title_key(album))
-                    .cloned()
-                    .unwrap_or_default(),
+            let target = Target::Album {
+                id: album.id.clone().into(),
+                title: album.title.clone().into(),
             };
             let hovered = self.hovered.as_deref() == Some(album.id.as_str());
             cards.push(match grid {
@@ -401,7 +382,7 @@ impl Render for Albums {
 /// The `.vcard` grid tile: a padded raised card whose menu appears on hover.
 fn card(
     album: &AlbumInfo,
-    target: MenuTarget,
+    target: Target,
     hovered: bool,
     menu_open: bool,
     window: &mut Window,
@@ -487,9 +468,7 @@ fn card(
                         .icon(icons::icon(icons::MORE))
                         .rounded(cx.theme().radius_full())
                         .bg(style::black(0.4, cx))
-                        .dropdown_menu(move |menu, window, cx| {
-                            album_menu(menu, &menu_target, window, cx)
-                        })
+                        .dropdown_menu(menus::builder(menu_target))
                         .on_open_change(cx.listener({
                             let id = album.id.clone();
                             move |this: &mut Albums, open: &bool, _, cx| {
@@ -499,13 +478,13 @@ fn card(
                         })),
                 ),
         )
-        .context_menu(move |menu, window, cx| album_menu(menu, &target, window, cx))
+        .context_menu(menus::builder(target))
 }
 
 /// The same card as `.view-list` restyles it: a compact row.
 fn row(
     album: &AlbumInfo,
-    target: MenuTarget,
+    target: Target,
     hovered: bool,
     window: &mut Window,
     cx: &mut Context<Albums>,
@@ -582,91 +561,10 @@ fn row(
                     Button::new(SharedString::from(format!("album-row-menu-{}", album.id)))
                         .ghost()
                         .icon(icons::icon(icons::MORE))
-                        .dropdown_menu(move |menu, window, cx| {
-                            album_menu(menu, &menu_target, window, cx)
-                        }),
+                        .dropdown_menu(menus::builder(menu_target)),
                 ),
         )
-        .context_menu(move |menu, window, cx| album_menu(menu, &target, window, cx))
-}
-
-/// What a card's menu acts on: the album itself, plus every same-titled album the cache holds.
-#[derive(Clone)]
-struct MenuTarget {
-    id: String,
-    // Named in the delete confirmation, so it says what goes rather than "this album".
-    title: String,
-    same_title: Vec<String>,
-}
-
-fn album_menu(
-    menu: PopupMenu,
-    target: &MenuTarget,
-    _: &mut Window,
-    cx: &mut Context<PopupMenu>,
-) -> PopupMenu {
-    let capabilities = SourcesModel::global(cx).read(cx).capabilities();
-    let mut menu = menu.item(
-        PopupMenuItem::new(t("add_all_to_queue"))
-            .icon(icons::icon(icons::QUEUE_ADD))
-            .on_click({
-                let id = target.id.clone();
-                move |_, _, cx| ops::with_album_keys(id.clone(), cx, actions::append)
-            }),
-    );
-    if capabilities.playlists != PlaylistCapability::None {
-        menu = menu.item(
-            PopupMenuItem::new(t("add_all_to_playlist"))
-                .icon(icons::icon(icons::PLUS))
-                .on_click({
-                    let id = target.id.clone();
-                    move |_, window, cx| ops::add_album_to_playlist(id.clone(), window, cx)
-                }),
-        );
-    }
-    let delete_label = if capabilities.delete_from_disk {
-        t("delete_album")
-    } else {
-        t("remove_from_cache")
-    };
-    menu.separator().item(
-        PopupMenuItem::element({
-            let label = delete_label.clone();
-            move |_, cx| {
-                h_flex()
-                    .gap_2()
-                    .items_center()
-                    // Erasing files should not look like the queue item above it.
-                    .text_color(cx.theme().danger)
-                    .child(icons::icon(icons::TRASH))
-                    .child(label.clone())
-                    .into_any_element()
-            }
-        })
-        .on_click({
-            let id = target.id.clone();
-            let title = SharedString::from(target.title.clone());
-            let same_title = target.same_title.clone();
-            move |_, window, cx| {
-                let id = id.clone();
-                let same_title = same_title.clone();
-                // Only the disk delete is irreversible; dropping cached rows re-syncs.
-                if !capabilities.delete_from_disk {
-                    for cached in &same_title {
-                        ops::delete_album(cached.clone(), false, cx);
-                    }
-                    return;
-                }
-                dialogs::confirm_delete(
-                    t("delete_album"),
-                    title.clone(),
-                    move |_, cx| ops::delete_album(id.clone(), true, cx),
-                    window,
-                    cx,
-                );
-            }
-        }),
-    )
+        .context_menu(menus::builder(target))
 }
 
 fn title_key(album: &AlbumInfo) -> String {

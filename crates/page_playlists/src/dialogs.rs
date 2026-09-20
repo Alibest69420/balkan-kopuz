@@ -3,8 +3,8 @@
 use std::rc::Rc;
 
 use api::PlaylistCapability;
-use gpui_kit::component::button::{Button, ButtonVariant, ButtonVariants as _};
-use gpui_kit::component::dialog::{DialogButtonProps, DialogClose, DialogFooter};
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::dialog::{DialogClose, DialogFooter};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -389,31 +389,13 @@ pub(crate) fn open_folder_picker(playlist_id: String, window: &mut Window, cx: &
     });
 }
 
-/// Confirm a delete before it happens; `description` names what is going.
-pub(crate) fn confirm_delete(
-    title: SharedString,
-    description: impl Into<SharedString>,
-    delete: impl Fn(&mut App) + 'static,
-    window: &mut Window,
-    cx: &mut App,
-) {
-    let description = description.into();
-    let delete = Rc::new(delete);
-    window.open_alert_dialog(cx, move |alert, _, _| {
-        let delete = delete.clone();
-        alert
-            .title(title.clone())
-            .description(description.clone())
-            .button_props(
-                DialogButtonProps::default()
-                    .show_cancel(true)
-                    .ok_text(t("delete"))
-                    .ok_variant(ButtonVariant::Danger)
-                    .cancel_text(t("cancel")),
-            )
-            .on_ok(move |_, _, cx| {
-                delete(cx);
-                true
-            })
-    });
+/// Hand the shared rows the two dialogs only this page knows how to open.
+pub fn register(cx: &mut App) {
+    widgets::dialogs::register_rename(
+        |title, value, save, window, cx| {
+            open_rename(title, value, move |name, cx| save(name, cx), window, cx)
+        },
+        cx,
+    );
+    widgets::dialogs::register_folder_picker(open_folder_picker, cx);
 }

@@ -1,6 +1,7 @@
 //! The "up next" tab: the whole queue in play order, reorderable, and a drop target for track rows.
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::menu::ContextMenuExt as _;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -10,9 +11,9 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled, Subscription, UniformListScrollHandle, Window, div,
     px, uniform_list,
 };
-use store::{ConfigModel, PlayerModel, QueueModel};
+use store::{ConfigModel, PlayerModel, QueueModel, Target};
 use widgets::format::{duration, t};
-use widgets::{Cover, EmptyState, TrackDrag, icons, motion, style};
+use widgets::{Cover, EmptyState, TrackDrag, icons, menus, motion, style};
 
 use crate::channel;
 
@@ -155,6 +156,7 @@ impl QueuePanel {
         let count = queue.len() as u32;
         let active = queue.position() == Some(index as u32);
         let title = SharedString::from(track.title.clone());
+        let key = SharedString::from(track.key.clone());
         let artist = SharedString::from(track.artist.clone());
         let artwork = track.artwork.clone();
         // The row's own uid, so the wash follows the track rather than the slot it sits in.
@@ -294,6 +296,7 @@ impl QueuePanel {
                     .bottom_0()
                     .h(ROW_HEIGHT - DROP_SPLIT),
             )
+            .context_menu(menus::builder(Target::QueueItem { index: at, key }))
             .into_any_element()
     }
 

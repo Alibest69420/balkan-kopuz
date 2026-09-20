@@ -72,11 +72,7 @@ impl Render for PlaylistFolder {
                             .into_any_element()
                     } else {
                         card_grid()
-                            .children(
-                                inside
-                                    .iter()
-                                    .map(|playlist| playlist_card(playlist, Some(&folder.id))),
-                            )
+                            .children(inside.iter().map(playlist_card))
                             .into_any_element()
                     }),
             )

@@ -1,8 +1,8 @@
 //! The cards the Home rows are made of, and the play button they all share.
 
-use api::{AlbumInfo, PlaylistInfo, QueueContext, TrackInfo};
+use api::{AlbumInfo, PlaylistInfo, QueueContext};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
+use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _};
 use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -10,9 +10,9 @@ use gpui_kit::{
     ParentElement as _, Pixels, Rems, SharedString, Stateful, StatefulInteractiveElement as _,
     Styled, Window, div, px, rems,
 };
-use store::{Navigator, PlayerModel, QueueModel, Route, SourcesModel, actions};
-use widgets::format::{t, t_with};
-use widgets::{Cover, icons, motion, style};
+use store::{Navigator, PlayerModel, QueueModel, Route, Target, actions};
+use widgets::format::t_with;
+use widgets::{Cover, icons, menus, motion, style};
 
 use crate::data::Recent;
 use crate::{Home, Hovered, channel, track_hover};
@@ -222,6 +222,16 @@ fn overlay(
         })
 }
 
+/// The dots button a card reveals; the registry decides what is in it.
+fn dots(key: &SharedString, target: Target) -> AnyElement {
+    Button::new(SharedString::from(format!("{key}-menu")))
+        .ghost()
+        .xsmall()
+        .icon(icons::icon(icons::MORE))
+        .dropdown_menu(menus::builder(target))
+        .into_any_element()
+}
+
 /// `flex-none w-N group cursor-pointer`: the frame every home card sits in, hover and all.
 fn frame(
     key: &SharedString,
@@ -302,6 +312,7 @@ pub(crate) fn album_card(
         window,
         cx,
     );
+    let target = album_target(album);
     frame(&key, size, Some(Route::Album(album.id.clone().into())), cx)
         .child(
             div()
@@ -313,7 +324,7 @@ pub(crate) fn album_card(
                     &key,
                     rems(0.75),
                     Some(play),
-                    None,
+                    Some(dots(&key, target.clone())),
                     over,
                     window,
                     cx,
@@ -321,7 +332,15 @@ pub(crate) fn album_card(
         )
         .child(card_title(album.title.clone().into()))
         .child(card_subtitle(album.artist.clone().into(), 0.5, cx))
+        .context_menu(menus::builder(target))
         .into_any_element()
+}
+
+fn album_target(album: &AlbumInfo) -> Target {
+    Target::Album {
+        id: album.id.clone().into(),
+        title: album.title.clone().into(),
+    }
 }
 
 /// The Listen Now card: the same shape one size down, with the accent play button.
@@ -354,6 +373,7 @@ pub(crate) fn listen_now_card(
         window,
         cx,
     );
+    let target = album_target(album);
     frame(&key, size, Some(Route::Album(album.id.clone().into())), cx)
         .child(
             div()
@@ -361,7 +381,15 @@ pub(crate) fn listen_now_card(
                 .mb_2()
                 .size(size)
                 .child(cover)
-                .child(overlay(&key, rems(0.5), Some(play), None, over, window, cx)),
+                .child(overlay(
+                    &key,
+                    rems(0.5),
+                    Some(play),
+                    Some(dots(&key, target.clone())),
+                    over,
+                    window,
+                    cx,
+                )),
         )
         .child(
             div()
@@ -378,6 +406,7 @@ pub(crate) fn listen_now_card(
                 .text_color(style::white(style::TEXT_SUBTLE, cx))
                 .child(album.artist.clone()),
         )
+        .context_menu(menus::builder(target))
         .into_any_element()
 }
 
@@ -432,6 +461,7 @@ pub(crate) fn recent_card(
             channel: None,
         },
     };
+    let menu_target = Target::track(recent.track.key.clone(), recent.track.title.clone());
     frame(&key, size, Some(route), cx)
         .child(
             div()
@@ -443,7 +473,7 @@ pub(crate) fn recent_card(
                     &key,
                     rems(0.5),
                     Some(play),
-                    Some(track_menu(&recent.track)),
+                    Some(dots(&key, menu_target.clone())),
                     over,
                     window,
                     cx,
@@ -464,6 +494,7 @@ pub(crate) fn recent_card(
                 .text_color(style::white(0.5, cx))
                 .child(format!("{} — {album_title}", recent.track.artist)),
         )
+        .context_menu(menus::builder(menu_target))
         .into_any_element()
 }
 
@@ -509,6 +540,10 @@ pub(crate) fn artist_card(
             .text_color(title)
             .child(name.to_string()),
     )
+    .context_menu(menus::builder(Target::Artist {
+        name: name.to_string().into(),
+        channel: None,
+    }))
     .into_any_element()
 }
 
@@ -521,11 +556,10 @@ pub(crate) fn playlist_card(
     let size = album_size();
     let key = SharedString::from(format!("home-playlist-{}", playlist.id));
     let over = hovered.contains(&key);
-    let radio = SourcesModel::global(cx)
-        .read(cx)
-        .capabilities()
-        .playlist_radio;
-    let menu = radio.then(|| playlist_menu(&playlist.id));
+    let target = Target::Playlist {
+        id: playlist.id.clone().into(),
+        name: playlist.name.clone().into(),
+    };
     let cover = cover_frame(
         &key,
         Cover::new(playlist.artwork.as_ref()).placeholder(icons::LIST),
@@ -549,7 +583,15 @@ pub(crate) fn playlist_card(
             .mb_4()
             .size(size)
             .child(cover)
-            .child(overlay(&key, rems(0.5), None, menu, over, window, cx)),
+            .child(overlay(
+                &key,
+                rems(0.5),
+                None,
+                Some(dots(&key, target.clone())),
+                over,
+                window,
+                cx,
+            )),
     )
     .child(card_title(playlist.name.clone().into()).text_color(title))
     .child(card_subtitle(
@@ -560,6 +602,7 @@ pub(crate) fn playlist_card(
         0.4,
         cx,
     ))
+    .context_menu(menus::builder(target))
     .into_any_element()
 }
 
@@ -645,76 +688,7 @@ pub(crate) fn album_row(
                 ),
         )
         .child(div().opacity(reveal).child(play));
-    track_hover(row, key, cx).into_any_element()
-}
-
-/// The subset of the track row's menu a home card can carry out without a modal of its own.
-fn track_menu(track: &TrackInfo) -> AnyElement {
-    let key = track.key.clone();
-    Button::new(SharedString::from(format!(
-        "home-continue-menu-{}",
-        track.uid
-    )))
-    .ghost()
-    .xsmall()
-    .icon(icons::icon(icons::MORE))
-    .dropdown_menu(move |menu, _, cx| {
-        let radio = SourcesModel::global(cx).read(cx).capabilities().track_radio;
-        let menu = menu
-            .item(
-                PopupMenuItem::new(t("play_next"))
-                    .icon(icons::icon(icons::QUEUE_NEXT))
-                    .on_click({
-                        let key = key.clone();
-                        move |_, _, cx| actions::play_next(vec![key.clone()], cx)
-                    }),
-            )
-            .item(
-                PopupMenuItem::new(t("add_to_queue"))
-                    .icon(icons::icon(icons::QUEUE_ADD))
-                    .on_click({
-                        let key = key.clone();
-                        move |_, _, cx| actions::append(vec![key.clone()], cx)
-                    }),
-            )
-            .when(radio, |menu| {
-                menu.item(
-                    PopupMenuItem::new(t("start_radio"))
-                        .icon(icons::icon(icons::RADIO))
-                        .on_click({
-                            let key = key.clone();
-                            move |_, _, cx| actions::start_track_radio(key.clone(), cx)
-                        }),
-                )
-            });
-        menu.item(
-            PopupMenuItem::new(t("share_musicbrainz"))
-                .icon(icons::icon(icons::SHARE))
-                .on_click({
-                    let key = key.clone();
-                    move |_, _, cx| actions::share_track(key.clone(), cx)
-                }),
-        )
-    })
-    .into_any_element()
-}
-
-/// Radio is the one playlist action a home card can offer, so the whole menu rides its gate.
-fn playlist_menu(id: &str) -> AnyElement {
-    let playlist = id.to_string();
-    Button::new(SharedString::from(format!("home-playlist-menu-{id}")))
-        .ghost()
-        .xsmall()
-        .icon(icons::icon(icons::MORE))
-        .dropdown_menu(move |menu, _, _| {
-            menu.item(
-                PopupMenuItem::new(t("start_radio"))
-                    .icon(icons::icon(icons::RADIO))
-                    .on_click({
-                        let playlist = playlist.clone();
-                        move |_, _, cx| actions::start_playlist_radio(playlist.clone(), cx)
-                    }),
-            )
-        })
+    track_hover(row, key, cx)
+        .context_menu(menus::builder(album_target(album)))
         .into_any_element()
 }

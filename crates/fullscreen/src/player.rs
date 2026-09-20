@@ -1,8 +1,8 @@
-use api::{ArtworkRef, LoopMode, LyricsView, NowPlaying, PlaylistCapability};
+use api::{ArtworkRef, LoopMode, LyricsView, NowPlaying};
 use gpui_kit::base::Disableable as _;
 use gpui_kit::base::slider::{SliderEvent, SliderState};
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
-use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
+use gpui_kit::component::menu::DropdownMenu as _;
 use gpui_kit::component::slider::Slider;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -13,10 +13,10 @@ use gpui_kit::{
 };
 use store::{
     Chrome, ConfigModel, FavoritesModel, Link, Navigator, Notices, PlayerModel, Playhead, Query,
-    QueueModel, Route, SourcesModel, actions,
+    QueueModel, Route, SourcesModel, Target,
 };
 use widgets::format::t;
-use widgets::{dialogs, icons, motion, playlist_picker, style};
+use widgets::{icons, menus, motion, style};
 
 use crate::background;
 use crate::controls;
@@ -412,7 +412,7 @@ impl FullscreenPlayer {
             .child(
                 Self::round_action("fs-actions", resting, cx)
                     .icon(icons::icon(icons::MORE))
-                    .dropdown_menu(move |menu, _, _| track_menu(menu, &key, capabilities)),
+                    .dropdown_menu(menus::builder(Target::track(key, track.title.clone()))),
             )
     }
 
@@ -702,60 +702,4 @@ impl Render for FullscreenPlayer {
             )
             .when(collapsed, |view| view.child(self.expand_button(window, cx)))
     }
-}
-
-fn track_menu(menu: PopupMenu, key: &str, capabilities: api::SourceCapabilities) -> PopupMenu {
-    let key = key.to_string();
-    let mut menu = menu
-        .item(
-            PopupMenuItem::new(t("play_next"))
-                .icon(icons::icon(icons::QUEUE_NEXT))
-                .on_click({
-                    let key = key.clone();
-                    move |_, _, cx| actions::play_next(vec![key.clone()], cx)
-                }),
-        )
-        .item(
-            PopupMenuItem::new(t("add_to_queue"))
-                .icon(icons::icon(icons::QUEUE_ADD))
-                .on_click({
-                    let key = key.clone();
-                    move |_, _, cx| actions::append(vec![key.clone()], cx)
-                }),
-        );
-    if capabilities.playlists != PlaylistCapability::None {
-        menu = menu.item(
-            PopupMenuItem::new(t("add_to_playlist"))
-                .icon(icons::icon(icons::PLUS))
-                .on_click({
-                    let key = key.clone();
-                    move |_, window, cx| playlist_picker::open(vec![key.clone()], window, cx)
-                }),
-        );
-    }
-    menu = menu.item(
-        PopupMenuItem::new(t("share_musicbrainz"))
-            .icon(icons::icon(icons::SHARE))
-            .on_click({
-                let key = key.clone();
-                move |_, _, cx| actions::share_track(key.clone(), cx)
-            }),
-    );
-    if capabilities.track_radio {
-        menu = menu.item(
-            PopupMenuItem::new(t("start_radio"))
-                .icon(icons::icon(icons::RADIO))
-                .on_click({
-                    let key = key.clone();
-                    move |_, _, cx| actions::start_track_radio(key.clone(), cx)
-                }),
-        );
-    }
-    menu.item(
-        PopupMenuItem::new(t("view_metadata"))
-            .icon(icons::icon(icons::EDIT))
-            .on_click(move |_, window, cx| {
-                dialogs::open_track_metadata(key.clone(), false, window, cx)
-            }),
-    )
 }

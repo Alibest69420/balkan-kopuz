@@ -2,9 +2,9 @@
 
 use std::time::Duration;
 
-use api::{ArtworkRef, PlaylistCapability, PlaylistFolderInfo, PlaylistInfo};
+use api::{ArtworkRef, PlaylistFolderInfo, PlaylistInfo};
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
-use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
+use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _};
 use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -12,9 +12,9 @@ use gpui_kit::{
     IntoElement, ParentElement as _, Pixels, RenderOnce, SharedString,
     StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
-use store::{Navigator, Route, SourcesModel, actions};
-use widgets::format::{t, t_with};
-use widgets::{Cover, icons, motion, style};
+use store::{Navigator, Route, Target};
+use widgets::format::t_with;
+use widgets::{Cover, icons, menus, motion, style};
 
 /// The card, and the `w-full h-32` picture inside its `p-4`.
 const CARD: Pixels = px(160.);
@@ -76,7 +76,7 @@ pub(crate) struct Card {
     artwork: Option<ArtworkRef>,
     placeholder: &'static str,
     route: Route,
-    menu: Option<AnyElement>,
+    target: Option<Target>,
     corner: Option<AnyElement>,
 }
 
@@ -94,7 +94,7 @@ impl Card {
             artwork: None,
             placeholder: icons::LIST,
             route,
-            menu: None,
+            target: None,
             corner: None,
         }
     }
@@ -114,8 +114,9 @@ impl Card {
         self
     }
 
-    pub(crate) fn menu(mut self, menu: Option<AnyElement>) -> Self {
-        self.menu = menu;
+    /// What the dots button and the right-click both act on.
+    pub(crate) fn target(mut self, target: Target) -> Self {
+        self.target = Some(target);
         self
     }
 
@@ -149,7 +150,8 @@ impl RenderOnce for Card {
             window,
             cx,
         );
-        v_flex()
+        let target = self.target.clone();
+        let card = v_flex()
             .id(SharedString::from(format!("card-{}", self.id)))
             .group(group.clone())
             .w(CARD)
@@ -221,19 +223,30 @@ impl RenderOnce for Card {
                                     .child(self.subtitle),
                             ),
                     )
-                    .children(self.menu.map(|menu| {
+                    .children(self.target.clone().map(|target| {
                         div()
                             .flex_shrink_0()
                             .invisible()
                             .group_hover(group, |menu| menu.visible())
-                            .child(menu)
+                            .child(
+                                Button::new(SharedString::from(format!("card-menu-{}", self.id)))
+                                    .ghost()
+                                    .xsmall()
+                                    .icon(icons::icon(icons::MORE))
+                                    .dropdown_menu(menus::builder(target)),
+                            )
                     })),
-            )
+            );
+        // Right-click gets the same menu the dots do, on a card that has one.
+        match target {
+            Some(target) => card.context_menu(menus::builder(target)).into_any_element(),
+            None => card.into_any_element(),
+        }
     }
 }
 
-/// The card for one playlist; `folder` is the folder it is being shown inside, if any.
-pub(crate) fn playlist_card(playlist: &PlaylistInfo, folder: Option<&str>) -> Card {
+/// The card for one playlist; whether it sits in a folder is the catalog's answer, not a flag.
+pub(crate) fn playlist_card(playlist: &PlaylistInfo) -> Card {
     Card::new(
         playlist.id.clone(),
         playlist.name.clone(),
@@ -244,7 +257,10 @@ pub(crate) fn playlist_card(playlist: &PlaylistInfo, folder: Option<&str>) -> Ca
         Route::Playlist(playlist.id.clone().into()),
     )
     .artwork(playlist.artwork.as_ref())
-    .menu(Some(playlist_menu(playlist, folder.is_some())))
+    .target(Target::Playlist {
+        id: playlist.id.clone().into(),
+        name: playlist.name.clone().into(),
+    })
 }
 
 /// The card for one folder; its cover is the first playlist's.
@@ -263,167 +279,8 @@ pub(crate) fn folder_card(folder: &PlaylistFolderInfo, playlists: &[PlaylistInfo
     )
     .artwork(cover)
     .placeholder(icons::FOLDER)
-    .menu(Some(folder_menu(folder)))
-}
-
-fn playlist_menu(playlist: &PlaylistInfo, in_folder: bool) -> AnyElement {
-    let id = playlist.id.clone();
-    let name = playlist.name.clone();
-    Button::new(SharedString::from(format!("playlist-menu-{id}")))
-        .ghost()
-        .xsmall()
-        .icon(icons::icon(icons::MORE))
-        .dropdown_menu(move |menu, _, cx| {
-            let capabilities = SourcesModel::global(cx).read(cx).capabilities();
-            let mut menu = menu;
-            if capabilities.folders {
-                menu = menu.item(
-                    PopupMenuItem::new(t("move_to_folder"))
-                        .icon(icons::icon(icons::FOLDER))
-                        .on_click({
-                            let id = id.clone();
-                            move |_, window, cx| {
-                                crate::dialogs::open_folder_picker(id.clone(), window, cx)
-                            }
-                        }),
-                );
-            }
-            if in_folder {
-                menu = menu.item(
-                    PopupMenuItem::new(t("remove_from_folder"))
-                        .icon(icons::icon(icons::CLOSE))
-                        .on_click({
-                            let id = id.clone();
-                            move |_, _, cx| {
-                                let id = id.clone();
-                                actions::run(cx, move |api| async move {
-                                    api.move_playlist(id, None).await
-                                });
-                            }
-                        }),
-                );
-            }
-            let mutable = capabilities.playlists != PlaylistCapability::None;
-            if mutable {
-                menu = menu.item(
-                    PopupMenuItem::new(t("rename_playlist"))
-                        .icon(icons::icon(icons::EDIT))
-                        .on_click({
-                            let id = id.clone();
-                            let name = name.clone();
-                            move |_, window, cx| {
-                                let id = id.clone();
-                                crate::dialogs::open_rename(
-                                    t("rename_playlist"),
-                                    name.clone(),
-                                    move |name, cx| {
-                                        let id = id.clone();
-                                        actions::run(cx, move |api| async move {
-                                            api.rename_playlist(id, name).await
-                                        });
-                                    },
-                                    window,
-                                    cx,
-                                );
-                            }
-                        }),
-                );
-            }
-            if capabilities.playlist_radio {
-                menu = menu.item(
-                    PopupMenuItem::new(t("start_radio"))
-                        .icon(icons::icon(icons::RADIO))
-                        .on_click({
-                            let id = id.clone();
-                            move |_, _, cx| actions::start_playlist_radio(id.clone(), cx)
-                        }),
-                );
-            }
-            if mutable {
-                menu = menu.separator().item(
-                    PopupMenuItem::new(t("delete_playlist"))
-                        .icon(icons::icon(icons::TRASH))
-                        .on_click({
-                            let id = id.clone();
-                            let name = name.clone();
-                            move |_, window, cx| {
-                                let id = id.clone();
-                                crate::dialogs::confirm_delete(
-                                    t("delete_playlist"),
-                                    name.clone(),
-                                    move |cx| {
-                                        let id = id.clone();
-                                        actions::run(cx, move |api| async move {
-                                            api.delete_playlist(id).await
-                                        });
-                                    },
-                                    window,
-                                    cx,
-                                );
-                            }
-                        }),
-                );
-            }
-            menu
-        })
-        .into_any_element()
-}
-
-fn folder_menu(folder: &PlaylistFolderInfo) -> AnyElement {
-    let id = folder.id.clone();
-    let name = folder.name.clone();
-    Button::new(SharedString::from(format!("folder-menu-{id}")))
-        .ghost()
-        .xsmall()
-        .icon(icons::icon(icons::MORE))
-        .dropdown_menu(move |menu, _, _| {
-            menu.item(
-                PopupMenuItem::new(t("rename_folder"))
-                    .icon(icons::icon(icons::EDIT))
-                    .on_click({
-                        let id = id.clone();
-                        let name = name.clone();
-                        move |_, window, cx| {
-                            let id = id.clone();
-                            crate::dialogs::open_rename(
-                                t("rename_folder"),
-                                name.clone(),
-                                move |name, cx| {
-                                    let id = id.clone();
-                                    actions::run(cx, move |api| async move {
-                                        api.rename_playlist_folder(id, name).await
-                                    });
-                                },
-                                window,
-                                cx,
-                            );
-                        }
-                    }),
-            )
-            .separator()
-            .item(
-                PopupMenuItem::new(t("delete_folder"))
-                    .icon(icons::icon(icons::TRASH))
-                    .on_click({
-                        let id = id.clone();
-                        let name = name.clone();
-                        move |_, window, cx| {
-                            let id = id.clone();
-                            crate::dialogs::confirm_delete(
-                                t("delete_folder"),
-                                name.clone(),
-                                move |cx| {
-                                    let id = id.clone();
-                                    actions::run(cx, move |api| async move {
-                                        api.delete_playlist_folder(id).await
-                                    });
-                                },
-                                window,
-                                cx,
-                            );
-                        }
-                    }),
-            )
-        })
-        .into_any_element()
+    .target(Target::Folder {
+        id: folder.id.clone().into(),
+        name: folder.name.clone().into(),
+    })
 }

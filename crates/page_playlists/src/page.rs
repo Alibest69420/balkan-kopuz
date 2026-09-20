@@ -172,11 +172,7 @@ impl Playlists {
                                     .child(t("playlists")),
                             )
                         })
-                        .child(
-                            card_grid().children(
-                                root.iter().map(|playlist| playlist_card(playlist, None)),
-                            ),
-                        ),
+                        .child(card_grid().children(root.iter().map(playlist_card))),
                 )
             })
             .into_any_element()
@@ -263,7 +259,7 @@ impl Playlists {
             })
             .into_any_element()
         });
-        crate::cards::playlist_card(playlist, None)
+        crate::cards::playlist_card(playlist)
             .subtitle(format!(
                 "{} • {}",
                 t("server_playlist"),

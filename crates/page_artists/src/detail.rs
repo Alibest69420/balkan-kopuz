@@ -1,7 +1,7 @@
 //! One artist: the tracks showcase, or their albums.
 
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::Path;
 
 use api::{
@@ -11,7 +11,7 @@ use api::{
 use config::{AlbumSortField, AlbumViewMode, ArtistViewOrder, SortCriterion, SortDirection};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
-use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenu, PopupMenuItem};
+use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _};
 use gpui_kit::component::{
     ActiveTheme as _, Disableable as _, Selectable as _, Sizable as _, Size, h_flex, v_flex,
 };
@@ -23,13 +23,13 @@ use gpui_kit::{
     px, rems,
 };
 use store::{
-    ConfigModel, DownloadsModel, JobsModel, Link, Navigator, Notices, PlayerModel, Query, Route,
-    SourcesModel, actions,
+    ConfigModel, DownloadsModel, JobsModel, Navigator, PlayerModel, Query, Route, SourcesModel,
+    Target, actions,
 };
 use widgets::format::{t, t_with, total_duration};
 use widgets::{
     Cover, EmptyState, Loading, TrackActions, TrackList, TrackListEvent, TrackListOptions, columns,
-    icons, motion, playlist_picker, style,
+    icons, menus, motion, playlist_picker, style,
 };
 
 use crate::controls::{self, ViewModeKey};
@@ -221,26 +221,6 @@ impl ArtistDetail {
         albums
     }
 
-    /// Every album key fully downloaded, so a card knows which download entry to offer.
-    fn downloaded_albums(&self, cx: &App) -> HashSet<String> {
-        let downloads = DownloadsModel::global(cx);
-        let downloads = downloads.read(cx);
-        let Some(page) = self.tracks.read(cx).value() else {
-            return HashSet::new();
-        };
-        let mut by_album: HashMap<String, bool> = HashMap::new();
-        for track in &page.items {
-            let entry = by_album.entry(track.album_id.clone()).or_insert(true);
-            *entry &= downloads.is_stored(&track.key);
-        }
-        by_album
-            .into_iter()
-            .filter(|(_, all)| *all)
-            .map(|(id, _)| id)
-            .collect()
-    }
-
-    /// Replace the artist's photo; the daemon stores the bytes, so a path would not do.
     fn pick_photo(&mut self, cx: &mut Context<Self>) {
         let name = self.name.to_string();
         let paths = cx.prompt_for_paths(PathPromptOptions {
@@ -724,7 +704,6 @@ impl ArtistDetail {
 
     fn albums_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let albums = self.artist_albums(cx);
-        let downloaded = self.downloaded_albums(cx);
         let mode = controls::config(cx).artist_album_view_mode;
         let settled = self.albums.read(cx).is_settled();
         let fields = available_fields(&albums);
@@ -739,12 +718,9 @@ impl ArtistDetail {
         } else {
             let cards: Vec<AnyElement> = albums
                 .iter()
-                .map(|album| {
-                    let stored = downloaded.contains(&album.id);
-                    match mode {
-                        AlbumViewMode::Grid => album_card(album, stored, window, cx),
-                        AlbumViewMode::List => album_row(album, stored, cx),
-                    }
+                .map(|album| match mode {
+                    AlbumViewMode::Grid => album_card(album, window, cx),
+                    AlbumViewMode::List => album_row(album, cx),
                 })
                 .collect();
             div()
@@ -797,8 +773,11 @@ fn round_button(id: &'static str, icon: &'static str) -> Button {
         .icon(icons::icon(icon))
 }
 
-fn album_card(album: &AlbumInfo, stored: bool, window: &mut Window, cx: &mut App) -> AnyElement {
-    let menu = album_menu(album.id.clone(), stored);
+fn album_card(album: &AlbumInfo, window: &mut Window, cx: &mut App) -> AnyElement {
+    let menu = menus::builder(Target::Album {
+        id: album.id.clone().into(),
+        title: album.title.clone().into(),
+    });
     let route = Route::Album(album.id.clone().into());
     let group = SharedString::from(format!("album-card-{}", album.id));
     let (hot, hover) = controls::hovered(
@@ -892,8 +871,11 @@ fn album_card(album: &AlbumInfo, stored: bool, window: &mut Window, cx: &mut App
         .into_any_element()
 }
 
-fn album_row(album: &AlbumInfo, stored: bool, cx: &App) -> AnyElement {
-    let menu = album_menu(album.id.clone(), stored);
+fn album_row(album: &AlbumInfo, cx: &App) -> AnyElement {
+    let menu = menus::builder(Target::Album {
+        id: album.id.clone().into(),
+        title: album.title.clone().into(),
+    });
     let route = Route::Album(album.id.clone().into());
     h_flex()
         .id(SharedString::from(format!("album-row-{}", album.id)))
@@ -939,104 +921,6 @@ fn album_row(album: &AlbumInfo, stored: bool, cx: &App) -> AnyElement {
         .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
         .context_menu(menu)
         .into_any_element()
-}
-
-/// The album card menu, gated on what the active source can do.
-fn album_menu(
-    id: String,
-    stored: bool,
-) -> impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + Clone + 'static {
-    move |menu, _, cx| {
-        let capabilities = capabilities(cx);
-        let mut menu = menu.item(
-            PopupMenuItem::new(t("add_all_to_queue"))
-                .icon(icons::icon(icons::QUEUE_ADD))
-                .on_click({
-                    let id = id.clone();
-                    move |_, _, cx| with_album_keys(id.clone(), cx, actions::append)
-                }),
-        );
-        if capabilities.playlists != PlaylistCapability::None {
-            menu = menu.item(
-                PopupMenuItem::new(t("add_all_to_playlist"))
-                    .icon(icons::icon(icons::PLUS))
-                    .on_click({
-                        let id = id.clone();
-                        move |_, window, cx| {
-                            let handle = window.window_handle();
-                            with_album_keys(id.clone(), cx, move |keys, cx| {
-                                handle
-                                    .update(cx, |_, window, cx| {
-                                        playlist_picker::open(keys, window, cx)
-                                    })
-                                    .ok();
-                            })
-                        }
-                    }),
-            );
-        }
-        if capabilities.delete_from_disk {
-            menu = menu.item(
-                PopupMenuItem::new(t("delete_album"))
-                    .icon(icons::icon(icons::TRASH))
-                    .on_click({
-                        let id = id.clone();
-                        move |_, _, cx| {
-                            let id = id.clone();
-                            actions::run(
-                                cx,
-                                move |api| async move { api.delete_album(id, true).await },
-                            );
-                        }
-                    }),
-            );
-        }
-        if capabilities.downloads {
-            menu = menu.item(
-                PopupMenuItem::new(if stored {
-                    t("remove_download")
-                } else {
-                    t("download_offline")
-                })
-                .icon(icons::icon(if stored {
-                    icons::TRASH
-                } else {
-                    icons::DOWNLOAD
-                }))
-                .on_click({
-                    let id = id.clone();
-                    move |_, _, cx| {
-                        with_album_keys(id.clone(), cx, move |keys, cx| {
-                            set_downloaded(keys, !stored, cx)
-                        })
-                    }
-                }),
-            );
-        }
-        menu
-    }
-}
-
-/// Read an album's tracks in play order, then hand their keys to `then`.
-fn with_album_keys(id: String, cx: &mut App, then: impl FnOnce(Vec<String>, &mut App) + 'static) {
-    let call =
-        Link::global(cx).call(move |api| async move { api.album_tracks(id, store::all()).await });
-    cx.spawn(async move |cx| match call.await {
-        Ok(page) => {
-            let mut tracks = page.items;
-            tracks.sort_by(|left, right| {
-                left.track_number
-                    .cmp(&right.track_number)
-                    .then_with(|| left.title.cmp(&right.title))
-            });
-            let keys = tracks.into_iter().map(|track| track.key).collect();
-            cx.update(|cx| then(keys, cx));
-        }
-        Err(error) => {
-            cx.update(|cx| Notices::error(store::human(&error), cx));
-        }
-    })
-    .detach();
 }
 
 fn set_downloaded(keys: Vec<String>, download: bool, cx: &mut App) {
