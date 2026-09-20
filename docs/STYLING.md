@@ -126,10 +126,14 @@ Do not fake these; leave the element unstyled for that property and move on.
   cannot be ported onto one. Where the original is a bare element with a hover
   colour — a chip, a chevron, a close ✕ — build it from an interactive `div`
   rather than reaching for `Button`.
-  But a Button's colours *can* still be tweened: `Button::render` replays the
-  instance style last in every state layer, so `.bg()` and `.text_color()` win
-  and may carry a `motion::color`. The panel tabs work that way. It is only
-  `.hover()` that cannot reach a Button.
+  But a Button's colours *can* still be tweened, two ways. `Button::render`
+  replays the instance style last in every state layer, so `.bg()` and
+  `.text_color()` win and may carry a `motion::color` — the panel tabs work
+  that way. And `Button::on_hover(cx.listener(..))` is the sanctioned way to
+  drive a tween from a Button's own hover; when you do, pass the tweened colour
+  to **both** `.color()` and `.hover()` on its `ButtonCustomVariant`, or the
+  Button's own hover snaps past your tween. It is only the `.hover(|…| …)`
+  closure that cannot reach a Button.
 - `Progress` paints its track as its own bar colour at 20%; an original with a
   separate track colour cannot be matched without hand-rolling the bar.
 - A rem helper cannot be handed to `Cover::size`, `Icon::size` or anything else
