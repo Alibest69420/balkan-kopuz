@@ -32,6 +32,7 @@ fn set_queue(request: SetQueueRequest, cx: &mut App) {
 
 /// Replace the queue with `keys` and start at `start`.
 pub fn play_tracks(keys: Vec<String>, start: Option<u32>, cx: &mut App) {
+    crate::Chrome::global(cx).update(cx, |chrome, cx| chrome.set_origin(None, cx));
     set_queue(
         SetQueueRequest {
             mode: QueueMode::Replace,
@@ -80,6 +81,7 @@ pub fn play_next(keys: Vec<String>, cx: &mut App) {
 
 /// Play something the daemon materializes itself: an album, an artist, a playlist, a station.
 pub fn play_context(context: QueueContext, start: Option<u32>, cx: &mut App) {
+    remember_origin(&context, cx);
     set_queue(
         SetQueueRequest {
             mode: QueueMode::Replace,
@@ -89,6 +91,23 @@ pub fn play_context(context: QueueContext, start: Option<u32>, cx: &mut App) {
         },
         cx,
     );
+}
+
+/// Where a replaced queue came from, so the player can offer a way back to it.
+fn remember_origin(context: &QueueContext, cx: &mut App) {
+    let route = match context {
+        QueueContext::Album { id } => Some(crate::Route::Album(id.clone().into())),
+        QueueContext::Artist { name } => Some(crate::Route::Artist {
+            name: name.clone().into(),
+            channel: None,
+        }),
+        QueueContext::Genre { name } => Some(crate::Route::Genre(name.clone().into())),
+        QueueContext::Playlist { id } | QueueContext::PlaylistRadio { id } => {
+            Some(crate::Route::Playlist(id.clone().into()))
+        }
+        _ => None,
+    };
+    crate::Chrome::global(cx).update(cx, |chrome, cx| chrome.set_origin(route, cx));
 }
 
 /// Start the source's mix from a track; gated by `capabilities().track_radio`.
@@ -136,6 +155,50 @@ pub fn share_track(key: String, cx: &mut App) {
         });
     })
     .detach();
+}
+
+/// Drop a queued row, with six seconds to put it back.
+pub fn queue_remove(index: u32, cx: &mut App) {
+    let removed = crate::QueueModel::global(cx).update(cx, |queue, cx| queue.remove(index, cx));
+    let Some(track) = removed else { return };
+    let key = track.key.clone();
+    Notices::undo(
+        i18n::t_with("removed_from_queue", &[("title", track.title.clone())]),
+        move |cx| {
+            let key = key.clone();
+            crate::QueueModel::global(cx)
+                .update(cx, |queue, cx| queue.insert(index, vec![key], cx));
+        },
+        cx,
+    );
+}
+
+/// Favourite or unfavourite a whole selection; taking hearts away is offered back.
+pub fn set_favorites(keys: Vec<String>, favorite: bool, cx: &mut App) {
+    if keys.is_empty() {
+        return;
+    }
+    crate::FavoritesModel::global(cx).update(cx, |favorites, cx| {
+        for key in keys.clone() {
+            favorites.set(key, favorite, cx);
+        }
+    });
+    if favorite {
+        return;
+    }
+    let undone = keys.clone();
+    Notices::undo(
+        i18n::t_with("unfavorited_count", &[("count", keys.len().to_string())]),
+        move |cx| {
+            let keys = undone.clone();
+            crate::FavoritesModel::global(cx).update(cx, |favorites, cx| {
+                for key in keys {
+                    favorites.set(key, true, cx);
+                }
+            });
+        },
+        cx,
+    );
 }
 
 /// A random index below `len`, from the hasher's per-process seed.

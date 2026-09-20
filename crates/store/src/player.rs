@@ -189,31 +189,47 @@ impl PlayerModel {
     pub fn toggle(&mut self, cx: &mut Context<Self>) {
         self.optimistic_playing = Some(!self.is_playing());
         crate::notify(cx);
-        send(PlayerCommand::Toggle, cx);
+        self.command(PlayerCommand::Toggle, cx);
     }
 
     pub fn play(&mut self, cx: &mut Context<Self>) {
         self.optimistic_playing = Some(true);
         crate::notify(cx);
-        send(PlayerCommand::Play, cx);
+        self.command(PlayerCommand::Play, cx);
     }
 
     pub fn pause(&mut self, cx: &mut Context<Self>) {
         self.optimistic_playing = Some(false);
         crate::notify(cx);
-        send(PlayerCommand::Pause, cx);
+        self.command(PlayerCommand::Pause, cx);
     }
 
     pub fn next(&mut self, cx: &mut Context<Self>) {
-        send(PlayerCommand::Next, cx);
+        self.command(PlayerCommand::Next, cx);
     }
 
     pub fn previous(&mut self, cx: &mut Context<Self>) {
-        send(PlayerCommand::Previous, cx);
+        self.command(PlayerCommand::Previous, cx);
     }
 
     pub fn stop(&mut self, cx: &mut Context<Self>) {
-        send(PlayerCommand::Stop, cx);
+        self.command(PlayerCommand::Stop, cx);
+    }
+
+    /// Send a transport command and, if it is refused, stop pretending it landed.
+    fn command(&mut self, command: PlayerCommand, cx: &mut Context<Self>) {
+        let call =
+            Link::global(cx).call(move |api| async move { api.player_command(command).await });
+        cx.spawn(async move |this, cx| {
+            let Err(error) = call.await else { return };
+            this.update(cx, |this, cx| {
+                this.optimistic_playing = None;
+                crate::notify(cx);
+            })
+            .ok();
+            cx.update(|cx| crate::Notices::error(crate::human(&error), cx));
+        })
+        .detach();
     }
 
     pub fn seek(&mut self, position_ms: u64, cx: &mut Context<Self>) {

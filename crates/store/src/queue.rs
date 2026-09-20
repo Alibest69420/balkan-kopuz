@@ -1,4 +1,4 @@
-use api::{ApiEvent, QueueEdit, QueueSnapshot, TrackInfo};
+use api::{ApiError, ApiEvent, QueueEdit, QueueSnapshot, TrackInfo};
 use gpui_kit::{App, Context, Entity, Subscription, Task};
 use link::Link;
 
@@ -125,22 +125,126 @@ impl QueueModel {
         edit(QueueEdit::Jump { index }, cx);
     }
 
+    /// Move a row, locally first; a daemon that refuses puts the queue back where it was.
     pub fn move_item(&mut self, from: u32, to: u32, cx: &mut Context<Self>) {
-        let items = &mut self.snapshot.items;
-        if (from as usize) < items.len() && (to as usize) < items.len() {
-            let item = items.remove(from as usize);
-            items.insert(to as usize, item);
-            crate::notify(cx);
+        let count = self.snapshot.items.len() as u32;
+        if from >= count || to >= count || from == to {
+            return;
         }
-        edit(QueueEdit::Move { from, to }, cx);
+        let before = self.snapshot.clone();
+        let item = self.snapshot.items.remove(from as usize);
+        self.snapshot.items.insert(to as usize, item);
+        self.snapshot.position = self.snapshot.position.map(|at| reindex(at, from, to));
+        self.resummarize();
+        crate::notify(cx);
+        self.commit(QueueEdit::Move { from, to }, before, cx);
     }
 
-    pub fn remove(&mut self, index: u32, cx: &mut Context<Self>) {
-        edit(QueueEdit::Remove { index }, cx);
+    /// Drop a row, locally first; the removed track comes back so a caller can offer an undo.
+    pub fn remove(&mut self, index: u32, cx: &mut Context<Self>) -> Option<TrackInfo> {
+        let gone = self.snapshot.items.get(index as usize)?.clone();
+        let before = self.snapshot.clone();
+        self.snapshot.items.remove(index as usize);
+        self.snapshot.position = self.snapshot.position.and_then(|at| match at.cmp(&index) {
+            std::cmp::Ordering::Greater => Some(at - 1),
+            std::cmp::Ordering::Equal => {
+                Some(at).filter(|at| (*at as usize) < self.snapshot.items.len())
+            }
+            std::cmp::Ordering::Less => Some(at),
+        });
+        self.resummarize();
+        crate::notify(cx);
+        self.commit(QueueEdit::Remove { index }, before, cx);
+        Some(gone)
     }
 
     pub fn insert(&mut self, index: u32, keys: Vec<String>, cx: &mut Context<Self>) {
         edit(QueueEdit::Insert { index, keys }, cx);
+    }
+
+    /// The rows after the one playing, in play order.
+    pub fn upcoming(&self) -> &[TrackInfo] {
+        let from = self.snapshot.position.map_or(0, |at| at as usize + 1);
+        self.snapshot.items.get(from..).unwrap_or_default()
+    }
+
+    /// Replace everything after the current row with `keys`; empty clears it.
+    pub fn set_upcoming(&mut self, keys: Vec<String>, cx: &mut Context<Self>) {
+        let first = self.snapshot.position.map_or(0, |at| at + 1);
+        let count = self.snapshot.items.len() as u32;
+        if first >= count && keys.is_empty() {
+            return;
+        }
+        let before = self.snapshot.clone();
+        let generation = self.generation;
+        let held: Vec<TrackInfo> = self
+            .snapshot
+            .items
+            .drain(first as usize..)
+            .filter(|track| keys.contains(&track.key))
+            .collect();
+        for key in &keys {
+            if let Some(track) = held.iter().find(|track| &track.key == key) {
+                self.snapshot.items.push(track.clone());
+            }
+        }
+        self.resummarize();
+        crate::notify(cx);
+
+        let link = Link::global(cx);
+        let call = link.call(move |api| async move {
+            for index in (first..count).rev() {
+                api.queue_edit(QueueEdit::Remove { index }).await?;
+            }
+            if !keys.is_empty() {
+                api.queue_edit(QueueEdit::Insert { index: first, keys })
+                    .await?;
+            }
+            Ok::<(), ApiError>(())
+        });
+        cx.spawn(async move |this, cx| {
+            let Err(error) = call.await else { return };
+            this.update(cx, |this, cx| this.roll_back(generation, before, cx))
+                .ok();
+            cx.update(|cx| crate::Notices::error(crate::human(&error), cx));
+        })
+        .detach();
+    }
+
+    /// Send an edit the local snapshot has already taken, restoring it if the daemon refuses.
+    fn commit(&mut self, change: QueueEdit, before: QueueSnapshot, cx: &mut Context<Self>) {
+        let generation = self.generation;
+        let call = Link::global(cx).call(move |api| async move { api.queue_edit(change).await });
+        cx.spawn(async move |this, cx| {
+            let Err(error) = call.await else { return };
+            this.update(cx, |this, cx| this.roll_back(generation, before, cx))
+                .ok();
+            cx.update(|cx| crate::Notices::error(crate::human(&error), cx));
+        })
+        .detach();
+    }
+
+    /// Put the snapshot back, unless a fresher one has landed since the edit went out.
+    fn roll_back(&mut self, generation: u64, before: QueueSnapshot, cx: &mut Context<Self>) {
+        if self.generation != generation {
+            return;
+        }
+        self.snapshot = before;
+        self.resummarize();
+        crate::notify(cx);
+    }
+}
+
+/// Where the current row lands once the row at `from` has been moved to `to`.
+fn reindex(at: u32, from: u32, to: u32) -> u32 {
+    if at == from {
+        to
+    } else if from < at && at <= to {
+        at - 1
+    } else if to <= at && at < from {
+        at + 1
+    } else {
+        at
     }
 }
 
@@ -148,4 +252,29 @@ fn edit(edit: QueueEdit, cx: &App) {
     Link::global(cx).fire(cx, "queue edit", move |api| async move {
         api.queue_edit(edit).await
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reindex;
+
+    #[test]
+    fn the_moved_row_carries_the_playhead_with_it() {
+        assert_eq!(reindex(3, 3, 7), 7);
+    }
+
+    #[test]
+    fn a_row_moved_past_the_playhead_shifts_it_back() {
+        assert_eq!(reindex(4, 2, 6), 3);
+    }
+
+    #[test]
+    fn a_row_moved_in_front_of_the_playhead_shifts_it_on() {
+        assert_eq!(reindex(4, 8, 2), 5);
+    }
+
+    #[test]
+    fn a_move_on_the_far_side_leaves_the_playhead_alone() {
+        assert_eq!(reindex(2, 5, 8), 2);
+    }
 }

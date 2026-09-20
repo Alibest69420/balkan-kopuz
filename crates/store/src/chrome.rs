@@ -1,6 +1,8 @@
 use gpui_kit::{App, Context, Entity};
 
-/// What the right-hand panel shows, when it is open.
+use crate::nav::Route;
+
+/// What the docked panel beside the content shows, when it is open.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SidePanel {
     Queue,
@@ -11,9 +13,10 @@ pub enum SidePanel {
 /// Window chrome state shared by the shell and the pieces that toggle it.
 pub struct Chrome {
     panel: Option<SidePanel>,
-    fullscreen: bool,
-    compact: bool,
+    sheet: bool,
+    mini: bool,
     quick_search: bool,
+    origin: Option<Route>,
 }
 
 impl Chrome {
@@ -24,9 +27,10 @@ impl Chrome {
     pub(crate) fn new(_: &mut Context<Self>) -> Self {
         Self {
             panel: None,
-            fullscreen: false,
-            compact: false,
+            sheet: false,
+            mini: false,
             quick_search: false,
+            origin: None,
         }
     }
 
@@ -34,16 +38,23 @@ impl Chrome {
         self.panel
     }
 
-    pub fn is_fullscreen(&self) -> bool {
-        self.fullscreen
+    /// Whether the now-playing sheet is up over the page.
+    pub fn is_sheet_open(&self) -> bool {
+        self.sheet
     }
 
-    pub fn is_compact(&self) -> bool {
-        self.compact
+    /// Whether the mini player has taken over from the full window.
+    pub fn is_mini(&self) -> bool {
+        self.mini
     }
 
     pub fn is_quick_search_open(&self) -> bool {
         self.quick_search
+    }
+
+    /// Where the queue came from, for the "playing from" link under the title.
+    pub fn origin(&self) -> Option<&Route> {
+        self.origin.as_ref()
     }
 
     /// Open `panel`, or close it when it is already the one showing.
@@ -61,18 +72,76 @@ impl Chrome {
         crate::notify(cx);
     }
 
-    pub fn set_fullscreen(&mut self, fullscreen: bool, cx: &mut Context<Self>) {
-        self.fullscreen = fullscreen;
+    pub fn set_sheet(&mut self, open: bool, cx: &mut Context<Self>) {
+        self.sheet = open;
         crate::notify(cx);
     }
 
-    pub fn set_compact(&mut self, compact: bool, cx: &mut Context<Self>) {
-        self.compact = compact;
+    pub fn toggle_sheet(&mut self, cx: &mut Context<Self>) {
+        let open = self.sheet;
+        self.set_sheet(!open, cx);
+    }
+
+    pub fn set_mini(&mut self, mini: bool, cx: &mut Context<Self>) {
+        self.mini = mini;
         crate::notify(cx);
     }
 
     pub fn set_quick_search(&mut self, open: bool, cx: &mut Context<Self>) {
         self.quick_search = open;
         crate::notify(cx);
+    }
+
+    /// Remember what a queue was built from; `None` when nothing names it.
+    pub fn set_origin(&mut self, origin: Option<Route>, cx: &mut Context<Self>) {
+        if self.origin == origin {
+            return;
+        }
+        self.origin = origin;
+        crate::notify(cx);
+    }
+
+    pub fn is_fullscreen(&self) -> bool {
+        self.sheet
+    }
+
+    pub fn set_fullscreen(&mut self, open: bool, cx: &mut Context<Self>) {
+        self.set_sheet(open, cx);
+    }
+
+    pub fn is_compact(&self) -> bool {
+        self.mini
+    }
+
+    pub fn set_compact(&mut self, mini: bool, cx: &mut Context<Self>) {
+        self.set_mini(mini, cx);
+    }
+}
+
+type Toggle = std::rc::Rc<dyn Fn(&mut App)>;
+
+/// What opens the mini player. `now_playing` owns the window; this is how a command reaches it.
+#[derive(Default)]
+struct MiniPlayer(Option<Toggle>);
+
+impl gpui_kit::Global for MiniPlayer {}
+
+/// Register the mini player's toggle; call once at startup.
+pub fn register_mini_player(toggle: impl Fn(&mut App) + 'static, cx: &mut App) {
+    cx.set_global(MiniPlayer(Some(std::rc::Rc::new(toggle))));
+}
+
+/// Show or hide the mini player, whichever way this build manages to open one.
+pub fn toggle_mini_player(cx: &mut App) {
+    let toggle = cx
+        .try_global::<MiniPlayer>()
+        .and_then(|held| held.0.clone());
+    match toggle {
+        Some(toggle) => toggle(cx),
+        // Without a registered opener the in-place shrink is all there is.
+        None => Chrome::global(cx).update(cx, |chrome, cx| {
+            let mini = chrome.is_mini();
+            chrome.set_mini(!mini, cx);
+        }),
     }
 }
