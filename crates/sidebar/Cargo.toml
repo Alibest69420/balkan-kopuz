@@ -11,10 +11,9 @@ workspace = true
 
 [dependencies]
 profile = { path = "../profile" }
-api = { workspace = true }
+topbar = { path = "../topbar" }
 config = { workspace = true }
 i18n = { workspace = true }
-link = { workspace = true }
 store = { workspace = true }
 theme = { workspace = true }
 widgets = { workspace = true }

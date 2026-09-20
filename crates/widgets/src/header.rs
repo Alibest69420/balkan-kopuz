@@ -1,12 +1,10 @@
-use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, IntoElement, ParentElement as _, RenderOnce, SharedString, Styled, Window, div,
 };
-use store::{Navigator, Route};
+use store::Route;
 
-use crate::icons;
 use crate::style;
 
 /// The title block every page opens with, with its actions on the right.
@@ -14,7 +12,6 @@ use crate::style;
 pub struct PageHeader {
     title: SharedString,
     subtitle: Option<SharedString>,
-    back: Option<Route>,
     actions: Vec<AnyElement>,
 }
 
@@ -23,7 +20,6 @@ impl PageHeader {
         Self {
             title: title.into(),
             subtitle: None,
-            back: None,
             actions: Vec::new(),
         }
     }
@@ -33,9 +29,8 @@ impl PageHeader {
         self
     }
 
-    /// Show a back button that returns to `route`.
-    pub fn back(mut self, route: Route) -> Self {
-        self.back = Some(route);
+    /// Taken and ignored: the nav bar owns history, so no page draws a back chevron of its own.
+    pub fn back(self, _: Route) -> Self {
         self
     }
 
@@ -54,37 +49,25 @@ impl RenderOnce for PageHeader {
             .gap_3()
             .pb_6()
             .child(
-                h_flex()
-                    .gap_3()
-                    .items_center()
-                    .when_some(self.back, |row, route| {
-                        row.child(
-                            Button::new("page-back")
-                                .ghost()
-                                .icon(crate::icons::icon(icons::CHEVRON_LEFT))
-                                // Pop history; the route is only where to land with none to pop.
-                                .on_click(move |_, _, cx| Navigator::back_or(route.clone(), cx)),
+                h_flex().gap_3().items_center().child(
+                    v_flex()
+                        .gap_0p5()
+                        .child(
+                            div()
+                                .text_3xl()
+                                .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                                .text_color(cx.theme().foreground)
+                                .child(self.title),
                         )
-                    })
-                    .child(
-                        v_flex()
-                            .gap_0p5()
-                            .child(
+                        .when_some(self.subtitle, |column, subtitle| {
+                            column.child(
                                 div()
-                                    .text_3xl()
-                                    .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                                    .text_color(cx.theme().foreground)
-                                    .child(self.title),
+                                    .text_sm()
+                                    .text_color(style::slate_400(cx))
+                                    .child(subtitle),
                             )
-                            .when_some(self.subtitle, |column, subtitle| {
-                                column.child(
-                                    div()
-                                        .text_sm()
-                                        .text_color(style::slate_400(cx))
-                                        .child(subtitle),
-                                )
-                            }),
-                    ),
+                        }),
+                ),
             )
             .child(h_flex().gap_2().items_center().children(self.actions))
     }

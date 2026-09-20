@@ -1,16 +1,18 @@
 use std::time::Duration;
 
-use api::{SourceInfo, SourceKind};
+use api::{SourceInfo, SourceKind, SourceState};
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::popover::{Popover, PopoverState};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, Icon, Selectable, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Anchor, Animation, AnimationExt as _, AnyElement, App, ElementId, Entity, Hsla,
+    Anchor, Animation, AnimationExt as _, AnyElement, App, Context, ElementId, Entity, Hsla,
     InteractiveElement as _, IntoElement, ParentElement as _, Pixels, RenderOnce, Rgba,
-    SharedString, StatefulInteractiveElement as _, Styled, Window, div, pulsating_between, px, svg,
+    SharedString, StatefulInteractiveElement as _, Styled, Subscription, Task, Window, div,
+    pulsating_between, px, svg,
 };
+use link::Link;
 use store::{Navigator, Route, SourcesModel};
 use widgets::format::{t, text};
 use widgets::{icons, motion, style};
@@ -39,10 +41,99 @@ const FORWARD_ICON: &str = "icons/arrow-right.svg";
 
 /// Whether the active source answered the daemon's probe.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Status {
+pub enum Status {
     Connecting,
     Online,
     Offline,
+}
+
+/// Asks the daemon whether the active source is still reachable, and keeps asking when it resyncs.
+pub struct SourceProbe {
+    status: Status,
+    probed: Option<String>,
+    _probe: Option<Task<()>>,
+    _subscriptions: Vec<Subscription>,
+}
+
+impl SourceProbe {
+    pub fn new(cx: &mut Context<Self>) -> Self {
+        let sources = SourcesModel::global(cx);
+        let subscriptions = vec![
+            cx.observe(&sources, |this, sources, cx| {
+                this.probe(&sources, cx);
+                cx.notify();
+            }),
+            // The probe runs once per source id, so without these the dot kept whatever it found
+            // the first time — green long after the server stopped answering, and green right
+            // through a daemon disconnect, since a reconnect keeps the same active source.
+            cx.subscribe(
+                &Link::connection(cx),
+                |this, _, event: &api::ApiEvent, cx| match event {
+                    api::ApiEvent::SourceStatus { source, state }
+                        if this.probed.as_deref() == Some(source.as_str()) =>
+                    {
+                        this.status = match state {
+                            SourceState::Online => Status::Online,
+                            _ => Status::Offline,
+                        };
+                        cx.notify();
+                    }
+                    // A reattach says nothing about the source behind it, so ask again.
+                    api::ApiEvent::Resync => {
+                        this.probed = None;
+                        let sources = SourcesModel::global(cx);
+                        this.probe(&sources, cx);
+                        cx.notify();
+                    }
+                    _ => {}
+                },
+            ),
+        ];
+        let mut this = Self {
+            status: Status::Connecting,
+            probed: None,
+            _probe: None,
+            _subscriptions: subscriptions,
+        };
+        this.probe(&sources, cx);
+        this
+    }
+
+    pub fn status(&self) -> Status {
+        self.status
+    }
+
+    /// A server is asked whether it is still reachable; a local source always is.
+    fn probe(&mut self, sources: &Entity<SourcesModel>, cx: &mut Context<Self>) {
+        let Some(active) = sources.read(cx).active().cloned() else {
+            self.probed = None;
+            self.status = Status::Connecting;
+            return;
+        };
+        if self.probed.as_deref() == Some(active.id.as_str()) {
+            return;
+        }
+        self.probed = Some(active.id.clone());
+        if active.kind != SourceKind::Server {
+            self.status = Status::Online;
+            self._probe = None;
+            return;
+        }
+        self.status = Status::Connecting;
+        let call =
+            Link::global(cx).call(move |api| async move { api.validate_source(active.id).await });
+        self._probe = Some(cx.spawn(async move |this, cx| {
+            let state = call.await;
+            this.update(cx, |this, cx| {
+                this.status = match state {
+                    Ok(SourceState::Online) => Status::Online,
+                    _ => Status::Offline,
+                };
+                cx.notify();
+            })
+            .ok();
+        }));
+    }
 }
 
 /// How a source is drawn: the daemon's own SVG path, or a bundled icon standing in for its class.
@@ -54,23 +145,31 @@ enum Mark {
 
 /// The active source, and a popover to pick another.
 #[derive(IntoElement)]
-pub(crate) struct SourceSwitcher {
+pub struct SourceSwitcher {
     sources: Vec<SourceInfo>,
     status: Status,
     collapsed: bool,
+    bare: bool,
 }
 
 impl SourceSwitcher {
-    pub(crate) fn new(sources: Vec<SourceInfo>, status: Status) -> Self {
+    pub fn new(sources: Vec<SourceInfo>, status: Status) -> Self {
         Self {
             sources,
             status,
             collapsed: false,
+            bare: false,
         }
     }
 
-    pub(crate) fn collapsed(mut self, collapsed: bool) -> Self {
+    pub fn collapsed(mut self, collapsed: bool) -> Self {
         self.collapsed = collapsed;
+        self
+    }
+
+    /// Drop the rail's framing: in a bar the padding and the rule below it have nowhere to go.
+    pub fn bare(mut self, bare: bool) -> Self {
+        self.bare = bare;
         self
     }
 }
@@ -106,18 +205,20 @@ impl RenderOnce for SourceSwitcher {
         let mark = active.map_or(Mark::Bundled(LOCAL_ICON), mark_of);
         let accent = accent_of(active, cx);
         let collapsed = self.collapsed;
+        let bare = self.bare;
         let count = self.sources.len();
         let sources = self.sources;
 
         div()
-            .border_b_1()
-            .border_color(style::white(style::BORDER_SOFT, cx))
-            .map(|frame| {
-                if collapsed {
-                    frame.flex().justify_center().py_3()
-                } else {
-                    frame.px_3().pt_3().pb_2()
-                }
+            .when(!bare, |frame| {
+                frame
+                    .border_b_1()
+                    .border_color(style::white(style::BORDER_SOFT, cx))
+            })
+            .map(|frame| match (bare, collapsed) {
+                (true, _) => frame,
+                (false, true) => frame.flex().justify_center().py_3(),
+                (false, false) => frame.px_3().pt_3().pb_2(),
             })
             .child(
                 Popover::new("source-switcher")

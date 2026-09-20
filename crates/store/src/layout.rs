@@ -199,11 +199,18 @@ impl Default for Nav {
         Self {
             position: NavPosition::Top,
             order: DESTINATIONS.iter().map(|name| name.to_string()).collect(),
-            hidden: Vec::new(),
+            hidden: DESTINATIONS
+                .iter()
+                .filter(|name| !PRIMARY.contains(*name))
+                .map(|name| name.to_string())
+                .collect(),
             start: "home".into(),
         }
     }
 }
+
+/// The destinations the bar shows until someone asks for more; the rest start hidden.
+pub const PRIMARY: &[&str] = &["home", "library", "discover", "radio"];
 
 /// The destinations a nav bar can hold, in their designed order.
 pub const DESTINATIONS: &[&str] = &[
@@ -348,6 +355,41 @@ impl Home {
     }
 }
 
+/// What the command palette remembers, and how much of it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Palette {
+    pub history: bool,
+    pub recents: usize,
+    pub current_track_first: bool,
+    pub recent_commands: Vec<String>,
+    pub recent_searches: Vec<String>,
+}
+
+impl Default for Palette {
+    fn default() -> Self {
+        Self {
+            history: true,
+            recents: 5,
+            current_track_first: true,
+            recent_commands: Vec::new(),
+            recent_searches: Vec::new(),
+        }
+    }
+}
+
+impl Palette {
+    /// Put `entry` at the front of `list`, deduped, keeping at most `keep` of them.
+    pub fn remember(list: &mut Vec<String>, entry: String, keep: usize) {
+        if entry.is_empty() || keep == 0 {
+            return;
+        }
+        list.retain(|held| held != &entry);
+        list.insert(0, entry);
+        list.truncate(keep);
+    }
+}
+
 /// Type size and face, over whatever the theme asks for.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -411,6 +453,7 @@ pub struct Layout {
     pub library: Library,
     pub home: Home,
     pub interface: Interface,
+    pub palette: Palette,
     pub notifications: Notifications,
     pub window: WindowState,
     pub accent: Accent,
@@ -432,6 +475,7 @@ impl Default for Layout {
             library: Library::default(),
             home: Home::default(),
             interface: Interface::default(),
+            palette: Palette::default(),
             notifications: Notifications::default(),
             window: WindowState::default(),
             accent: Accent::default(),
@@ -453,6 +497,7 @@ pub enum Section {
     Library,
     Home,
     Interface,
+    Palette,
     Notifications,
     Shortcuts,
     Skin,
@@ -474,6 +519,7 @@ impl Section {
                 layout.accent = fresh.accent;
                 layout.motion = fresh.motion;
             }
+            Section::Palette => layout.palette = fresh.palette,
             Section::Notifications => layout.notifications = fresh.notifications,
             Section::Shortcuts => layout.shortcuts = fresh.shortcuts,
             Section::Skin => layout.skin = fresh.skin,
@@ -648,11 +694,36 @@ mod tests {
     fn a_destination_added_later_shows_up_at_the_end() {
         let nav = Nav {
             order: vec!["home".into(), "library".into()],
+            hidden: Vec::new(),
             ..Nav::default()
         };
         let visible = nav.visible();
         assert_eq!(&visible[..2], &["home", "library"]);
         assert_eq!(visible.len(), DESTINATIONS.len());
+    }
+
+    #[test]
+    fn the_bar_ships_holding_the_four_destinations() {
+        assert_eq!(Nav::default().visible(), PRIMARY);
+    }
+
+    #[test]
+    fn showing_a_destination_puts_it_back_in_its_designed_place() {
+        let mut nav = Nav::default();
+        nav.hidden.retain(|name| name != "playlists");
+        assert_eq!(
+            nav.visible(),
+            &["home", "library", "discover", "radio", "playlists"]
+        );
+    }
+
+    #[test]
+    fn reordering_the_bar_survives_a_round_trip() {
+        let mut nav = Nav::default();
+        nav.order.swap(0, 1);
+        let text = toml::to_string_pretty(&nav).expect("serialise");
+        let back: Nav = toml::from_str(&text).expect("deserialise");
+        assert_eq!(back.visible(), &["library", "home", "discover", "radio"]);
     }
 
     #[test]
@@ -682,6 +753,15 @@ mod tests {
         Section::All.reset(&mut layout);
         assert_eq!(layout.window.width, Some(1200.));
         assert_eq!(layout.skin, "normal");
+    }
+
+    #[test]
+    fn a_remembered_entry_moves_to_the_front_and_the_list_stays_capped() {
+        let mut list = vec!["b".to_string(), "c".to_string()];
+        Palette::remember(&mut list, "b".into(), 2);
+        assert_eq!(list, ["b", "c"]);
+        Palette::remember(&mut list, "a".into(), 2);
+        assert_eq!(list, ["a", "b"]);
     }
 
     #[test]

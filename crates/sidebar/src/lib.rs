@@ -1,11 +1,9 @@
 //! The navigation rail (PARITY §3.3) and the source switcher above it (§3.4).
 
 mod items;
-mod switcher;
 
 use std::time::{Duration, Instant};
 
-use api::{SourceKind, SourceState};
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, Icon, h_flex, v_flex};
@@ -13,14 +11,12 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, DragMoveEvent, ElementId, Entity, Hsla,
     InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Render, SharedString,
-    StatefulInteractiveElement as _, Styled, Subscription, Task, Window, div, px,
+    StatefulInteractiveElement as _, Styled, Subscription, Window, div, px,
 };
-use link::Link;
 use store::{ConfigModel, Navigator, Route, SourcesModel};
+use topbar::{SourceProbe, SourceSwitcher};
 use widgets::format::t;
 use widgets::{icons, motion, style};
-
-use switcher::{SourceSwitcher, Status};
 
 // Measured geometry, not theme scale: the widths the Dioxus rail snaps between.
 const DEFAULT_WIDTH: Pixels = px(240.);
@@ -68,94 +64,29 @@ pub struct Sidebar {
     handle_hovered: bool,
     // A drag step is the pointer's own motion; only a collapse crossing is worth tweening.
     snap_until: Option<Instant>,
-    status: Status,
-    probed: Option<String>,
-    _probe: Option<Task<()>>,
+    probe: Entity<SourceProbe>,
     _subscriptions: Vec<Subscription>,
 }
 
 impl Sidebar {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let _ = window;
-        let sources = SourcesModel::global(cx);
+        let probe = cx.new(SourceProbe::new);
         let subscriptions = vec![
-            cx.observe(&sources, |this, sources, cx| {
-                this.probe(&sources, cx);
-                cx.notify();
-            }),
+            cx.observe(&SourcesModel::global(cx), |_, _, cx| cx.notify()),
             cx.observe(&ConfigModel::global(cx), |_, _, cx| cx.notify()),
             cx.observe(&Navigator::global(cx), |_, _, cx| cx.notify()),
-            // The probe runs once per source id, so without these the dot kept whatever it found
-            // the first time — green long after the server stopped answering, and green right
-            // through a daemon disconnect, since a reconnect keeps the same active source.
-            cx.subscribe(
-                &Link::connection(cx),
-                |this, _, event: &api::ApiEvent, cx| match event {
-                    api::ApiEvent::SourceStatus { source, state }
-                        if this.probed.as_deref() == Some(source.as_str()) =>
-                    {
-                        this.status = match state {
-                            SourceState::Online => Status::Online,
-                            _ => Status::Offline,
-                        };
-                        cx.notify();
-                    }
-                    // A reattach says nothing about the source behind it, so ask again.
-                    api::ApiEvent::Resync => {
-                        this.probed = None;
-                        let sources = SourcesModel::global(cx);
-                        this.probe(&sources, cx);
-                        cx.notify();
-                    }
-                    _ => {}
-                },
-            ),
+            cx.observe(&probe, |_, _, cx| cx.notify()),
         ];
-        let mut this = Self {
+        Self {
             width: DEFAULT_WIDTH,
             collapsed: false,
             hovered: None,
             handle_hovered: false,
             snap_until: None,
-            status: Status::Connecting,
-            probed: None,
-            _probe: None,
+            probe,
             _subscriptions: subscriptions,
-        };
-        this.probe(&sources, cx);
-        this
-    }
-
-    /// A server is asked whether it is still reachable; a local source always is.
-    fn probe(&mut self, sources: &Entity<SourcesModel>, cx: &mut Context<Self>) {
-        let Some(active) = sources.read(cx).active().cloned() else {
-            self.probed = None;
-            self.status = Status::Connecting;
-            return;
-        };
-        if self.probed.as_deref() == Some(active.id.as_str()) {
-            return;
         }
-        self.probed = Some(active.id.clone());
-        if active.kind != SourceKind::Server {
-            self.status = Status::Online;
-            self._probe = None;
-            return;
-        }
-        self.status = Status::Connecting;
-        let call =
-            Link::global(cx).call(move |api| async move { api.validate_source(active.id).await });
-        self._probe = Some(cx.spawn(async move |this, cx| {
-            let state = call.await;
-            this.update(cx, |this, cx| {
-                this.status = match state {
-                    Ok(SourceState::Online) => Status::Online,
-                    _ => Status::Offline,
-                };
-                cx.notify();
-            })
-            .ok();
-        }));
     }
 
     fn resize(&mut self, width: Pixels, cx: &mut Context<Self>) {
@@ -449,7 +380,8 @@ impl Render for Sidebar {
                     .size_full()
                     .overflow_hidden()
                     .when(show_switcher, |column| {
-                        column.child(SourceSwitcher::new(sources, self.status).collapsed(collapsed))
+                        let status = self.probe.read(cx).status();
+                        column.child(SourceSwitcher::new(sources, status).collapsed(collapsed))
                     })
                     .child(
                         v_flex()
