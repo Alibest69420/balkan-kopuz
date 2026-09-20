@@ -54,6 +54,25 @@ impl Route {
     pub fn key(&self) -> String {
         format!("{self:?}")
     }
+
+    /// The parameterless routes, under the names `KOPUZ_ROUTE` accepts.
+    pub fn from_name(name: &str) -> Option<Route> {
+        Some(match name {
+            "home" => Route::Home,
+            "search" => Route::Search,
+            "discover" => Route::Discover,
+            "library" => Route::Library,
+            "albums" => Route::Albums,
+            "artists" => Route::Artists,
+            "playlists" => Route::Playlists,
+            "favorites" => Route::Favorites,
+            "activity" => Route::Activity,
+            "radio" => Route::Radio,
+            "downloader" => Route::Downloader,
+            "settings" => Route::Settings { section: None },
+            _ => return None,
+        })
+    }
 }
 
 /// Where the app is, and how it got there.
@@ -69,8 +88,13 @@ impl Navigator {
     }
 
     pub(crate) fn new(_: &mut Context<Self>) -> Self {
+        // KOPUZ_ROUTE opens straight onto a page, so a smoke run can render each one.
+        let start = std::env::var("KOPUZ_ROUTE")
+            .ok()
+            .and_then(|name| Route::from_name(&name))
+            .unwrap_or(Route::Home);
         Self {
-            current: Route::Home,
+            current: start,
             back: Vec::new(),
             forward: Vec::new(),
         }
