@@ -1,695 +1,185 @@
-//! The cards the Home rows are made of, and the play button they all share.
+//! One card: its cover, its hover, and the play button the pointer reveals.
 
-use api::{AlbumInfo, PlaylistInfo, QueueContext};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _};
-use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
+use api::QueueContext;
+use gpui_kit::component::menu::ContextMenuExt as _;
+use gpui_kit::component::{ActiveTheme as _, Icon, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, Context, Div, FontWeight, Hsla, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, Rems, SharedString, Stateful, StatefulInteractiveElement as _,
-    Styled, Window, div, px, rems,
+    AnyElement, Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
+    Pixels, StatefulInteractiveElement as _, Styled, Window, div, px, rems,
 };
-use store::{Navigator, PlayerModel, QueueModel, Route, Target, actions};
-use widgets::format::t_with;
+use store::{Navigator, PlayerModel, QueueModel, actions};
 use widgets::{Cover, icons, menus, motion, style};
 
-use crate::data::Recent;
-use crate::{Home, Hovered, channel, track_hover};
+use crate::Home;
+use crate::data::{Play, Tile};
 
-/// `w-48`: the album and playlist cards.
-pub(crate) fn album_size() -> Pixels {
-    px(192.)
-}
+/// A card's element and the channels it tweens on, keyed off its own id rather than a `format!`.
+const ROOT: u64 = 0;
+const HOVER: u64 = 1;
+const COVER: u64 = 2;
+const TITLE: u64 = 3;
+const BUTTON: u64 = 4;
+const BUTTON_HOVER: u64 = 5;
 
-/// `w-40`: the artist circle and the Listen Now card.
-pub(crate) fn artist_size() -> Pixels {
-    px(160.)
-}
+/// `gap-5` between cards, as the pixels the shelf's snap and its virtual window both count in.
+pub(crate) const GAP: f32 = 20.;
 
-/// `w-44`: the Continue Listening card.
-fn recent_size() -> Pixels {
-    px(176.)
-}
-
-/// `rounded-xl` in the pixels a [`Cover`] wants.
-fn card_radius() -> Pixels {
-    px(12.)
-}
-
-/// How a card paints its play button; the album rows use the white one.
-#[derive(Clone, Copy)]
-pub(crate) enum PlayLook {
-    /// `bg-indigo-500`, on a song or Listen Now card.
-    Accent,
-    /// `bg-white text-black`, on an album card.
-    Light,
-    /// `bg-white/10`, on the Listen Now list row.
-    Subtle,
-}
-
-/// What a card's play button starts. A track whose album is not in the library still plays.
-#[derive(Clone)]
-pub(crate) enum PlayTarget {
-    Album(String),
-    Track(String),
-}
-
-impl PlayTarget {
-    /// An album card keys and compares on the album; a bare track has only its own key.
-    fn album(&self) -> &str {
-        match self {
-            PlayTarget::Album(id) => id,
-            PlayTarget::Track(_) => "",
-        }
-    }
-
-    fn id(&self) -> &str {
-        match self {
-            PlayTarget::Album(id) | PlayTarget::Track(id) => id,
-        }
+/// `w-40`, and `w-48` on the shelf the page leads with.
+pub(crate) fn tile_size(lead: bool) -> Pixels {
+    match lead {
+        true => px(192.),
+        false => px(160.),
     }
 }
 
-/// Play/pause for a card: pause while this is the thing playing, and a toggle then.
-pub(crate) fn play_button(
-    scope: &str,
-    target: PlayTarget,
-    size: Rems,
-    look: PlayLook,
-    hovered: &Hovered,
+/// What one card occupies, which is what a row snaps to and steps by.
+pub(crate) fn step(lead: bool) -> Pixels {
+    tile_size(lead) + px(GAP)
+}
+
+pub(crate) fn card(
+    tile: &Tile,
+    lead: bool,
     window: &mut Window,
     cx: &mut Context<Home>,
 ) -> AnyElement {
+    profile::elements::built();
+    let size = tile_size(lead);
+    let radius = match tile.round {
+        true => size / 2.,
+        false => style::to_px(style::radius_xl(), window),
+    };
+    let (over, pointer) = motion::hovered(motion::channel(&tile.key, HOVER), window, cx);
+    let title = motion::color(
+        motion::channel(&tile.key, TITLE),
+        match over {
+            true => cx.theme().primary_hover,
+            false => cx.theme().foreground,
+        },
+        window,
+        cx,
+    );
+    // Only the card under the pointer builds a button; the rest are a cover and two lines.
+    let play = over.then(|| play_button(tile, window, cx)).flatten();
+    let route = tile.route.clone();
+    v_flex()
+        .id(motion::channel(&tile.key, ROOT))
+        .w(size)
+        .mr(px(GAP))
+        .flex_shrink_0()
+        .gap_3()
+        .cursor_pointer()
+        .on_hover(motion::track(pointer))
+        .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
+        .child(
+            div()
+                .relative()
+                .child(
+                    Cover::new(tile.artwork.as_ref())
+                        .size(size)
+                        .rounded(radius)
+                        .placeholder(tile.placeholder)
+                        .zoom(motion::channel(&tile.key, COVER), over),
+                )
+                .children(play),
+        )
+        .child(
+            v_flex()
+                .w(size)
+                .gap_0p5()
+                .when(tile.round, |lines| lines.items_center())
+                .child(
+                    div()
+                        .truncate()
+                        .text_sm()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(title)
+                        .child(tile.title.clone()),
+                )
+                .when(!tile.subtitle.is_empty(), |lines| {
+                    lines.child(
+                        div()
+                            .truncate()
+                            .text_xs()
+                            .text_color(style::white(style::TEXT_SUBTLE, cx))
+                            .child(tile.subtitle.clone()),
+                    )
+                }),
+        )
+        .context_menu(menus::builder(tile.target.clone()))
+        .into_any_element()
+}
+
+/// `bg-indigo-500` over the cover's bottom-right corner: play, or pause what this card is playing.
+fn play_button(tile: &Tile, window: &mut Window, cx: &mut Context<Home>) -> Option<AnyElement> {
+    if matches!(tile.play, Play::None) {
+        return None;
+    }
     let current = QueueModel::global(cx)
         .read(cx)
         .current()
-        .map(|track| track.album_id.clone())
-        .unwrap_or_default();
-    let album_id = target.album();
-    let is_current = !album_id.is_empty() && current == album_id;
+        .map(|track| (track.album_id.clone(), track.key.clone()));
+    let is_current = match (&tile.play, &current) {
+        (Play::Album(id), Some((album, _))) => !album.is_empty() && album == id,
+        (Play::Track(key), Some((_, playing))) => !playing.is_empty() && playing == key,
+        _ => false,
+    };
     let playing = is_current && PlayerModel::global(cx).read(cx).is_playing();
-    let key = SharedString::from(format!("{scope}-play-{}", target.id()));
-    let (rest, foreground, hot) = match look {
-        PlayLook::Accent => (
-            cx.theme().primary,
-            cx.theme().primary_foreground,
-            cx.theme().primary_hover,
-        ),
-        PlayLook::Light => (
-            cx.theme().foreground,
-            cx.theme().background,
-            style::white(style::TEXT_STRONG, cx),
-        ),
-        PlayLook::Subtle => (
-            style::white(style::HOVER, cx),
-            style::white(0.8, cx),
-            style::white(style::ACTIVE, cx),
-        ),
-    };
-    let tint = if hovered.contains(&key) { hot } else { rest };
-    let background = motion::color(channel(key.clone(), "bg"), tint, window, cx);
-    let button = div()
-        .id(key.clone())
-        .flex()
-        .items_center()
-        .justify_center()
-        .size(size)
-        .rounded_full()
-        .bg(background)
-        .text_color(foreground)
-        .cursor_pointer()
-        .child(
-            Icon::default()
-                .path(if playing { icons::PAUSE } else { icons::PLAY })
-                .size(rems(size.0 * 0.35)),
-        )
-        .on_click(move |_, _, cx| {
-            if is_current {
-                PlayerModel::global(cx).update(cx, |player, cx| player.toggle(cx));
-                return;
-            }
-            match &target {
-                PlayTarget::Album(id) => {
-                    actions::play_context(QueueContext::Album { id: id.clone() }, Some(0), cx)
-                }
-                // A recent track whose album the library has no row for; it still plays.
-                PlayTarget::Track(key) => actions::play_tracks(vec![key.clone()], Some(0), cx),
-            }
-        });
-    track_hover(button, key, cx).into_any_element()
-}
-
-/// The cover in an `overflow-hidden` frame, so the hover zoom reads as `group-hover:scale-105`.
-#[allow(clippy::too_many_arguments)]
-fn cover_frame(
-    key: &SharedString,
-    cover: Cover,
-    size: Pixels,
-    radius: Pixels,
-    zoom: bool,
-    hovered: bool,
-    window: &mut Window,
-    cx: &mut App,
-) -> Div {
-    let grown = motion::zoom(
-        channel(key.clone(), "cover"),
-        size,
-        zoom && hovered,
-        window,
-        cx,
-    );
-    let scrim = motion::color_over(
-        channel(key.clone(), "scrim"),
-        style::black(if hovered { 0.2 } else { 0. }, cx),
-        motion::SLOW,
-        window,
-        cx,
-    );
-    div()
-        .relative()
-        .size(size)
-        .rounded(radius)
-        .overflow_hidden()
-        .flex()
-        .items_center()
-        .justify_center()
-        .child(cover.size(grown).rounded(radius))
-        .child(div().absolute().inset_0().size_full().bg(scrim))
-}
-
-/// The play button and the menu a card reveals while the pointer is over it.
-fn overlay(
-    key: &SharedString,
-    inset: Rems,
-    bottom: Option<AnyElement>,
-    top: Option<AnyElement>,
-    hovered: bool,
-    window: &mut Window,
-    cx: &mut App,
-) -> Div {
-    let reveal = motion::amount(
-        channel(key.clone(), "reveal"),
-        if hovered { 1. } else { 0. },
-        motion::SLOW,
-        window,
-        cx,
-    );
-    div()
-        .absolute()
-        .inset_0()
-        .when_some(bottom, |frame, bottom| {
-            frame.child(
-                div()
-                    .absolute()
-                    .right(inset)
-                    .bottom(inset)
-                    .opacity(reveal)
-                    .child(bottom),
-            )
-        })
-        // The menu reveal stays instant: a popup trigger must not ride a tweened opacity.
-        .when_some(top, |frame, top| {
-            frame.child(
-                div()
-                    .absolute()
-                    .right_1()
-                    .top_1()
-                    .invisible()
-                    .group_hover(key.clone(), |style| style.visible())
-                    .child(top),
-            )
-        })
-}
-
-/// The dots button a card reveals; the registry decides what is in it.
-fn dots(key: &SharedString, target: Target) -> AnyElement {
-    Button::new(SharedString::from(format!("{key}-menu")))
-        .ghost()
-        .xsmall()
-        .icon(icons::icon(icons::MORE))
-        .dropdown_menu(menus::builder(target))
-        .into_any_element()
-}
-
-/// `flex-none w-N group cursor-pointer`: the frame every home card sits in, hover and all.
-fn frame(
-    key: &SharedString,
-    width: Pixels,
-    route: Option<Route>,
-    cx: &mut Context<Home>,
-) -> Stateful<Div> {
-    profile::elements::built();
-    let card = v_flex()
-        .id(key.clone())
-        .group(key.clone())
-        .flex_none()
-        .w(width)
-        .cursor_pointer()
-        .when_some(route, |card, route| {
-            card.on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
-        });
-    track_hover(card, key.clone(), cx)
-}
-
-/// `text-white font-bold truncate text-sm md:text-base px-1`.
-fn card_title(title: SharedString) -> Div {
-    div()
-        .truncate()
-        .px_1()
-        .text_base()
-        .font_weight(FontWeight::BOLD)
-        .child(title)
-}
-
-/// `text-xs md:text-sm text-white/50 truncate px-1 font-semibold mt-1`.
-fn card_subtitle(subtitle: SharedString, alpha: f32, cx: &App) -> Div {
-    div()
-        .truncate()
-        .px_1()
-        .mt_1()
-        .text_sm()
-        .font_weight(FontWeight::SEMIBOLD)
-        .text_color(style::white(alpha, cx))
-        .child(subtitle)
-}
-
-/// `group-hover:text-indigo-400 transition-colors` on a card's name.
-fn title_color(key: &SharedString, hovered: bool, window: &mut Window, cx: &mut App) -> Hsla {
-    let target = if hovered {
-        cx.theme().primary_hover
-    } else {
-        cx.theme().foreground
-    };
-    motion::color(channel(key.clone(), "title"), target, window, cx)
-}
-
-pub(crate) fn album_card(
-    scope: &str,
-    album: &AlbumInfo,
-    hovered: &Hovered,
-    window: &mut Window,
-    cx: &mut Context<Home>,
-) -> AnyElement {
-    let size = album_size();
-    let key = SharedString::from(format!("{scope}-{}", album.id));
-    let over = hovered.contains(&key);
-    let play = play_button(
-        scope,
-        PlayTarget::Album(album.id.clone()),
-        rems(2.5),
-        PlayLook::Light,
-        hovered,
-        window,
-        cx,
-    );
-    let cover = cover_frame(
-        &key,
-        Cover::new(album.artwork.as_ref()).placeholder(icons::DISC),
-        size,
-        card_radius(),
-        true,
-        over,
-        window,
-        cx,
-    );
-    let target = album_target(album);
-    frame(&key, size, Some(Route::Album(album.id.clone().into())), cx)
-        .child(
-            div()
-                .relative()
-                .mb_4()
-                .size(size)
-                .child(cover)
-                .child(overlay(
-                    &key,
-                    rems(0.75),
-                    Some(play),
-                    Some(dots(&key, target.clone())),
-                    over,
-                    window,
-                    cx,
-                )),
-        )
-        .child(card_title(album.title.clone().into()))
-        .child(card_subtitle(album.artist.clone().into(), 0.5, cx))
-        .context_menu(menus::builder(target))
-        .into_any_element()
-}
-
-fn album_target(album: &AlbumInfo) -> Target {
-    Target::Album {
-        id: album.id.clone().into(),
-        title: album.title.clone().into(),
-    }
-}
-
-/// The Listen Now card: the same shape one size down, with the accent play button.
-pub(crate) fn listen_now_card(
-    album: &AlbumInfo,
-    hovered: &Hovered,
-    window: &mut Window,
-    cx: &mut Context<Home>,
-) -> AnyElement {
-    let scope = "home-listen-now";
-    let size = artist_size();
-    let key = SharedString::from(format!("{scope}-{}", album.id));
-    let over = hovered.contains(&key);
-    let play = play_button(
-        scope,
-        PlayTarget::Album(album.id.clone()),
-        rems(2.25),
-        PlayLook::Accent,
-        hovered,
-        window,
-        cx,
-    );
-    let cover = cover_frame(
-        &key,
-        Cover::new(album.artwork.as_ref()).placeholder(icons::DISC),
-        size,
-        card_radius(),
-        true,
-        over,
-        window,
-        cx,
-    );
-    let target = album_target(album);
-    frame(&key, size, Some(Route::Album(album.id.clone().into())), cx)
-        .child(
-            div()
-                .relative()
-                .mb_2()
-                .size(size)
-                .child(cover)
-                .child(overlay(
-                    &key,
-                    rems(0.5),
-                    Some(play),
-                    Some(dots(&key, target.clone())),
-                    over,
-                    window,
-                    cx,
-                )),
-        )
-        .child(
-            div()
-                .truncate()
-                .text_sm()
-                .font_weight(FontWeight::SEMIBOLD)
-                .child(album.title.clone()),
-        )
-        .child(
-            div()
-                .truncate()
-                .mt_0p5()
-                .text_xs()
-                .text_color(style::white(style::TEXT_SUBTLE, cx))
-                .child(album.artist.clone()),
-        )
-        .context_menu(menus::builder(target))
-        .into_any_element()
-}
-
-/// A recently played row: the track's own cover, the album behind it, and the song menu.
-pub(crate) fn recent_card(
-    recent: &Recent,
-    hovered: &Hovered,
-    window: &mut Window,
-    cx: &mut Context<Home>,
-) -> AnyElement {
-    let scope = "home-continue";
-    let size = recent_size();
-    // A recent row without a resolved album has no id to key its button on, so the uid does it.
-    let button_scope = format!("{scope}-{}", recent.track.uid);
-    let album_id = recent.album.as_ref().map(|album| album.id.clone());
-    let album_title = recent
-        .album
-        .as_ref()
-        .map(|album| album.title.clone())
-        .unwrap_or_else(|| recent.track.album.clone());
-    let key = SharedString::from(format!("{scope}-{}", recent.track.uid));
-    let over = hovered.contains(&key);
-    // A single, or anything the library holds no album row for, plays as the track it is.
-    let target = match album_id.clone() {
-        Some(id) => PlayTarget::Album(id),
-        None => PlayTarget::Track(recent.track.key.clone()),
-    };
-    let play = play_button(
-        &button_scope,
-        target,
-        rems(2.5),
-        PlayLook::Accent,
-        hovered,
-        window,
-        cx,
-    );
-    let cover = cover_frame(
-        &key,
-        Cover::new(recent.track.artwork.as_ref()),
-        size,
-        card_radius(),
-        true,
-        over,
-        window,
-        cx,
-    );
-    // Without an album row there is no album page to open, so the card goes to the artist.
-    let route = match album_id {
-        Some(id) => Route::Album(id.into()),
-        None => Route::Artist {
-            name: recent.track.artist.clone().into(),
-            channel: None,
+    let (over, pointer) = motion::hovered(motion::channel(&tile.key, BUTTON_HOVER), window, cx);
+    let tint = motion::color(
+        motion::channel(&tile.key, BUTTON),
+        match over {
+            true => cx.theme().primary_hover,
+            false => cx.theme().primary,
         },
-    };
-    let menu_target = Target::track(recent.track.key.clone(), recent.track.title.clone());
-    frame(&key, size, Some(route), cx)
-        .child(
-            div()
-                .relative()
-                .mb_3()
-                .size(size)
-                .child(cover)
-                .child(overlay(
-                    &key,
-                    rems(0.5),
-                    Some(play),
-                    Some(dots(&key, menu_target.clone())),
-                    over,
-                    window,
-                    cx,
-                )),
-        )
-        .child(
-            div()
-                .truncate()
-                .text_sm()
-                .font_weight(FontWeight::SEMIBOLD)
-                .child(recent.track.title.clone()),
-        )
-        .child(
-            div()
-                .truncate()
-                .mt_0p5()
-                .text_xs()
-                .text_color(style::white(0.5, cx))
-                .child(format!("{} — {album_title}", recent.track.artist)),
-        )
-        .context_menu(menus::builder(menu_target))
-        .into_any_element()
-}
-
-pub(crate) fn artist_card(
-    name: &str,
-    artwork: Option<&api::ArtworkRef>,
-    hovered: &Hovered,
-    window: &mut Window,
-    cx: &mut Context<Home>,
-) -> AnyElement {
-    let size = artist_size();
-    let key = SharedString::from(format!("home-artist-{name}"));
-    let over = hovered.contains(&key);
-    // The artist circle darkens on hover but never zooms: upstream scales no picture here.
-    let cover = cover_frame(
-        &key,
-        Cover::new(artwork).placeholder(icons::MIC),
-        size,
-        size * 0.5,
-        false,
-        over,
         window,
         cx,
     );
-    let title = title_color(&key, over, window, cx);
-    frame(
-        &key,
-        size,
-        Some(Route::Artist {
-            name: name.to_string().into(),
-            channel: None,
-        }),
-        cx,
-    )
-    .child(div().mb_4().child(cover))
-    .child(
+    let play = tile.play.clone();
+    Some(
         div()
-            .truncate()
-            .px_2()
-            .text_center()
-            .text_base()
-            .font_weight(FontWeight::BOLD)
-            .text_color(title)
-            .child(name.to_string()),
+            .id(motion::channel(&tile.key, BUTTON))
+            .absolute()
+            .right_2()
+            .bottom_2()
+            .flex()
+            .items_center()
+            .justify_center()
+            .size(rems(2.5))
+            .rounded_full()
+            .bg(tint)
+            .text_color(cx.theme().primary_foreground)
+            .shadow_md()
+            .on_hover(motion::track(pointer))
+            .child(
+                Icon::default()
+                    .path(match playing {
+                        true => icons::PAUSE,
+                        false => icons::PLAY,
+                    })
+                    .size(px(14.)),
+            )
+            .on_click(move |_, _, cx| {
+                // The button sits inside the card, whose own click opens what it names.
+                cx.stop_propagation();
+                if is_current {
+                    PlayerModel::global(cx).update(cx, |player, cx| player.toggle(cx));
+                    return;
+                }
+                match &play {
+                    Play::Album(id) => {
+                        actions::play_context(QueueContext::Album { id: id.clone() }, Some(0), cx)
+                    }
+                    Play::Playlist(id) => actions::play_context(
+                        QueueContext::Playlist { id: id.clone() },
+                        Some(0),
+                        cx,
+                    ),
+                    Play::Track(key) => actions::play_tracks(vec![key.clone()], Some(0), cx),
+                    Play::None => {}
+                }
+            })
+            .into_any_element(),
     )
-    .context_menu(menus::builder(Target::Artist {
-        name: name.to_string().into(),
-        channel: None,
-    }))
-    .into_any_element()
-}
-
-pub(crate) fn playlist_card(
-    playlist: &PlaylistInfo,
-    hovered: &Hovered,
-    window: &mut Window,
-    cx: &mut Context<Home>,
-) -> AnyElement {
-    let size = album_size();
-    let key = SharedString::from(format!("home-playlist-{}", playlist.id));
-    let over = hovered.contains(&key);
-    let target = Target::Playlist {
-        id: playlist.id.clone().into(),
-        name: playlist.name.clone().into(),
-    };
-    let cover = cover_frame(
-        &key,
-        Cover::new(playlist.artwork.as_ref()).placeholder(icons::LIST),
-        size,
-        card_radius(),
-        true,
-        over,
-        window,
-        cx,
-    );
-    let title = title_color(&key, over, window, cx);
-    frame(
-        &key,
-        size,
-        Some(Route::Playlist(playlist.id.clone().into())),
-        cx,
-    )
-    .child(
-        div()
-            .relative()
-            .mb_4()
-            .size(size)
-            .child(cover)
-            .child(overlay(
-                &key,
-                rems(0.5),
-                None,
-                Some(dots(&key, target.clone())),
-                over,
-                window,
-                cx,
-            )),
-    )
-    .child(card_title(playlist.name.clone().into()).text_color(title))
-    .child(card_subtitle(
-        t_with(
-            "music_playlist_count",
-            &[("count", playlist.track_keys.len().to_string())],
-        ),
-        0.4,
-        cx,
-    ))
-    .context_menu(menus::builder(target))
-    .into_any_element()
-}
-
-/// The Listen Now list row: a wide tile rather than a card.
-pub(crate) fn album_row(
-    album: &AlbumInfo,
-    hovered: &Hovered,
-    window: &mut Window,
-    cx: &mut Context<Home>,
-) -> AnyElement {
-    let scope = "home-listen-now-list";
-    let key = SharedString::from(format!("{scope}-{}", album.id));
-    let over = hovered.contains(&key);
-    let id = album.id.clone();
-    let play = play_button(
-        scope,
-        PlayTarget::Album(album.id.clone()),
-        rems(2.),
-        PlayLook::Subtle,
-        hovered,
-        window,
-        cx,
-    );
-    let background = motion::color_over(
-        channel(key.clone(), "bg"),
-        style::white(if over { style::HOVER } else { style::RAISED }, cx),
-        motion::SLOW,
-        window,
-        cx,
-    );
-    let reveal = motion::amount(
-        channel(key.clone(), "reveal"),
-        if over { 1. } else { 0. },
-        motion::SLOW,
-        window,
-        cx,
-    );
-    let cover = cover_frame(
-        &key,
-        Cover::new(album.artwork.as_ref()).placeholder(icons::DISC),
-        px(80.),
-        px(0.),
-        false,
-        over,
-        window,
-        cx,
-    );
-    let row = h_flex()
-        .id(SharedString::from(format!("{scope}-row-{}", album.id)))
-        .w(px(350.))
-        .flex_grow(1.)
-        .items_center()
-        .overflow_hidden()
-        .pr_4()
-        .rounded(style::radius_xl())
-        .border_1()
-        .border_color(style::white(style::BORDER_SOFT, cx))
-        .bg(background)
-        .cursor_pointer()
-        .on_click(move |_, _, cx| Navigator::navigate(Route::Album(id.clone().into()), cx))
-        .child(cover)
-        .child(
-            v_flex()
-                .flex_1()
-                .min_w_0()
-                .justify_center()
-                .p_4()
-                .child(
-                    div()
-                        .truncate()
-                        .text_base()
-                        .font_weight(FontWeight::BOLD)
-                        .child(album.title.clone()),
-                )
-                .child(
-                    div()
-                        .truncate()
-                        .mt_1()
-                        .text_xs()
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(style::white(0.5, cx))
-                        .child(album.artist.clone()),
-                ),
-        )
-        .child(div().opacity(reveal).child(play));
-    track_hover(row, key, cx)
-        .context_menu(menus::builder(album_target(album)))
-        .into_any_element()
 }

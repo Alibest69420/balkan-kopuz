@@ -11,12 +11,8 @@ workspace = true
 
 [dependencies]
 profile = { path = "../profile" }
+settings_interface = { path = "../settings_interface" }
 api = { workspace = true }
-config = { workspace = true }
-i18n = { workspace = true }
-link = { workspace = true }
 store = { workspace = true }
-theme = { workspace = true }
 widgets = { workspace = true }
 gpui-kit = { workspace = true }
-tracing = { workspace = true }

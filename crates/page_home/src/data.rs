@@ -1,39 +1,59 @@
-//! The lists the Home sections render, derived once per data change rather than per frame.
+//! What the shelves hold: every tile derived once per data change, never per frame.
 
 use std::collections::{HashMap, HashSet};
 
-use api::{AlbumInfo, AlbumPage, ArtistPage, ArtworkRef, TrackInfo, TrackPage};
+use api::{AlbumInfo, AlbumPage, ArtistPage, ArtworkRef, PlaylistInfo, TrackInfo, TrackPage};
+use gpui_kit::SharedString;
+use store::{Route, Target};
+use widgets::format::t_with;
+use widgets::icons;
 
-/// Recently Added shows 12, but untitled and same-titled albums drop out afterwards.
+/// Recently Added shows a shelf, but untitled and same-titled albums drop out afterwards.
 pub(crate) const RECENTLY_ADDED_WINDOW: u32 = 64;
 pub(crate) const RECENT_TRACKS_WINDOW: u32 = 50;
 pub(crate) const ARTIST_SAMPLE_WINDOW: u32 = 30;
 
-const ROW_LIMIT: usize = 12;
-const CONTINUE_LIMIT: usize = 10;
-const ARTIST_LIMIT: usize = 10;
+/// How far a shelf reaches. Only the tiles in view are built, so this is reach, not cost.
+const SHELF: usize = 18;
 
-pub(crate) struct Artist {
-    pub name: String,
+/// What a tile's play button starts; an artist has no button of its own.
+#[derive(Clone)]
+pub(crate) enum Play {
+    None,
+    Album(String),
+    Track(String),
+    Playlist(String),
+}
+
+/// One card, with everything a frame needs already in the shape the frame wants it.
+pub(crate) struct Tile {
+    pub key: SharedString,
+    pub title: SharedString,
+    pub subtitle: SharedString,
     pub artwork: Option<ArtworkRef>,
+    pub route: Route,
+    pub target: Target,
+    pub play: Play,
+    pub round: bool,
+    pub placeholder: &'static str,
 }
 
-/// A recently played row with the album it belongs to, where the albums query has caught up.
-pub(crate) struct Recent {
-    pub track: TrackInfo,
-    pub album: Option<AlbumInfo>,
+/// One row of the page, under the name the layout orders it by.
+pub(crate) struct Shelf {
+    pub name: &'static str,
+    pub tiles: Vec<Tile>,
+    /// The lead shelf draws larger tiles than the rest.
+    pub lead: bool,
 }
 
-#[derive(Default)]
-pub(crate) struct Data {
-    pub shuffled: Vec<AlbumInfo>,
-    pub new_releases: Vec<AlbumInfo>,
-    pub recently_added: Vec<AlbumInfo>,
-    pub made_for_you: Vec<AlbumInfo>,
-    pub genre: String,
-    pub continue_listening: Vec<Recent>,
-    pub hero: Option<Recent>,
-    pub top_artists: Vec<Artist>,
+impl Shelf {
+    fn new(name: &'static str, tiles: Vec<Tile>) -> Self {
+        Self {
+            name,
+            tiles,
+            lead: name == "jump_back_in",
+        }
+    }
 }
 
 pub(crate) struct Inputs<'a> {
@@ -43,6 +63,7 @@ pub(crate) struct Inputs<'a> {
     pub recents: Option<&'a TrackPage>,
     pub samples: Option<&'a TrackPage>,
     pub genre: Option<&'a String>,
+    pub playlists: &'a [PlaylistInfo],
     pub seed: u64,
 }
 
@@ -68,20 +89,6 @@ fn artist_key(name: &str) -> String {
     name.trim().to_lowercase()
 }
 
-/// Named albums, sorted by title, one per title.
-// TODO(offline): offline mode keeps only albums whose tracks are downloaded.
-fn unique_albums(albums: &[AlbumInfo]) -> Vec<AlbumInfo> {
-    let mut sorted: Vec<AlbumInfo> = albums
-        .iter()
-        .filter(|album| named(album))
-        .cloned()
-        .collect();
-    sorted.sort_by_key(title_key);
-    let mut seen = HashSet::new();
-    sorted.retain(|album| seen.insert(title_key(album)));
-    sorted
-}
-
 /// Up to `limit` named albums in the order given, one per title.
 fn take_unique(albums: impl Iterator<Item = AlbumInfo>, limit: usize) -> Vec<AlbumInfo> {
     let mut seen = HashSet::new();
@@ -98,7 +105,7 @@ fn take_unique(albums: impl Iterator<Item = AlbumInfo>, limit: usize) -> Vec<Alb
     out
 }
 
-pub(crate) fn build(inputs: Inputs<'_>) -> Data {
+pub(crate) fn build(inputs: Inputs<'_>) -> Vec<Shelf> {
     let albums = inputs
         .albums
         .map(|page| page.albums.as_slice())
@@ -107,13 +114,10 @@ pub(crate) fn build(inputs: Inputs<'_>) -> Data {
         .iter()
         .map(|album| (album.id.as_str(), album))
         .collect();
-
-    let mut shuffled = unique_albums(albums);
-    shuffle(&mut shuffled, inputs.seed);
-
-    let mut by_year: Vec<AlbumInfo> = albums.to_vec();
-    by_year.sort_by_key(|album| std::cmp::Reverse(album.year));
-    let new_releases = take_unique(by_year.into_iter(), ROW_LIMIT);
+    let recents = inputs
+        .recents
+        .map(|page| page.items.as_slice())
+        .unwrap_or(&[]);
 
     let recently_added = take_unique(
         inputs
@@ -121,7 +125,7 @@ pub(crate) fn build(inputs: Inputs<'_>) -> Data {
             .map(|page| page.albums.clone())
             .unwrap_or_default()
             .into_iter(),
-        ROW_LIMIT,
+        SHELF,
     );
 
     let genre = inputs.genre.cloned().unwrap_or_default();
@@ -135,64 +139,136 @@ pub(crate) fn build(inputs: Inputs<'_>) -> Data {
             .collect()
     };
     shuffle(&mut made_for_you, inputs.seed);
-    made_for_you.truncate(ROW_LIMIT);
+    made_for_you.truncate(SHELF);
 
-    let recents = inputs
-        .recents
-        .map(|page| page.items.as_slice())
-        .unwrap_or(&[]);
-    let continue_listening = continue_listening(recents, &by_id);
-    let hero = recents
-        .iter()
-        .find(|track| !track.title.trim().is_empty())
-        .map(|track| Recent {
-            track: track.clone(),
-            album: by_id
-                .get(track.album_id.as_str())
-                .map(|album| (*album).clone()),
-        });
+    vec![
+        Shelf::new("jump_back_in", jump_back_in(recents, &by_id)),
+        Shelf::new(
+            "recently_added",
+            recently_added
+                .iter()
+                .map(|album| album_tile("recently-added", album))
+                .collect(),
+        ),
+        Shelf::new(
+            "made_for_you",
+            made_for_you
+                .iter()
+                .map(|album| album_tile("made-for-you", album))
+                .collect(),
+        ),
+        Shelf::new("top_artists", top_artists(inputs.samples, inputs.artists)),
+        Shelf::new(
+            "your_playlists",
+            inputs
+                .playlists
+                .iter()
+                .rev()
+                .take(SHELF)
+                .map(playlist_tile)
+                .collect(),
+        ),
+        Shelf::new("recently_played", recently_played(recents)),
+    ]
+}
 
-    Data {
-        shuffled,
-        new_releases,
-        recently_added,
-        made_for_you,
-        genre,
-        continue_listening,
-        hero,
-        top_artists: top_artists(inputs.samples, inputs.artists),
+fn album_tile(scope: &str, album: &AlbumInfo) -> Tile {
+    Tile {
+        key: SharedString::from(format!("{scope}-{}", album.id)),
+        title: album.title.clone().into(),
+        subtitle: album.artist.clone().into(),
+        artwork: album.artwork.clone(),
+        route: Route::Album(album.id.clone().into()),
+        target: Target::Album {
+            id: album.id.clone().into(),
+            title: album.title.clone().into(),
+        },
+        play: Play::Album(album.id.clone()),
+        round: false,
+        placeholder: icons::DISC,
     }
 }
 
-/// One card per album, newest first, skipping rows with nothing to name them by.
-fn continue_listening(recents: &[TrackInfo], by_id: &HashMap<&str, &AlbumInfo>) -> Vec<Recent> {
+/// The albums the last listening session was in, newest first, one tile per album.
+fn jump_back_in(recents: &[TrackInfo], by_id: &HashMap<&str, &AlbumInfo>) -> Vec<Tile> {
     let mut seen = HashSet::new();
     let mut out = Vec::new();
     for track in recents {
         if track.title.trim().is_empty() {
             continue;
         }
-        let album = by_id
-            .get(track.album_id.as_str())
-            .map(|album| (*album).clone());
-        match &album {
+        let album = by_id.get(track.album_id.as_str()).copied();
+        match album {
             Some(album) if !named(album) => continue,
             Some(album) if !seen.insert(album.id.clone()) => continue,
             None if is_unknown_artist(&track.artist) => continue,
             _ => {}
         }
-        out.push(Recent {
-            track: track.clone(),
-            album,
+        out.push(match album {
+            Some(album) => album_tile("jump-back-in", album),
+            // A single, or anything the library holds no album row for, stands as the track it is.
+            None => track_tile("jump-back-in", track),
         });
-        if out.len() >= CONTINUE_LIMIT {
+        if out.len() >= SHELF {
             break;
         }
     }
     out
 }
 
-fn top_artists(samples: Option<&TrackPage>, artists: Option<&ArtistPage>) -> Vec<Artist> {
+/// Every recent track in the order it was played, so a one-off song is still findable.
+fn recently_played(recents: &[TrackInfo]) -> Vec<Tile> {
+    recents
+        .iter()
+        .filter(|track| !track.title.trim().is_empty())
+        .take(SHELF)
+        .map(|track| track_tile("recently-played", track))
+        .collect()
+}
+
+fn track_tile(scope: &str, track: &TrackInfo) -> Tile {
+    // Without an album row there is no album page to open, so the tile goes to the artist.
+    let route = match track.album_id.is_empty() {
+        false => Route::Album(track.album_id.clone().into()),
+        true => Route::Artist {
+            name: track.artist.clone().into(),
+            channel: None,
+        },
+    };
+    Tile {
+        key: SharedString::from(format!("{scope}-{}", track.uid)),
+        title: track.title.clone().into(),
+        subtitle: track.artist.clone().into(),
+        artwork: track.artwork.clone(),
+        route,
+        target: Target::track(track.key.clone(), track.title.clone()),
+        play: Play::Track(track.key.clone()),
+        round: false,
+        placeholder: icons::MUSIC,
+    }
+}
+
+fn playlist_tile(playlist: &PlaylistInfo) -> Tile {
+    Tile {
+        key: SharedString::from(format!("playlist-{}", playlist.id)),
+        title: playlist.name.clone().into(),
+        subtitle: t_with(
+            "playlist_track_count",
+            &[("count", playlist.track_keys.len().to_string())],
+        ),
+        artwork: playlist.artwork.clone(),
+        route: Route::Playlist(playlist.id.clone().into()),
+        target: Target::Playlist {
+            id: playlist.id.clone().into(),
+            name: playlist.name.clone().into(),
+        },
+        play: Play::Playlist(playlist.id.clone()),
+        round: false,
+        placeholder: icons::LIST,
+    }
+}
+
+fn top_artists(samples: Option<&TrackPage>, artists: Option<&ArtistPage>) -> Vec<Tile> {
     // TODO(offline): offline mode draws these from the downloaded tracks instead.
     let photos: HashMap<String, &ArtworkRef> = artists
         .map(|page| page.artists.as_slice())
@@ -206,13 +282,26 @@ fn top_artists(samples: Option<&TrackPage>, artists: Option<&ArtistPage>) -> Vec
         if is_unknown_artist(&track.artist) || !seen.insert(track.artist.clone()) {
             continue;
         }
-        out.push(Artist {
-            name: track.artist.clone(),
+        out.push(Tile {
+            key: SharedString::from(format!("artist-{}", track.artist)),
+            title: track.artist.clone().into(),
+            subtitle: SharedString::default(),
             artwork: photos
                 .get(&artist_key(&track.artist))
                 .map(|art| (*art).clone()),
+            route: Route::Artist {
+                name: track.artist.clone().into(),
+                channel: None,
+            },
+            target: Target::Artist {
+                name: track.artist.clone().into(),
+                channel: None,
+            },
+            play: Play::None,
+            round: true,
+            placeholder: icons::MIC,
         });
-        if out.len() >= ARTIST_LIMIT {
+        if out.len() >= SHELF {
             break;
         }
     }
@@ -227,5 +316,80 @@ fn shuffle<T>(items: &mut [T], seed: u64) {
         state ^= state >> 7;
         state ^= state << 17;
         items.swap(index, (state % (index as u64 + 1)) as usize);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn track(uid: &str, title: &str, artist: &str, album_id: &str) -> TrackInfo {
+        TrackInfo {
+            uid: uid.into(),
+            key: format!("key-{uid}"),
+            title: title.into(),
+            artist: artist.into(),
+            album_id: album_id.into(),
+            ..Default::default()
+        }
+    }
+
+    fn album(id: &str, title: &str, artist: &str) -> AlbumInfo {
+        AlbumInfo {
+            id: id.into(),
+            title: title.into(),
+            artist: artist.into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn jump_back_in_holds_one_tile_per_album() {
+        let first = album("a1", "Pixel Down", "NONEP");
+        let by_id = HashMap::from([("a1", &first)]);
+        let recents = vec![
+            track("t1", "One", "NONEP", "a1"),
+            track("t2", "Two", "NONEP", "a1"),
+        ];
+        let tiles = jump_back_in(&recents, &by_id);
+        assert_eq!(tiles.len(), 1);
+        assert_eq!(tiles[0].title, "Pixel Down");
+    }
+
+    #[test]
+    fn a_track_with_no_album_row_still_gets_a_tile() {
+        let by_id = HashMap::new();
+        let recents = vec![track("t1", "A single", "Someone", "")];
+        let tiles = jump_back_in(&recents, &by_id);
+        assert_eq!(tiles.len(), 1);
+        assert!(matches!(tiles[0].play, Play::Track(_)));
+    }
+
+    #[test]
+    fn recently_played_keeps_every_play_in_order() {
+        let recents = vec![
+            track("t1", "One", "NONEP", "a1"),
+            track("t2", "Two", "NONEP", "a1"),
+            track("t3", "", "NONEP", "a1"),
+        ];
+        let tiles = recently_played(&recents);
+        assert_eq!(tiles.len(), 2);
+        assert_eq!(tiles[1].title, "Two");
+    }
+
+    #[test]
+    fn every_shelf_the_layout_names_is_built() {
+        let shelves = build(Inputs {
+            albums: None,
+            recently_added: None,
+            artists: None,
+            recents: None,
+            samples: None,
+            genre: None,
+            playlists: &[],
+            seed: 1,
+        });
+        let names: Vec<&str> = shelves.iter().map(|shelf| shelf.name).collect();
+        assert_eq!(names, store::layout::SHELVES);
     }
 }
