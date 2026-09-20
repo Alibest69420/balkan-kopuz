@@ -451,6 +451,8 @@ pub struct Layout {
     pub player: Player,
     pub sheet: Sheet,
     pub library: Library,
+    /// The encoded facet and filter set the library was last left on, so a restart opens it again.
+    pub library_view: Option<String>,
     pub home: Home,
     pub interface: Interface,
     pub palette: Palette,
@@ -473,6 +475,7 @@ impl Default for Layout {
             player: Player::default(),
             sheet: Sheet::default(),
             library: Library::default(),
+            library_view: None,
             home: Home::default(),
             interface: Interface::default(),
             palette: Palette::default(),
@@ -512,7 +515,10 @@ impl Section {
             Section::Panel => layout.panel = fresh.panel,
             Section::Player => layout.player = fresh.player,
             Section::Sheet => layout.sheet = fresh.sheet,
-            Section::Library => layout.library = fresh.library,
+            Section::Library => {
+                layout.library = fresh.library;
+                layout.library_view = fresh.library_view;
+            }
             Section::Home => layout.home = fresh.home,
             Section::Interface => {
                 layout.interface = fresh.interface;

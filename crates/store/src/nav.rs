@@ -16,6 +16,8 @@ pub enum Route {
         name: SharedString,
     },
     Library,
+    /// The library with a facet and a filter set on it, encoded so back and forward restore them.
+    LibraryView(SharedString),
     Albums,
     Album(SharedString),
     Artists,
@@ -41,6 +43,7 @@ impl Route {
     pub fn root(&self) -> Route {
         match self {
             Route::Genre(_) => Route::Search,
+            Route::LibraryView(_) => Route::Library,
             Route::Album(_) => Route::Albums,
             Route::Artist { .. } => Route::Artists,
             Route::Playlist(_) | Route::PlaylistFolder(_) => Route::Playlists,
@@ -52,14 +55,31 @@ impl Route {
 
     /// Stable key for caching a page view and its scroll position.
     pub fn key(&self) -> String {
-        format!("{self:?}")
+        // Every filter set is the same view: keying on the encoding would rebuild it per chip.
+        match self {
+            Route::Library | Route::LibraryView(_) => "Library".to_string(),
+            other => format!("{other:?}"),
+        }
+    }
+
+    /// The facet and filter set this route asks the library for, if it names one.
+    pub fn library_view(&self) -> Option<&SharedString> {
+        match self {
+            Route::LibraryView(view) => Some(view),
+            _ => None,
+        }
     }
 
     /// Where a route that is no longer a place now lands, so an old link never reaches a 404.
     pub fn redirect(self) -> Route {
         match self {
-            Route::Favorites => Route::Library,
-            Route::Activity | Route::Downloader => Route::Home,
+            // The four listings are facets of one library now, and most-played is a sort of it.
+            Route::Favorites | Route::Activity => Route::Library,
+            Route::Albums | Route::Artists | Route::Playlists => Route::Library,
+            // Search and Discover are one destination; two keys would cache two of it.
+            Route::Search => Route::Discover,
+            // Until the URL tool is a dialog off the downloads popover, it has nowhere of its own.
+            Route::Downloader => Route::Home,
             other => other,
         }
     }
@@ -94,6 +114,7 @@ impl Route {
         Some(match self {
             Route::Home => "home",
             Route::Library
+            | Route::LibraryView(_)
             | Route::Albums
             | Route::Album(_)
             | Route::Artists
@@ -209,6 +230,16 @@ impl Navigator {
         crate::notify(cx);
     }
 
+    /// Swap where the app is without pushing history: a filter keystroke is not a place to go back to.
+    pub fn replace(&mut self, route: Route, cx: &mut Context<Self>) {
+        let route = route.redirect();
+        if route == self.current {
+            return;
+        }
+        self.current = route;
+        crate::notify(cx);
+    }
+
     pub fn go_back(&mut self, cx: &mut Context<Self>) {
         if let Some(route) = self.back.pop() {
             self.forward
@@ -250,8 +281,12 @@ mod tests {
 
     #[test]
     fn a_route_that_is_no_longer_a_place_lands_somewhere() {
-        assert_eq!(Route::Favorites.redirect(), Route::Library);
-        assert_eq!(Route::Activity.redirect(), Route::Home);
+        // Most-played is an order over the library, not a page of its own.
+        for route in [Route::Favorites, Route::Activity, Route::Albums, Route::Artists] {
+            assert_eq!(route.redirect(), Route::Library);
+        }
+        assert_eq!(Route::Playlists.redirect(), Route::Library);
+        assert_eq!(Route::Search.redirect(), Route::Discover);
         assert_eq!(Route::Downloader.redirect(), Route::Home);
     }
 
@@ -319,6 +354,26 @@ mod tests {
         assert_eq!(
             Route::Playlist("x".into()).destination_of(),
             Some("playlists")
+        );
+    }
+
+    #[test]
+    fn every_library_filter_set_is_the_same_cached_view() {
+        assert_eq!(
+            Route::Library.key(),
+            Route::LibraryView("f=albums".into()).key()
+        );
+        assert_ne!(Route::Library.key(), Route::Albums.key());
+    }
+
+    #[test]
+    fn a_filtered_library_still_lights_the_library() {
+        let route = Route::LibraryView("f=tracks&fav=1".into());
+        assert_eq!(route.destination_of(), Some("library"));
+        assert_eq!(route.root(), Route::Library);
+        assert_eq!(
+            route.library_view().map(|view| view.to_string()),
+            Some("f=tracks&fav=1".to_string())
         );
     }
 

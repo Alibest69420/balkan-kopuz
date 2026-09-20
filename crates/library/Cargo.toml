@@ -1,5 +1,5 @@
 [package]
-name = "page_discover"
+name = "library"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,7 +10,10 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+profile = { path = "../profile" }
+settings_interface = { path = "../settings_interface" }
 api = { workspace = true }
+commands = { workspace = true }
 config = { workspace = true }
 i18n = { workspace = true }
 link = { workspace = true }

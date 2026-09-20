@@ -15,8 +15,8 @@ use gpui_kit::{
 use store::{DownloadsModel, Navigator, PlayerModel, Query, Route, SourcesModel, actions};
 use widgets::format::{t, t_with};
 use widgets::{
-    Cover, EmptyState, Loading, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons,
-    motion, style,
+    Cover, DetailHeader, EmptyState, Loading, TrackActions, TrackList, TrackListEvent,
+    TrackListOptions, icons, motion, style,
 };
 
 use crate::clear_variant;
@@ -770,7 +770,45 @@ impl AlbumDetail {
             "showcase_song_count",
             &[("count", self.rows.len().to_string())],
         );
-        let dot = || div().child("•");
+        let radius = cx.theme().radius * 3.;
+        let mut header = DetailHeader::new(SharedString::from(album.title.clone()))
+            .cover(self.cover(&album, HERO_COVER, radius, window, cx))
+            .eyebrow(self.artist_link(&album.artist, "album-artist", window, cx))
+            .meta(count)
+            .meta(format!("{} {}", self.total_ms() / 60_000, t("min")))
+            .action(self.shuffle_button(HERO_ACTION, false, window, cx))
+            .action(self.play_button(HERO_ACTION, cx))
+            .action({
+                let button = Self::round_button(
+                    "album-select-all",
+                    icons::CHECK,
+                    HERO_SECONDARY,
+                    HERO_SECONDARY * 0.33,
+                    cx,
+                )
+                .tooltip(t("select_all"))
+                .on_click(cx.listener(|this, _, _, cx| this.select_all(cx)));
+                let chrome = Chrome {
+                    ring: Some((0.2, 0.4)),
+                    ink: style::white(0.7, cx),
+                    wash: true,
+                    lit: false,
+                };
+                self.ringed(
+                    "album-select-all-frame",
+                    button,
+                    HERO_SECONDARY,
+                    chrome,
+                    window,
+                    cx,
+                )
+            });
+        if album.year > 0 {
+            header = header.meta(album.year.to_string());
+        }
+        if let Some(download) = self.download_all_button(HERO_SECONDARY, window, cx) {
+            header = header.action(download);
+        }
         v_flex()
             .size_full()
             .relative()
@@ -783,86 +821,7 @@ impl AlbumDetail {
                     .items_center()
                     .child(self.back_button()),
             )
-            .child(
-                h_flex()
-                    .flex_shrink_0()
-                    .gap_8()
-                    .items_end()
-                    .mb_12()
-                    .child({
-                        let radius = cx.theme().radius * 3.;
-                        self.cover(&album, HERO_COVER, radius, window, cx)
-                    })
-                    .child(
-                        v_flex()
-                            .flex_1()
-                            .min_w_0()
-                            .child(div().mb_2().child(self.artist_link(
-                                &album.artist,
-                                "album-artist",
-                                window,
-                                cx,
-                            )))
-                            .child(
-                                div()
-                                    .mb_6()
-                                    .line_clamp(3)
-                                    .text_size(gpui_kit::rems(4.5))
-                                    .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                                    .child(SharedString::from(album.title.clone())),
-                            )
-                            .child(
-                                h_flex()
-                                    .gap_6()
-                                    .items_center()
-                                    .text_color(style::slate_400(cx))
-                                    .child(div().child(count))
-                                    .child(dot())
-                                    .child(div().child(format!(
-                                        "{} {}",
-                                        self.total_ms() / 60_000,
-                                        t("min")
-                                    )))
-                                    .when(album.year > 0, |line| {
-                                        line.child(dot()).child(div().child(album.year.to_string()))
-                                    }),
-                            ),
-                    )
-                    .child(
-                        h_flex()
-                            .flex_shrink_0()
-                            .gap_4()
-                            .items_center()
-                            .child(self.shuffle_button(HERO_ACTION, false, window, cx))
-                            .child(self.play_button(HERO_ACTION, cx))
-                            .child({
-                                let button = Self::round_button(
-                                    "album-select-all",
-                                    icons::CHECK,
-                                    HERO_SECONDARY,
-                                    HERO_SECONDARY * 0.33,
-                                    cx,
-                                )
-                                .tooltip(t("select_all"))
-                                .on_click(cx.listener(|this, _, _, cx| this.select_all(cx)));
-                                let chrome = Chrome {
-                                    ring: Some((0.2, 0.4)),
-                                    ink: style::white(0.7, cx),
-                                    wash: true,
-                                    lit: false,
-                                };
-                                self.ringed(
-                                    "album-select-all-frame",
-                                    button,
-                                    HERO_SECONDARY,
-                                    chrome,
-                                    window,
-                                    cx,
-                                )
-                            })
-                            .children(self.download_all_button(HERO_SECONDARY, window, cx)),
-                    ),
-            )
+            .child(div().flex_shrink_0().mb_12().child(header))
             .child(self.tracks_body(cx))
             .children(self.selection_bar(window, cx))
             .into_any_element()

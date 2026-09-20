@@ -4,20 +4,19 @@ use std::path::Path;
 
 use api::{ArtworkTarget, ArtworkUpload, PlaylistCapability, PlaylistReorder, Table, TrackInfo};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, Size, h_flex, v_flex};
-use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, Size, v_flex};
 use gpui_kit::{
-    AppContext as _, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
-    ParentElement as _, PathPromptOptions, Pixels, Rems, Render, SharedString,
-    StatefulInteractiveElement as _, Styled as _, Subscription, Window, div, px, rems,
+    AnyElement, App, AppContext as _, Context, Entity, FontWeight, IntoElement, ParentElement as _,
+    PathPromptOptions, Pixels, Rems, Render, SharedString, Styled as _, Subscription, Window, div,
+    px, rems,
 };
 use link::Link;
 use store::{
     DownloadsModel, Navigator, Notices, PlaylistsModel, Query, Route, SourcesModel, actions,
 };
 use widgets::format::{t, t_with};
-use widgets::track_list::{TrackActions, TrackList, TrackListEvent};
-use widgets::{Cover, EmptyState, Loading, icons, motion, style};
+use widgets::track_list::{TrackActions, TrackList, TrackListEvent, columns};
+use widgets::{DetailHeader, EmptyState, detail_header_skeleton, icons, motion, style};
 
 use crate::cards::{hovered, track, tweened};
 
@@ -267,12 +266,13 @@ impl Render for PlaylistDetail {
         let loaded = playlists.read(cx).is_loaded();
         let playlist = playlists.read(cx).playlist(&self.id).cloned();
         let Some(playlist) = playlist else {
+            // The page used to draw nothing at all while the catalog was still being read.
             return v_flex().size_full().px_8().pt_8().child(if loaded {
                 EmptyState::new(t("playlist_not_found"))
                     .icon(icons::LIST)
                     .into_any_element()
             } else {
-                Loading.into_any_element()
+                detail_header_skeleton(HERO, false, cx).into_any_element()
             });
         };
 
@@ -338,6 +338,101 @@ impl Render for PlaylistDetail {
         let delete_text = motion::color("playlist-delete-text", delete_text, window, cx);
         let delete_edge = motion::color("playlist-delete-edge", delete_edge, window, cx);
 
+        let page = cx.entity().downgrade();
+        let mut header = DetailHeader::new(name.clone())
+            .artwork(playlist.artwork.as_ref())
+            .placeholder(icons::LIST)
+            .on_cover("playlist-cover", move |_, cx| {
+                page.update(cx, |this, cx| this.upload_cover(cx)).ok();
+            })
+            .meta(t_with(
+                "playlist_track_count",
+                &[("count", keys.len().to_string())],
+            ))
+            .action(tweened(
+                round_button("play-playlist", icons::PLAY)
+                    .on_hover(track(play_hover))
+                    .tooltip(t("play"))
+                    .on_click({
+                        let keys = keys.clone();
+                        move |_, _, cx| actions::play_all(keys.clone(), cx)
+                    }),
+                play_fill,
+                play_text,
+                clear,
+                cx,
+            ));
+        if capabilities.playlist_radio {
+            let id = self.id.to_string();
+            header = header.action(tweened(
+                round_button("playlist-radio", icons::RADIO)
+                    .on_hover(track(radio_hover))
+                    .tooltip(t("start_radio"))
+                    .on_click(move |_, _, cx| actions::start_playlist_radio(id.clone(), cx)),
+                radio_fill,
+                radio_text,
+                clear,
+                cx,
+            ));
+        }
+        if capabilities.downloads {
+            let keys = keys.clone();
+            header = header.action(tweened(
+                Button::new("playlist-download")
+                    .size_12()
+                    .rounded_full()
+                    .border_1()
+                    .on_hover(track(download_hover))
+                    .icon(icons::icon(if stored {
+                        icons::TRASH
+                    } else {
+                        icons::DOWNLOAD
+                    }))
+                    .tooltip(if stored {
+                        t("remove_from_cache")
+                    } else {
+                        t("downloader_download")
+                    })
+                    .loading(active)
+                    .on_click(move |_, _, cx| {
+                        let keys = keys.clone();
+                        DownloadsModel::global(cx).update(cx, |downloads, cx| {
+                            if stored {
+                                for key in keys {
+                                    downloads.remove(key, cx);
+                                }
+                            } else {
+                                downloads.download(keys, cx);
+                            }
+                        });
+                    }),
+                download_fill,
+                download_text,
+                download_edge,
+                cx,
+            ));
+        }
+        if capabilities.playlists != PlaylistCapability::None {
+            let name = name.clone();
+            header = header.action(tweened(
+                Button::new("playlist-delete")
+                    .size_12()
+                    .rounded_full()
+                    .border_1()
+                    .on_hover(track(delete_hover))
+                    .icon(icons::icon(icons::TRASH))
+                    .tooltip(t("delete_playlist"))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.delete(window, cx, name.clone())
+                    })),
+                delete_fill,
+                delete_text,
+                delete_edge,
+                cx,
+            ));
+        }
+
+        let body = self.body(keys.len(), window, cx);
         v_flex()
             .size_full()
             .px_8()
@@ -351,141 +446,87 @@ impl Render for PlaylistDetail {
                         Navigator::global(cx).update(cx, |navigator, cx| navigator.go_back(cx))
                     }),
             )
-            .child(
-                h_flex()
-                    .gap_8()
-                    .items_end()
+            .child(header)
+            .child(body)
+    }
+}
+
+impl PlaylistDetail {
+    /// The rows, or what stands in for them: the page used to draw an empty list either way.
+    fn body(&self, expected: usize, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let query = self.tracks.read(cx);
+        let rows = self.list.read(cx).rows().len();
+        if rows == 0 {
+            if let Some(error) = query.error() {
+                return v_flex()
+                    .flex_1()
+                    .min_h_0()
+                    .items_center()
+                    .justify_center()
+                    .gap_4()
                     .child(
-                        div()
-                            .id("playlist-cover")
-                            .flex_shrink_0()
-                            .child(
-                                Cover::new(playlist.artwork.as_ref())
-                                    .size(HERO)
-                                    .hq(true)
-                                    .rounded(px(12.))
-                                    .placeholder(icons::LIST),
-                            )
-                            .on_click(cx.listener(|this, _, _, cx| this.upload_cover(cx))),
+                        EmptyState::new(t("library_read_failed"))
+                            .icon(icons::WARNING)
+                            .detail(store::human(error)),
                     )
                     .child(
-                        v_flex()
-                            .gap_6()
-                            .flex_1()
-                            .min_w_0()
-                            .child(
-                                div()
-                                    .line_clamp(3)
-                                    .text_size(rems(4.5))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .child(name.clone()),
-                            )
-                            .child(div().text_color(style::slate_400(cx)).child(t_with(
-                                "playlist_track_count",
-                                &[("count", keys.len().to_string())],
-                            )))
-                            .child(
-                                h_flex()
-                                    .gap_4()
-                                    .items_center()
-                                    .flex_wrap()
-                                    .child(tweened(
-                                        round_button("play-playlist", icons::PLAY)
-                                            .on_hover(track(play_hover))
-                                            .tooltip(t("play"))
-                                            .on_click({
-                                                let keys = keys.clone();
-                                                move |_, _, cx| actions::play_all(keys.clone(), cx)
-                                            }),
-                                        play_fill,
-                                        play_text,
-                                        clear,
-                                        cx,
-                                    ))
-                                    .when(capabilities.playlist_radio, |row| {
-                                        let id = self.id.to_string();
-                                        row.child(tweened(
-                                            round_button("playlist-radio", icons::RADIO)
-                                                .on_hover(track(radio_hover))
-                                                .tooltip(t("start_radio"))
-                                                .on_click(move |_, _, cx| {
-                                                    actions::start_playlist_radio(id.clone(), cx)
-                                                }),
-                                            radio_fill,
-                                            radio_text,
-                                            clear,
-                                            cx,
-                                        ))
-                                    })
-                                    .when(capabilities.downloads, |row| {
-                                        let keys = keys.clone();
-                                        row.child(tweened(
-                                            Button::new("playlist-download")
-                                                .size_12()
-                                                .rounded_full()
-                                                .border_1()
-                                                .on_hover(track(download_hover))
-                                                .icon(icons::icon(if stored {
-                                                    icons::TRASH
-                                                } else {
-                                                    icons::DOWNLOAD
-                                                }))
-                                                .tooltip(if stored {
-                                                    t("remove_from_cache")
-                                                } else {
-                                                    t("downloader_download")
-                                                })
-                                                .loading(active)
-                                                .on_click(move |_, _, cx| {
-                                                    let keys = keys.clone();
-                                                    DownloadsModel::global(cx).update(
-                                                        cx,
-                                                        |downloads, cx| {
-                                                            if stored {
-                                                                for key in keys {
-                                                                    downloads.remove(key, cx);
-                                                                }
-                                                            } else {
-                                                                downloads.download(keys, cx);
-                                                            }
-                                                        },
-                                                    );
-                                                }),
-                                            download_fill,
-                                            download_text,
-                                            download_edge,
-                                            cx,
-                                        ))
-                                    })
-                                    .when(
-                                        capabilities.playlists != PlaylistCapability::None,
-                                        |row| {
-                                            let name = name.clone();
-                                            row.child(tweened(
-                                                Button::new("playlist-delete")
-                                                    .size_12()
-                                                    .rounded_full()
-                                                    .border_1()
-                                                    .on_hover(track(delete_hover))
-                                                    .icon(icons::icon(icons::TRASH))
-                                                    .tooltip(t("delete_playlist"))
-                                                    .on_click(cx.listener(
-                                                        move |this, _, window, cx| {
-                                                            this.delete(window, cx, name.clone())
-                                                        },
-                                                    )),
-                                                delete_fill,
-                                                delete_text,
-                                                delete_edge,
-                                                cx,
-                                            ))
-                                        },
-                                    ),
-                            ),
-                    ),
-            )
-            .child(div().flex_1().min_h_0().pb_20().child(self.list.clone()))
+                        Button::new("playlist-retry")
+                            .primary()
+                            .label(t("retry_now"))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.tracks.update(cx, |query, cx| query.refresh(cx));
+                            })),
+                    )
+                    .into_any_element();
+            }
+            if expected > 0 && !query.is_settled() {
+                return v_flex()
+                    .flex_1()
+                    .min_h_0()
+                    .pb_20()
+                    .child(library::skeleton::rows(10, px(56.), true, 3, cx))
+                    .into_any_element();
+            }
+            return v_flex()
+                .flex_1()
+                .min_h_0()
+                .child(
+                    EmptyState::new(t("playlist_empty"))
+                        .icon(icons::LIST)
+                        .detail(t("playlist_empty_detail")),
+                )
+                .into_any_element();
+        }
+        let _ = window;
+        v_flex()
+            .flex_1()
+            .min_h_0()
+            .pb_20()
+            .gap_2()
+            .child(column_header(cx))
+            .child(div().flex_1().min_h_0().child(self.list.clone()))
+            .into_any_element()
     }
+}
+
+/// The labels over the rows, on the row's own columns; the page had none at all.
+fn column_header(cx: &App) -> impl IntoElement {
+    columns::frame()
+        .border_b_1()
+        .border_color(style::white(style::BORDER, cx))
+        .text_sm()
+        .font_weight(FontWeight::MEDIUM)
+        .text_color(style::white(style::TEXT_MUTED, cx))
+        .child(columns::fixed(columns::INDEX).child("#"))
+        .child(columns::flexible(columns::TITLE_MIN, 2.).child(t("title")))
+        .child(columns::flexible(columns::TEXT_MIN, 1.).child(t("artist")))
+        .child(columns::flexible(columns::TEXT_MIN, 1.).child(t("album")))
+        .child(
+            columns::fixed(columns::DURATION)
+                .justify_end()
+                .child(icons::icon(icons::CLOCK)),
+        )
+        .child(columns::fixed(columns::MENU))
 }
 
 /// `w-14 h-14 rounded-full` with a `text-xl` glyph: the showcase's play and radio.

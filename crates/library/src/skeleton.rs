@@ -1,0 +1,90 @@
+//! What sits where the rows will be. A shape of the right size reads as "nearly there"; a
+//! centred spinner reads as "nothing yet", and blanks a page that already had content on it.
+
+use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::{App, Hsla, IntoElement, ParentElement as _, Pixels, Styled as _, div, px};
+
+use widgets::style;
+
+/// The wash a placeholder shape is painted in; the theme names it for exactly this.
+fn ink(cx: &App) -> Hsla {
+    cx.theme().skeleton
+}
+
+/// A bar of the given width, for a cell that will hold text.
+fn bar(width: Pixels, height: Pixels, cx: &App) -> impl IntoElement {
+    div()
+        .w(width)
+        .h(height)
+        .rounded(style::radius(cx))
+        .bg(ink(cx))
+}
+
+/// One placeholder row, laid out like the table row it stands in for.
+pub fn row(
+    slot: usize,
+    height: Pixels,
+    covers: bool,
+    columns: usize,
+    cx: &App,
+) -> impl IntoElement {
+    // A fixed ripple rather than an animation: a tween here re-renders the whole window per frame.
+    let widths = [160., 120., 140., 100., 180.];
+    let width = |column: usize| px(widths[(slot + column) % widths.len()]);
+    h_flex()
+        .w_full()
+        .h(height)
+        .items_center()
+        .gap_6()
+        .px_2()
+        .when(covers, |row| {
+            row.child(
+                div()
+                    .size(px(40.))
+                    .flex_shrink_0()
+                    .rounded(style::radius(cx))
+                    .bg(ink(cx)),
+            )
+        })
+        .children((0..columns.max(1)).map(|column| bar(width(column), px(10.), cx)))
+}
+
+/// A screenful of placeholder rows, for a table that has asked but not been answered.
+pub fn rows(
+    count: usize,
+    height: Pixels,
+    covers: bool,
+    columns: usize,
+    cx: &App,
+) -> impl IntoElement {
+    v_flex()
+        .w_full()
+        .gap_1()
+        .children((0..count).map(|slot| row(slot, height, covers, columns, cx)))
+}
+
+/// One placeholder tile, the size the real tiles will be.
+pub fn tile(width: Pixels, round: bool, cx: &App) -> impl IntoElement {
+    let cover = width - px(32.);
+    v_flex()
+        .w(width)
+        .gap_3()
+        .items_center()
+        .child(div().size(cover).bg(ink(cx)).map(|shape| match round {
+            true => shape.rounded(cover / 2.),
+            false => shape.rounded(style::radius_xl()),
+        }))
+        .child(bar(cover * 0.7, px(10.), cx))
+        .child(bar(cover * 0.45, px(8.), cx))
+}
+
+/// A band of placeholder tiles, matching the grid the real ones will fill.
+pub fn band(count: usize, width: Pixels, round: bool, cx: &App) -> impl IntoElement {
+    h_flex()
+        .w_full()
+        .items_start()
+        .gap_6()
+        .pb_6()
+        .children((0..count.max(1)).map(|_| tile(width, round, cx)))
+}

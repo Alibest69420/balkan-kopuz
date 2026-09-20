@@ -28,8 +28,8 @@ use store::{
 };
 use widgets::format::{t, t_with, total_duration};
 use widgets::{
-    Cover, EmptyState, Loading, TrackActions, TrackList, TrackListEvent, TrackListOptions, columns,
-    icons, menus, motion, playlist_picker, style,
+    Cover, DetailHeader, EmptyState, Loading, TrackActions, TrackList, TrackListEvent,
+    TrackListOptions, columns, icons, menus, motion, playlist_picker, style,
 };
 
 use crate::controls::{self, ViewModeKey};
@@ -418,149 +418,116 @@ impl ArtistDetail {
             cx,
         );
 
-        h_flex()
-            .gap_8()
-            .items_end()
+        let photo = div()
+            .id("artist-photo")
+            .relative()
+            .flex_shrink_0()
             .child(
-                div()
-                    .id("artist-photo")
-                    .relative()
-                    .flex_shrink_0()
-                    .child(
-                        Cover::new(artwork.as_ref())
-                            .size(px(PHOTO))
-                            .hq(true)
-                            .rounded(px(12.))
-                            .placeholder(icons::MIC),
-                    )
-                    .when(capabilities.edit_tags, |photo| {
-                        photo
-                            .cursor_pointer()
-                            // `opacity-0 hover:opacity-100 transition-opacity` over the whole photo.
-                            .child(
-                                div()
-                                    .absolute()
-                                    .inset_0()
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .rounded(px(12.))
-                                    .bg(style::black(0.5, cx))
-                                    .opacity(scrim)
-                                    .child(
-                                        icons::icon(icons::EDIT)
-                                            .size(px(30.))
-                                            .text_color(cx.theme().foreground),
-                                    ),
-                            )
-                            .tooltip(|window, cx| {
-                                gpui_kit::component::tooltip::Tooltip::new(t("change_photo"))
-                                    .build(window, cx)
-                            })
-                            .on_hover(controls::track(photo_hover))
-                            .on_click(cx.listener(|this, _, _, cx| this.pick_photo(cx)))
-                    }),
+                Cover::new(artwork.as_ref())
+                    .size(px(PHOTO))
+                    .hq(true)
+                    .rounded(px(12.))
+                    .placeholder(icons::MIC),
             )
-            .child(
-                v_flex()
-                    .flex_1()
-                    .min_w_0()
-                    .gap_6()
+            .when(capabilities.edit_tags, |photo| {
+                photo
+                    .cursor_pointer()
+                    // `opacity-0 hover:opacity-100 transition-opacity` over the whole photo.
                     .child(
                         div()
-                            .text_size(rems(4.5))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .line_clamp(3)
-                            .child(self.name.clone()),
+                            .absolute()
+                            .inset_0()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(12.))
+                            .bg(style::black(0.5, cx))
+                            .opacity(scrim)
+                            .child(
+                                icons::icon(icons::EDIT)
+                                    .size(px(30.))
+                                    .text_color(cx.theme().foreground),
+                            ),
                     )
-                    .child(
-                        h_flex()
-                            .gap_6()
-                            .text_color(style::slate_400(cx))
-                            .child(t_with(
-                                "showcase_song_count",
-                                &[("count", keys.len().to_string())],
-                            ))
-                            .child("•")
-                            .child(total_duration(total)),
-                    ),
-            )
-            .child(
-                h_flex()
-                    .gap_4()
-                    .items_center()
-                    .flex_shrink_0()
-                    .child(controls::tweened(
-                        round_button("artist-shuffle", icons::SHUFFLE)
-                            .selected(shuffle)
-                            .on_hover(controls::track(shuffle_hover))
-                            .tooltip(if shuffle {
-                                t("shuffle_on")
-                            } else {
-                                t("shuffle_off")
-                            })
-                            .on_click(move |_, _, cx| {
-                                PlayerModel::global(cx)
-                                    .update(cx, |player, cx| player.set_shuffle(!shuffle, cx))
-                            }),
-                        shuffle_fill,
-                        shuffle_text,
-                        clear,
-                        cx,
-                    ))
-                    .child({
-                        let play = round_button("artist-play", icons::PLAY)
-                            .on_hover(controls::track(play_hover))
-                            .tooltip(t("play"))
-                            .disabled(!playable)
-                            .on_click({
-                                let keys = keys.clone();
-                                move |_, _, cx| actions::play_all(keys.clone(), cx)
-                            });
-                        if playable {
-                            controls::tweened(play, play_fill, play_text, clear, cx)
-                        } else {
-                            play.primary()
-                        }
+                    .tooltip(|window, cx| {
+                        gpui_kit::component::tooltip::Tooltip::new(t("change_photo"))
+                            .build(window, cx)
                     })
-                    .when(capabilities.downloads, |row| {
-                        let download = Button::new("artist-download-all")
-                            .size_12()
-                            .rounded_full()
-                            .border_1()
-                            .on_hover(controls::track(download_hover))
-                            .icon(icons::icon(if stored {
-                                icons::TRASH
-                            } else {
-                                icons::DOWNLOAD
-                            }))
-                            .tooltip(if stored {
-                                t("remove_download")
-                            } else {
-                                t("download_offline")
-                            })
-                            .disabled(!downloadable)
-                            .on_click({
-                                let keys = keys.clone();
-                                move |_, _, cx| set_downloaded(keys.clone(), !stored, cx)
-                            });
-                        row.child(if downloadable {
-                            controls::tweened(
-                                download,
-                                download_fill,
-                                download_text,
-                                download_edge,
-                                cx,
-                            )
-                        } else {
-                            download
-                                .ghost()
-                                .border_color(style::white(style::ACTIVE, cx))
-                                .text_color(style::white(0.70, cx))
-                        })
+                    .on_hover(controls::track(photo_hover))
+                    .on_click(cx.listener(|this, _, _, cx| this.pick_photo(cx)))
+            });
+
+        let mut header = DetailHeader::new(self.name.clone())
+            .cover(photo)
+            .meta(t_with(
+                "showcase_song_count",
+                &[("count", keys.len().to_string())],
+            ))
+            .meta(total_duration(total))
+            .action(controls::tweened(
+                round_button("artist-shuffle", icons::SHUFFLE)
+                    .selected(shuffle)
+                    .on_hover(controls::track(shuffle_hover))
+                    .tooltip(if shuffle {
+                        t("shuffle_on")
+                    } else {
+                        t("shuffle_off")
+                    })
+                    .on_click(move |_, _, cx| {
+                        PlayerModel::global(cx)
+                            .update(cx, |player, cx| player.set_shuffle(!shuffle, cx))
                     }),
-            )
-            .into_any_element()
+                shuffle_fill,
+                shuffle_text,
+                clear,
+                cx,
+            ))
+            .action({
+                let play = round_button("artist-play", icons::PLAY)
+                    .on_hover(controls::track(play_hover))
+                    .tooltip(t("play"))
+                    .disabled(!playable)
+                    .on_click({
+                        let keys = keys.clone();
+                        move |_, _, cx| actions::play_all(keys.clone(), cx)
+                    });
+                match playable {
+                    true => controls::tweened(play, play_fill, play_text, clear, cx),
+                    false => play.primary(),
+                }
+            });
+        if capabilities.downloads {
+            let download = Button::new("artist-download-all")
+                .size_12()
+                .rounded_full()
+                .border_1()
+                .on_hover(controls::track(download_hover))
+                .icon(icons::icon(if stored {
+                    icons::TRASH
+                } else {
+                    icons::DOWNLOAD
+                }))
+                .tooltip(if stored {
+                    t("remove_download")
+                } else {
+                    t("download_offline")
+                })
+                .disabled(!downloadable)
+                .on_click({
+                    let keys = keys.clone();
+                    move |_, _, cx| set_downloaded(keys.clone(), !stored, cx)
+                });
+            header = header.action(match downloadable {
+                true => {
+                    controls::tweened(download, download_fill, download_text, download_edge, cx)
+                }
+                false => download
+                    .ghost()
+                    .border_color(style::white(style::ACTIVE, cx))
+                    .text_color(style::white(0.70, cx)),
+            });
+        }
+        header.into_any_element()
     }
 
     fn column_header(&mut self, count: usize, cx: &mut Context<Self>) -> AnyElement {

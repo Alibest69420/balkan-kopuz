@@ -19,7 +19,7 @@ pub mod track_list;
 pub use cards::{Tile, album_tile, artist_tile, playlist_tile, tile_grid};
 pub use cover::Cover;
 pub use format::{duration, t, t_with, text, total_duration};
-pub use header::PageHeader;
+pub use header::{DetailHeader, PageHeader, detail_header_skeleton};
 pub use schema_form::{FieldChanged, SchemaForm};
 pub use settings::{Section, SettingRow, Toggle, section};
 pub use states::{EmptyState, Loading};
