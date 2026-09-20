@@ -16,8 +16,7 @@ use gpui_kit::component::{ActiveTheme as _, Disableable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
-    ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled,
-    Subscription, Window, div, rems,
+    ParentElement as _, Render, SharedString, Styled, Subscription, Window, div, rems,
 };
 use link::Link;
 use row::{SettingRow, Toggle, section};
@@ -420,12 +419,12 @@ impl PlaybackSettings {
 
 impl Render for PlaybackSettings {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // The settings page owns the scroll; this panel is content inside it.
         v_flex()
             .id("playback-settings")
-            .size_full()
+            .w_full()
             .gap_4()
             .pb_4()
-            .overflow_y_scroll()
             .when(self.shows("offline"), |panel| panel.child(self.offline(cx)))
             .when(self.shows("metadata"), |panel| {
                 panel.child(self.metadata(cx))

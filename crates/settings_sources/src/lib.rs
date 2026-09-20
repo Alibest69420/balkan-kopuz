@@ -13,7 +13,7 @@ use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AppContext as _, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
-    Render, SharedString, StatefulInteractiveElement as _, Styled, Window,
+    Render, SharedString, Styled, Window,
 };
 
 use integrations::Integrations;
@@ -55,12 +55,12 @@ impl SourceSettings {
 
 impl Render for SourceSettings {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        // The settings page owns the scroll; this panel is content inside it.
         v_flex()
             .id("source-settings")
-            .size_full()
+            .w_full()
             .gap_4()
             .pb_4()
-            .overflow_y_scroll()
             .when(self.shows("library"), |panel| {
                 panel.child(self.local.clone())
             })

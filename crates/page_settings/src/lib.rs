@@ -108,6 +108,7 @@ impl Category {
 pub struct Settings {
     category: Category,
     hovered: Option<Category>,
+    scroll: gpui_kit::ScrollHandle,
     appearance: Entity<AppearanceSettings>,
     sources: Entity<SourceSettings>,
     playback: Entity<PlaybackSettings>,
@@ -121,6 +122,7 @@ impl Settings {
         let mut settings = Self {
             category,
             hovered: None,
+            scroll: gpui_kit::ScrollHandle::new(),
             appearance: cx.new(|cx| AppearanceSettings::new(window, cx)),
             sources: cx.new(|cx| SourceSettings::new(window, cx)),
             playback: cx.new(|cx| PlaybackSettings::new(window, cx)),
@@ -262,17 +264,27 @@ impl Settings {
 
 impl Render for Settings {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        widgets::scroll::smooth("settings-panel", &self.scroll, window, cx);
         let locked = !ConfigModel::global(cx).read(cx).locked_keys().is_empty();
+        // The page root is the scroller, the way every page that scrolls here is. A nested
+        // `flex_1 min_h_0` child never resolved to a definite height in this slot, so it grew
+        // to its content and had nothing to scroll.
         v_flex()
+            .id("settings-panel")
             .size_full()
-            .max_w(rems(80.))
-            .mx_auto()
-            .px_6()
-            .py_7()
-            .child(PageHeader::new(t("settings")))
-            .when(locked, |page| page.child(self.managed_notice(cx)))
-            .child(self.rail(window, cx))
-            // min_h_0 is what lets the panel shrink, and so scroll, inside this column.
-            .child(div().flex_1().min_h_0().min_w_0().child(self.panel()))
+            .overflow_y_scroll()
+            .track_scroll(&self.scroll)
+            .child(
+                v_flex()
+                    .w_full()
+                    .max_w(rems(80.))
+                    .mx_auto()
+                    .px_6()
+                    .py_7()
+                    .child(PageHeader::new(t("settings")))
+                    .when(locked, |page| page.child(self.managed_notice(cx)))
+                    .child(self.rail(window, cx))
+                    .child(self.panel()),
+            )
     }
 }

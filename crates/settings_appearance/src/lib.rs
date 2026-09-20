@@ -11,8 +11,8 @@ use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_fl
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
-    ParentElement as _, PathPromptOptions, Render, SharedString, StatefulInteractiveElement as _,
-    Styled, Subscription, Window, div, rems,
+    ParentElement as _, PathPromptOptions, Render, SharedString, Styled, Subscription, Window, div,
+    rems,
 };
 use row::{SettingRow, Toggle, section};
 use store::ConfigModel;
@@ -605,13 +605,13 @@ impl AppearanceSettings {
 impl Render for AppearanceSettings {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let cfg = ConfigModel::global(cx).read(cx).config().clone();
+        // The settings page owns the scroll; this panel is content inside it.
         v_flex()
             .id("appearance-settings")
-            .size_full()
+            .w_full()
             .gap_4()
             .pb_4()
             .pr_2()
-            .overflow_y_scroll()
             .when(self.shows("general"), |panel| {
                 panel.child(section(t("general")).children(self.general(&cfg, cx)))
             })
