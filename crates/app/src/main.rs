@@ -18,6 +18,18 @@ fn keymap(cx: &mut App) {
         // Bindings beat key listeners, so without this the Shell's space would
         // toggle playback instead of typing one; NoAction suppresses it.
         KeyBinding::new("space", gpui_kit::NoAction, Some("Input")),
+        // A focused track list walks with the arrows; Escape falls through to the
+        // Shell when there is no selection to clear.
+        KeyBinding::new("down", widgets::track_list::CursorDown, Some("TrackList")),
+        KeyBinding::new("up", widgets::track_list::CursorUp, Some("TrackList")),
+        KeyBinding::new("enter", widgets::track_list::ActivateRow, Some("TrackList")),
+        KeyBinding::new("cmd-a", widgets::track_list::SelectAll, Some("TrackList")),
+        KeyBinding::new("ctrl-a", widgets::track_list::SelectAll, Some("TrackList")),
+        KeyBinding::new(
+            "escape",
+            widgets::track_list::ClearSelection,
+            Some("TrackList"),
+        ),
     ]);
 }
 

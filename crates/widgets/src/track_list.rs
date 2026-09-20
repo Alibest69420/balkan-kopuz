@@ -11,9 +11,9 @@ use gpui_kit::component::menu::PopupMenu;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Context, EventEmitter, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
-    Render, SharedString, StatefulInteractiveElement as _, Styled, UniformListScrollHandle,
-    WeakEntity, Window, div, px, uniform_list,
+    ClickEvent, Context, EventEmitter, FocusHandle, Focusable, FontWeight, InteractiveElement as _,
+    IntoElement, ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled,
+    UniformListScrollHandle, WeakEntity, Window, actions, div, px, uniform_list,
 };
 use store::{DownloadsModel, FavoritesModel, Navigator, PlayerModel, Route, SourcesModel, actions};
 
@@ -128,21 +128,40 @@ pub struct TrackList {
     row_actions: TrackActions,
     selected: HashSet<String>,
     selecting: bool,
+    // Where a shift-click extends from: the row picked last.
+    anchor: Option<usize>,
+    // The row the arrow keys are on, drawn with a ring so it can be seen.
+    cursor: Option<usize>,
+    focus: FocusHandle,
     scroll: UniformListScrollHandle,
     // A hidden trigger would take its own open menu down with it, so the row it belongs to shows it.
     menu_open: Option<String>,
 }
 
+actions!(
+    track_list,
+    [CursorUp, CursorDown, ActivateRow, SelectAll, ClearSelection]
+);
+
 impl EventEmitter<TrackListEvent> for TrackList {}
 
+impl Focusable for TrackList {
+    fn focus_handle(&self, _: &gpui_kit::App) -> FocusHandle {
+        self.focus.clone()
+    }
+}
+
 impl TrackList {
-    pub fn new(_: &mut Context<Self>) -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
         Self {
             rows: Vec::new(),
             options: TrackListOptions::default(),
             row_actions: TrackActions::default(),
             selected: HashSet::new(),
             selecting: false,
+            anchor: None,
+            cursor: None,
+            focus: cx.focus_handle(),
             scroll: UniformListScrollHandle::new(),
             menu_open: None,
         }
@@ -229,7 +248,52 @@ impl TrackList {
 
     fn toggle_selected(&mut self, key: String, cx: &mut Context<Self>) {
         if !self.selected.remove(&key) {
-            self.selected.insert(key);
+            self.selected.insert(key.clone());
+            self.anchor = self.rows.iter().position(|row| row.key == key);
+        }
+        self.selecting = !self.selected.is_empty();
+        cx.notify();
+        cx.emit(TrackListEvent::SelectionChanged);
+    }
+
+    /// Move the keyboard cursor, starting from the top when there is none yet.
+    fn move_cursor(&mut self, step: isize, cx: &mut Context<Self>) {
+        if self.rows.is_empty() {
+            return;
+        }
+        let last = self.rows.len() - 1;
+        let next = match self.cursor {
+            Some(current) => current.saturating_add_signed(step).min(last),
+            None if step < 0 => last,
+            None => 0,
+        };
+        self.cursor = Some(next);
+        self.scroll_to(next);
+        cx.notify();
+    }
+
+    /// Enter on the cursor row: play it, or tick it when a selection is being built.
+    fn activate_cursor(&mut self, cx: &mut Context<Self>) {
+        let Some(index) = self.cursor else {
+            return;
+        };
+        let Some(row) = self.rows.get(index) else {
+            return;
+        };
+        if self.selecting {
+            let key = row.key.clone();
+            self.toggle_selected(key, cx);
+        } else {
+            cx.emit(TrackListEvent::Play(index));
+        }
+    }
+
+    /// Select every row between the last one picked and `index`, the way a shift-click reads.
+    fn select_through(&mut self, index: usize, cx: &mut Context<Self>) {
+        let anchor = self.anchor.unwrap_or(index);
+        let (first, last) = (anchor.min(index), anchor.max(index));
+        for row in self.rows.get(first..=last).unwrap_or_default() {
+            self.selected.insert(row.key.clone());
         }
         self.selecting = !self.selected.is_empty();
         cx.notify();
@@ -322,8 +386,23 @@ impl TrackList {
             .when(!playing && !selected, |row| {
                 row.hover(|row| row.bg(style::white(style::RAISED, cx)))
             })
-            .on_click(cx.listener(move |this, _, _, cx| {
-                if this.selecting {
+            // The keyboard cursor, drawn so it can be followed.
+            .when(self.cursor == Some(index), |row| {
+                row.border_1().border_color(cx.theme().ring)
+            })
+            .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
+                // A click is also where the arrows should carry on from.
+                this.cursor = Some(index);
+                window.focus(&this.focus, cx);
+                let modifiers = event.modifiers();
+                // Ctrl/cmd picks one, shift extends from the last pick. Without these the only way
+                // into selection was a page-owned select-all, which three pages do not have, and a
+                // range had to be ticked a checkbox at a time.
+                if modifiers.secondary() {
+                    this.toggle_selected(key.clone(), cx);
+                } else if modifiers.shift && this.selecting {
+                    this.select_through(index, cx);
+                } else if this.selecting {
                     this.toggle_selected(key.clone(), cx);
                 } else {
                     cx.emit(TrackListEvent::Play(index));
@@ -732,19 +811,36 @@ impl Render for TrackList {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let count = self.rows.len();
         crate::scroll::smooth_list("track-list", &self.scroll, window, cx);
-        v_flex().size_full().child(
-            uniform_list(
-                "track-list",
-                count,
-                cx.processor(move |this, range: std::ops::Range<usize>, window, cx| {
-                    range
-                        .map(|index| this.row(index, window, cx).into_any_element())
-                        .collect()
-                }),
+        v_flex()
+            .size_full()
+            // Nothing outside the shell held a focus handle, so no list could be walked with the
+            // keyboard: no arrows, no Enter, no select-all, and Escape never cleared a selection.
+            .track_focus(&self.focus)
+            .key_context("TrackList")
+            .on_action(cx.listener(|this, _: &CursorDown, _, cx| this.move_cursor(1, cx)))
+            .on_action(cx.listener(|this, _: &CursorUp, _, cx| this.move_cursor(-1, cx)))
+            .on_action(cx.listener(|this, _: &ActivateRow, _, cx| this.activate_cursor(cx)))
+            .on_action(cx.listener(|this, _: &SelectAll, _, cx| this.select_all(cx)))
+            .on_action(cx.listener(|this, _: &ClearSelection, _, cx| {
+                if this.selecting {
+                    this.clear_selection(cx);
+                } else {
+                    cx.propagate();
+                }
+            }))
+            .child(
+                uniform_list(
+                    "track-list",
+                    count,
+                    cx.processor(move |this, range: std::ops::Range<usize>, window, cx| {
+                        range
+                            .map(|index| this.row(index, window, cx).into_any_element())
+                            .collect()
+                    }),
+                )
+                .track_scroll(&self.scroll)
+                .flex_1()
+                .size_full(),
             )
-            .track_scroll(&self.scroll)
-            .flex_1()
-            .size_full(),
-        )
     }
 }
