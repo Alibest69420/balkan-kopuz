@@ -136,6 +136,7 @@ impl Artists {
 
 impl Render for Artists {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        widgets::scroll::smooth("artists-scroll", &self.scroll, window, cx);
         let entries = self.entries(cx);
         let settled = self.is_settled(cx);
         let mode = controls::config(cx).artists_view_mode;

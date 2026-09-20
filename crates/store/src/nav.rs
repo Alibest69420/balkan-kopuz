@@ -70,7 +70,13 @@ impl Route {
             "radio" => Route::Radio,
             "downloader" => Route::Downloader,
             "settings" => Route::Settings { section: None },
-            _ => return None,
+            // `settings/appearance` opens straight onto one category.
+            other => match other.strip_prefix("settings/") {
+                Some(section) => Route::Settings {
+                    section: Some(SharedString::from(section.to_string())),
+                },
+                None => return None,
+            },
         })
     }
 }

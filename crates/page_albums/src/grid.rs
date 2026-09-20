@@ -337,6 +337,7 @@ impl Render for Albums {
             .collect();
         sort::sort(&mut visible, &criteria(cx));
 
+        widgets::scroll::smooth_list("albums-scroll", &self.scroll, window, cx);
         let empty = visible.is_empty();
         // A tile row is the virtualized unit, so the grid builds a screenful instead of the library.
         let columns = match grid {

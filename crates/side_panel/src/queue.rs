@@ -321,7 +321,8 @@ impl QueuePanel {
 }
 
 impl Render for QueuePanel {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        widgets::scroll::smooth_list("queue-scroll", &self.scroll, window, cx);
         let count = QueueModel::global(cx).read(cx).len();
         if count == 0 {
             return div()

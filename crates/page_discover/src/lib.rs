@@ -119,7 +119,8 @@ impl Discover {
 }
 
 impl Render for Discover {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        widgets::scroll::smooth("discover-scroll", &self.scroll, window, cx);
         let sources = SourcesModel::global(cx);
         let settled = sources.read(cx).is_loaded();
         if settled && !sources.read(cx).capabilities().discover {
@@ -484,6 +485,7 @@ impl DiscoverArtist {
 
 impl Render for DiscoverArtist {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        widgets::scroll::smooth("discover-artist-scroll", &self.scroll, window, cx);
         if self.reference().is_none() {
             return EmptyState::new(t("artist_none_selected"))
                 .icon(icons::MIC)

@@ -652,8 +652,9 @@ fn row_menu(
 }
 
 impl Render for TrackList {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let count = self.rows.len();
+        crate::scroll::smooth_list("track-list", &self.scroll, window, cx);
         v_flex().size_full().child(
             uniform_list(
                 "track-list",

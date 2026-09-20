@@ -283,6 +283,7 @@ impl ArtistDetail {
 
 impl Render for ArtistDetail {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        widgets::scroll::smooth("artist-detail-scroll", &self.scroll, window, cx);
         let config = controls::config(cx);
         let albums_view = config.artist_view_order == ArtistViewOrder::Albums;
         let body = if albums_view {

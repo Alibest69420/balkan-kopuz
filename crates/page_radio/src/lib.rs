@@ -584,6 +584,7 @@ impl Radio {
 
 impl Render for Radio {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        widgets::scroll::smooth("radio-scroll", &self.scroll, window, cx);
         let searching = !self.query.trim().is_empty();
         let selected = self.selected(window, cx);
         let browser = self.browser(window, cx);

@@ -148,6 +148,11 @@ impl RenderOnce for SourceSwitcher {
                             .map(|source| row(source, &state, &hovered, window, cx))
                             .collect::<Vec<_>>();
                         let foot = footer(&state, &hovered, window, cx);
+                        let handle = window.use_keyed_state("source-rows-scroll", cx, |_, _| {
+                            gpui_kit::ScrollHandle::new()
+                        });
+                        let scroll = handle.read(cx).clone();
+                        widgets::scroll::smooth("source-rows", &scroll, window, cx);
                         v_flex()
                             .w_full()
                             .child(header(count, cx))
@@ -157,6 +162,7 @@ impl RenderOnce for SourceSwitcher {
                                     .p_1()
                                     .max_h(ROWS_HEIGHT)
                                     .overflow_y_scroll()
+                                    .track_scroll(&scroll)
                                     .children(rows),
                             )
                             .child(foot)

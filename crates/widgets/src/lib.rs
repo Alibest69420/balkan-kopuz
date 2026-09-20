@@ -9,6 +9,7 @@ pub mod icons;
 pub mod motion;
 pub mod playlist_picker;
 pub mod schema_form;
+pub mod scroll;
 pub mod states;
 pub mod style;
 pub mod track_list;

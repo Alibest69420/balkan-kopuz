@@ -62,6 +62,8 @@ struct Scrollers {
     made_for_you: ScrollHandle,
     recently_added: ScrollHandle,
     playlists: ScrollHandle,
+    // The page itself, so its wheel glides the way every other page's does.
+    page: ScrollHandle,
 }
 
 pub struct Home {
@@ -674,6 +676,7 @@ impl Skin {
 
 impl Render for Home {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        widgets::scroll::smooth("home-scroll", &self.scroll.page, window, cx);
         let (skin, sections) = {
             let model = ConfigModel::global(cx);
             let config = model.read(cx).config();
@@ -717,6 +720,7 @@ impl Render for Home {
             .id("home")
             .size_full()
             .overflow_y_scroll()
+            .track_scroll(&self.scroll.page)
             .p_8()
             .pb_32()
             .gap_12()

@@ -1049,6 +1049,7 @@ impl AlbumDetail {
 
 impl Render for AlbumDetail {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        widgets::scroll::smooth("album-detail-scroll", &self.scroll, window, cx);
         let album = self.album.read(cx).value().cloned().flatten();
         let remote = self.remote.read(cx).value().cloned().flatten();
 

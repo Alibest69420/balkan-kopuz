@@ -377,7 +377,8 @@ impl Activity {
 }
 
 impl Render for Activity {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        widgets::scroll::smooth_list("activity-scroll", &self.scroll, window, cx);
         let count = self.total;
         v_flex()
             .size_full()
