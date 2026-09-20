@@ -53,50 +53,44 @@ impl Router {
 
 fn build(route: &Route, window: &mut Window, cx: &mut Context<Shell>) -> AnyView {
     match route.clone() {
-        Route::Home => cx.new(|cx| page_home::Home::new(window, cx)).into(),
-        Route::Search => cx.new(|cx| page_search::Search::new(window, cx)).into(),
-        Route::Genre(name) => cx
-            .new(|cx| page_search::Genre::new(name, window, cx))
-            .into(),
-        Route::Discover => cx.new(|cx| page_discover::Discover::new(window, cx)).into(),
+        Route::Home | Route::Downloader => cx.new(|cx| page_home::Home::new(window, cx)).into(),
+        // One browsing destination: the landing, genres and results are the same entity.
+        Route::Search | Route::Discover => cx.new(|cx| discover::Discover::new(window, cx)).into(),
+        Route::Genre(name) => cx.new(|cx| discover::Genre::new(name, window, cx)).into(),
         Route::DiscoverPlaylist { id, title } => cx
-            .new(|cx| page_discover::DiscoverPlaylist::new(id, title, window, cx))
+            .new(|cx| discover::CatalogPlaylist::new(id, title, window, cx))
             .into(),
         Route::DiscoverArtist { id, name } => cx
-            .new(|cx| page_discover::DiscoverArtist::new(id, name, window, cx))
+            .new(|cx| discover::CatalogArtist::new(id, name, window, cx))
             .into(),
-        Route::Library => cx.new(|cx| page_library::Library::new(window, cx)).into(),
-        Route::Albums => cx.new(|cx| page_albums::Albums::new(window, cx)).into(),
+        // Both library routes collapse to one cache key, so a chip does not rebuild the page.
+        // The four old listings redirect here, and only reach this arm if one ever slips through.
+        Route::Library
+        | Route::LibraryView(_)
+        | Route::Albums
+        | Route::Artists
+        | Route::Playlists
+        | Route::Favorites
+        | Route::Activity => cx.new(|cx| library::Library::new(window, cx)).into(),
         Route::Album(id) => cx
             .new(|cx| page_albums::AlbumDetail::new(id, window, cx))
             .into(),
-        Route::Artists => cx.new(|cx| page_artists::Artists::new(window, cx)).into(),
         Route::Artist { name, channel } => match channel {
             // A remote artist has a channel id and its own profile page.
             Some(channel) => cx
-                .new(|cx| page_discover::DiscoverArtist::new(channel, name, window, cx))
+                .new(|cx| discover::CatalogArtist::new(channel, name, window, cx))
                 .into(),
             None => cx
                 .new(|cx| page_artists::ArtistDetail::new(name, window, cx))
                 .into(),
         },
-        Route::Playlists => cx
-            .new(|cx| page_playlists::Playlists::new(window, cx))
-            .into(),
         Route::PlaylistFolder(id) => cx
             .new(|cx| page_playlists::PlaylistFolder::new(id, window, cx))
             .into(),
         Route::Playlist(id) => cx
             .new(|cx| page_playlists::PlaylistDetail::new(id, window, cx))
             .into(),
-        Route::Favorites => cx
-            .new(|cx| page_favorites::Favorites::new(window, cx))
-            .into(),
-        Route::Activity => cx.new(|cx| page_activity::Activity::new(window, cx)).into(),
         Route::Radio => cx.new(|cx| page_radio::Radio::new(window, cx)).into(),
-        Route::Downloader => cx
-            .new(|cx| page_downloader::Downloader::new(window, cx))
-            .into(),
         Route::Settings { section } => cx
             .new(|cx| page_settings::Settings::new(section, window, cx))
             .into(),

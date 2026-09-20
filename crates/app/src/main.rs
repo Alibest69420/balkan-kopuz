@@ -102,6 +102,8 @@ fn main() -> anyhow::Result<()> {
             metadata_dialog::register(cx);
             settings_sources::register(cx);
             settings_interface::init(cx);
+            library::register(cx);
+            page_home::register(cx);
             topbar::register_settings(cx);
             playlists_panel::register_settings(cx);
             palette::register_settings(cx);
