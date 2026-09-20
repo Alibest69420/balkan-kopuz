@@ -322,9 +322,8 @@ impl Render for PlaylistDetail {
             .gap_8()
             .child(
                 Button::new("playlist-back")
-                    .ghost()
+                    .custom(style::quiet_button(style::slate_400(cx), cx))
                     .icon(icons::icon(icons::CHEVRON_LEFT))
-                    .text_color(style::slate_400(cx))
                     .on_click(|_, _, cx| {
                         Navigator::global(cx).update(cx, |navigator, cx| navigator.go_back(cx))
                     }),

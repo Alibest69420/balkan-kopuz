@@ -876,7 +876,12 @@ fn album_card(album: &AlbumInfo, stored: bool, window: &mut Window, cx: &mut App
                 .group_hover(group, |menu| menu.visible())
                 .child(
                     Button::new(SharedString::from(format!("album-menu-{}", album.id)))
-                        .ghost()
+                        .custom(style::button(
+                            style::black(0.4, cx),
+                            style::white(style::HOVER, cx),
+                            cx.theme().secondary_foreground,
+                            cx,
+                        ))
                         .xsmall()
                         .bg(style::black(0.4, cx))
                         .icon(icons::icon(icons::MORE))

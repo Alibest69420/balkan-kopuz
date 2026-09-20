@@ -686,16 +686,20 @@ impl Render for LyricsPanel {
                 panel.child(
                     div().absolute().bottom_4().right_4().child(
                         Button::new("lyrics-sync")
-                            .ghost()
+                            // The variant's color is the ring; the scrim stays on the instance style.
+                            .custom(style::button(
+                                style::white(style::BORDER, cx),
+                                style::black(SYNC_SCRIM + style::ACTIVE, cx),
+                                style::white(style::TEXT_STRONG, cx),
+                                cx,
+                            ))
                             .with_size(SYNC_GLYPH * (4. / 3.))
                             .size(SYNC_BUTTON)
                             .rounded(SYNC_BUTTON / 2.)
                             .icon(icons::icon(icons::REFRESH))
                             .bg(style::black(SYNC_SCRIM, cx))
                             .border_1()
-                            .border_color(style::white(style::BORDER, cx))
                             .shadow_lg()
-                            .text_color(style::white(style::TEXT_STRONG, cx))
                             .tooltip(t("jump_to_current_song"))
                             .on_click(cx.listener(|this, _, _, cx| this.rearm(cx))),
                     ),

@@ -176,12 +176,11 @@ impl SidePanelView {
             )
             .child(
                 Button::new("panel-close")
-                    .ghost()
+                    .custom(style::quiet_button(style::white(0.4, cx), cx))
                     .with_size(CLOSE_GLYPH * (4. / 3.))
                     .size(CLOSE_BUTTON)
                     .rounded(CLOSE_BUTTON / 2.)
                     .icon(icons::icon(icons::CLOSE))
-                    .text_color(style::white(0.4, cx))
                     .tooltip(t("close"))
                     .on_click(cx.listener(|_, _, _, cx| {
                         Chrome::global(cx).update(cx, |chrome, cx| chrome.set_panel(None, cx));

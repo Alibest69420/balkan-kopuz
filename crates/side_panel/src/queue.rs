@@ -94,11 +94,10 @@ fn drop_zone(id: (&'static str, usize), at: u32, count: u32) -> Stateful<Div> {
 /// One chevron of the reorder pair: a `text-slate-500` glyph with barely a box around it.
 fn reorder_button(id: (&'static str, usize), glyph: &'static str, cx: &App) -> Button {
     Button::new(id)
-        .ghost()
+        .custom(style::quiet_button(style::slate_500(cx), cx))
         .with_size(REORDER_GLYPH * (4. / 3.))
         .size(REORDER_BUTTON)
         .icon(icons::icon(glyph))
-        .text_color(style::slate_500(cx))
 }
 
 /// The queue tab: rows in play order, the summary line, and auto-follow of what is playing.
@@ -370,16 +369,20 @@ impl Render for QueuePanel {
                 panel.child(
                     div().absolute().bottom_4().right_4().child(
                         Button::new("queue-jump-to-current")
-                            .ghost()
+                            // The variant's color is the ring; the scrim stays on the instance style.
+                            .custom(style::button(
+                                style::white(style::BORDER, cx),
+                                style::black(0.6, cx),
+                                style::white(style::TEXT_STRONG, cx),
+                                cx,
+                            ))
                             .with_size(JUMP_GLYPH * (4. / 3.))
                             .size(JUMP_BUTTON)
                             .rounded(JUMP_BUTTON / 2.)
                             .icon(icons::icon(icons::REFRESH))
                             .bg(style::black(0.4, cx))
                             .border_1()
-                            .border_color(style::white(style::BORDER, cx))
                             .shadow_lg()
-                            .text_color(style::white(style::TEXT_STRONG, cx))
                             .tooltip(t("jump_to_current_song"))
                             .on_click(cx.listener(|this, _, _, cx| this.rearm(cx))),
                     ),

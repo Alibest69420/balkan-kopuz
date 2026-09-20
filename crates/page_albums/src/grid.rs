@@ -478,7 +478,12 @@ fn card(
                 .on_click(|_, _, cx| cx.stop_propagation())
                 .child(
                     Button::new(SharedString::from(format!("album-menu-{}", album.id)))
-                        .ghost()
+                        .custom(style::button(
+                            style::black(0.4, cx),
+                            style::white(style::HOVER, cx),
+                            cx.theme().secondary_foreground,
+                            cx,
+                        ))
                         .icon(icons::icon(icons::MORE))
                         .rounded(cx.theme().radius_full())
                         .bg(style::black(0.4, cx))

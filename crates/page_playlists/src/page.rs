@@ -232,14 +232,18 @@ impl Playlists {
         let stored = !keys.is_empty() && keys.iter().all(|key| downloads.read(cx).is_stored(key));
         let corner = capabilities.downloads.then(|| {
             Button::new(SharedString::from(format!("download-{}", playlist.id)))
-                .ghost()
+                // The variant's color is the border; the scrim stays on the instance style.
+                .custom(style::button(
+                    style::white(style::BORDER, cx),
+                    style::black(0.4, cx),
+                    style::white(style::TEXT_SECONDARY, cx),
+                    cx,
+                ))
                 .xsmall()
                 .size_8()
                 .rounded_full()
                 .bg(style::black(0.4, cx))
                 .border_1()
-                .border_color(style::white(style::BORDER, cx))
-                .text_color(style::white(style::TEXT_SECONDARY, cx))
                 .icon(icons::icon(if stored {
                     icons::TRASH
                 } else {

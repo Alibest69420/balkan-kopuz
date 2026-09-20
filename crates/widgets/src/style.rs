@@ -1,6 +1,7 @@
 //! Kopuz's Tailwind look in GPUI terms; `docs/STYLING.md` holds the full class-to-call table.
 
 use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::component::button::ButtonCustomVariant;
 use gpui_kit::{App, Hsla, Pixels, Rems, px, rems};
 
 /// `bg-white/5`: the raised surface a row, tile or thumb sits on.
@@ -149,4 +150,33 @@ pub fn radius_md() -> Rems {
 /// `text-[9px]`, the repeat-one badge.
 pub fn text_9() -> Pixels {
     px(9.)
+}
+
+/// A Button that wears exactly the colours it is handed, in every state.
+///
+/// `Button::render` refines its own hover style *over* the base, while an instance `.bg()` or
+/// `.text_color()` only refines the base — so anything set that way is overpainted for exactly as
+/// long as the pointer is on it. Worse, `.ghost()` and `.text()` hardcode their hovered
+/// foreground (`accent_foreground` and `foreground`), so a `.text_color()` on one of those is
+/// discarded the moment it is hovered, tween or no tween.
+///
+/// `fill`, `hover` and `ink` therefore go to the variant, which every state layer reads.
+pub fn button(fill: Hsla, hover: Hsla, ink: Hsla, cx: &App) -> ButtonCustomVariant {
+    ButtonCustomVariant::new(cx)
+        .color(fill)
+        .hover(hover)
+        .active(hover)
+        .foreground(ink)
+}
+
+/// A button with no fill of its own that washes on hover, keeping `ink` throughout: what
+/// `.ghost()` looks like when its foreground is not thrown away.
+pub fn quiet_button(ink: Hsla, cx: &App) -> ButtonCustomVariant {
+    button(gpui_kit::transparent_black(), white(HOVER, cx), ink, cx)
+}
+
+/// A button that paints nothing at all, for a frame around it that owns the wash.
+pub fn bare_button(ink: Hsla, cx: &App) -> ButtonCustomVariant {
+    let clear = gpui_kit::transparent_black();
+    button(clear, clear, ink, cx)
 }

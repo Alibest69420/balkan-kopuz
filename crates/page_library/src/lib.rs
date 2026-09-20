@@ -15,7 +15,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext as _, Context, Entity, FontWeight, Hsla, InteractiveElement as _, IntoElement,
     ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled,
-    Subscription, Window, div, px, transparent_black,
+    Subscription, Window, div, px,
 };
 use store::{ConfigModel, JobsModel, PlaylistsModel, Query, SourcesModel, actions};
 use widgets::format::t;
@@ -29,12 +29,7 @@ const REFRESH: &str = "library-refresh-frame";
 
 /// A Button that paints nothing of its own, so the frame around it can own the tween.
 fn clear_variant(ink: Hsla, cx: &App) -> ButtonCustomVariant {
-    let clear = transparent_black();
-    ButtonCustomVariant::new(cx)
-        .color(clear)
-        .hover(clear)
-        .active(clear)
-        .foreground(ink)
+    style::bare_button(ink, cx)
 }
 
 pub struct Library {
