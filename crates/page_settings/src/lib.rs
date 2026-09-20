@@ -3,16 +3,16 @@
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _,
-    IntoElement, ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled,
-    Window, div, rems,
+    AnyElement, App, AppContext as _, Context, ElementId, Entity, FontWeight,
+    InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString,
+    StatefulInteractiveElement as _, Styled, Window, div, rems,
 };
 use settings_appearance::AppearanceSettings;
 use settings_playback::PlaybackSettings;
 use settings_sources::SourceSettings;
 use store::ConfigModel;
 use widgets::format::t;
-use widgets::{PageHeader, icons, style};
+use widgets::{PageHeader, icons, motion, style};
 
 /// `border-white/9` under the fan, over `bg-black/92`.
 const FAN_BORDER: f32 = 0.09;
@@ -26,6 +26,11 @@ const ITEM_SELECTED: f32 = 0.03;
 /// `text-white/40` on the lock, `text-white/70` on the line beside it.
 const LOCK: f32 = 0.40;
 const NOTICE: f32 = 0.70;
+
+/// `prefix` over a category's slug: one stable tween channel per rail item.
+fn channel(prefix: &'static str, slug: &'static str) -> ElementId {
+    (ElementId::from(prefix), slug).into()
+}
 
 /// Which panel the rail is showing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,6 +107,7 @@ impl Category {
 
 pub struct Settings {
     category: Category,
+    hovered: Option<Category>,
     appearance: Entity<AppearanceSettings>,
     sources: Entity<SourceSettings>,
     playback: Entity<PlaybackSettings>,
@@ -114,6 +120,7 @@ impl Settings {
             .unwrap_or(Category::General);
         let mut settings = Self {
             category,
+            hovered: None,
             appearance: cx.new(|cx| AppearanceSettings::new(window, cx)),
             sources: cx.new(|cx| SourceSettings::new(window, cx)),
             playback: cx.new(|cx| PlaybackSettings::new(window, cx)),
@@ -153,10 +160,39 @@ impl Settings {
 
 impl Settings {
     /// The category fan, as its top-bar branch: the CD disc is rotated clip-paths GPUI cannot draw.
-    fn rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let transparent = cx.theme().transparent;
-        let selected_border = cx.theme().primary_hover;
-        let foreground = cx.theme().foreground;
+    fn rail(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let underline = cx.theme().primary_hover;
+        let items: Vec<_> = Category::ALL
+            .iter()
+            .copied()
+            .map(|category| {
+                let selected = category == self.category;
+                let hovered = self.hovered == Some(category);
+                let surface = style::white(
+                    match (selected, hovered) {
+                        (true, _) => ITEM_SELECTED,
+                        (false, true) => ITEM_HOVER,
+                        (false, false) => 0.,
+                    },
+                    cx,
+                );
+                let ink = style::white(
+                    match (selected, hovered) {
+                        (true, _) => 1.,
+                        (false, true) => ITEM_HOVER_TEXT,
+                        (false, false) => ITEM,
+                    },
+                    cx,
+                );
+                let mark = underline.opacity(if selected { 1. } else { 0. });
+                (
+                    category,
+                    motion::color(channel("fan-bg", category.slug()), surface, window, cx),
+                    motion::color(channel("fan-ink", category.slug()), ink, window, cx),
+                    motion::color(channel("fan-mark", category.slug()), mark, window, cx),
+                )
+            })
+            .collect();
         h_flex()
             .id("settings-fan")
             .w_full()
@@ -167,8 +203,7 @@ impl Settings {
             .border_b_1()
             .border_color(style::white(FAN_BORDER, cx))
             .bg(style::black(FAN_BG, cx))
-            .children(Category::ALL.iter().copied().map(|category| {
-                let selected = category == self.category;
+            .children(items.into_iter().map(|(category, surface, ink, mark)| {
                 h_flex()
                     .id(category.slug())
                     .flex_none()
@@ -177,30 +212,21 @@ impl Settings {
                     .gap_2()
                     .items_center()
                     .border_b_2()
-                    .border_color(if selected {
-                        selected_border
-                    } else {
-                        transparent
-                    })
-                    .bg(if selected {
-                        style::white(ITEM_SELECTED, cx)
-                    } else {
-                        transparent
-                    })
+                    .border_color(mark)
+                    .bg(surface)
                     .text_xs()
                     .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(if selected {
-                        foreground
-                    } else {
-                        style::white(ITEM, cx)
-                    })
-                    .hover(|item| {
-                        item.bg(style::white(ITEM_HOVER, cx))
-                            .text_color(style::white(ITEM_HOVER_TEXT, cx))
-                    })
+                    .text_color(ink)
                     .cursor_pointer()
                     .child(icons::icon(category.icon()))
                     .child(category.label())
+                    .on_hover(cx.listener(move |this, over: &bool, _, cx| {
+                        let held = over.then_some(category);
+                        if this.hovered != held {
+                            this.hovered = held;
+                            cx.notify();
+                        }
+                    }))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.select(category, cx);
                     }))
@@ -235,7 +261,7 @@ impl Settings {
 }
 
 impl Render for Settings {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let locked = !ConfigModel::global(cx).read(cx).locked_keys().is_empty();
         v_flex()
             .size_full()
@@ -245,7 +271,7 @@ impl Render for Settings {
             .py_7()
             .child(PageHeader::new(t("settings")))
             .when(locked, |page| page.child(self.managed_notice(cx)))
-            .child(self.rail(cx))
+            .child(self.rail(window, cx))
             // min_h_0 is what lets the panel shrink, and so scroll, inside this column.
             .child(div().flex_1().min_h_0().min_w_0().child(self.panel()))
     }

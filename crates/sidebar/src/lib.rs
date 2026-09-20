@@ -3,20 +3,22 @@
 mod items;
 mod switcher;
 
+use std::time::{Duration, Instant};
+
 use api::{SourceKind, SourceState};
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, Icon, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, DragMoveEvent, Entity, InteractiveElement as _,
-    IntoElement, ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _,
-    Styled, Subscription, Task, Window, div, px,
+    AnyElement, App, AppContext as _, Context, DragMoveEvent, ElementId, Entity, Hsla,
+    InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Render, SharedString,
+    StatefulInteractiveElement as _, Styled, Subscription, Task, Window, div, px,
 };
 use link::Link;
 use store::{ConfigModel, Navigator, Route, SourcesModel};
 use widgets::format::t;
-use widgets::{icons, style};
+use widgets::{icons, motion, style};
 
 use switcher::{SourceSwitcher, Status};
 
@@ -40,10 +42,10 @@ const LABEL_IDLE: f32 = 0.70;
 // `bg-white/40`: the sliver of an indicator an inactive row grows on hover.
 const INDICATOR_IDLE: f32 = 0.40;
 
-// The reorder arrows only appear on the row the pointer is over.
-const ITEM_GROUP: &str = "sidebar-item";
-// The resize handle is an invisible strip; only its hairline reacts.
-const HANDLE_GROUP: &str = "sidebar-handle";
+/// A motion channel for one nav row, derived from the item's key rather than its place in the list.
+fn channel(name: &'static str, key: &'static str) -> ElementId {
+    ElementId::from((ElementId::from(name), key))
+}
 
 // TODO(ui-style): the Vaxry variant — grouped "discover"/"library" sections, no reorder, 200 px default.
 
@@ -61,6 +63,11 @@ impl Render for ResizeGhost {
 pub struct Sidebar {
     width: Pixels,
     collapsed: bool,
+    // The row the pointer is over, so its surface, label and indicator can tween instead of snapping.
+    hovered: Option<&'static str>,
+    handle_hovered: bool,
+    // A drag step is the pointer's own motion; only a collapse crossing is worth tweening.
+    snap_until: Option<Instant>,
     status: Status,
     probed: Option<String>,
     _probe: Option<Task<()>>,
@@ -82,6 +89,9 @@ impl Sidebar {
         let mut this = Self {
             width: DEFAULT_WIDTH,
             collapsed: false,
+            hovered: None,
+            handle_hovered: false,
+            snap_until: None,
             status: Status::Connecting,
             probed: None,
             _probe: None,
@@ -124,6 +134,7 @@ impl Sidebar {
     }
 
     fn resize(&mut self, width: Pixels, cx: &mut Context<Self>) {
+        let was = self.collapsed;
         if self.collapsed {
             if width > EXPAND_ABOVE {
                 self.collapsed = false;
@@ -133,6 +144,9 @@ impl Sidebar {
             self.collapsed = true;
         } else if width < MAX_WIDTH {
             self.width = width;
+        }
+        if self.collapsed != was {
+            self.snap_until = Some(Instant::now() + motion::MEDIUM);
         }
         cx.notify();
     }
@@ -158,6 +172,7 @@ impl Sidebar {
         key: &'static str,
         current: &Route,
         order: &[String],
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let Some(route) = items::route(key) else {
@@ -165,16 +180,79 @@ impl Sidebar {
         };
         let active = *current == route;
         let collapsed = self.collapsed;
+        let hovered = self.hovered == Some(key);
         let label = t(key);
         let tooltip = label.clone();
         let position = order.iter().position(|item| item == key);
         let can_move_up = position.is_some_and(|index| index > 0);
         let can_move_down = position.is_some_and(|index| index + 1 < order.len());
 
+        let surface = if active {
+            style::white(style::HOVER, cx)
+        } else if hovered {
+            style::white(style::RAISED, cx)
+        } else {
+            style::white(0., cx)
+        };
+        let ink = if active {
+            cx.theme().foreground
+        } else if hovered {
+            style::white(style::TEXT_STRONG, cx)
+        } else {
+            style::slate_400(cx)
+        };
+        let bar = if active {
+            INDICATOR_HEIGHT
+        } else if hovered {
+            INDICATOR_HOVER
+        } else {
+            px(0.)
+        };
+        let bar_ink = if active {
+            cx.theme().foreground
+        } else {
+            style::white(INDICATOR_IDLE, cx)
+        };
+        let surface =
+            motion::color_over(channel("nav-bg", key), surface, motion::MEDIUM, window, cx);
+        let ink = motion::color_over(channel("nav-ink", key), ink, motion::MEDIUM, window, cx);
+        let bar = motion::length(channel("nav-indicator", key), bar, motion::SLOW, window, cx);
+        let bar_ink = motion::color_over(
+            channel("nav-indicator-ink", key),
+            bar_ink,
+            motion::SLOW,
+            window,
+            cx,
+        );
+        let label_alpha = motion::amount(
+            channel("nav-label", key),
+            if active || hovered { 1. } else { LABEL_IDLE },
+            motion::FAST,
+            window,
+            cx,
+        );
+        let arrows_alpha = motion::amount(
+            channel("nav-arrows", key),
+            if hovered { 1. } else { 0. },
+            motion::FAST,
+            window,
+            cx,
+        );
+
         h_flex()
             .id(SharedString::from(format!("nav-{key}")))
-            .group(ITEM_GROUP)
             .w_full()
+            .on_hover(cx.listener(move |this, over: &bool, _, cx| {
+                if *over {
+                    if this.hovered != Some(key) {
+                        this.hovered = Some(key);
+                        cx.notify();
+                    }
+                } else if this.hovered == Some(key) {
+                    this.hovered = None;
+                    cx.notify();
+                }
+            }))
             .child(
                 h_flex()
                     .id("link")
@@ -184,17 +262,8 @@ impl Sidebar {
                     .p_3()
                     .rounded(style::radius_lg())
                     .cursor_pointer()
-                    .map(|link| {
-                        if active {
-                            link.bg(style::white(style::HOVER, cx))
-                                .text_color(cx.theme().foreground)
-                        } else {
-                            link.text_color(style::slate_400(cx)).hover(|link| {
-                                link.bg(style::white(style::RAISED, cx))
-                                    .text_color(style::white(style::TEXT_STRONG, cx))
-                            })
-                        }
-                    })
+                    .bg(surface)
+                    .text_color(ink)
                     .when(collapsed, |link| {
                         link.justify_center().tooltip(move |window, cx| {
                             Tooltip::new(tooltip.clone()).build(window, cx)
@@ -219,23 +288,18 @@ impl Sidebar {
                                 .truncate()
                                 .text_sm()
                                 .font_medium()
-                                .when(!active, |label| {
-                                    label
-                                        .opacity(LABEL_IDLE)
-                                        .group_hover(ITEM_GROUP, |label| label.opacity(1.))
-                                })
+                                .opacity(label_alpha)
                                 .child(label),
                         )
                     })
-                    .child(indicator(active, cx))
+                    .child(indicator(bar, bar_ink))
                     .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx)),
             )
             .when(!collapsed && (can_move_up || can_move_down), |row| {
                 row.child(
                     v_flex()
                         .pr_1()
-                        .opacity(0.)
-                        .group_hover(ITEM_GROUP, |arrows| arrows.opacity(1.))
+                        .opacity(arrows_alpha)
                         .child(arrow(key, -1, "up", icons::CHEVRON_UP, can_move_up, cx))
                         .child(arrow(
                             key,
@@ -252,21 +316,14 @@ impl Sidebar {
 }
 
 /// The bar down the leading edge: full height on the active row, a sliver on the hovered one.
-fn indicator(active: bool, cx: &App) -> impl IntoElement {
+fn indicator(height: Pixels, color: Hsla) -> impl IntoElement {
     div()
         .absolute()
         .left_0()
         .w(INDICATOR)
         .rounded_r_full()
-        .map(|bar| {
-            if active {
-                bar.h(INDICATOR_HEIGHT).bg(cx.theme().foreground)
-            } else {
-                bar.h(px(0.))
-                    .bg(style::white(INDICATOR_IDLE, cx))
-                    .group_hover(ITEM_GROUP, |bar| bar.h(INDICATOR_HOVER))
-            }
-        })
+        .h(height)
+        .bg(color)
 }
 
 fn arrow(
@@ -303,7 +360,7 @@ fn arrow(
 }
 
 impl Render for Sidebar {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (order, show_switcher) = {
             let config = ConfigModel::global(cx).read(cx);
             (
@@ -317,13 +374,34 @@ impl Render for Sidebar {
         };
         let current = Navigator::global(cx).read(cx).current().root();
         let collapsed = self.collapsed;
-        let width = if collapsed { RAIL_WIDTH } else { self.width };
+        let snapping = self.snap_until.is_some_and(|at| at > Instant::now());
+        let width = motion::length(
+            "sidebar-width",
+            if collapsed { RAIL_WIDTH } else { self.width },
+            if snapping {
+                motion::MEDIUM
+            } else {
+                Duration::ZERO
+            },
+            window,
+            cx,
+        );
+        let handle = motion::color(
+            "sidebar-handle",
+            if self.handle_hovered {
+                style::white(style::HOVER, cx)
+            } else {
+                style::white(0., cx)
+            },
+            window,
+            cx,
+        );
         let keys = items::ordered(&order, discover);
         let rows = keys
             .into_iter()
-            .map(|key| self.item(key, &current, &order, cx))
+            .map(|key| self.item(key, &current, &order, window, cx))
             .collect::<Vec<_>>();
-        let settings = self.item(items::SETTINGS, &current, &[], cx);
+        let settings = self.item(items::SETTINGS, &current, &[], window, cx);
 
         div()
             .id("sidebar")
@@ -370,7 +448,6 @@ impl Render for Sidebar {
             .child(
                 div()
                     .id("sidebar-resize")
-                    .group(HANDLE_GROUP)
                     .absolute()
                     .top_0()
                     .right_0()
@@ -378,6 +455,12 @@ impl Render for Sidebar {
                     .w(HANDLE_WIDTH)
                     .cursor_col_resize()
                     .on_drag(ResizeDrag, |_, _, _, cx| cx.new(|_| ResizeGhost))
+                    .on_hover(cx.listener(|this, over: &bool, _, cx| {
+                        if this.handle_hovered != *over {
+                            this.handle_hovered = *over;
+                            cx.notify();
+                        }
+                    }))
                     .child(
                         div()
                             .absolute()
@@ -385,9 +468,7 @@ impl Render for Sidebar {
                             .bottom_0()
                             .right_0()
                             .w(HANDLE_LINE)
-                            .group_hover(HANDLE_GROUP, |line| {
-                                line.bg(style::white(style::HOVER, cx))
-                            }),
+                            .bg(handle),
                     ),
             )
     }

@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use api::{ArtworkChange, TrackInfo, TrackMetadataPatch};
 use gpui_kit::base::StyledExt as _;
+use gpui_kit::base::motion::{Easing, Presence, Transition};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
@@ -15,7 +16,7 @@ use gpui_kit::{
 };
 use store::{Link, Notices};
 use widgets::format::{duration, t};
-use widgets::{Cover, Loading, icons, style};
+use widgets::{Cover, Loading, icons, motion, style};
 
 // Measured geometry: `max-w-lg`, the `w-24 h-24` cover, its `rounded-lg`, the `max-h-[60vh]` body.
 const DIALOG_WIDTH: Pixels = px(512.);
@@ -352,12 +353,18 @@ fn number(value: Option<u32>) -> String {
 }
 
 impl Render for MetadataDialog {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(track) = self.track.clone() else {
             return div().h(LOADING_HEIGHT).child(Loading).into_any_element();
         };
         let editing = self.editing;
         let has_cover = self.has_cover();
+        // Keying the fade on the mode makes each switch a fresh entrance rather than a cut.
+        let mode = if editing { "edit" } else { "read" };
+        let switched = Presence::new(("metadata-mode", mode), true)
+            .transition(Transition::new(motion::MEDIUM).easing(Easing::EaseOut))
+            .sample(window, cx)
+            .progress;
         v_flex()
             .gap_4()
             .child(
@@ -401,6 +408,7 @@ impl Render for MetadataDialog {
                     .id("metadata-body")
                     .max_h(BODY_HEIGHT)
                     .overflow_y_scroll()
+                    .opacity(switched)
                     .child(if editing {
                         self.editor(cx)
                     } else {

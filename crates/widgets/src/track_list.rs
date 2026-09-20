@@ -21,6 +21,7 @@ use crate::cover::Cover;
 use crate::dialogs;
 use crate::format::{duration, t};
 use crate::icons;
+use crate::motion;
 use crate::playlist_picker;
 use crate::style;
 
@@ -256,6 +257,36 @@ impl TrackList {
         let mark = px(12.);
         let cover = style::to_px(style::row_cover(), window);
         let menu_open = self.menu_open.as_deref() == Some(key.as_str());
+        // `transition-colors` on the row: the playing tint and the selection wash tween, hover does not.
+        let wash = motion::color(
+            motion::id("row-wash", &key),
+            if playing {
+                style::accent(style::PLAYING, cx)
+            } else if selected {
+                style::white(style::SELECTED, cx)
+            } else {
+                style::white(0., cx)
+            },
+            window,
+            cx,
+        );
+        let title_color = motion::color(
+            motion::id("row-title", &key),
+            if playing {
+                accent
+            } else {
+                style::white(style::TEXT_STRONG, cx)
+            },
+            window,
+            cx,
+        );
+        let badge = motion::amount(
+            motion::id("row-badge", &key),
+            if stored && !playing { 1. } else { 0. },
+            motion::FAST,
+            window,
+            cx,
+        );
         // One builder, so the dots button and the right-click menu cannot drift apart.
         let menu = {
             let track = track.clone();
@@ -273,9 +304,11 @@ impl TrackList {
             .group(ROW_GROUP)
             .h(style::row_height())
             .rounded(style::radius_lg())
-            .when(playing, |row| row.bg(style::accent(style::PLAYING, cx)))
-            .when(selected, |row| row.bg(style::white(style::SELECTED, cx)))
-            .hover(|row| row.bg(style::white(style::RAISED, cx)))
+            .bg(wash)
+            // Upstream the wash is an inline style, which outranks `hover:bg-white/5`; a refinement does not.
+            .when(!playing && !selected, |row| {
+                row.hover(|row| row.bg(style::white(style::RAISED, cx)))
+            })
             .on_click(cx.listener(move |this, _, _, cx| {
                 if this.selecting {
                     this.toggle_selected(key.clone(), cx);
@@ -336,13 +369,14 @@ impl TrackList {
                                 .flex_shrink_0()
                                 .mr_4()
                                 .child(Cover::new(track.artwork.as_ref()).size(cover))
-                                .when(stored && !playing, |thumb| {
+                                .when(badge > 0., |thumb| {
                                     thumb.child(
                                         div()
                                             .absolute()
                                             .bottom_0()
                                             .right_0()
                                             .size_3()
+                                            .opacity(badge)
                                             .flex()
                                             .items_center()
                                             .justify_center()
@@ -364,11 +398,7 @@ impl TrackList {
                             .truncate()
                             .text_sm()
                             .font_weight(FontWeight::MEDIUM)
-                            .text_color(if playing {
-                                accent
-                            } else {
-                                style::white(style::TEXT_STRONG, cx)
-                            })
+                            .text_color(title_color)
                             .child(title.clone()),
                     ),
             )

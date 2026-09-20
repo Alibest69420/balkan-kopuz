@@ -47,6 +47,12 @@ impl Shell {
             cx.observe(&chrome, |_, _, cx| cx.notify()),
             cx.observe_in(&config, window, |this, config, window, cx| {
                 let settings = config.read(cx).config();
+                // Every transition in the app asks GPUI whether motion is reduced.
+                let reduced = settings.reduce_animations;
+                if reduced != cx.reduce_motion() {
+                    cx.set_reduce_motion(reduced);
+                }
+                let settings = config.read(cx).config();
                 // Re-editing a custom theme keeps its name, so the colors are the key.
                 let applied = (
                     settings.theme.clone(),

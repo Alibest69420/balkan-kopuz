@@ -5,24 +5,52 @@ mod data;
 mod hero;
 mod sections;
 
+use std::collections::HashSet;
+
 use api::{AlbumPage, ArtistPage, JobKind, Page, Table, TrackPage};
 use config::{HomeSection, ListenNowStyle, UiStyle};
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _,
-    IntoElement, ParentElement as _, Pixels, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement as _, Styled, Subscription, Window, div, px,
+    AnyElement, App, AppContext as _, Context, ElementId, Entity, FontWeight,
+    InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Render, ScrollHandle,
+    SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div, px,
 };
 use store::{
     ConfigModel, FavoritesModel, JobsModel, PlayerModel, PlaylistsModel, Query, QueueModel,
     SourcesModel,
 };
 use widgets::format::t;
-use widgets::{PageHeader, icons, style};
+use widgets::{PageHeader, icons, motion, style};
 
 use data::{ARTIST_SAMPLE_WINDOW, Data, RECENT_TRACKS_WINDOW, RECENTLY_ADDED_WINDOW};
+
+/// Every element the pointer is over: a tween needs the state, which a `.hover()` refinement cannot give.
+pub(crate) type Hovered = HashSet<SharedString>;
+
+/// One motion channel of an element, keyed by that element's own id: `("home-album-42", "cover")`.
+pub(crate) fn channel(base: impl Into<SharedString>, name: &'static str) -> ElementId {
+    (ElementId::from(base.into()), name).into()
+}
+
+/// Feed an element's hover into the page's set, so the next frame can tween towards it.
+pub(crate) fn track_hover<E: StatefulInteractiveElement>(
+    element: E,
+    id: SharedString,
+    cx: &mut Context<Home>,
+) -> E {
+    element.on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
+        let changed = if *hovered {
+            this.hovered.insert(id.clone())
+        } else {
+            this.hovered.remove(&id)
+        };
+        if changed {
+            cx.notify();
+        }
+    }))
+}
 
 /// One scroller per row, kept across frames so an arrow nudges from where the row already is.
 #[derive(Default)]
@@ -47,6 +75,7 @@ pub struct Home {
     hero_album_id: String,
     data: Data,
     edit_mode: bool,
+    hovered: Hovered,
     // Where the hero resize drag started, and the height it started from.
     resize: Option<(Pixels, u32)>,
     scroll: Scrollers,
@@ -143,6 +172,7 @@ impl Home {
             hero_album_id: String::new(),
             data: Data::default(),
             edit_mode: false,
+            hovered: Hovered::default(),
             resize: None,
             scroll: Scrollers::default(),
             seed: seed(),
@@ -255,18 +285,26 @@ impl Home {
         });
     }
 
-    fn section(&mut self, key: &str, skin: Skin, cx: &mut Context<Self>) -> AnyElement {
+    fn section(
+        &mut self,
+        key: &str,
+        skin: Skin,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         match key {
-            "hero" => self.hero(skin.hero_height, self.edit_mode, cx),
-            "continue_listening" => self.continue_listening(skin, cx),
-            "listen_now" => self.listen_now(skin, cx),
-            "top_artists" => self.top_artists(skin, cx),
+            "hero" => self.hero(skin.hero_height, self.edit_mode, window, cx),
+            "continue_listening" => self.continue_listening(skin, window, cx),
+            "listen_now" => self.listen_now(skin, window, cx),
+            "top_artists" => self.top_artists(skin, window, cx),
             "new_releases" => sections::album_row(
                 "home-new-releases",
                 t("new_releases"),
                 skin.eyebrow(t("albums")),
                 &self.data.new_releases,
                 &self.scroll.new_releases,
+                &self.hovered,
+                window,
                 cx,
             ),
             "made_for_you" => {
@@ -282,6 +320,8 @@ impl Home {
                     Some(eyebrow),
                     &self.data.made_for_you,
                     &self.scroll.made_for_you,
+                    &self.hovered,
+                    window,
                     cx,
                 )
             }
@@ -291,22 +331,30 @@ impl Home {
                 skin.eyebrow(t("library")),
                 &self.data.recently_added,
                 &self.scroll.recently_added,
+                &self.hovered,
+                window,
                 cx,
             ),
-            "playlists" => self.playlists(skin, cx),
+            "playlists" => self.playlists(skin, window, cx),
             _ => div().into_any_element(),
         }
     }
 
-    fn continue_listening(&mut self, skin: Skin, cx: &mut Context<Self>) -> AnyElement {
+    fn continue_listening(
+        &mut self,
+        skin: Skin,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         if self.data.continue_listening.is_empty() {
             return div().into_any_element();
         }
+        let hovered = &self.hovered;
         let cards: Vec<AnyElement> = self
             .data
             .continue_listening
             .iter()
-            .map(|recent| cards::recent_card(recent, cx))
+            .map(|recent| cards::recent_card(recent, hovered, window, cx))
             .collect();
         v_flex()
             .w_full()
@@ -315,6 +363,8 @@ impl Home {
                 t("continue_listening"),
                 skin.eyebrow(t("library")),
                 Some(&self.scroll.continue_listening),
+                &self.hovered,
+                window,
                 cx,
             ))
             .child(sections::scroller(
@@ -325,7 +375,12 @@ impl Home {
             .into_any_element()
     }
 
-    fn listen_now(&mut self, skin: Skin, cx: &mut Context<Self>) -> AnyElement {
+    fn listen_now(
+        &mut self,
+        skin: Skin,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         if self.data.shuffled.is_empty() {
             return div().into_any_element();
         }
@@ -339,16 +394,17 @@ impl Home {
             .take(limit)
             .cloned()
             .collect();
+        let hovered = &self.hovered;
         let body = if skin.listen_now_cards {
             let cards: Vec<AnyElement> = albums
                 .iter()
-                .map(|album| cards::listen_now_card(album, cx))
+                .map(|album| cards::listen_now_card(album, hovered, window, cx))
                 .collect();
             sections::scroller("home-listen-now", &self.scroll.listen_now, cards)
         } else {
             let rows: Vec<AnyElement> = albums
                 .iter()
-                .map(|album| cards::album_row(album, cx))
+                .map(|album| cards::album_row(album, hovered, window, cx))
                 .collect();
             h_flex()
                 .w_full()
@@ -364,21 +420,31 @@ impl Home {
                 t("listen_now"),
                 skin.eyebrow(t("music")),
                 skin.listen_now_cards.then_some(&self.scroll.listen_now),
+                &self.hovered,
+                window,
                 cx,
             ))
             .child(body)
             .into_any_element()
     }
 
-    fn top_artists(&mut self, skin: Skin, cx: &mut Context<Self>) -> AnyElement {
+    fn top_artists(
+        &mut self,
+        skin: Skin,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         if self.data.top_artists.is_empty() {
             return div().into_any_element();
         }
+        let hovered = &self.hovered;
         let cards: Vec<AnyElement> = self
             .data
             .top_artists
             .iter()
-            .map(|artist| cards::artist_card(&artist.name, artist.artwork.as_ref(), cx))
+            .map(|artist| {
+                cards::artist_card(&artist.name, artist.artwork.as_ref(), hovered, window, cx)
+            })
             .collect();
         v_flex()
             .w_full()
@@ -387,6 +453,8 @@ impl Home {
                 t("top_artists"),
                 skin.eyebrow(t("artists")),
                 Some(&self.scroll.top_artists),
+                &self.hovered,
+                window,
                 cx,
             ))
             .child(sections::scroller(
@@ -397,7 +465,7 @@ impl Home {
             .into_any_element()
     }
 
-    fn playlists(&mut self, skin: Skin, cx: &mut Context<Self>) -> AnyElement {
+    fn playlists(&mut self, skin: Skin, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         // TODO(offline): offline mode keeps only playlists whose every track is downloaded.
         let playlists: Vec<api::PlaylistInfo> = PlaylistsModel::global(cx)
             .read(cx)
@@ -410,9 +478,10 @@ impl Home {
         if playlists.is_empty() {
             return div().into_any_element();
         }
+        let hovered = &self.hovered;
         let cards: Vec<AnyElement> = playlists
             .iter()
-            .map(|playlist| cards::playlist_card(playlist, cx))
+            .map(|playlist| cards::playlist_card(playlist, hovered, window, cx))
             .collect();
         v_flex()
             .w_full()
@@ -421,6 +490,8 @@ impl Home {
                 t("playlists"),
                 skin.eyebrow(t("library")),
                 Some(&self.scroll.playlists),
+                &self.hovered,
+                window,
                 cx,
             ))
             .child(sections::scroller(
@@ -481,10 +552,12 @@ impl Home {
         index: usize,
         total: usize,
         skin: Skin,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let key = section.key.clone();
         let enabled = section.enabled;
+        let toggle = toggle_chip(&key, enabled, window, cx);
         h_flex()
             .w_full()
             .items_center()
@@ -559,7 +632,7 @@ impl Home {
                     )
                     .child(
                         Button::new(SharedString::from(format!("home-toggle-{key}")))
-                            .custom(if enabled { accent_chip(cx) } else { chip(cx) })
+                            .custom(toggle)
                             .h_7()
                             .px_3()
                             .rounded(px(6.))
@@ -600,7 +673,7 @@ impl Skin {
 }
 
 impl Render for Home {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (skin, sections) = {
             let model = ConfigModel::global(cx);
             let config = model.read(cx).config();
@@ -620,13 +693,20 @@ impl Render for Home {
             if !section.enabled && !edit {
                 continue;
             }
-            let controls = edit.then(|| self.edit_row(section, index, total, skin, cx));
-            let body = self.section(&section.key, skin, cx);
+            let controls = edit.then(|| self.edit_row(section, index, total, skin, window, cx));
+            let body = self.section(&section.key, skin, window, cx);
+            let fade = motion::amount(
+                channel(format!("home-section-{}", section.key), "fade"),
+                if section.enabled { 1. } else { 0.4 },
+                motion::MEDIUM,
+                window,
+                cx,
+            );
             rows.push(
                 v_flex()
                     .w_full()
                     .gap_2()
-                    .when(!section.enabled, |row| row.opacity(0.4))
+                    .when(fade < 1., |row| row.opacity(fade))
                     .children(controls)
                     .child(body)
                     .into_any_element(),
@@ -675,13 +755,36 @@ fn chip(cx: &App) -> ButtonCustomVariant {
         .active(style::white(style::ACTIVE, cx))
 }
 
-/// `bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300`: the same chip, switched on.
-fn accent_chip(cx: &App) -> ButtonCustomVariant {
+/// The show/hide chip, tweening between the quiet chip and `bg-indigo-500/20 text-indigo-300`.
+fn toggle_chip(
+    key: &str,
+    enabled: bool,
+    window: &mut Window,
+    cx: &mut Context<Home>,
+) -> ButtonCustomVariant {
+    let id = format!("home-toggle-{key}");
+    let color = if enabled {
+        cx.theme().primary.opacity(0.2)
+    } else {
+        style::white(style::RAISED, cx)
+    };
+    let foreground = if enabled {
+        cx.theme().primary_hover
+    } else {
+        style::white(0.7, cx)
+    };
+    let hover = if enabled {
+        cx.theme().primary.opacity(0.3)
+    } else {
+        style::white(0.15, cx)
+    };
+    let color = motion::color(channel(id.clone(), "bg"), color, window, cx);
+    let foreground = motion::color(channel(id, "fg"), foreground, window, cx);
     ButtonCustomVariant::new(cx)
-        .color(cx.theme().primary.opacity(0.2))
-        .foreground(cx.theme().primary_hover)
-        .hover(cx.theme().primary.opacity(0.3))
-        .active(cx.theme().primary.opacity(0.3))
+        .color(color)
+        .foreground(foreground)
+        .hover(hover)
+        .active(hover)
 }
 
 fn section_label(key: &str) -> SharedString {

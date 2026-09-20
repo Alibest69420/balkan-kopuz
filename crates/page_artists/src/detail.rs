@@ -29,7 +29,7 @@ use store::{
 use widgets::format::{t, t_with, total_duration};
 use widgets::{
     Cover, EmptyState, Loading, TrackActions, TrackList, TrackListEvent, TrackListOptions, columns,
-    icons, playlist_picker, style,
+    icons, motion, playlist_picker, style,
 };
 
 use crate::controls::{self, ViewModeKey};
@@ -282,13 +282,13 @@ impl ArtistDetail {
 }
 
 impl Render for ArtistDetail {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let config = controls::config(cx);
         let albums_view = config.artist_view_order == ArtistViewOrder::Albums;
         let body = if albums_view {
-            self.albums_view(cx)
+            self.albums_view(window, cx)
         } else {
-            self.tracks_view(cx)
+            self.tracks_view(window, cx)
         };
         v_flex()
             .size_full()
@@ -308,14 +308,18 @@ impl Render for ArtistDetail {
                                 Navigator::global(cx).update(cx, |nav, cx| nav.go_back(cx))
                             }),
                     )
-                    .child(controls::view_order_toggle(&config.artist_view_order, cx)),
+                    .child(controls::view_order_toggle(
+                        &config.artist_view_order,
+                        window,
+                        cx,
+                    )),
             )
             .child(body)
     }
 }
 
 impl ArtistDetail {
-    fn tracks_view(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    fn tracks_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let (keys, total, selecting) = {
             let list = self.list.read(cx);
             let keys: Vec<String> = list.keys();
@@ -347,13 +351,19 @@ impl ArtistDetail {
             .flex_1()
             .min_h_0()
             .gap_12()
-            .child(self.hero(keys, total, cx))
+            .child(self.hero(keys, total, window, cx))
             .child(body)
             .when(selecting, |view| view.child(self.selection_bar(cx)))
             .into_any_element()
     }
 
-    fn hero(&mut self, keys: Vec<String>, total: u64, cx: &mut Context<Self>) -> AnyElement {
+    fn hero(
+        &mut self,
+        keys: Vec<String>,
+        total: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let capabilities = capabilities(cx);
         let artwork = self.artwork(cx);
         let shuffle = PlayerModel::global(cx).read(cx).shuffle();
@@ -363,6 +373,61 @@ impl ArtistDetail {
             !keys.is_empty() && keys.iter().all(|key| downloads.is_stored(key))
         };
         let busy = JobsModel::global(cx).read(cx).is_running(JobKind::Download);
+        let (photo_hot, photo_hover) = controls::hovered("artist-photo-hover", window, cx);
+        let scrim = motion::amount(
+            "artist-photo-scrim",
+            if photo_hot { 1. } else { 0. },
+            motion::FAST,
+            window,
+            cx,
+        );
+        let (shuffle_hot, shuffle_hover) = controls::hovered("artist-shuffle-hover", window, cx);
+        let shuffle_fill = motion::color(
+            "artist-shuffle-fill",
+            style::white(if shuffle_hot { style::HOVER } else { 0. }, cx),
+            window,
+            cx,
+        );
+        let shuffle_text = motion::color(
+            "artist-shuffle-text",
+            match (shuffle, shuffle_hot) {
+                (true, _) => cx.theme().primary,
+                (false, true) => cx.theme().foreground,
+                (false, false) => style::slate_400(cx),
+            },
+            window,
+            cx,
+        );
+        let (play_hot, play_hover) = controls::hovered("artist-play-hover", window, cx);
+        let play_fill = motion::color(
+            "artist-play-fill",
+            if play_hot {
+                cx.theme().primary_hover
+            } else {
+                cx.theme().primary
+            },
+            window,
+            cx,
+        );
+        let (download_hot, download_hover) = controls::hovered("artist-download-hover", window, cx);
+        let download_fill = motion::color(
+            "artist-download-fill",
+            style::white(if download_hot { style::HOVER } else { 0. }, cx),
+            window,
+            cx,
+        );
+        let download_edge = motion::color(
+            "artist-download-edge",
+            style::white(if download_hot { 0.40 } else { style::ACTIVE }, cx),
+            window,
+            cx,
+        );
+        let download_text = motion::color(
+            "artist-download-text",
+            style::white(if download_hot { 1. } else { 0.70 }, cx),
+            window,
+            cx,
+        );
 
         h_flex()
             .gap_8()
@@ -371,7 +436,6 @@ impl ArtistDetail {
                 div()
                     .id("artist-photo")
                     .relative()
-                    .group("artist-photo")
                     .flex_shrink_0()
                     .child(
                         Cover::new(artwork.as_ref())
@@ -383,7 +447,7 @@ impl ArtistDetail {
                     .when(capabilities.edit_tags, |photo| {
                         photo
                             .cursor_pointer()
-                            // The scrim the original fades in over the whole photo, minus the fade.
+                            // `opacity-0 hover:opacity-100 transition-opacity` over the whole photo.
                             .child(
                                 div()
                                     .absolute()
@@ -393,8 +457,7 @@ impl ArtistDetail {
                                     .justify_center()
                                     .rounded(px(12.))
                                     .bg(style::black(0.5, cx))
-                                    .invisible()
-                                    .group_hover("artist-photo", |scrim| scrim.visible())
+                                    .opacity(scrim)
                                     .child(
                                         icons::icon(icons::EDIT)
                                             .size(px(30.))
@@ -405,6 +468,7 @@ impl ArtistDetail {
                                 gpui_kit::component::tooltip::Tooltip::new(t("change_photo"))
                                     .build(window, cx)
                             })
+                            .on_hover(controls::track(photo_hover))
                             .on_click(cx.listener(|this, _, _, cx| this.pick_photo(cx)))
                     }),
             )
@@ -437,15 +501,14 @@ impl ArtistDetail {
                     .gap_4()
                     .items_center()
                     .flex_shrink_0()
-                    .child(
+                    .child(hover_shell(
+                        "artist-shuffle-hover",
+                        shuffle_hover,
                         round_button("artist-shuffle", icons::SHUFFLE)
                             .ghost()
                             .selected(shuffle)
-                            .text_color(if shuffle {
-                                cx.theme().primary
-                            } else {
-                                style::slate_400(cx)
-                            })
+                            .bg(shuffle_fill)
+                            .text_color(shuffle_text)
                             .tooltip(if shuffle {
                                 t("shuffle_on")
                             } else {
@@ -455,26 +518,41 @@ impl ArtistDetail {
                                 PlayerModel::global(cx)
                                     .update(cx, |player, cx| player.set_shuffle(!shuffle, cx))
                             }),
-                    )
-                    .child(
+                    ))
+                    .child(hover_shell(
+                        "artist-play-hover",
+                        play_hover,
                         round_button("artist-play", icons::PLAY)
                             .primary()
+                            .when(!keys.is_empty(), |button| button.bg(play_fill))
                             .tooltip(t("play"))
                             .disabled(keys.is_empty())
                             .on_click({
                                 let keys = keys.clone();
                                 move |_, _, cx| actions::play_all(keys.clone(), cx)
                             }),
-                    )
+                    ))
                     .when(capabilities.downloads, |row| {
-                        row.child(
+                        let live = !busy && !keys.is_empty();
+                        row.child(hover_shell(
+                            "artist-download-hover",
+                            download_hover,
                             Button::new("artist-download-all")
                                 .ghost()
                                 .size_12()
                                 .rounded_full()
                                 .border_1()
-                                .border_color(style::white(style::ACTIVE, cx))
-                                .text_color(style::white(0.70, cx))
+                                .when(live, |button| {
+                                    button
+                                        .bg(download_fill)
+                                        .border_color(download_edge)
+                                        .text_color(download_text)
+                                })
+                                .when(!live, |button| {
+                                    button
+                                        .border_color(style::white(style::ACTIVE, cx))
+                                        .text_color(style::white(0.70, cx))
+                                })
                                 .icon(icons::icon(if stored {
                                     icons::TRASH
                                 } else {
@@ -485,12 +563,12 @@ impl ArtistDetail {
                                 } else {
                                     t("download_offline")
                                 })
-                                .disabled(busy || keys.is_empty())
+                                .disabled(!live)
                                 .on_click({
                                     let keys = keys.clone();
                                     move |_, _, cx| set_downloaded(keys.clone(), !stored, cx)
                                 }),
-                        )
+                        ))
                     }),
             )
             .into_any_element()
@@ -635,7 +713,7 @@ impl ArtistDetail {
             .into_any_element()
     }
 
-    fn albums_view(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    fn albums_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let albums = self.artist_albums(cx);
         let downloaded = self.downloaded_albums(cx);
         let mode = controls::config(cx).artist_album_view_mode;
@@ -650,13 +728,16 @@ impl ArtistDetail {
                 .child(t("no_albums_found"))
                 .into_any_element()
         } else {
-            let cards = albums.iter().map(|album| {
-                let stored = downloaded.contains(&album.id);
-                match mode {
-                    AlbumViewMode::Grid => album_card(album, stored, cx),
-                    AlbumViewMode::List => album_row(album, stored, cx),
-                }
-            });
+            let cards: Vec<AnyElement> = albums
+                .iter()
+                .map(|album| {
+                    let stored = downloaded.contains(&album.id);
+                    match mode {
+                        AlbumViewMode::Grid => album_card(album, stored, window, cx),
+                        AlbumViewMode::List => album_row(album, stored, cx),
+                    }
+                })
+                .collect();
             div()
                 .id("artist-albums-scroll")
                 .flex_1()
@@ -686,12 +767,25 @@ impl ArtistDetail {
                     .justify_end()
                     .gap_2()
                     .items_center()
-                    .child(controls::view_mode_toggle(ViewModeKey::ArtistAlbums, cx))
+                    .child(controls::view_mode_toggle(
+                        ViewModeKey::ArtistAlbums,
+                        window,
+                        cx,
+                    ))
                     .child(controls::sort_control("artist-album-sort", fields, cx)),
             )
             .child(body)
             .into_any_element()
     }
+}
+
+/// A `Button` owns its hover style, so its `transition-colors` has to be tweened from a frame outside it.
+fn hover_shell(id: &'static str, hover: Entity<bool>, button: Button) -> impl IntoElement {
+    div()
+        .id(id)
+        .rounded_full()
+        .on_hover(controls::track(hover))
+        .child(button)
 }
 
 /// `w-14 h-14 rounded-full` with a `text-xl` glyph: the showcase's shuffle and play.
@@ -703,10 +797,28 @@ fn round_button(id: &'static str, icon: &'static str) -> Button {
         .icon(icons::icon(icon))
 }
 
-fn album_card(album: &AlbumInfo, stored: bool, cx: &App) -> AnyElement {
+fn album_card(album: &AlbumInfo, stored: bool, window: &mut Window, cx: &mut App) -> AnyElement {
     let menu = album_menu(album.id.clone(), stored);
     let route = Route::Album(album.id.clone().into());
     let group = SharedString::from(format!("album-card-{}", album.id));
+    let (hot, hover) = controls::hovered(
+        SharedString::from(format!("album-card-hover-{}", album.id)),
+        window,
+        cx,
+    );
+    let fill = motion::color(
+        SharedString::from(format!("album-card-fill-{}", album.id)),
+        style::white(if hot { style::HOVER } else { style::RAISED }, cx),
+        window,
+        cx,
+    );
+    let cover = motion::zoom(
+        SharedString::from(format!("album-card-cover-{}", album.id)),
+        px(CARD - 32.),
+        hot,
+        window,
+        cx,
+    );
     div()
         .id(SharedString::from(format!("album-card-{}", album.id)))
         .group(group.clone())
@@ -714,18 +826,28 @@ fn album_card(album: &AlbumInfo, stored: bool, cx: &App) -> AnyElement {
         .w(px(CARD))
         .p_4()
         .rounded(style::radius_xl())
-        .bg(style::white(style::RAISED, cx))
+        .bg(fill)
         .cursor_pointer()
-        .hover(|card| card.bg(style::white(style::HOVER, cx)))
+        .on_hover(controls::track(hover))
         .child(
             v_flex()
                 .id(SharedString::from(format!("album-open-{}", album.id)))
                 .gap_3()
                 .child(
-                    Cover::new(album.artwork.as_ref())
+                    // `group-hover:scale-105` reads as the cover growing inside a frame that clips it.
+                    div()
                         .size(px(CARD - 32.))
                         .rounded(px(8.))
-                        .placeholder(icons::DISC),
+                        .overflow_hidden()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            Cover::new(album.artwork.as_ref())
+                                .size(cover)
+                                .rounded(px(8.))
+                                .placeholder(icons::DISC),
+                        ),
                 )
                 .child(
                     v_flex()

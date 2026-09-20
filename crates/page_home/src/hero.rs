@@ -7,14 +7,14 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, AppContext as _, Context, DragMoveEvent, FontWeight, InteractiveElement as _,
     IntoElement, MouseButton, MouseDownEvent, ObjectFit, ParentElement as _, Pixels, Render,
-    StatefulInteractiveElement as _, Styled, StyledImage as _, Window, div, img, linear_color_stop,
-    linear_gradient, px, relative, rems,
+    SharedString, StatefulInteractiveElement as _, Styled, StyledImage as _, Window, div, img,
+    linear_color_stop, linear_gradient, px, relative, rems,
 };
 use store::{ConfigModel, FavoritesModel, actions};
 use widgets::format::{t, t_with};
-use widgets::{icons, style};
+use widgets::{icons, motion, style};
 
-use crate::Home;
+use crate::{Home, channel, track_hover};
 
 const MIN_HEIGHT: f32 = 140.;
 const MAX_HEIGHT: f32 = 800.;
@@ -29,8 +29,14 @@ impl Render for HeroResize {
 }
 
 impl Home {
-    pub(crate) fn hero(&mut self, height: u32, edit: bool, cx: &mut Context<Self>) -> AnyElement {
-        let banner = self.hero_banner(cx);
+    pub(crate) fn hero(
+        &mut self,
+        height: u32,
+        edit: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let banner = self.hero_banner(window, cx);
         div()
             .relative()
             .w_full()
@@ -39,11 +45,11 @@ impl Home {
             .overflow_hidden()
             .bg(style::white(style::RAISED, cx))
             .children(banner)
-            .when(edit, |hero| hero.child(self.resize_handle(cx)))
+            .when(edit, |hero| hero.child(self.resize_handle(window, cx)))
             .into_any_element()
     }
 
-    fn hero_banner(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    fn hero_banner(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let hero = self.data.hero.as_ref()?;
         let album_id = hero.track.album_id.clone();
         let artwork = hero
@@ -152,7 +158,7 @@ impl Home {
                                             }
                                         }),
                                 )
-                                .child(self.hero_heart(cx)),
+                                .child(self.hero_heart(window, cx)),
                         ),
                 )
                 .into_any_element(),
@@ -160,7 +166,7 @@ impl Home {
     }
 
     /// The album is favorited when every one of its tracks is; the click brings the rest into line.
-    fn hero_heart(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    fn hero_heart(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let keys: Vec<String> = self
             .hero_tracks
             .read(cx)
@@ -176,13 +182,15 @@ impl Home {
                     .all(|key| !key.is_empty() && favorites.is_favorite(key))
         };
         let target = !favorited;
+        let tint = if favorited {
+            cx.theme().danger
+        } else {
+            cx.theme().foreground
+        };
+        let tint = motion::color(channel("hero-favorite", "tint"), tint, window, cx);
         let chip = ButtonCustomVariant::new(cx)
             .color(style::white(style::HOVER, cx))
-            .foreground(if favorited {
-                cx.theme().danger
-            } else {
-                cx.theme().foreground
-            })
+            .foreground(tint)
             .hover(style::white(style::ACTIVE, cx))
             .active(style::white(style::ACTIVE, cx));
         Button::new("hero-favorite")
@@ -205,9 +213,16 @@ impl Home {
             .into_any_element()
     }
 
-    fn resize_handle(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        div()
-            .id("hero-resize")
+    fn resize_handle(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let key = SharedString::from("hero-resize");
+        let target = if self.hovered.contains(&key) {
+            cx.theme().primary.opacity(0.4)
+        } else {
+            style::black(0.4, cx)
+        };
+        let background = motion::color(channel(key.clone(), "bg"), target, window, cx);
+        let handle = div()
+            .id(key.clone())
             .absolute()
             .bottom_0()
             .left_0()
@@ -217,8 +232,7 @@ impl Home {
             .items_center()
             .justify_center()
             .cursor_ns_resize()
-            .bg(style::black(0.4, cx))
-            .hover(|handle| handle.bg(cx.theme().primary.opacity(0.4)))
+            .bg(background)
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this, event: &MouseDownEvent, _, cx| {
@@ -238,8 +252,8 @@ impl Home {
                     .h_1()
                     .rounded_full()
                     .bg(style::white(style::TEXT_SECONDARY, cx)),
-            )
-            .into_any_element()
+            );
+        track_hover(handle, key, cx).into_any_element()
     }
 
     fn resize_hero(&mut self, y: Pixels, cx: &mut Context<Self>) {

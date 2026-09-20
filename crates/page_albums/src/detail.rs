@@ -8,7 +8,7 @@ use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
+    AnyElement, App, AppContext as _, Context, Entity, Hsla, InteractiveElement as _, IntoElement,
     ParentElement as _, Pixels, Render, ScrollHandle, SharedString,
     StatefulInteractiveElement as _, Styled, Subscription, Window, div, px,
 };
@@ -16,9 +16,10 @@ use store::{DownloadsModel, Navigator, PlayerModel, Query, Route, SourcesModel, 
 use widgets::format::{t, t_with};
 use widgets::{
     Cover, EmptyState, Loading, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons,
-    style,
+    motion, style,
 };
 
+use crate::clear_variant;
 use crate::ops;
 
 // TODO(offline): filtering the listing to downloaded tracks waits on an offline seam the checklist flags as wrong.
@@ -33,6 +34,18 @@ const HERO_ACTION: Pixels = px(56.);
 const HERO_SECONDARY: Pixels = px(48.);
 const REMOTE_ACTION: Pixels = px(64.);
 const REMOTE_SECONDARY: Pixels = px(44.);
+// The cover's upload scrim tracks hover alongside the action buttons.
+const COVER: &str = "album-cover";
+
+/// What a round hero action looks like: its ring alphas, its resting ink, and whether it washes on hover.
+#[derive(Clone, Copy)]
+struct Chrome {
+    ring: Option<(f32, f32)>,
+    ink: Hsla,
+    wash: bool,
+    // A control already in its "on" state paints the hovered look and stays there.
+    lit: bool,
+}
 
 /// One disc's rows; its list reports a play by the album-wide index its subscription carries.
 struct DiscGroup {
@@ -54,6 +67,8 @@ pub struct AlbumDetail {
     remote_id: Option<String>,
     capabilities: SourceCapabilities,
     scroll: ScrollHandle,
+    // Which round action or the cover the pointer is over; it drives their tweens.
+    hovered: Option<&'static str>,
     _subscriptions: Vec<Subscription>,
     _lists: Vec<Subscription>,
 }
@@ -124,6 +139,7 @@ impl AlbumDetail {
             // Sources usually loaded before the page opened, so their observer would not fire again.
             capabilities: SourcesModel::global(cx).read(cx).capabilities(),
             scroll: ScrollHandle::new(),
+            hovered: None,
             _subscriptions: subscriptions,
             _lists: Vec::new(),
         }
@@ -314,12 +330,73 @@ impl AlbumDetail {
             .flex_shrink_0()
     }
 
-    /// `bg-indigo-500 text-black`, the one filled action on the page.
+    /// `transition-colors` on a round action: the frame owns the ring and wash, the button its glyph.
+    fn ringed(
+        &self,
+        id: &'static str,
+        button: Button,
+        box_size: Pixels,
+        chrome: Chrome,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let active = chrome.lit || self.hovered == Some(id);
+        let ring = chrome.ring.map(|(idle, hovered)| {
+            let alpha = if active { hovered } else { idle };
+            motion::color(motion::id(id, "ring"), style::white(alpha, cx), window, cx)
+        });
+        let wash = style::white(
+            if active && chrome.wash {
+                style::HOVER
+            } else {
+                0.
+            },
+            cx,
+        );
+        let background = motion::color(motion::id(id, "bg"), wash, window, cx);
+        let target = if chrome.lit || !active {
+            chrome.ink
+        } else {
+            cx.theme().foreground
+        };
+        let ink = motion::color(motion::id(id, "ink"), target, window, cx);
+        div()
+            .id(id)
+            .size(box_size)
+            .flex_shrink_0()
+            .rounded_full()
+            .bg(background)
+            .when_some(ring, |frame, colour| {
+                frame.border_1().border_color(colour)
+            })
+            .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
+                this.track_hover(id, *hovered, cx)
+            }))
+            .child(button.size_full().custom(clear_variant(ink, cx)))
+    }
+
+    /// A leave for a control that is no longer the hovered one would clear its successor.
+    fn track_hover(&mut self, id: &'static str, hovered: bool, cx: &mut Context<Self>) {
+        if !hovered && self.hovered != Some(id) {
+            return;
+        }
+        self.hovered = hovered.then_some(id);
+        cx.notify();
+    }
+
+    /// `bg-indigo-500 hover:bg-indigo-400 text-black`, the one filled action on the page.
     fn play_button(&self, box_size: Pixels, cx: &Context<Self>) -> impl IntoElement {
         let keys = self.keys();
+        let accent = cx.theme().primary_hover;
         Self::round_button("album-play", icons::PLAY, box_size, box_size * 0.36, cx)
-            .bg(cx.theme().primary)
-            .text_color(cx.theme().primary_foreground)
+            // A Button paints its own hover, so the fill comes from a variant.
+            .custom(
+                ButtonCustomVariant::new(cx)
+                    .color(cx.theme().primary)
+                    .hover(accent)
+                    .active(accent)
+                    .foreground(cx.theme().primary_foreground),
+            )
             .tooltip(t("play"))
             .disabled(keys.is_empty())
             .on_click(move |_, _, cx| actions::play_all(keys.clone(), cx))
@@ -330,43 +407,41 @@ impl AlbumDetail {
         &self,
         box_size: Pixels,
         outlined: bool,
-        cx: &Context<Self>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let shuffled = PlayerModel::global(cx).read(cx).shuffle();
-        let hover = style::white(style::HOVER, cx);
-        Self::round_button(
+        let button = Self::round_button(
             "album-shuffle",
             icons::SHUFFLE,
             box_size,
             box_size * 0.36,
             cx,
         )
-        .when(outlined, |button| {
-            button.border_1().border_color(if shuffled {
-                style::white(0.3, cx)
-            } else {
-                style::white(0.15, cx)
-            })
-        })
-        // A Button paints its own hover, so these colours come from a variant.
-        .custom(match shuffled {
-            true => ButtonCustomVariant::new(cx)
-                .color(hover)
-                .hover(hover)
-                .foreground(cx.theme().primary),
-            false => ButtonCustomVariant::new(cx)
-                .color(gpui_kit::transparent_black())
-                .hover(hover)
-                .foreground(style::slate_400(cx)),
-        })
         .tooltip(t("shuffle"))
         .on_click(move |_, _, cx| {
             PlayerModel::global(cx).update(cx, |player, cx| player.set_shuffle(!shuffled, cx))
-        })
+        });
+        let chrome = Chrome {
+            ring: outlined.then_some((0.15, 0.3)),
+            ink: if shuffled {
+                cx.theme().primary
+            } else {
+                style::slate_400(cx)
+            },
+            wash: true,
+            lit: shuffled,
+        };
+        self.ringed("album-shuffle-frame", button, box_size, chrome, window, cx)
     }
 
     /// Download the whole album, or give its offline copies back; disabled while a download runs.
-    fn download_all_button(&self, box_size: Pixels, cx: &Context<Self>) -> Option<AnyElement> {
+    fn download_all_button(
+        &self,
+        box_size: Pixels,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
         if !self.capabilities.downloads {
             return None;
         }
@@ -383,47 +458,46 @@ impl AlbumDetail {
         } else {
             "Download all"
         };
-        let foreground = cx.theme().foreground;
-        let border = style::white(0.2, cx);
-        let border_hover = style::white(0.4, cx);
-        Some(
-            Self::round_button(
-                "album-download-all",
+        let button = Self::round_button(
+            "album-download-all",
+            if stored {
+                icons::TRASH
+            } else {
+                icons::DOWNLOAD
+            },
+            box_size,
+            box_size * 0.33,
+            cx,
+        )
+        .tooltip(label)
+        .disabled(busy)
+        .on_click(move |_, _, cx| {
+            let keys = keys.clone();
+            DownloadsModel::global(cx).update(cx, |downloads, cx| {
                 if stored {
-                    icons::TRASH
+                    for key in keys {
+                        downloads.remove(key, cx);
+                    }
                 } else {
-                    icons::DOWNLOAD
-                },
-                box_size,
-                box_size * 0.33,
-                cx,
-            )
-            .border_1()
-            .border_color(border)
-            .text_color(style::white(0.7, cx))
-            .hover({
-                let hover = style::white(style::HOVER, cx);
-                move |button| {
-                    button
-                        .border_color(border_hover)
-                        .text_color(foreground)
-                        .bg(hover)
+                    downloads.download(keys, cx);
                 }
             })
-            .tooltip(label)
-            .disabled(busy)
-            .on_click(move |_, _, cx| {
-                let keys = keys.clone();
-                DownloadsModel::global(cx).update(cx, |downloads, cx| {
-                    if stored {
-                        for key in keys {
-                            downloads.remove(key, cx);
-                        }
-                    } else {
-                        downloads.download(keys, cx);
-                    }
-                })
-            })
+        });
+        let chrome = Chrome {
+            ring: Some((0.2, 0.4)),
+            ink: style::white(0.7, cx),
+            wash: true,
+            lit: false,
+        };
+        Some(
+            self.ringed(
+                "album-download-all-frame",
+                button,
+                box_size,
+                chrome,
+                window,
+                cx,
+            )
             .into_any_element(),
         )
     }
@@ -433,16 +507,27 @@ impl AlbumDetail {
         album: &AlbumInfo,
         size: Pixels,
         radius: Pixels,
-        cx: &Context<Self>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let editable = self.capabilities.edit_tags;
         let id = album.id.clone();
         let remove_id = album.id.clone();
         let scrim = style::black(0.5, cx);
+        let veil = motion::amount(
+            motion::id(COVER, "scrim"),
+            if self.hovered == Some(COVER) { 1. } else { 0. },
+            motion::FAST,
+            window,
+            cx,
+        );
         div()
+            .id(COVER)
             .relative()
             .flex_shrink_0()
-            .group("album-cover")
+            .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+                this.track_hover(COVER, *hovered, cx)
+            }))
             .child(
                 Cover::new(album.artwork.as_ref())
                     .size(size)
@@ -453,7 +538,7 @@ impl AlbumDetail {
             .when(editable, |block| {
                 block.child(
                     div()
-                        .id("album-cover")
+                        .id("album-cover-pick")
                         .absolute()
                         .inset_0()
                         .flex()
@@ -461,8 +546,7 @@ impl AlbumDetail {
                         .justify_center()
                         .rounded(radius)
                         .bg(scrim)
-                        .invisible()
-                        .group_hover("album-cover", |overlay| overlay.visible())
+                        .opacity(veil)
                         .cursor_pointer()
                         .on_click(move |_, _, cx| ops::pick_album_cover(id.clone(), cx))
                         .child(icons::icon(icons::EDIT).size(px(30.))),
@@ -552,10 +636,11 @@ impl AlbumDetail {
             .into_any_element()
     }
 
-    fn selection_bar(&self, cx: &Context<Self>) -> Option<AnyElement> {
+    fn selection_bar(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         if !self.is_selecting(cx) {
             return None;
         }
+        let fade = motion::enter("album-selection-bar", motion::MEDIUM, window, cx);
         let keys = self.selected_keys(cx);
         let playlists = self.capabilities.playlists != PlaylistCapability::None;
         let deletable = self.capabilities.delete_from_disk;
@@ -578,6 +663,7 @@ impl AlbumDetail {
                 .right_0()
                 .flex()
                 .justify_center()
+                .opacity(fade)
                 .child(
                     h_flex()
                         .gap_4()
@@ -659,7 +745,12 @@ impl AlbumDetail {
         )
     }
 
-    fn standard_detail(&self, album: AlbumInfo, cx: &Context<Self>) -> AnyElement {
+    fn standard_detail(
+        &self,
+        album: AlbumInfo,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let count = t_with(
             "showcase_song_count",
             &[("count", self.rows.len().to_string())],
@@ -683,7 +774,10 @@ impl AlbumDetail {
                     .gap_8()
                     .items_end()
                     .mb_12()
-                    .child(self.cover(&album, HERO_COVER, cx.theme().radius * 3., cx))
+                    .child({
+                        let radius = cx.theme().radius * 3.;
+                        self.cover(&album, HERO_COVER, radius, window, cx)
+                    })
                     .child(
                         v_flex()
                             .flex_1()
@@ -723,31 +817,47 @@ impl AlbumDetail {
                             .flex_shrink_0()
                             .gap_4()
                             .items_center()
-                            .child(self.shuffle_button(HERO_ACTION, false, cx))
+                            .child(self.shuffle_button(HERO_ACTION, false, window, cx))
                             .child(self.play_button(HERO_ACTION, cx))
-                            .child(
-                                Self::round_button(
+                            .child({
+                                let button = Self::round_button(
                                     "album-select-all",
                                     icons::CHECK,
                                     HERO_SECONDARY,
                                     HERO_SECONDARY * 0.33,
                                     cx,
                                 )
-                                .border_1()
-                                .border_color(style::white(0.2, cx))
-                                .text_color(style::white(0.7, cx))
                                 .tooltip(t("select_all"))
-                                .on_click(cx.listener(|this, _, _, cx| this.select_all(cx))),
-                            )
-                            .children(self.download_all_button(HERO_SECONDARY, cx)),
+                                .on_click(cx.listener(|this, _, _, cx| this.select_all(cx)));
+                                let chrome = Chrome {
+                                    ring: Some((0.2, 0.4)),
+                                    ink: style::white(0.7, cx),
+                                    wash: true,
+                                    lit: false,
+                                };
+                                self.ringed(
+                                    "album-select-all-frame",
+                                    button,
+                                    HERO_SECONDARY,
+                                    chrome,
+                                    window,
+                                    cx,
+                                )
+                            })
+                            .children(self.download_all_button(HERO_SECONDARY, window, cx)),
                     ),
             )
             .child(self.tracks_body(cx))
-            .children(self.selection_bar(cx))
+            .children(self.selection_bar(window, cx))
             .into_any_element()
     }
 
-    fn remote_detail(&self, view: RemoteView, cx: &Context<Self>) -> AnyElement {
+    fn remote_detail(
+        &self,
+        view: RemoteView,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let minutes = self.total_ms() / 60_000;
         let count = t_with(
             "showcase_song_count",

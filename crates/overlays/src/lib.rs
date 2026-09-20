@@ -2,6 +2,7 @@
 
 use api::{DownloadItemState, JobKind, JobProgress};
 use gpui_kit::base::StyledExt as _;
+use gpui_kit::base::motion::{Easing, MotionReveal, Presence, Transition};
 use gpui_kit::component::progress::Progress;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
@@ -13,7 +14,7 @@ use gpui_kit::{
 };
 use store::{JobEvent, JobsModel, Link, PlayerModel};
 use widgets::format::t;
-use widgets::{icons, style};
+use widgets::{icons, motion, style};
 
 // TODO(parity): the offline banner needs a connectivity probe this client does not have (§3.1).
 // TODO(parity): the update banner checks GitHub, which is outside the daemon seam (§3.1).
@@ -48,6 +49,8 @@ struct DownloadRow {
 pub struct Overlays {
     rows: Vec<DownloadRow>,
     collapsed: bool,
+    // Which chip the pointer is over, so its colours can tween the way the original's do.
+    hovered: Option<&'static str>,
     // The error the user closed, so the banner stays gone until the daemon reports a different one.
     dismissed_error: Option<String>,
     // The job step the rows describe, so the titles are fetched once per reported step.
@@ -79,6 +82,7 @@ impl Overlays {
         Self {
             rows: Vec::new(),
             collapsed: false,
+            hovered: None,
             dismissed_error: None,
             fetched_step: None,
             _fetch: None,
@@ -145,7 +149,30 @@ impl Overlays {
         Some(message.into())
     }
 
-    fn scan_banner(&self, progress: &JobProgress, cx: &mut Context<Self>) -> AnyElement {
+    /// A tween needs the hover state a `.hover()` refinement keeps to itself.
+    fn hover(
+        chip: &'static str,
+        cx: &mut Context<Self>,
+    ) -> impl Fn(&bool, &mut Window, &mut App) + 'static {
+        cx.listener(move |this: &mut Self, over: &bool, _, cx| {
+            if *over {
+                if this.hovered != Some(chip) {
+                    this.hovered = Some(chip);
+                    cx.notify();
+                }
+            } else if this.hovered == Some(chip) {
+                this.hovered = None;
+                cx.notify();
+            }
+        })
+    }
+
+    fn scan_banner(
+        &self,
+        progress: &JobProgress,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let file = progress
             .message
             .clone()
@@ -161,6 +188,7 @@ impl Overlays {
             .w_full()
             .flex_shrink_0()
             .occlude()
+            .opacity(appear("scan-banner", window, cx))
             .child(
                 Progress::new("scan-progress")
                     .xsmall()
@@ -193,12 +221,29 @@ impl Overlays {
             .into_any_element()
     }
 
-    fn error_banner(&self, message: SharedString, cx: &mut Context<Self>) -> AnyElement {
+    fn error_banner(
+        &self,
+        message: SharedString,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let danger = cx.theme().danger;
+        let dismiss = motion::amount(
+            "dismiss-error-alpha",
+            if self.hovered == Some("dismiss") {
+                1.
+            } else {
+                0.5
+            },
+            motion::FAST,
+            window,
+            cx,
+        );
         h_flex()
             .w_full()
             .flex_shrink_0()
             .occlude()
+            .opacity(appear("error-banner", window, cx))
             .items_center()
             .justify_between()
             .gap_3()
@@ -225,8 +270,8 @@ impl Overlays {
                     .flex_shrink_0()
                     .p_1()
                     .cursor_pointer()
-                    .opacity(0.5)
-                    .hover(|button| button.opacity(1.))
+                    .opacity(dismiss)
+                    .on_hover(Self::hover("dismiss", cx))
                     .tooltip(|window, cx| Tooltip::new(t("close")).build(window, cx))
                     .child(icons::icon(icons::CLOSE).size(SMALL_ICON))
                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -237,7 +282,12 @@ impl Overlays {
             .into_any_element()
     }
 
-    fn download_card(&self, progress: &JobProgress, cx: &mut Context<Self>) -> AnyElement {
+    fn download_card(
+        &self,
+        progress: &JobProgress,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let done = progress.current.unwrap_or(0);
         let total = progress.total.unwrap_or(0).max(done);
         let percent = if total == 0 {
@@ -245,6 +295,7 @@ impl Overlays {
         } else {
             done as f32 / total as f32 * 100.
         };
+        let percent = motion::amount("download-percent", percent, motion::SLOW, window, cx);
         let failed = self
             .rows
             .iter()
@@ -254,12 +305,47 @@ impl Overlays {
         let collapsed = self.collapsed;
 
         let danger = cx.theme().danger;
+        let stopping = self.hovered == Some("stop");
+        let stop_fill = motion::color(
+            "stop-downloads-bg",
+            danger.opacity(if stopping {
+                style::ACTIVE
+            } else {
+                style::HOVER
+            }),
+            window,
+            cx,
+        );
+        let stop_ink = motion::color(
+            "stop-downloads-ink",
+            danger.opacity(if stopping { 1. } else { DANGER_SOFT }),
+            window,
+            cx,
+        );
+        let chevron_ink = motion::color(
+            "collapse-downloads-ink",
+            if self.hovered == Some("collapse") {
+                cx.theme().foreground
+            } else {
+                style::white(CHEVRON_TEXT, cx)
+            },
+            window,
+            cx,
+        );
+        let opened = motion::amount(
+            "download-body",
+            if collapsed { 0. } else { 1. },
+            motion::SLOW,
+            window,
+            cx,
+        );
         v_flex()
             .absolute()
             .bottom_4()
             .right_4()
             .w(CARD_WIDTH)
             .occlude()
+            .opacity(appear("download-card", window, cx))
             .rounded(style::radius_xl())
             .bg(cx.theme().popover)
             .text_color(cx.theme().popover_foreground)
@@ -313,11 +399,9 @@ impl Overlays {
                                     .rounded(style::radius(cx))
                                     .cursor_pointer()
                                     .text_xs()
-                                    .bg(danger.opacity(style::HOVER))
-                                    .text_color(danger.opacity(DANGER_SOFT))
-                                    .hover(|chip| {
-                                        chip.bg(danger.opacity(style::ACTIVE)).text_color(danger)
-                                    })
+                                    .bg(stop_fill)
+                                    .text_color(stop_ink)
+                                    .on_hover(Self::hover("stop", cx))
                                     // TODO(i18n): no key exists for the overlay's Stop button.
                                     .child("Stop")
                                     .on_click(move |_, _, cx| {
@@ -331,8 +415,8 @@ impl Overlays {
                                     .id("collapse-downloads")
                                     .flex()
                                     .cursor_pointer()
-                                    .text_color(style::white(CHEVRON_TEXT, cx))
-                                    .hover(|chevron| chevron.text_color(cx.theme().foreground))
+                                    .text_color(chevron_ink)
+                                    .on_hover(Self::hover("collapse", cx))
                                     .child(
                                         icons::icon(if collapsed {
                                             icons::CHEVRON_DOWN
@@ -348,53 +432,58 @@ impl Overlays {
                             ),
                     ),
             )
-            .when(!collapsed, |card| {
-                card.child(
-                    v_flex()
-                        .w_full()
-                        .gap_3()
-                        .px_4()
-                        .py_3()
-                        .child(
-                            Progress::new("download-progress")
-                                .small()
-                                .value(percent)
-                                .color(cx.theme().primary),
+            .child(MotionReveal::new(
+                "download-body",
+                opened,
+                v_flex()
+                    .w_full()
+                    .gap_3()
+                    .px_4()
+                    .py_3()
+                    .child(
+                        Progress::new("download-progress")
+                            .small()
+                            .value(percent)
+                            .color(cx.theme().primary),
+                    )
+                    .when(failed > 0, |body| {
+                        body.child(
+                            h_flex()
+                                .gap_1p5()
+                                .items_center()
+                                .text_xs()
+                                .text_color(danger)
+                                .child(icons::icon(icons::WARNING).size(SMALL_ICON).flex_shrink_0())
+                                // TODO(i18n): no key exists for the overlay's failed count.
+                                .child(format!("{failed} failed")),
                         )
-                        .when(failed > 0, |body| {
-                            body.child(
-                                h_flex()
-                                    .gap_1p5()
-                                    .items_center()
-                                    .text_xs()
-                                    .text_color(danger)
-                                    .child(
-                                        icons::icon(icons::WARNING)
-                                            .size(SMALL_ICON)
-                                            .flex_shrink_0(),
-                                    )
-                                    // TODO(i18n): no key exists for the overlay's failed count.
-                                    .child(format!("{failed} failed")),
-                            )
-                        })
-                        .when(!self.rows.is_empty(), |body| {
-                            body.child(
-                                v_flex()
-                                    .id("download-rows")
-                                    .w_full()
-                                    .gap_1()
-                                    .pt_2()
-                                    .border_t_1()
-                                    .border_color(style::white(style::BORDER_SOFT, cx))
-                                    .max_h(ROWS_MAX_HEIGHT)
-                                    .overflow_y_scroll()
-                                    .children(self.rows.iter().map(|row| item_row(row, cx))),
-                            )
-                        }),
-                )
-            })
+                    })
+                    .when(!self.rows.is_empty(), |body| {
+                        body.child(
+                            v_flex()
+                                .id("download-rows")
+                                .w_full()
+                                .gap_1()
+                                .pt_2()
+                                .border_t_1()
+                                .border_color(style::white(style::BORDER_SOFT, cx))
+                                .max_h(ROWS_MAX_HEIGHT)
+                                .overflow_y_scroll()
+                                .children(self.rows.iter().map(|row| item_row(row, cx))),
+                        )
+                    })
+                    .into_any_element(),
+            ))
             .into_any_element()
     }
+}
+
+/// An overlay only exists while it has something to say, so its entrance fade starts from nothing.
+fn appear(id: &'static str, window: &mut Window, cx: &mut App) -> f32 {
+    Presence::new(id, true)
+        .transition(Transition::new(motion::MEDIUM).easing(Easing::EaseOut))
+        .sample(window, cx)
+        .progress
 }
 
 fn item_row(row: &DownloadRow, cx: &App) -> AnyElement {
@@ -442,7 +531,7 @@ fn item_row(row: &DownloadRow, cx: &App) -> AnyElement {
 }
 
 impl Render for Overlays {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (scan, download) = {
             let jobs = JobsModel::global(cx);
             let jobs = jobs.read(cx);
@@ -456,9 +545,9 @@ impl Render for Overlays {
             return div().into_any_element();
         }
 
-        let scan = scan.map(|progress| self.scan_banner(&progress, cx));
-        let error = error.map(|message| self.error_banner(message, cx));
-        let card = download.map(|progress| self.download_card(&progress, cx));
+        let scan = scan.map(|progress| self.scan_banner(&progress, window, cx));
+        let error = error.map(|message| self.error_banner(message, window, cx));
+        let card = download.map(|progress| self.download_card(&progress, window, cx));
         v_flex()
             .absolute()
             .inset_0()

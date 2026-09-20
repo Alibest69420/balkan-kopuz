@@ -8,13 +8,13 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Selectable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AppContext as _, Context, DragMoveEvent, Entity, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, Render, StatefulInteractiveElement as _, Styled, Subscription,
-    Window, div, px,
+    AppContext as _, Context, DragMoveEvent, ElementId, Entity, InteractiveElement as _,
+    IntoElement, ParentElement as _, Pixels, Render, StatefulInteractiveElement as _, Styled,
+    Subscription, Window, div, px,
 };
 use store::{Chrome, SidePanel};
 use widgets::format::t;
-use widgets::{icons, style};
+use widgets::{icons, motion, style};
 
 // The Dioxus rightbar's drag bounds, and the width the shell's slot starts at.
 const MIN_WIDTH: Pixels = px(280.);
@@ -28,6 +28,11 @@ const TAB_RADIUS: Pixels = px(6.);
 // `w-9 h-9` with a `text-sm` glyph: the close button.
 const CLOSE_BUTTON: Pixels = px(36.);
 const CLOSE_GLYPH: Pixels = px(14.);
+
+/// One transition channel of an element, so each tweened value keeps a key of its own.
+pub(crate) fn channel(id: impl Into<ElementId>, name: &'static str) -> ElementId {
+    ElementId::NamedChild(std::sync::Arc::new(id.into()), name.into())
+}
 
 /// Carried by the left-edge handle; nothing is dropped, so it paints nothing.
 #[derive(Clone)]
@@ -70,9 +75,30 @@ impl SidePanelView {
         panel: SidePanel,
         key: &str,
         showing: SidePanel,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let active = showing == panel;
+        let wash = motion::color(
+            channel(id, "wash"),
+            if active {
+                style::white(style::ACTIVE, cx)
+            } else {
+                cx.theme().transparent
+            },
+            window,
+            cx,
+        );
+        let label = motion::color(
+            channel(id, "label"),
+            if active {
+                cx.theme().foreground
+            } else {
+                style::white(0.5, cx)
+            },
+            window,
+            cx,
+        );
         Button::new(id)
             .ghost()
             .xsmall()
@@ -83,17 +109,19 @@ impl SidePanelView {
             .rounded(TAB_RADIUS)
             .text_xs()
             .font_medium()
-            .when(active, |tab| {
-                tab.bg(style::white(style::ACTIVE, cx))
-                    .text_color(cx.theme().foreground)
-            })
-            .when(!active, |tab| tab.text_color(style::white(0.5, cx)))
+            .bg(wash)
+            .text_color(label)
             .on_click(cx.listener(move |_, _, _, cx| {
                 Chrome::global(cx).update(cx, |chrome, cx| chrome.set_panel(Some(panel), cx));
             }))
     }
 
-    fn header(&self, showing: SidePanel, cx: &mut Context<Self>) -> impl IntoElement {
+    fn header(
+        &self,
+        showing: SidePanel,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         h_flex()
             .w_full()
             .flex_shrink_0()
@@ -109,8 +137,22 @@ impl SidePanelView {
                     .p_1()
                     .rounded(style::radius_lg())
                     .bg(style::white(style::HOVER, cx))
-                    .child(self.tab("panel-tab-queue", SidePanel::Queue, "up_next", showing, cx))
-                    .child(self.tab("panel-tab-lyrics", SidePanel::Lyrics, "lyrics", showing, cx)),
+                    .child(self.tab(
+                        "panel-tab-queue",
+                        SidePanel::Queue,
+                        "up_next",
+                        showing,
+                        window,
+                        cx,
+                    ))
+                    .child(self.tab(
+                        "panel-tab-lyrics",
+                        SidePanel::Lyrics,
+                        "lyrics",
+                        showing,
+                        window,
+                        cx,
+                    )),
             )
             .child(
                 Button::new("panel-close")
@@ -157,7 +199,7 @@ impl SidePanelView {
 }
 
 impl Render for SidePanelView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // The devices panel is the player bar's; this one only ever shows the queue or the lyrics.
         let showing = match Chrome::global(cx).read(cx).panel() {
             Some(panel @ (SidePanel::Queue | SidePanel::Lyrics)) => panel,
@@ -172,7 +214,7 @@ impl Render for SidePanelView {
             .bg(style::black(SCRIM, cx))
             .border_l_1()
             .border_color(style::white(style::BORDER_SOFT, cx))
-            .child(self.header(showing, cx))
+            .child(self.header(showing, window, cx))
             .child(div().flex_1().min_h_0().w_full().map(|body| match showing {
                 SidePanel::Lyrics => body.child(self.lyrics.clone()),
                 _ => body.child(self.queue.clone()),

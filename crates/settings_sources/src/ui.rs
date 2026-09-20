@@ -4,11 +4,12 @@ use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as
 use gpui_kit::component::clipboard::Clipboard;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::{
-    App, ClickEvent, Div, ElementId, FontWeight, IntoElement, ParentElement as _, SharedString,
-    Styled, Window, div, px,
+    App, ClickEvent, Div, ElementId, Entity, FontWeight, InteractiveElement as _, IntoElement,
+    ParentElement as _, SharedString, Stateful, StatefulInteractiveElement as _, Styled, Window,
+    div, px,
 };
 use widgets::format::t;
-use widgets::{icons, style};
+use widgets::{icons, motion, style};
 
 pub use crate::row::section;
 
@@ -57,6 +58,42 @@ pub fn row(cx: &App) -> Div {
         .p_3()
         .rounded(style::radius(cx))
         .bg(style::white(style::RAISED, cx))
+}
+
+/// `bg-white/8` over `bg-white/5`, the card a source's own row lifts to under the pointer.
+const ROW_HOVER: f32 = 0.08;
+
+/// The same card keyed to a source, so its surface tweens instead of cutting.
+pub fn hover_row(key: &str, window: &mut Window, cx: &mut App) -> Stateful<Div> {
+    let id = ElementId::Name(SharedString::from(format!("source-row-{key}")));
+    let hovered: Entity<bool> = window.use_keyed_state(id.clone(), cx, |_, _| false);
+    let lift = if *hovered.read(cx) {
+        ROW_HOVER
+    } else {
+        style::RAISED
+    };
+    let surface = motion::color(
+        ElementId::Name(SharedString::from(format!("source-row-bg-{key}"))),
+        style::white(lift, cx),
+        window,
+        cx,
+    );
+    v_flex()
+        .id(id)
+        .w_full()
+        .gap_2()
+        .p_3()
+        .rounded(style::radius(cx))
+        .bg(surface)
+        .on_hover(move |over, _, cx| {
+            let over = *over;
+            hovered.update(cx, |held, cx| {
+                if *held != over {
+                    *held = over;
+                    cx.notify();
+                }
+            });
+        })
 }
 
 /// `text-sm font-medium text-white`: the name of whatever the card is about.

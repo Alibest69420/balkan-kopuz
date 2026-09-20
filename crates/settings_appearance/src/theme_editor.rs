@@ -11,12 +11,13 @@ use gpui_kit::component::{
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AppContext as _, Context, Div, Entity, FontWeight, Hsla, InteractiveElement as _, IntoElement,
-    ParentElement as _, Render, SharedString, Styled, Subscription, Window, div, rems,
+    App, AppContext as _, Context, Div, ElementId, Entity, FontWeight, Hsla,
+    InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled,
+    Subscription, Window, div, rems,
 };
 use store::ConfigModel;
 use widgets::format::t;
-use widgets::{icons, style};
+use widgets::{icons, motion, style};
 
 /// `text-white/70`, what a color's name reads in.
 const LABEL: f32 = 0.70;
@@ -298,14 +299,38 @@ impl ThemeEditor {
             .unwrap_or(fallback)
     }
 
-    fn preview(&self, cx: &Context<Self>) -> impl IntoElement {
+    /// Loading a saved theme swaps thirteen colors at once; the swatches cross-fade rather than cut.
+    fn swatch(&self, key: &'static str, fallback: Hsla, window: &mut Window, cx: &mut App) -> Hsla {
+        let target = self.color(key, fallback);
+        motion::color_over(
+            (ElementId::from("swatch"), key),
+            target,
+            motion::MEDIUM,
+            window,
+            cx,
+        )
+    }
+
+    fn preview(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let theme = cx.theme();
-        let bg = self.color("bg", theme.background);
-        let raised = self.color("raised", theme.muted);
-        let surface = self.color("surface", theme.border);
-        let text = self.color("text", theme.foreground);
-        let muted = self.color("text-muted", theme.muted_foreground);
-        let progress = self.color("progress", theme.primary);
+        let (background, muted, border, foreground, muted_foreground, primary, danger) = (
+            theme.background,
+            theme.muted,
+            theme.border,
+            theme.foreground,
+            theme.muted_foreground,
+            theme.primary,
+            theme.danger,
+        );
+        let bg = self.swatch("bg", background, window, cx);
+        let raised = self.swatch("raised", muted, window, cx);
+        let surface = self.swatch("surface", border, window, cx);
+        let text = self.swatch("text", foreground, window, cx);
+        let muted = self.swatch("text-muted", muted_foreground, window, cx);
+        let progress = self.swatch("progress", primary, window, cx);
+        let accent = self.swatch("accent", primary, window, cx);
+        let highlight = self.swatch("highlight", primary, window, cx);
+        let danger = self.swatch("danger", danger, window, cx);
         let chip = |key: &'static str, label: SharedString, color: Hsla| {
             div()
                 .px_2()
@@ -354,21 +379,9 @@ impl ThemeEditor {
                 h_flex()
                     .gap_2()
                     .mt_1()
-                    .child(chip(
-                        "preview-accent",
-                        t("accent"),
-                        self.color("accent", theme.primary),
-                    ))
-                    .child(chip(
-                        "preview-highlight",
-                        t("highlight"),
-                        self.color("highlight", theme.primary),
-                    ))
-                    .child(chip(
-                        "preview-danger",
-                        t("danger"),
-                        self.color("danger", theme.danger),
-                    )),
+                    .child(chip("preview-accent", t("accent"), accent))
+                    .child(chip("preview-highlight", t("highlight"), highlight))
+                    .child(chip("preview-danger", t("danger"), danger)),
             )
     }
 
@@ -413,7 +426,8 @@ impl ThemeEditor {
 }
 
 impl Render for ThemeEditor {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let preview = self.preview(window, cx);
         let saved = self.saved_themes(cx);
         let selected = self.selected.clone();
         let transparent = cx.theme().transparent;
@@ -496,7 +510,7 @@ impl Render for ThemeEditor {
                                 .child(v_flex().flex_1().min_w_0().gap_3().children(columns(1))),
                         ),
                     )
-                    .child(self.block(t("preview"), cx).child(self.preview(cx)))
+                    .child(self.block(t("preview"), cx).child(preview))
                     .child(
                         h_flex()
                             .gap_3()

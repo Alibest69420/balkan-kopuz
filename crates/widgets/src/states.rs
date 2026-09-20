@@ -7,6 +7,7 @@ use gpui_kit::{
 };
 
 use crate::icons;
+use crate::motion;
 use crate::style;
 
 /// What a page shows instead of rows: nothing found, nothing configured, nothing yet.
@@ -38,13 +39,15 @@ impl EmptyState {
 }
 
 impl RenderOnce for EmptyState {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let fade = motion::enter(motion::id("empty", &self.title), motion::MEDIUM, window, cx);
         v_flex()
             .size_full()
             .items_center()
             .justify_center()
             .gap_1()
             .px_6()
+            .opacity(fade)
             .text_center()
             .text_color(style::white(style::TEXT_SUBTLE, cx))
             .child(
@@ -71,12 +74,14 @@ impl RenderOnce for EmptyState {
 pub struct Loading;
 
 impl RenderOnce for Loading {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let fade = motion::enter("loading", motion::MEDIUM, window, cx);
         v_flex()
             .size_full()
             .items_center()
             .justify_center()
             .py_12()
+            .opacity(fade)
             .child(
                 Spinner::new()
                     .large()

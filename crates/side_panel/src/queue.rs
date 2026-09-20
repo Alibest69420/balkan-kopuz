@@ -12,7 +12,9 @@ use gpui_kit::{
 };
 use store::{ConfigModel, PlayerModel, QueueModel};
 use widgets::format::{duration, t};
-use widgets::{Cover, EmptyState, TrackDrag, icons, style};
+use widgets::{Cover, EmptyState, TrackDrag, icons, motion, style};
+
+use crate::channel;
 
 // Virtualized rows need one resolved height; this is the Dioxus rightbar's.
 const ROW_HEIGHT: Pixels = px(60.);
@@ -145,7 +147,7 @@ impl QueuePanel {
         cx.notify();
     }
 
-    fn row(&self, index: usize, cx: &mut Context<Self>) -> AnyElement {
+    fn row(&self, index: usize, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let model = QueueModel::global(cx);
         let queue = model.read(cx);
         let Some(track) = queue.items().get(index) else {
@@ -156,8 +158,29 @@ impl QueuePanel {
         let title = SharedString::from(track.title.clone());
         let artist = SharedString::from(track.artist.clone());
         let artwork = track.artwork.clone();
+        // The row's own uid, so the wash follows the track rather than the slot it sits in.
+        let uid = SharedString::from(track.uid.clone());
         let covers = ConfigModel::global(cx).read(cx).config().show_row_images;
         let at = index as u32;
+        let raised = style::white(style::RAISED, cx);
+        let wash_target = if active {
+            style::accent(style::PLAYING, cx)
+        } else {
+            cx.theme().transparent
+        };
+        let lit_target = if active {
+            cx.theme().primary
+        } else {
+            cx.theme().foreground
+        };
+        let lead_target = if active {
+            cx.theme().primary
+        } else {
+            style::white(style::TEXT_SECONDARY, cx)
+        };
+        let wash = motion::color(channel(uid.clone(), "wash"), wash_target, window, cx);
+        let lit = motion::color(channel(uid.clone(), "title"), lit_target, window, cx);
+        let lead = motion::color(channel(uid, "lead"), lead_target, window, cx);
 
         div()
             .id(("queue-row", index))
@@ -170,8 +193,8 @@ impl QueuePanel {
             .gap_3()
             .px_2()
             .rounded(style::radius_lg())
-            .when(active, |row| row.bg(style::accent(style::PLAYING, cx)))
-            .hover(|row| row.bg(style::white(style::RAISED, cx)))
+            .bg(wash)
+            .hover(move |row| row.bg(raised))
             .on_click(move |_, _, cx| {
                 QueueModel::global(cx).update(cx, |queue, cx| queue.jump(at, cx));
             })
@@ -193,11 +216,7 @@ impl QueuePanel {
                     .justify_center()
                     .items_end()
                     .text_xs()
-                    .text_color(if active {
-                        cx.theme().primary
-                    } else {
-                        style::white(style::TEXT_SECONDARY, cx)
-                    })
+                    .text_color(lead)
                     .map(|lead| {
                         if active {
                             lead.child(icons::icon(icons::VOLUME).size(LEAD_GLYPH))
@@ -219,17 +238,7 @@ impl QueuePanel {
                     .min_w_0()
                     .justify_center()
                     .gap_0p5()
-                    .child(
-                        div()
-                            .truncate()
-                            .text_sm()
-                            .text_color(if active {
-                                cx.theme().primary
-                            } else {
-                                cx.theme().foreground
-                            })
-                            .child(title),
-                    )
+                    .child(div().truncate().text_sm().text_color(lit).child(title))
                     .child(
                         div()
                             .truncate()
@@ -330,8 +339,8 @@ impl Render for QueuePanel {
                 uniform_list(
                     "queue-list",
                     count,
-                    cx.processor(move |this, range: std::ops::Range<usize>, _, cx| {
-                        range.map(|index| this.row(index, cx)).collect()
+                    cx.processor(move |this, range: std::ops::Range<usize>, window, cx| {
+                        range.map(|index| this.row(index, window, cx)).collect()
                     }),
                 )
                 .track_scroll(&self.scroll)

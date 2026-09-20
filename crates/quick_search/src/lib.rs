@@ -3,17 +3,18 @@
 use std::time::Duration;
 
 use api::{TrackFilter, TrackInfo, TrackSort};
+use gpui_kit::base::motion::{Easing, Presence, Transition};
 use gpui_kit::component::input::{Input, InputEvent, InputState, MoveDown, MoveUp};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AppContext as _, Context, Entity, FocusHandle, InteractiveElement as _, IntoElement,
+    AppContext as _, Context, ElementId, Entity, FocusHandle, InteractiveElement as _, IntoElement,
     ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _, Styled,
     Subscription, Task, Window, div, px,
 };
 use store::{Chrome, ConfigModel, Link};
 use widgets::format::{duration, t, t_with};
-use widgets::{Cover, icons, style};
+use widgets::{Cover, icons, motion, style};
 
 const SHOWN_RESULTS: usize = 8;
 const DEBOUNCE: Duration = Duration::from_millis(150);
@@ -207,17 +208,33 @@ impl QuickSearch {
         }));
     }
 
-    fn row(&self, index: usize, track: &TrackInfo, cx: &mut Context<Self>) -> impl IntoElement {
+    fn row(
+        &self,
+        index: usize,
+        track: &TrackInfo,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let covers = ConfigModel::global(cx).read(cx).config().show_row_images;
         let selected = index == self.selected.min(self.shown().saturating_sub(1));
+        // Hovering a row selects it, so the selection tween carries the hover too.
+        let surface = motion::color(
+            ElementId::from((ElementId::from("quick-search-row"), track.uid.clone())),
+            if selected {
+                style::white(style::HOVER, cx)
+            } else {
+                style::white(0., cx)
+            },
+            window,
+            cx,
+        );
         h_flex()
             .id(SharedString::from(format!("quick-search-{}", track.uid)))
             .gap_3()
             .px_4()
             .py_2()
             .cursor_pointer()
-            .when(selected, |row| row.bg(style::white(style::HOVER, cx)))
-            .hover(|row| row.bg(style::white(style::RAISED, cx)))
+            .bg(surface)
             .when(covers, |row| {
                 row.child(Cover::new(track.artwork.as_ref()).size(ROW_COVER))
             })
@@ -262,14 +279,19 @@ fn keys(tracks: &[TrackInfo]) -> Vec<String> {
 }
 
 impl Render for QuickSearch {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let shown: Vec<TrackInfo> = self.results.iter().take(SHOWN_RESULTS).cloned().collect();
         let empty = shown.is_empty() && self.settled && !self.query.is_empty();
         let rows: Vec<_> = shown
             .iter()
             .enumerate()
-            .map(|(index, track)| self.row(index, track, cx).into_any_element())
+            .map(|(index, track)| self.row(index, track, window, cx).into_any_element())
             .collect();
+        // The palette is only in the tree while it is open, so its entrance starts from nothing.
+        let revealed = Presence::new("quick-search", true)
+            .transition(Transition::new(motion::FAST).easing(Easing::EaseOut))
+            .sample(window, cx)
+            .progress;
         div()
             .id("quick-search-backdrop")
             .absolute()
@@ -278,6 +300,7 @@ impl Render for QuickSearch {
             .justify_center()
             .px_4()
             .pt_32()
+            .opacity(revealed)
             .bg(style::black(SCRIM, cx))
             .capture_action(cx.listener(|this, _: &MoveUp, _, cx| {
                 this.move_selection(false, cx);

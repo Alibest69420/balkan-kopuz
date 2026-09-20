@@ -7,16 +7,42 @@ use config::{
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{Selectable as _, Sizable as _, h_flex};
-use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::{App, Div, IntoElement, ParentElement as _, Pixels, SharedString, Styled as _, px};
+use gpui_kit::{
+    App, Div, ElementId, Entity, IntoElement, ParentElement as _, Pixels, SharedString,
+    Styled as _, Window, px,
+};
 use store::ConfigModel;
 use widgets::format::t;
-use widgets::{icons, style};
+use widgets::{icons, motion, style};
 
 /// `text-white/40`: the resting label of a segmented pill's unselected half.
 const SEGMENT_IDLE: f32 = 0.40;
 /// `rounded-md`, which the shared radius helpers do not carry.
 const SEGMENT_RADIUS: Pixels = px(6.);
+
+/// Hover as a value a tween can read; `.hover()` refines a style instead of reporting the state.
+pub(crate) fn hovered(
+    id: impl Into<ElementId>,
+    window: &mut Window,
+    cx: &mut App,
+) -> (bool, Entity<bool>) {
+    let state = window.use_keyed_state(id, cx, |_, _| false);
+    let hovered = *state.read(cx);
+    (hovered, state)
+}
+
+/// The `on_hover` listener that keeps a [`hovered`] flag in step with the pointer.
+pub(crate) fn track(state: Entity<bool>) -> impl Fn(&bool, &mut Window, &mut App) + 'static {
+    move |hovered, _, cx| {
+        let hovered = *hovered;
+        state.update(cx, |flag, cx| {
+            if *flag != hovered {
+                *flag = hovered;
+                cx.notify();
+            }
+        });
+    }
+}
 
 /// Which config key a view-mode toggle writes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,7 +139,21 @@ fn pill(cx: &App) -> Div {
 }
 
 /// One half of a pill: `h-7 px-3 text-xs rounded-md`, dim until it is the chosen one.
-fn segment(id: &'static str, selected: bool, cx: &App) -> Button {
+///
+/// `transition-all`: the fill and the label tween as the selection moves between the halves.
+fn segment(id: &'static str, selected: bool, window: &mut Window, cx: &mut App) -> Button {
+    let fill = motion::color(
+        SharedString::from(format!("{id}-fill")),
+        style::white(if selected { style::HOVER } else { 0. }, cx),
+        window,
+        cx,
+    );
+    let label = motion::color(
+        SharedString::from(format!("{id}-label")),
+        style::white(if selected { 1. } else { SEGMENT_IDLE }, cx),
+        window,
+        cx,
+    );
     Button::new(id)
         .ghost()
         .xsmall()
@@ -121,17 +161,16 @@ fn segment(id: &'static str, selected: bool, cx: &App) -> Button {
         .px_3()
         .rounded(SEGMENT_RADIUS)
         .selected(selected)
-        .when(!selected, |button| {
-            button.text_color(style::white(SEGMENT_IDLE, cx))
-        })
+        .bg(fill)
+        .text_color(label)
 }
 
 /// Grid ⇄ list, writing `key`'s config field.
-pub fn view_mode_toggle(key: ViewModeKey, cx: &App) -> impl IntoElement {
+pub fn view_mode_toggle(key: ViewModeKey, window: &mut Window, cx: &mut App) -> impl IntoElement {
     let mode = key.read(&config(cx));
     pill(cx)
         .child(
-            segment("view-grid", mode == AlbumViewMode::Grid, cx)
+            segment("view-grid", mode == AlbumViewMode::Grid, window, cx)
                 .icon(icons::icon(icons::GRID))
                 .tooltip(t("view_grid"))
                 .on_click(move |_, _, cx| {
@@ -139,7 +178,7 @@ pub fn view_mode_toggle(key: ViewModeKey, cx: &App) -> impl IntoElement {
                 }),
         )
         .child(
-            segment("view-list", mode == AlbumViewMode::List, cx)
+            segment("view-list", mode == AlbumViewMode::List, window, cx)
                 .icon(icons::icon(icons::ROWS))
                 .tooltip(t("view_list"))
                 .on_click(move |_, _, cx| {
@@ -212,11 +251,15 @@ fn promote<F: SortTarget>(field: F, cx: &mut App) {
 }
 
 /// Tracks ⇄ Albums for one artist, writing `cfg.artist_view_order`.
-pub fn view_order_toggle(order: &ArtistViewOrder, cx: &App) -> impl IntoElement {
+pub fn view_order_toggle(
+    order: &ArtistViewOrder,
+    window: &mut Window,
+    cx: &mut App,
+) -> impl IntoElement {
     let tracks = *order == ArtistViewOrder::Tracks;
     pill(cx)
         .child(
-            segment("order-tracks", tracks, cx)
+            segment("order-tracks", tracks, window, cx)
                 .label(t("tracks"))
                 .on_click(|_, _, cx| {
                     edit(cx, |config| {
@@ -225,7 +268,7 @@ pub fn view_order_toggle(order: &ArtistViewOrder, cx: &App) -> impl IntoElement 
                 }),
         )
         .child(
-            segment("order-albums", !tracks, cx)
+            segment("order-albums", !tracks, window, cx)
                 .label(t("albums"))
                 .on_click(|_, _, cx| {
                     edit(cx, |config| {

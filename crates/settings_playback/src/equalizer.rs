@@ -6,13 +6,13 @@ use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, h_flex, v_flex};
 use gpui_kit::{
-    App, AppContext as _, Context, Div, Entity, IntoElement, ParentElement as _, Render,
+    App, AppContext as _, Context, Div, ElementId, Entity, IntoElement, ParentElement as _, Render,
     SharedString, Styled, Subscription, Window, div, rems,
 };
 use link::Link;
 use store::ConfigModel;
 use widgets::format::t;
-use widgets::style;
+use widgets::{motion, style};
 
 use crate::row::Toggle;
 use crate::{set_slider, write_config};
@@ -93,21 +93,60 @@ impl Equalizer {
     fn sync(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let settings = current(cx);
         set_slider(&self.preamp, settings.preamp_db, window, cx);
-        for (band, gain) in self.bands.iter().zip(settings.resolved_bands()) {
-            set_slider(band, gain, window, cx);
+        // A preset's ten bands are swept by `render` instead, so they are left alone here.
+        if settings.preset == EqPreset::Custom {
+            for (band, gain) in self.bands.iter().zip(settings.resolved_bands()) {
+                set_slider(band, gain, window, cx);
+            }
         }
         cx.notify();
+    }
+
+    /// The ten sliders a preset switch moves at once, each on its own tween so they read as a sweep.
+    /// The channel is sampled even when a drag owns the curve, so the next sweep starts where it is.
+    fn sweep(
+        &self,
+        gains: &[f32],
+        sweeping: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Vec<f32> {
+        let mut shown = Vec::with_capacity(self.bands.len());
+        for (index, band) in self.bands.iter().enumerate() {
+            let Some(gain) = gains.get(index).copied() else {
+                continue;
+            };
+            let value = motion::amount(
+                (ElementId::from("eq-band"), BAND_LABELS[index]),
+                gain,
+                motion::SLOW,
+                window,
+                cx,
+            );
+            if sweeping {
+                set_slider(band, value, window, cx);
+                shown.push(value);
+            } else {
+                shown.push(gain);
+            }
+        }
+        shown
     }
 }
 
 impl Render for Equalizer {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let model = ConfigModel::global(cx);
         let locked = model.read(cx).is_locked(CONFIG_KEY);
         let settings = current(cx);
         let enabled = settings.enabled;
         let preset = settings.preset;
-        let gains = settings.resolved_bands();
+        let gains = self.sweep(
+            &settings.resolved_bands(),
+            preset != EqPreset::Custom,
+            window,
+            cx,
+        );
         let muted = cx.theme().muted_foreground;
         let readout = style::white(crate::READOUT, cx);
 
@@ -273,7 +312,6 @@ fn set_band(index: usize, gain: f32, cx: &mut App) {
     apply(settings, cx);
 }
 
-// TODO(animation): the Dioxus panel interpolated the bands between presets over ten frames.
 fn set_preset(preset: EqPreset, cx: &mut App) {
     let mut settings = current(cx);
     settings.preset = preset;

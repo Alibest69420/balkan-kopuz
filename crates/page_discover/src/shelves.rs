@@ -7,19 +7,24 @@ use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
+    AnyElement, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
     ParentElement as _, Pixels, Render, ScrollHandle, SharedString,
     StatefulInteractiveElement as _, Styled, Subscription, Task, Window, div, point, px,
 };
 use store::{Link, Navigator, Notices, PlayerModel, Route, SourcesModel, actions};
 use widgets::format::{t, t_with};
-use widgets::{Tile, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons, style};
+use widgets::{
+    Tile, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons, motion, style,
+};
 
 const TILE: Pixels = px(176.);
 // One ‹ or › press, matching the Dioxus frontend's 800 px nudge.
 const STEP: Pixels = px(800.);
 // The shared track list's row height, which a list shelf has to reserve up front.
 const ROW: Pixels = px(60.);
+// `w-8 h-8` on a carousel arrow, and its `hover:scale-105`.
+const NUDGE: Pixels = px(32.);
+const NUDGE_HOVER: Pixels = px(33.6);
 
 /// What a failure says; a source nobody signed into is the one case worth wording ourselves.
 pub(crate) fn failure_text(error: &ApiError) -> SharedString {
@@ -41,6 +46,9 @@ pub struct Shelves {
     // The catalog id or track key whose tile owns the pause overlay.
     now_playing: Option<String>,
     pending: Option<String>,
+    // The tile and the carousel arrow under the pointer, which their tweens react to.
+    hovered_tile: Option<SharedString>,
+    hovered_nudge: Option<SharedString>,
     _play: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
@@ -52,9 +60,29 @@ impl Shelves {
             views: Vec::new(),
             now_playing: None,
             pending: None,
+            hovered_tile: None,
+            hovered_nudge: None,
             _play: None,
             _subscriptions: vec![cx.observe(&player, |_, _, cx| cx.notify())],
         }
+    }
+
+    fn set_tile_hover(&mut self, id: SharedString, hovered: bool, cx: &mut Context<Self>) {
+        if hovered {
+            self.hovered_tile = Some(id);
+        } else if self.hovered_tile.as_ref() == Some(&id) {
+            self.hovered_tile = None;
+        }
+        cx.notify();
+    }
+
+    fn set_nudge_hover(&mut self, id: SharedString, hovered: bool, cx: &mut Context<Self>) {
+        if hovered {
+            self.hovered_nudge = Some(id);
+        } else if self.hovered_nudge.as_ref() == Some(&id) {
+            self.hovered_nudge = None;
+        }
+        cx.notify();
     }
 
     pub fn is_empty(&self) -> bool {
@@ -201,22 +229,32 @@ impl Shelves {
         self.play(kind, id, cx);
     }
 
-    fn section(&self, index: usize, cx: &mut Context<Self>) -> AnyElement {
+    fn section(&self, index: usize, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let view = &self.views[index];
         match &view.list {
             Some(list) => self.list_section(index, list.clone(), cx),
-            None => self.carousel_section(index, cx),
+            None => self.carousel_section(index, window, cx),
         }
     }
 
-    fn carousel_section(&self, index: usize, cx: &mut Context<Self>) -> AnyElement {
+    fn carousel_section(
+        &self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let view = &self.views[index];
         let tiles: Vec<AnyElement> = view
             .shelf
             .items
             .iter()
-            .map(|item| self.tile(index, item, cx))
+            .map(|item| self.tile(index, item, window, cx))
             .collect();
+        let arrows = h_flex()
+            .flex_shrink_0()
+            .gap_2()
+            .child(self.nudge(index, -STEP, window, cx))
+            .child(self.nudge(index, STEP, window, cx));
         v_flex()
             .w_full()
             .gap_5()
@@ -247,13 +285,7 @@ impl Shelves {
                                     .child(view.shelf.title.clone()),
                             ),
                     )
-                    .child(
-                        h_flex()
-                            .flex_shrink_0()
-                            .gap_2()
-                            .child(nudge(index, -STEP, &view.scroll, cx))
-                            .child(nudge(index, STEP, &view.scroll, cx)),
-                    ),
+                    .child(arrows),
             )
             .child(
                 h_flex()
@@ -323,11 +355,17 @@ impl Shelves {
             .into_any_element()
     }
 
-    fn tile(&self, shelf: usize, item: &CatalogItem, cx: &mut Context<Self>) -> AnyElement {
+    fn tile(
+        &self,
+        shelf: usize,
+        item: &CatalogItem,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         match item.kind {
-            CatalogItemKind::Track => self.song_tile(shelf, item, cx),
+            CatalogItemKind::Track => self.song_tile(shelf, item, window, cx),
             CatalogItemKind::Album | CatalogItemKind::Playlist => {
-                self.playable_tile(shelf, item, cx)
+                self.playable_tile(shelf, item, window, cx)
             }
             CatalogItemKind::Artist => self.artist_tile(shelf, item),
             CatalogItemKind::Mood | CatalogItemKind::Unknown => self.inert_tile(shelf, item),
@@ -338,6 +376,7 @@ impl Shelves {
         &self,
         shelf: usize,
         item: &CatalogItem,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let id = item.id.clone();
@@ -350,10 +389,15 @@ impl Shelves {
                 title: item.title.clone().into(),
             }
         };
-        let overlay = self.play_overlay(shelf, item, kind, cx);
+        let hover_id = SharedString::from(format!("tile-hover-{shelf}-{id}"));
+        let hovered = self.hovered_tile.as_ref() == Some(&hover_id);
+        let overlay = self.play_overlay(shelf, item, kind, hovered, window, cx);
         div()
-            .group(GROUP)
+            .id(hover_id.clone())
             .flex_shrink_0()
+            .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
+                this.set_tile_hover(hover_id.clone(), *hovered, cx)
+            }))
             .child(
                 Tile::new(element_id(shelf, &id), item.title.clone())
                     .subtitle(item.subtitle.clone().unwrap_or_default())
@@ -398,17 +442,30 @@ impl Shelves {
             .into_any_element()
     }
 
-    fn song_tile(&self, shelf: usize, item: &CatalogItem, cx: &mut Context<Self>) -> AnyElement {
+    fn song_tile(
+        &self,
+        shelf: usize,
+        item: &CatalogItem,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let Some(track) = item.track.as_ref() else {
             return div().into_any_element();
         };
         let key = track.key.clone();
         let radio = SourcesModel::global(cx).read(cx).capabilities().track_radio;
-        let overlay = self.song_overlay(&key, cx);
+        let hover_id = SharedString::from(format!("song-{shelf}-{key}"));
+        let hovered = self.hovered_tile.as_ref() == Some(&hover_id);
+        let overlay = self.song_overlay(&key, hovered, window, cx);
         div()
-            .id(SharedString::from(format!("song-{shelf}-{key}")))
-            .group(GROUP)
+            .id(hover_id.clone())
             .flex_shrink_0()
+            .on_hover(cx.listener({
+                let hover_id = hover_id.clone();
+                move |this, hovered: &bool, _, cx| {
+                    this.set_tile_hover(hover_id.clone(), *hovered, cx)
+                }
+            }))
             .on_click(cx.listener(move |this, _, _, cx| {
                 if this.now_playing.as_deref() == Some(key.as_str()) {
                     PlayerModel::global(cx).update(cx, |player, cx| player.toggle(cx));
@@ -437,6 +494,8 @@ impl Shelves {
         shelf: usize,
         item: &CatalogItem,
         kind: CatalogItemKind,
+        hovered: bool,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let id = item.id.clone();
@@ -446,12 +505,19 @@ impl Shelves {
         } else {
             icons::PLAY
         };
+        // `group-hover:opacity-100 transition-all duration-300`, less the lift GPUI cannot translate.
+        let reveal = motion::amount(
+            SharedString::from(format!("tile-reveal-{shelf}-{id}")),
+            if hovered { 1. } else { 0. },
+            motion::SLOW,
+            window,
+            cx,
+        );
         div()
             .absolute()
             .right_3()
             .bottom_3()
-            .opacity(0.)
-            .group_hover(GROUP, |style| style.opacity(1.))
+            .opacity(reveal)
             .child(
                 // `bg-white text-black`: the one control in the app that inverts the theme.
                 Button::new(SharedString::from(format!("play-{shelf}-{id}")))
@@ -475,12 +541,25 @@ impl Shelves {
             .into_any_element()
     }
 
-    fn song_overlay(&self, key: &str, cx: &mut Context<Self>) -> AnyElement {
+    fn song_overlay(
+        &self,
+        key: &str,
+        hovered: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let icon = if self.shows_pause(key, cx) {
             icons::PAUSE
         } else {
             icons::PLAY
         };
+        let reveal = motion::amount(
+            SharedString::from(format!("song-reveal-{key}")),
+            if hovered { 1. } else { 0. },
+            motion::MEDIUM,
+            window,
+            cx,
+        );
         div()
             .absolute()
             .size_full()
@@ -490,8 +569,7 @@ impl Shelves {
             .rounded(style::radius_xl())
             .bg(style::black(0.4, cx))
             .text_color(cx.theme().foreground)
-            .opacity(0.)
-            .group_hover(GROUP, |style| style.opacity(1.))
+            .opacity(reveal)
             .child(icons::icon(icon).size(px(24.)))
             .into_any_element()
     }
@@ -504,45 +582,72 @@ impl Shelves {
 }
 
 impl Render for Shelves {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mut sections = Vec::with_capacity(self.views.len());
         for index in 0..self.views.len() {
-            sections.push(self.section(index, cx));
+            sections.push(self.section(index, window, cx));
         }
         v_flex().w_full().gap_12().children(sections)
     }
 }
-
-// One hover group for every tile; tiles never nest, so the nearest one is always the cursor's.
-const GROUP: &str = "discover-tile";
 
 /// A catalog id is unique only inside its shelf, and shelves only ever append.
 fn element_id(shelf: usize, id: &str) -> SharedString {
     SharedString::from(format!("{shelf}-{id}"))
 }
 
-fn nudge(shelf: usize, delta: Pixels, scroll: &ScrollHandle, cx: &App) -> Button {
-    let icon = if delta < px(0.) {
-        icons::CHEVRON_LEFT
-    } else {
-        icons::CHEVRON_RIGHT
-    };
-    let scroll = scroll.clone();
-    Button::new((if delta < px(0.) { "left" } else { "right" }, shelf))
-        .custom(
-            ButtonCustomVariant::new(cx)
-                .color(style::white(style::RAISED, cx))
-                .foreground(cx.theme().foreground)
-                .hover(style::white(style::HOVER, cx))
-                .active(style::white(style::HOVER, cx)),
-        )
-        .rounded(px(999.))
-        .with_size(px(32.))
-        .icon(icons::icon(icon).xsmall())
-        .on_click(move |_, window, _| {
-            let offset = scroll.offset();
-            let max = scroll.max_offset().x.max(px(0.));
-            scroll.set_offset(point((offset.x + delta).clamp(-max, px(0.)), offset.y));
-            window.refresh();
-        })
+impl Shelves {
+    /// `bg-white/5 hover:bg-white/10 transition-all hover:scale-105`, the scale read as a grown box.
+    fn nudge(
+        &self,
+        shelf: usize,
+        delta: Pixels,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Button {
+        let back = delta < px(0.);
+        let icon = if back {
+            icons::CHEVRON_LEFT
+        } else {
+            icons::CHEVRON_RIGHT
+        };
+        let side = if back { "back" } else { "forward" };
+        let title = &self.views[shelf].shelf.title;
+        let id = SharedString::from(format!("nudge-{title}-{side}"));
+        let hovered = self.hovered_nudge.as_ref() == Some(&id);
+        let target = if hovered {
+            style::white(style::HOVER, cx)
+        } else {
+            style::white(style::RAISED, cx)
+        };
+        let background = motion::color(id.clone(), target, window, cx);
+        let size = motion::length(
+            SharedString::from(format!("{id}-size")),
+            if hovered { NUDGE_HOVER } else { NUDGE },
+            motion::FAST,
+            window,
+            cx,
+        );
+        let scroll = self.views[shelf].scroll.clone();
+        Button::new((if back { "left" } else { "right" }, shelf))
+            .custom(
+                ButtonCustomVariant::new(cx)
+                    .color(background)
+                    .foreground(cx.theme().foreground)
+                    .hover(background)
+                    .active(style::white(style::HOVER, cx)),
+            )
+            .rounded(px(999.))
+            .with_size(size)
+            .icon(icons::icon(icon).xsmall())
+            .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
+                this.set_nudge_hover(id.clone(), *hovered, cx)
+            }))
+            .on_click(move |_, window, _| {
+                let offset = scroll.offset();
+                let max = scroll.max_offset().x.max(px(0.));
+                scroll.set_offset(point((offset.x + delta).clamp(-max, px(0.)), offset.y));
+                window.refresh();
+            })
+    }
 }

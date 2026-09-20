@@ -1,4 +1,4 @@
-use api::{ArtworkRef, LyricsView, NowPlaying, PlaylistCapability};
+use api::{ArtworkRef, LoopMode, LyricsView, NowPlaying, PlaylistCapability};
 use gpui_kit::base::Disableable as _;
 use gpui_kit::base::slider::{SliderEvent, SliderState};
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
@@ -9,14 +9,14 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
     ObjectFit, ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled,
-    StyledImage as _, Subscription, Window, div, img, px, rems,
+    StyledImage as _, Subscription, Window, div, img, px, relative, rems,
 };
 use store::{
     Chrome, ConfigModel, FavoritesModel, Link, Navigator, Notices, PlayerModel, Playhead, Query,
     QueueModel, Route, SourcesModel, actions,
 };
 use widgets::format::t;
-use widgets::{dialogs, icons, playlist_picker, style};
+use widgets::{dialogs, icons, motion, playlist_picker, style};
 
 use crate::background;
 use crate::controls;
@@ -49,8 +49,10 @@ pub struct FullscreenPlayer {
     volume: Entity<SliderState>,
     pub(crate) tab: Tab,
     pub(crate) lyrics: Option<Entity<Query<LyricsView>>>,
-    lyrics_key: String,
+    pub(crate) lyrics_key: String,
     seeking: bool,
+    // Which link, pill or chevron the pointer is on, so its colour can tween rather than snap.
+    pub(crate) hovered: Option<&'static str>,
     // The level a mute returns to, so unmuting restores what the user had.
     premute: Option<f32>,
     _lyrics: Option<Subscription>,
@@ -88,10 +90,37 @@ impl FullscreenPlayer {
             lyrics: None,
             lyrics_key: String::new(),
             seeking: false,
+            hovered: None,
             premute: None,
             _lyrics: None,
             _subscriptions: subscriptions,
         }
+    }
+
+    pub(crate) fn set_hover(&mut self, id: &'static str, hovered: bool, cx: &mut Context<Self>) {
+        if hovered {
+            self.hovered = Some(id);
+        } else if self.hovered == Some(id) {
+            self.hovered = None;
+        }
+        cx.notify();
+    }
+
+    /// The colour `id` should be wearing now, tweened from whatever it was wearing.
+    pub(crate) fn tint(
+        &self,
+        id: &'static str,
+        resting: gpui_kit::Hsla,
+        active: gpui_kit::Hsla,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> gpui_kit::Hsla {
+        let target = if self.hovered == Some(id) {
+            active
+        } else {
+            resting
+        };
+        motion::color(id, target, window, cx)
     }
 
     /// Carry the daemon's position and volume into the sliders the user is not holding.
@@ -213,7 +242,12 @@ impl FullscreenPlayer {
         .detach();
     }
 
-    fn title_block(&self, track: &NowPlaying, cx: &mut Context<Self>) -> impl IntoElement {
+    fn title_block(
+        &self,
+        track: &NowPlaying,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let queue = QueueModel::global(cx);
         let album_id = queue
             .read(cx)
@@ -223,6 +257,20 @@ impl FullscreenPlayer {
             .unwrap_or_default();
         let artist = track.artist.clone();
         let album = SharedString::from(track.album.clone());
+        let artist_color = self.tint(
+            "fs-artist",
+            style::white(0.7, cx),
+            cx.theme().foreground,
+            window,
+            cx,
+        );
+        let album_color = self.tint(
+            "fs-album",
+            style::white(0.5, cx),
+            style::white(0.8, cx),
+            window,
+            cx,
+        );
 
         v_flex()
             .flex_1()
@@ -251,8 +299,11 @@ impl FullscreenPlayer {
                             .text_xl()
                             .font_weight(FontWeight::MEDIUM)
                             .line_clamp(2)
-                            .text_color(style::white(0.7, cx))
-                            .hover(|link| link.text_color(cx.theme().foreground).underline())
+                            .text_color(artist_color)
+                            .hover(|link| link.underline())
+                            .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+                                this.set_hover("fs-artist", *hovered, cx)
+                            }))
                             .child(SharedString::from(artist.clone()))
                             .on_click(move |_, _, cx| {
                                 if artist.is_empty() {
@@ -280,8 +331,11 @@ impl FullscreenPlayer {
                             .max_w_full()
                             .text_lg()
                             .line_clamp(2)
-                            .text_color(style::white(0.5, cx))
-                            .hover(|link| link.text_color(style::white(0.8, cx)).underline())
+                            .text_color(album_color)
+                            .hover(|link| link.underline())
+                            .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+                                this.set_hover("fs-album", *hovered, cx)
+                            }))
                             .child(album)
                             .on_click(move |_, _, cx| {
                                 if album_id.is_empty() {
@@ -308,7 +362,12 @@ impl FullscreenPlayer {
             .with_size(ACTION_SIZE)
     }
 
-    fn track_actions(&self, track: &NowPlaying, cx: &mut Context<Self>) -> impl IntoElement {
+    fn track_actions(
+        &self,
+        track: &NowPlaying,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let sources = SourcesModel::global(cx);
         let capabilities = sources.read(cx).capabilities();
         let favorite = FavoritesModel::global(cx).read(cx).is_favorite(&track.key);
@@ -316,13 +375,19 @@ impl FullscreenPlayer {
 
         let liked = cx.theme().danger;
         let resting = style::white(0.7, cx);
+        let heart = motion::color(
+            "fs-favorite-tint",
+            if favorite { liked } else { resting },
+            window,
+            cx,
+        );
 
         h_flex()
             .gap_2()
             .items_center()
             .flex_shrink_0()
             .child(
-                Self::round_action("fs-favorite", if favorite { liked } else { resting }, cx)
+                Self::round_action("fs-favorite", heart, cx)
                     .icon(icons::icon(icons::HEART))
                     .tooltip(if favorite {
                         t("remove_from_favorites")
@@ -356,7 +421,13 @@ impl FullscreenPlayer {
             )
     }
 
-    fn transport(&self, playing: bool, seekable: bool, cx: &mut Context<Self>) -> impl IntoElement {
+    fn transport(
+        &self,
+        playing: bool,
+        seekable: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let player = PlayerModel::global(cx);
         let (position, duration, radio, loading, shuffle, loop_mode, volume) = {
             let player = player.read(cx);
@@ -377,6 +448,21 @@ impl FullscreenPlayer {
         } else {
             icons::VOLUME
         };
+        // `text-indigo-500` lit, `text-white/60` idle: the side toggles' only state.
+        let idle = style::white(style::TEXT_SECONDARY, cx);
+        let lit = cx.theme().primary;
+        let shuffle_tint = motion::color(
+            "fs-shuffle-tint",
+            if shuffle { lit } else { idle },
+            window,
+            cx,
+        );
+        let repeat_tint = motion::color(
+            "fs-repeat-tint",
+            if loop_mode == LoopMode::None { idle } else { lit },
+            window,
+            cx,
+        );
 
         v_flex()
             .w_full()
@@ -413,7 +499,7 @@ impl FullscreenPlayer {
                     .mb_3()
                     .items_center()
                     .justify_between()
-                    .child(controls::shuffle_button(shuffle).with_size(ACTION_SIZE))
+                    .child(controls::shuffle_button(shuffle, shuffle_tint, cx).with_size(ACTION_SIZE))
                     .child(
                         h_flex()
                             .gap_4()
@@ -430,7 +516,7 @@ impl FullscreenPlayer {
                                     .rounded(px(999.)),
                             ),
                     )
-                    .child(controls::repeat_button(loop_mode).with_size(ACTION_SIZE)),
+                    .child(controls::repeat_button(loop_mode, repeat_tint, cx).with_size(ACTION_SIZE)),
             )
             .child(
                 h_flex()
@@ -483,7 +569,12 @@ impl FullscreenPlayer {
             )
     }
 
-    fn stage(&mut self, full_width: bool, cx: &mut Context<Self>) -> impl IntoElement {
+    fn stage(
+        &mut self,
+        full_width: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let player = PlayerModel::global(cx);
         let (track, playing) = {
             let player = player.read(cx);
@@ -491,6 +582,21 @@ impl FullscreenPlayer {
         };
         let config = ConfigModel::global(cx);
         let use_player_bar = config.read(cx).config().fullscreen_use_player_bar;
+        // The panel's collapse is the only thing that resizes the cover, so the stage carries the tween.
+        let width = motion::amount(
+            "fs-stage-width",
+            if full_width { 1. } else { 0.5 },
+            motion::MEDIUM,
+            window,
+            cx,
+        );
+        let close = self.tint(
+            "fs-close",
+            style::white(style::TEXT_DIM, cx),
+            cx.theme().foreground,
+            window,
+            cx,
+        );
         let cover = self.cover(track.as_ref().and_then(|track| track.artwork.as_ref()), cx);
 
         v_flex()
@@ -503,19 +609,16 @@ impl FullscreenPlayer {
             .justify_center()
             .p_10()
             .pt_16()
-            .map(|column| {
-                if full_width {
-                    column.w_full()
-                } else {
-                    column.w_1_2()
-                }
-            })
+            .w(relative(width))
             .child(
                 div().absolute().top_8().left_8().child(
                     Button::new("fs-close")
-                        .ghost()
+                        .custom(ButtonCustomVariant::new(cx).foreground(close))
                         .icon(icons::icon(icons::CHEVRON_DOWN).size(px(24.)))
                         .tooltip(t("close"))
+                        .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+                            this.set_hover("fs-close", *hovered, cx)
+                        }))
                         .on_click(|_, _, cx| Self::close(cx)),
                 ),
             )
@@ -534,8 +637,8 @@ impl FullscreenPlayer {
                                     .mb_1()
                                     .gap_4()
                                     .items_center()
-                                    .child(self.title_block(&track, cx))
-                                    .child(self.track_actions(&track, cx)),
+                                    .child(self.title_block(&track, window, cx))
+                                    .child(self.track_actions(&track, window, cx)),
                             )
                             .child(
                                 h_flex()
@@ -558,14 +661,14 @@ impl FullscreenPlayer {
                             ),
                     )
                     .when(!use_player_bar, |column| {
-                        column.child(self.transport(playing, seekable, cx))
+                        column.child(self.transport(playing, seekable, window, cx))
                     })
             })
     }
 }
 
 impl Render for FullscreenPlayer {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let config = ConfigModel::global(cx);
         let collapsed = config.read(cx).config().fullscreen_tabs_collapsed;
         let player = PlayerModel::global(cx);
@@ -585,10 +688,12 @@ impl Render for FullscreenPlayer {
                 h_flex()
                     .size_full()
                     .items_stretch()
-                    .child(self.stage(collapsed, cx))
-                    .when(!collapsed, |row| row.child(self.panel(cx))),
+                    .child(self.stage(collapsed, window, cx))
+                    .when(!collapsed, |row| row.child(self.panel(window, cx))),
             )
-            .when(collapsed, |view| view.child(self.expand_button(cx)))
+            .when(collapsed, |view| {
+                view.child(self.expand_button(window, cx))
+            })
     }
 }
 

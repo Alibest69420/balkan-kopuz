@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use api::{AlbumInfo, ArtistInfo, ArtworkRef, PlaylistInfo};
 use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -9,6 +11,7 @@ use store::{Navigator, Route};
 
 use crate::cover::Cover;
 use crate::icons;
+use crate::motion;
 use crate::style;
 
 /// A cover tile with a title and a subtitle: the shape of every grid in the app.
@@ -23,6 +26,7 @@ pub struct Tile {
     placeholder: &'static str,
     route: Option<Route>,
     overlay: Option<AnyElement>,
+    zoom_speed: Duration,
 }
 
 impl Tile {
@@ -37,6 +41,7 @@ impl Tile {
             placeholder: icons::MUSIC,
             route: None,
             overlay: None,
+            zoom_speed: motion::SLOW,
         }
     }
 
@@ -77,6 +82,12 @@ impl Tile {
         self.overlay = Some(overlay.into_any_element());
         self
     }
+
+    /// How long the cover's `group-hover:scale-105` takes, for a grid the original marks `duration-500`.
+    pub fn zoom_speed(mut self, duration: Duration) -> Self {
+        self.zoom_speed = duration;
+        self
+    }
 }
 
 impl RenderOnce for Tile {
@@ -88,13 +99,28 @@ impl RenderOnce for Tile {
             style::to_px(style::radius_xl(), window)
         };
         let round = self.round;
+        // A tile is low-cardinality, so its hover is worth tracking: the wash and the zoom need it.
+        let pointer = window.use_keyed_state(motion::id("tile-hover", &self.id), cx, |_, _| false);
+        let hovered = *pointer.read(cx);
+        let wash = motion::color(
+            motion::id("tile-bg", &self.id),
+            style::white(if hovered { style::RAISED } else { 0. }, cx),
+            window,
+            cx,
+        );
         v_flex()
             .id(SharedString::from(format!("tile-{}", self.id)))
             .flex_shrink_0()
             .gap_3()
             .p_2()
             .rounded(style::radius_xl())
-            .hover(|tile| tile.bg(style::white(style::RAISED, cx)))
+            .bg(wash)
+            .on_hover(move |over, _, cx| {
+                pointer.update(cx, |pointer, cx| {
+                    *pointer = *over;
+                    cx.notify();
+                })
+            })
             .when_some(self.route, |tile, route| {
                 tile.on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
             })
@@ -105,7 +131,9 @@ impl RenderOnce for Tile {
                         Cover::new(self.artwork.as_ref())
                             .size(self.size)
                             .rounded(radius)
-                            .placeholder(self.placeholder),
+                            .placeholder(self.placeholder)
+                            .zoom(motion::id("tile-cover", &self.id), hovered)
+                            .zoom_speed(self.zoom_speed),
                     )
                     .children(self.overlay),
             )
@@ -151,6 +179,7 @@ pub fn artist_tile(artist: &ArtistInfo) -> Tile {
         .artwork(artist.artwork.as_ref())
         .placeholder(icons::MIC)
         .round(true)
+        .zoom_speed(motion::SLOWEST)
         .route(Route::Artist {
             name: artist.name.clone().into(),
             channel: None,
@@ -162,6 +191,7 @@ pub fn playlist_tile(playlist: &PlaylistInfo) -> Tile {
     Tile::new(playlist.id.clone(), playlist.name.clone())
         .artwork(playlist.artwork.as_ref())
         .placeholder(icons::LIST)
+        .zoom_speed(motion::SLOWEST)
         .route(Route::Playlist(playlist.id.clone().into()))
 }
 

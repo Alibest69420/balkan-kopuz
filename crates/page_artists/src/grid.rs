@@ -1,5 +1,7 @@
 //! The artists grid: every credited name in the library, with the photo the daemon found for it.
 
+use std::time::Duration;
+
 use api::{AlbumPage, ArtistPage, Table, TrackPage};
 use config::{AlbumViewMode, ArtistSortField};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
@@ -10,12 +12,16 @@ use gpui_kit::{
 };
 use store::{ConfigModel, Link, Navigator, Query, Route};
 use widgets::format::t;
-use widgets::{Cover, EmptyState, Loading, PageHeader, icons, style};
+use widgets::{Cover, EmptyState, Loading, PageHeader, icons, motion, style};
 
 use crate::controls::{self, ViewModeKey};
 use crate::names::{self, ArtistEntry};
 
 const TILE: f32 = 160.;
+/// `group-hover:scale-110` on the photo.
+const PHOTO_ZOOM: f32 = 1.10;
+/// `duration-500`, slower than anything `widgets::motion` names.
+const PHOTO_ZOOM_TIME: Duration = Duration::from_millis(500);
 
 /// The artists grid.
 pub struct Artists {
@@ -129,7 +135,7 @@ impl Artists {
 }
 
 impl Render for Artists {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let entries = self.entries(cx);
         let settled = self.is_settled(cx);
         let mode = controls::config(cx).artists_view_mode;
@@ -140,7 +146,7 @@ impl Render for Artists {
             .pt_8()
             .child(
                 PageHeader::new(t("artists"))
-                    .action(controls::view_mode_toggle(ViewModeKey::Artists, cx))
+                    .action(controls::view_mode_toggle(ViewModeKey::Artists, window, cx))
                     .action(controls::sort_control(
                         "artist-sort",
                         vec![
@@ -165,7 +171,7 @@ impl Render for Artists {
                     .overflow_y_scroll()
                     .track_scroll(&self.scroll)
                     .child(match mode {
-                        AlbumViewMode::Grid => grid(&entries, cx),
+                        AlbumViewMode::Grid => grid(&entries, window, cx),
                         AlbumViewMode::List => list(&entries, cx),
                     })
                     .into_any_element(),
@@ -173,35 +179,69 @@ impl Render for Artists {
     }
 }
 
-fn grid(entries: &[ArtistEntry], cx: &App) -> gpui_kit::AnyElement {
+fn grid(entries: &[ArtistEntry], window: &mut Window, cx: &mut App) -> gpui_kit::AnyElement {
+    let tiles: Vec<_> = entries
+        .iter()
+        .map(|entry| tile(entry, window, cx).into_any_element())
+        .collect();
     div()
         .flex()
         .flex_wrap()
         .gap_8()
-        .children(entries.iter().map(|entry| tile(entry, cx)))
+        .children(tiles)
         .into_any_element()
 }
 
-/// `rounded-full` photo, `mb-4`, and a centred label that goes accent under the pointer.
-fn tile(entry: &ArtistEntry, cx: &App) -> impl IntoElement {
+/// `rounded-full` photo that zooms under the pointer, and a centred label that goes accent.
+fn tile(entry: &ArtistEntry, window: &mut Window, cx: &mut App) -> impl IntoElement {
     let name = SharedString::from(entry.name.clone());
-    let group = SharedString::from(format!("artist-tile-{}", entry.name));
+    let (hot, hover) = controls::hovered(
+        SharedString::from(format!("artist-tile-hover-{}", entry.name)),
+        window,
+        cx,
+    );
+    let photo = motion::length(
+        SharedString::from(format!("artist-photo-{}", entry.name)),
+        px(if hot { TILE * PHOTO_ZOOM } else { TILE }),
+        PHOTO_ZOOM_TIME,
+        window,
+        cx,
+    );
+    let label = motion::color(
+        SharedString::from(format!("artist-label-{}", entry.name)),
+        if hot {
+            cx.theme().primary_hover
+        } else {
+            cx.theme().foreground
+        },
+        window,
+        cx,
+    );
     let route = Route::Artist {
         name: name.clone(),
         channel: None,
     };
     v_flex()
         .id(SharedString::from(format!("artist-tile-{}", entry.name)))
-        .group(group.clone())
         .w(px(TILE))
         .gap_4()
         .items_center()
         .cursor_pointer()
         .child(
-            Cover::new(entry.artwork.as_ref())
+            // A transform is out of reach, so the photo grows inside a frame its own size that clips it.
+            div()
                 .size(px(TILE))
-                .rounded(px(TILE / 2.))
-                .placeholder(icons::MIC),
+                .rounded_full()
+                .overflow_hidden()
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    Cover::new(entry.artwork.as_ref())
+                        .size(photo)
+                        .rounded(photo / 2.)
+                        .placeholder(icons::MIC),
+                ),
         )
         .child(
             div()
@@ -209,9 +249,10 @@ fn tile(entry: &ArtistEntry, cx: &App) -> impl IntoElement {
                 .truncate()
                 .text_center()
                 .font_weight(FontWeight::MEDIUM)
-                .group_hover(group, |label| label.text_color(cx.theme().primary_hover))
+                .text_color(label)
                 .child(name),
         )
+        .on_hover(controls::track(hover))
         .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
 }
 

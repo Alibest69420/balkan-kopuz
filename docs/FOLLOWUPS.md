@@ -289,3 +289,22 @@ OPEN QUESTIONS FOR THE USER:
   will also fail until they are translated into the other 27 .ftl files.
 - api::NowPlaying has no album_id: the player's album link guesses via the queue
   and is wrong during a crossfade. Daemon-side fix or a store resolver.
+
+MOTION PASS (after all motion agents land):
+- [ ] Widen `widgets::motion` to take `impl Into<TransitionId>` instead of
+      `impl Into<ElementId>`. `TransitionId` already has
+      `From<(I: Into<ElementId>, C: Into<SharedString>)>`, which is the
+      "id + channel" shape every call site wants, and three crates have now
+      hand-rolled the same `channel()` helper to work around the narrow bound.
+      Deferred because it is a signature change and five agents were mid-flight.
+- [ ] Lift `motion::appear` (wrapping `base::motion::Presence`) and
+      `motion::reveal` (wrapping `MotionReveal`) into `widgets::motion`:
+      overlays, quick_search and metadata_dialog all reach past the facade into
+      `gpui_kit::base::motion` for entrance fades and the collapse reveal.
+- [ ] A hover helper for view-less render paths (`RenderOnce`, `Popover::content`
+      have no entity for `cx.listener`); switcher.rs hand-rolls
+      `use_keyed_state` + a track() closure factory.
+- [ ] `motion::INSTANT` (Duration::ZERO) — load-bearing in the sidebar, where a
+      drag must track the pointer exactly while the collapse snap tweens.
+- [ ] A tweenable slider fill: nothing in widgets can tween a Slider's bar, so
+      the seek and volume fills sit outside the motion system.

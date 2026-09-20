@@ -7,13 +7,13 @@ use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, Icon, Selectable, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Anchor, Animation, AnimationExt as _, AnyElement, App, Entity, Hsla, InteractiveElement as _,
-    IntoElement, ParentElement as _, Pixels, RenderOnce, Rgba, SharedString,
-    StatefulInteractiveElement as _, Styled, Window, div, pulsating_between, px, svg,
+    Anchor, Animation, AnimationExt as _, AnyElement, App, ElementId, Entity, Hsla,
+    InteractiveElement as _, IntoElement, ParentElement as _, Pixels, RenderOnce, Rgba,
+    SharedString, StatefulInteractiveElement as _, Styled, Window, div, pulsating_between, px, svg,
 };
 use store::{Navigator, Route, SourcesModel};
 use widgets::format::{t, text};
-use widgets::{icons, style};
+use widgets::{icons, motion, style};
 
 const GLYPH: Pixels = px(16.);
 const DOT: Pixels = px(6.);
@@ -75,6 +75,28 @@ impl SourceSwitcher {
     }
 }
 
+/// The row the pointer is over; a popover has no owning view to hang that state on.
+type Hovered = Entity<Option<SharedString>>;
+
+/// Enter marks this row, leave clears it only if it is still the marked one.
+fn track(state: &Hovered, id: SharedString) -> impl Fn(&bool, &mut Window, &mut App) + 'static {
+    let state = state.clone();
+    move |over, _, cx| {
+        let id = id.clone();
+        state.update(cx, |current, cx| {
+            if *over {
+                if current.as_ref() != Some(&id) {
+                    *current = Some(id);
+                    cx.notify();
+                }
+            } else if current.as_ref() == Some(&id) {
+                *current = None;
+                cx.notify();
+            }
+        });
+    }
+}
+
 impl RenderOnce for SourceSwitcher {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let active = self.sources.iter().find(|source| source.active);
@@ -114,8 +136,18 @@ impl RenderOnce for SourceSwitcher {
                         collapsed,
                         selected: false,
                     })
-                    .content(move |_, _, cx| {
+                    .content(move |_, window, cx| {
                         let state = cx.entity();
+                        let hovered = window.use_keyed_state::<Option<SharedString>>(
+                            "source-hover",
+                            cx,
+                            |_, _| None,
+                        );
+                        let rows = sources
+                            .iter()
+                            .map(|source| row(source, &state, &hovered, window, cx))
+                            .collect::<Vec<_>>();
+                        let foot = footer(&state, &hovered, window, cx);
                         v_flex()
                             .w_full()
                             .child(header(count, cx))
@@ -125,14 +157,9 @@ impl RenderOnce for SourceSwitcher {
                                     .p_1()
                                     .max_h(ROWS_HEIGHT)
                                     .overflow_y_scroll()
-                                    .children(
-                                        sources
-                                            .iter()
-                                            .map(|source| row(source, &state, cx))
-                                            .collect::<Vec<_>>(),
-                                    ),
+                                    .children(rows),
                             )
-                            .child(footer(&state, cx))
+                            .child(foot)
                     }),
             )
     }
@@ -161,10 +188,28 @@ fn header(count: usize, cx: &App) -> impl IntoElement {
         )
 }
 
-fn row(source: &SourceInfo, state: &Entity<PopoverState>, cx: &App) -> AnyElement {
+fn row(
+    source: &SourceInfo,
+    state: &Entity<PopoverState>,
+    hovered: &Hovered,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
     let accent = accent_of(Some(source), cx);
     let active = source.active;
     let id = source.id.clone();
+    let mark = SharedString::from(id.clone());
+    let lit = active || hovered.read(cx).as_ref() == Some(&mark);
+    let surface = motion::color(
+        ElementId::from((ElementId::from("source-row"), mark.clone())),
+        if lit {
+            style::white(style::RAISED, cx)
+        } else {
+            style::white(0., cx)
+        },
+        window,
+        cx,
+    );
     let state = state.clone();
     h_flex()
         .id(SharedString::from(format!("source-{}", source.id)))
@@ -173,8 +218,8 @@ fn row(source: &SourceInfo, state: &Entity<PopoverState>, cx: &App) -> AnyElemen
         .p_2()
         .rounded(style::radius_lg())
         .cursor_pointer()
-        .when(active, |row| row.bg(style::white(style::RAISED, cx)))
-        .hover(|row| row.bg(style::white(style::RAISED, cx)))
+        .bg(surface)
+        .on_hover(track(hovered, mark))
         .child(glyph(&mark_of(source), GLYPH, accent))
         .child(
             v_flex()
@@ -217,7 +262,35 @@ fn row(source: &SourceInfo, state: &Entity<PopoverState>, cx: &App) -> AnyElemen
         .into_any_element()
 }
 
-fn footer(state: &Entity<PopoverState>, cx: &App) -> impl IntoElement {
+fn footer(
+    state: &Entity<PopoverState>,
+    hovered: &Hovered,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    let mark = SharedString::new_static("__manage");
+    let lit = hovered.read(cx).as_ref() == Some(&mark);
+    let surface = motion::color(
+        "manage-sources-bg",
+        if lit {
+            style::white(style::RAISED, cx)
+        } else {
+            style::white(0., cx)
+        },
+        window,
+        cx,
+    );
+    let ink = motion::color(
+        "manage-sources-ink",
+        if lit {
+            cx.theme().foreground
+        } else {
+            style::white(style::TEXT_SECONDARY, cx)
+        },
+        window,
+        cx,
+    );
+    let listener = track(hovered, mark);
     let state = state.clone();
     div()
         .w_full()
@@ -234,12 +307,9 @@ fn footer(state: &Entity<PopoverState>, cx: &App) -> impl IntoElement {
                 .cursor_pointer()
                 .text_sm()
                 .font_medium()
-                .text_color(style::white(style::TEXT_SECONDARY, cx))
-                .hover(|footer| {
-                    footer
-                        .bg(style::white(style::RAISED, cx))
-                        .text_color(cx.theme().foreground)
-                })
+                .bg(surface)
+                .text_color(ink)
+                .on_hover(listener)
                 .child(Icon::default().path(MANAGE_ICON).size(GLYPH))
                 .child(
                     div()
@@ -259,6 +329,7 @@ fn footer(state: &Entity<PopoverState>, cx: &App) -> impl IntoElement {
                     state.update(cx, |popover, cx| popover.dismiss(window, cx));
                 }),
         )
+        .into_any_element()
 }
 
 /// The trigger tile: glyph, name, status dot and chevron.
@@ -284,9 +355,31 @@ impl Selectable for SwitcherTrigger {
 }
 
 impl RenderOnce for SwitcherTrigger {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let label = self.label.clone();
         let tooltip = self.label;
+        let hover = window.use_keyed_state("source-trigger-hover", cx, |_, _| false);
+        let lit = self.selected || *hover.read(cx);
+        let surface = motion::color(
+            "source-trigger-bg",
+            if lit {
+                style::white(style::RAISED, cx)
+            } else {
+                style::white(0., cx)
+            },
+            window,
+            cx,
+        );
+        let edge = motion::color(
+            "source-trigger-edge",
+            if self.selected {
+                style::white(style::ACTIVE, cx)
+            } else {
+                style::white(style::BORDER, cx)
+            },
+            window,
+            cx,
+        );
         h_flex()
             .id("source-trigger")
             .w_full()
@@ -295,14 +388,17 @@ impl RenderOnce for SwitcherTrigger {
             .py_2()
             .rounded(style::radius_lg())
             .border_1()
-            .border_color(style::white(style::BORDER, cx))
+            .border_color(edge)
             .cursor_pointer()
-            .when(self.selected, |trigger| {
-                trigger
-                    .bg(style::white(style::RAISED, cx))
-                    .border_color(style::white(style::ACTIVE, cx))
+            .bg(surface)
+            .on_hover(move |over, _, cx| {
+                hover.update(cx, |state, cx| {
+                    if *state != *over {
+                        *state = *over;
+                        cx.notify();
+                    }
+                });
             })
-            .hover(|trigger| trigger.bg(style::white(style::RAISED, cx)))
             .when(self.collapsed, |trigger| {
                 trigger
                     .w(RAIL_TILE)

@@ -1,6 +1,6 @@
 //! Search: the genre browser, what a query turns up, and one genre's tracks.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -12,19 +12,48 @@ use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Div, Entity, FontWeight, InteractiveElement as _,
-    IntoElement, KeyBinding, NoAction, ObjectFit, ParentElement as _, Render, SharedString,
-    StatefulInteractiveElement as _, Styled, StyledImage as _, Subscription, Task, Window, div,
-    img, linear_color_stop, linear_gradient, px, rems,
+    AnyElement, App, AppContext as _, Context, Div, ElementId, Entity, FontWeight, Hsla,
+    InteractiveElement as _, IntoElement, KeyBinding, NoAction, ObjectFit, ParentElement as _,
+    Render, SharedString, StatefulInteractiveElement, Styled, StyledImage as _, Subscription, Task,
+    Window, div, img, linear_color_stop, linear_gradient, px, rems,
 };
 use store::{Navigator, PlayerModel, Query, Route, SourcesModel, actions, all};
 use widgets::format::{t, t_with};
 use widgets::{
     Cover, EmptyState, Loading, PageHeader, TrackActions, TrackList, TrackListEvent,
-    TrackListOptions, icons, style,
+    TrackListOptions, icons, motion, style,
 };
 
 const DEBOUNCE: Duration = Duration::from_millis(150);
+
+/// `group-hover:scale-110` on a tile whose size only the grid knows: the picture bleeds past instead.
+const TILE_BLEED: f32 = -12.;
+
+/// Every element the pointer is over: a tween needs the state, which a `.hover()` refinement cannot give.
+type Hovered = HashSet<SharedString>;
+
+/// One motion channel of an element, keyed by that element's own id: `("genre-rock", "cover")`.
+fn channel(base: impl Into<SharedString>, name: &'static str) -> ElementId {
+    (ElementId::from(base.into()), name).into()
+}
+
+/// Feed an element's hover into the page's set, so the next frame can tween towards it.
+fn track_hover<E: StatefulInteractiveElement>(
+    element: E,
+    id: SharedString,
+    cx: &mut Context<Search>,
+) -> E {
+    element.on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
+        let changed = if *hovered {
+            this.hovered.insert(id.clone())
+        } else {
+            this.hovered.remove(&id)
+        };
+        if changed {
+            cx.notify();
+        }
+    }))
+}
 
 // The shell binds bare keys such as space; a page that takes text has to unbind them for itself.
 const INPUT_CONTEXT: &str = "KopuzSearchInput";
@@ -82,14 +111,39 @@ fn section(title: SharedString, cx: &App) -> Div {
         .child(title)
 }
 
+/// `bg-white/5 hover:bg-white/10`, the wash a tile or a result card tweens between.
+fn card_background(
+    key: &SharedString,
+    hovered: bool,
+    window: &mut Window,
+    cx: &mut Context<Search>,
+) -> Hsla {
+    let target = style::white(if hovered { style::HOVER } else { style::RAISED }, cx);
+    motion::color(channel(key.clone(), "bg"), target, window, cx)
+}
+
 /// `aspect-video bg-white/5 border border-white/10 rounded-xl p-4`: one genre tile.
-fn genre_tile(genre: &GenreTile, cx: &App) -> AnyElement {
+fn genre_tile(
+    genre: &GenreTile,
+    hovered: &Hovered,
+    window: &mut Window,
+    cx: &mut Context<Search>,
+) -> AnyElement {
     let name = genre.name.clone();
     let route = Route::Genre(name.clone());
-    let hovered = style::white(style::HOVER, cx);
+    let key = SharedString::from(format!("genre-{name}"));
+    let over = hovered.contains(&key);
     let scrim = style::black(0.8, cx);
-    div()
-        .id(SharedString::from(format!("genre-{name}")))
+    let background = card_background(&key, over, window, cx);
+    let bleed = motion::length(
+        channel(key.clone(), "cover"),
+        px(if over { TILE_BLEED } else { 0. }),
+        motion::SLOW,
+        window,
+        cx,
+    );
+    let tile = div()
+        .id(key.clone())
         .relative()
         .overflow_hidden()
         .flex()
@@ -99,16 +153,17 @@ fn genre_tile(genre: &GenreTile, cx: &App) -> AnyElement {
         .rounded(style::radius_xl())
         .border_1()
         .border_color(style::white(style::BORDER, cx))
-        .bg(style::white(style::RAISED, cx))
-        .hover(move |tile| tile.bg(hovered))
+        .bg(background)
         .cursor_pointer()
         .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
         .when_some(genre.artwork.as_ref(), |tile, artwork| {
             tile.child(
                 img(store::artwork_source(artwork, false))
                     .absolute()
-                    .inset_0()
-                    .size_full()
+                    .top(bleed)
+                    .left(bleed)
+                    .right(bleed)
+                    .bottom(bleed)
                     .object_fit(ObjectFit::Cover),
             )
             .child(div().absolute().inset_0().size_full().bg(linear_gradient(
@@ -123,30 +178,46 @@ fn genre_tile(genre: &GenreTile, cx: &App) -> AnyElement {
                 .text_lg()
                 .font_weight(FontWeight::BOLD)
                 .child(name),
-        )
-        .into_any_element()
+        );
+    track_hover(tile, key, cx).into_any_element()
 }
 
 /// `p-4 bg-white/5 rounded-xl hover:bg-white/10`: one album a search turned up.
-fn album_card(album: &AlbumInfo, cx: &App) -> AnyElement {
+fn album_card(
+    album: &AlbumInfo,
+    hovered: &Hovered,
+    window: &mut Window,
+    cx: &mut Context<Search>,
+) -> AnyElement {
     let route = Route::Album(album.id.clone().into());
-    let hovered = style::white(style::HOVER, cx);
-    v_flex()
-        .id(SharedString::from(format!("search-album-{}", album.id)))
+    let key = SharedString::from(format!("search-album-{}", album.id));
+    let over = hovered.contains(&key);
+    let background = card_background(&key, over, window, cx);
+    let size = px(148.);
+    let grown = motion::zoom(channel(key.clone(), "cover"), size, over, window, cx);
+    let card = v_flex()
+        .id(key.clone())
         .w(px(180.))
         .p_4()
         .rounded(style::radius_xl())
-        .bg(style::white(style::RAISED, cx))
-        .hover(move |card| card.bg(hovered))
+        .bg(background)
         .cursor_pointer()
         .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
         .child(
-            div().mb_3().child(
-                Cover::new(album.artwork.as_ref())
-                    .size(px(148.))
-                    .rounded(px(8.))
-                    .placeholder(icons::DISC),
-            ),
+            div()
+                .mb_3()
+                .size(size)
+                .rounded(px(8.))
+                .overflow_hidden()
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    Cover::new(album.artwork.as_ref())
+                        .size(grown)
+                        .rounded(px(8.))
+                        .placeholder(icons::DISC),
+                ),
         )
         .child(
             div()
@@ -160,8 +231,8 @@ fn album_card(album: &AlbumInfo, cx: &App) -> AnyElement {
                 .text_sm()
                 .text_color(style::slate_400(cx))
                 .child(album.artist.clone()),
-        )
-        .into_any_element()
+        );
+    track_hover(card, key, cx).into_any_element()
 }
 
 fn track_count(count: usize) -> SharedString {
@@ -212,6 +283,7 @@ pub struct Search {
     tracks: Entity<TrackList>,
     query: SharedString,
     genres: Vec<GenreTile>,
+    hovered: Hovered,
     _debounce: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
@@ -281,6 +353,7 @@ impl Search {
             tracks,
             query: SharedString::default(),
             genres: Vec::new(),
+            hovered: Hovered::default(),
             _debounce: None,
             _subscriptions: subscriptions,
         }
@@ -343,7 +416,7 @@ impl Search {
             )
     }
 
-    fn genre_browser(&self, cx: &Context<Self>) -> AnyElement {
+    fn genre_browser(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         if self.genres.is_empty() {
             return if self.albums.read(cx).is_settled() {
                 EmptyState::new(t("no_genres_found"))
@@ -353,10 +426,11 @@ impl Search {
                 Loading.into_any_element()
             };
         }
+        let hovered = &self.hovered;
         let tiles: Vec<AnyElement> = self
             .genres
             .iter()
-            .map(|genre| genre_tile(genre, cx))
+            .map(|genre| genre_tile(genre, hovered, window, cx))
             .collect();
         v_flex()
             .w_full()
@@ -375,7 +449,7 @@ impl Search {
             .into_any_element()
     }
 
-    fn results(&self, cx: &Context<Self>) -> AnyElement {
+    fn results(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let results = self.results.read(cx);
         let settled = results.is_settled();
         let has_tracks = results
@@ -398,7 +472,11 @@ impl Search {
             .into_any_element();
         }
 
-        let cards: Vec<AnyElement> = albums.iter().map(|album| album_card(album, cx)).collect();
+        let hovered = &self.hovered;
+        let cards: Vec<AnyElement> = albums
+            .iter()
+            .map(|album| album_card(album, hovered, window, cx))
+            .collect();
         v_flex()
             .w_full()
             .flex_1()
@@ -440,11 +518,11 @@ impl Search {
 }
 
 impl Render for Search {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let body = if self.query.trim().is_empty() {
-            self.genre_browser(cx)
+            self.genre_browser(window, cx)
         } else {
-            self.results(cx)
+            self.results(window, cx)
         };
         v_flex().size_full().p_8().child(self.bar(cx)).child(body)
     }

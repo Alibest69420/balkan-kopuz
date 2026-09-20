@@ -16,7 +16,8 @@ use gpui_kit::{
 use store::{Link, Route, SourcesModel, actions};
 use widgets::format::t;
 use widgets::{
-    EmptyState, PageHeader, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons, style,
+    EmptyState, PageHeader, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons,
+    motion, style,
 };
 
 use crate::shelves::{Shelves, failure_text};
@@ -309,6 +310,7 @@ pub struct DiscoverArtist {
     loading: bool,
     error: Option<SharedString>,
     generation: u64,
+    shuffle_hovered: bool,
     scroll: ScrollHandle,
     _load: Option<Task<()>>,
 }
@@ -328,6 +330,7 @@ impl DiscoverArtist {
             loading: false,
             error: None,
             generation: 0,
+            shuffle_hovered: false,
             scroll: ScrollHandle::new(),
             _load: None,
         };
@@ -381,7 +384,19 @@ impl DiscoverArtist {
         }));
     }
 
-    fn banner(&self, detail: &CatalogDetail, cx: &mut Context<Self>) -> AnyElement {
+    fn banner(
+        &self,
+        detail: &CatalogDetail,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        // `hover:scale-105` on the inverted pill: GPUI has no transform, so the wash carries it.
+        let shuffle_target = if self.shuffle_hovered {
+            style::white(0.9, cx)
+        } else {
+            cx.theme().foreground
+        };
+        let shuffle_color = motion::color("artist-shuffle-bg", shuffle_target, window, cx);
         div()
             .relative()
             .w_full()
@@ -441,14 +456,18 @@ impl DiscoverArtist {
                                 Button::new("artist-shuffle")
                                     .custom(
                                         ButtonCustomVariant::new(cx)
-                                            .color(cx.theme().foreground)
+                                            .color(shuffle_color)
                                             .foreground(cx.theme().background)
-                                            .hover(style::white(0.9, cx))
+                                            .hover(shuffle_color)
                                             .active(style::white(0.8, cx)),
                                     )
                                     .rounded(px(999.))
                                     .icon(icons::icon(icons::SHUFFLE).xsmall())
                                     .label(t("shuffle"))
+                                    .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+                                        this.shuffle_hovered = *hovered;
+                                        cx.notify();
+                                    }))
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         let id = id.clone();
                                         this.shelves.update(cx, |shelves, cx| {
@@ -464,13 +483,16 @@ impl DiscoverArtist {
 }
 
 impl Render for DiscoverArtist {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.reference().is_none() {
             return EmptyState::new(t("artist_none_selected"))
                 .icon(icons::MIC)
                 .into_any_element();
         }
-        let banner = self.detail.clone().map(|detail| self.banner(&detail, cx));
+        let banner = self
+            .detail
+            .clone()
+            .map(|detail| self.banner(&detail, window, cx));
         div()
             .id("discover-artist")
             .size_full()

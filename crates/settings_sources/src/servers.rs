@@ -551,7 +551,12 @@ impl MediaServers {
             .into_any_element()
     }
 
-    fn server(&self, source: &SourceInfo, cx: &mut Context<Self>) -> AnyElement {
+    fn server(
+        &self,
+        source: &SourceInfo,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let id = source.id.clone();
         let service = source
             .service
@@ -567,7 +572,7 @@ impl MediaServers {
         let picker = source.active && browse_folders && source.authenticated;
         let needs_host = source.capabilities.browser_playback && !host_access;
 
-        ui::row(cx)
+        ui::hover_row(&id, window, cx)
             .child(
                 h_flex()
                     .w_full()
@@ -652,14 +657,18 @@ impl MediaServers {
 }
 
 impl Render for MediaServers {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let servers = Self::servers(cx);
+        let rows: Vec<_> = servers
+            .iter()
+            .map(|source| self.server(source, window, cx))
+            .collect();
         ui::section(t("media_servers")).child(
             ui::card(cx)
                 .when(servers.is_empty(), |card| {
                     card.child(ui::empty(t("no_saved_servers"), cx))
                 })
-                .children(servers.iter().map(|source| self.server(source, cx)))
+                .children(rows)
                 .child(
                     Button::new("add-server")
                         .custom(ui::soft(cx))

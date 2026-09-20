@@ -153,8 +153,9 @@ impl LocalLibraries {
         &self,
         source: &SourceInfo,
         locked: bool,
+        window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    ) -> impl IntoElement + use<> {
         let id = source.id.clone();
         let named = source.kind == SourceKind::LocalLibrary;
         let name = if named {
@@ -164,7 +165,7 @@ impl LocalLibraries {
         };
         let folders = source.directories.clone();
 
-        ui::row(cx)
+        ui::hover_row(&id, window, cx)
             .child(
                 h_flex()
                     .w_full()
@@ -248,26 +249,24 @@ impl LocalLibraries {
 }
 
 impl Render for LocalLibraries {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let locked = Self::locked(cx);
         let libraries = Self::libraries(cx);
+        let rows: Vec<_> = libraries
+            .iter()
+            .map(|source| self.library(source, locked, window, cx).into_any_element())
+            .collect();
         ui::section(t("local_libraries")).child(
-            ui::card(cx)
-                .children(
-                    libraries
-                        .iter()
-                        .map(|source| self.library(source, locked, cx).into_any_element()),
-                )
-                .child(
-                    Button::new("add-local-library")
-                        .custom(ui::soft(cx))
-                        .small()
-                        .icon(icons::icon(icons::PLUS))
-                        .label(t("add_local_library"))
-                        .disabled(locked)
-                        .on_click(cx.listener(|this, _, window, cx| this.open_add(window, cx)))
-                        .self_start(),
-                ),
+            ui::card(cx).children(rows).child(
+                Button::new("add-local-library")
+                    .custom(ui::soft(cx))
+                    .small()
+                    .icon(icons::icon(icons::PLUS))
+                    .label(t("add_local_library"))
+                    .disabled(locked)
+                    .on_click(cx.listener(|this, _, window, cx| this.open_add(window, cx)))
+                    .self_start(),
+            ),
         )
     }
 }

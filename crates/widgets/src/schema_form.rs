@@ -11,12 +11,14 @@ use gpui_kit::component::switch::Switch;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AppContext as _, Context, Entity, EventEmitter, IntoElement, ParentElement as _,
-    PathPromptOptions, Render, SharedString, Styled, Subscription, Window, div,
+    AppContext as _, Context, Entity, EventEmitter, InteractiveElement as _, IntoElement,
+    ParentElement as _, PathPromptOptions, Render, SharedString, StatefulInteractiveElement as _,
+    Styled, Subscription, Window, div,
 };
 
 use crate::format::{t, text};
 use crate::icons;
+use crate::motion;
 use crate::style;
 
 /// One field was answered; the owner sends it to whichever `set_*_settings` call it belongs to.
@@ -30,6 +32,7 @@ pub struct SchemaForm {
     inputs: HashMap<String, Entity<InputState>>,
     problems: Vec<Problem>,
     locked: Vec<String>,
+    hovered: Option<String>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -43,6 +46,7 @@ impl SchemaForm {
             inputs: HashMap::new(),
             problems: Vec::new(),
             locked: Vec::new(),
+            hovered: None,
             _subscriptions: Vec::new(),
         };
         form.set_specs(specs, window, cx);
@@ -148,7 +152,12 @@ impl SchemaForm {
             .map(|problem| text(&problem.label))
     }
 
-    fn field(&self, spec: &FieldSpec, cx: &mut Context<Self>) -> impl IntoElement {
+    fn field(
+        &self,
+        spec: &FieldSpec,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let locked = self.is_locked(spec);
         let key = spec.key.clone();
         let value = self.values.get(&key).cloned().unwrap_or_default();
@@ -228,10 +237,38 @@ impl SchemaForm {
                 .unwrap_or_else(|| div().into_any_element()),
         };
 
+        // `.settings-row` washes to white/5 over 120ms; a form holds few enough rows to track hover.
+        let wash = motion::color(
+            motion::id("field-wash", &key),
+            style::white(
+                if self.hovered.as_deref() == Some(key.as_str()) {
+                    style::RAISED
+                } else {
+                    0.
+                },
+                cx,
+            ),
+            window,
+            cx,
+        );
         v_flex()
+            .id(SharedString::from(format!("field-{key}")))
             .gap_1()
             .px_5()
             .py_2p5()
+            .bg(wash)
+            .on_hover(cx.listener({
+                let key = key.clone();
+                move |this, over: &bool, _, cx| {
+                    // Only the row being left clears the mark, so entering the next one wins the race.
+                    if *over {
+                        this.hovered = Some(key.clone());
+                    } else if this.hovered.as_deref() == Some(key.as_str()) {
+                        this.hovered = None;
+                    }
+                    cx.notify();
+                }
+            }))
             .child(
                 h_flex()
                     .gap_2()
@@ -287,7 +324,7 @@ impl SchemaForm {
 }
 
 impl Render for SchemaForm {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mut section: Option<SharedString> = None;
         let mut rows = Vec::new();
         for spec in self.specs.clone() {
@@ -311,7 +348,7 @@ impl Render for SchemaForm {
                         .into_any_element(),
                 );
             }
-            rows.push(self.field(&spec, cx).into_any_element());
+            rows.push(self.field(&spec, window, cx).into_any_element());
         }
         let form_problems: Vec<SharedString> = self
             .problems

@@ -3,11 +3,11 @@
 use api::LoopMode;
 use gpui_kit::base::slider::SliderState;
 use gpui_kit::base::{Slider as BareSlider, SliderIndicator, SliderTrack};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, Axis, Entity, IntoElement, ParentElement as _, Pixels, SharedString, Styled, div, px,
-    relative,
+    App, Axis, Entity, Hsla, IntoElement, ParentElement as _, Pixels, SharedString, Styled, div,
+    px, relative,
 };
 use store::PlayerModel;
 use widgets::format::{duration, t};
@@ -55,9 +55,18 @@ pub(crate) fn play_button(id: &'static str, playing: bool) -> Button {
         .on_click(|_, _, cx| PlayerModel::global(cx).update(cx, |player, cx| player.toggle(cx)))
 }
 
-pub(crate) fn shuffle_button(shuffle: bool) -> Button {
-    Button::new("fs-shuffle")
-        .ghost()
+/// `hover:bg-white/10` under a glyph the caller has already tweened to its on/off colour.
+fn side_toggle(id: &'static str, tint: Hsla, cx: &App) -> Button {
+    Button::new(id).custom(
+        ButtonCustomVariant::new(cx)
+            .foreground(tint)
+            .hover(style::white(style::HOVER, cx))
+            .active(style::white(style::ACTIVE, cx)),
+    )
+}
+
+pub(crate) fn shuffle_button(shuffle: bool, tint: Hsla, cx: &App) -> Button {
+    side_toggle("fs-shuffle", tint, cx)
         .rounded(px(999.))
         .icon(icons::icon(icons::SHUFFLE))
         .toggled(shuffle)
@@ -71,13 +80,12 @@ pub(crate) fn shuffle_button(shuffle: bool) -> Button {
         })
 }
 
-pub(crate) fn repeat_button(mode: LoopMode) -> Button {
+pub(crate) fn repeat_button(mode: LoopMode, tint: Hsla, cx: &App) -> Button {
     let icon = match mode {
         LoopMode::Track => icons::REPEAT_ONE,
         _ => icons::REPEAT,
     };
-    Button::new("fs-repeat")
-        .ghost()
+    side_toggle("fs-repeat", tint, cx)
         .rounded(px(999.))
         .icon(icons::icon(icon))
         .toggled(mode != LoopMode::None)

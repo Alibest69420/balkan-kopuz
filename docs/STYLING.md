@@ -126,6 +126,10 @@ Do not fake these; leave the element unstyled for that property and move on.
   cannot be ported onto one. Where the original is a bare element with a hover
   colour — a chip, a chevron, a close ✕ — build it from an interactive `div`
   rather than reaching for `Button`.
+  But a Button's colours *can* still be tweened: `Button::render` replays the
+  instance style last in every state layer, so `.bg()` and `.text_color()` win
+  and may carry a `motion::color`. The panel tabs work that way. It is only
+  `.hover()` that cannot reach a Button.
 - `Progress` paints its track as its own bar colour at 20%; an original with a
   separate track colour cannot be matched without hand-rolling the bar.
 - A rem helper cannot be handed to `Cover::size`, `Icon::size` or anything else

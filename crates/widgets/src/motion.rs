@@ -83,6 +83,49 @@ pub fn zoom(
     window: &mut Window,
     cx: &mut App,
 ) -> Pixels {
+    zoom_over(id, base, hovered, SLOW, window, cx)
+}
+
+/// The same over `duration`, for the covers upstream marks `duration-500`.
+pub fn zoom_over(
+    id: impl Into<ElementId>,
+    base: Pixels,
+    hovered: bool,
+    duration: Duration,
+    window: &mut Window,
+    cx: &mut App,
+) -> Pixels {
     let target = if hovered { base * 1.05 } else { base };
-    length(id, target, SLOW, window, cx)
+    length(id, target, duration, window, cx)
+}
+
+/// `duration-500`, which several cover zooms upstream use.
+pub const SLOWEST: Duration = Duration::from_millis(500);
+
+/// A stable motion id from a prefix and a domain key, which is what every channel wants.
+pub fn id(prefix: &str, key: impl std::fmt::Display) -> ElementId {
+    ElementId::Name(format!("{prefix}-{key}").into())
+}
+
+/// Fades in on the frame an element first renders, since a transition adopts its first target at once.
+pub fn enter(
+    id: impl Into<ElementId>,
+    duration: Duration,
+    window: &mut Window,
+    cx: &mut App,
+) -> f32 {
+    let id: ElementId = id.into();
+    let shown = window.use_keyed_state(
+        ElementId::Name(format!("{id:?}-entered").into()),
+        cx,
+        |_, _| false,
+    );
+    let entered = *shown.read(cx);
+    if !entered {
+        shown.update(cx, |shown, cx| {
+            *shown = true;
+            cx.notify();
+        });
+    }
+    amount(id, if entered { 1. } else { 0. }, duration, window, cx)
 }

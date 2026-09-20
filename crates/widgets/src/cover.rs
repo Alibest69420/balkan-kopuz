@@ -1,12 +1,15 @@
+use std::time::Duration;
+
 use api::ArtworkRef;
 use gpui_kit::component::Icon;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, IntoElement, ObjectFit, ParentElement as _, Pixels, RenderOnce, Styled, StyledImage as _,
-    Window, div, img, px,
+    App, ElementId, IntoElement, ObjectFit, ParentElement as _, Pixels, RenderOnce, Styled,
+    StyledImage as _, Window, div, img, px,
 };
 
 use crate::icons;
+use crate::motion;
 use crate::style;
 
 /// A row, tile or hero cover. A row without artwork renders the placeholder and asks for nothing.
@@ -17,6 +20,8 @@ pub struct Cover {
     hq: bool,
     rounded: Option<Pixels>,
     placeholder: &'static str,
+    zoom: Option<(ElementId, bool)>,
+    zoom_speed: Duration,
 }
 
 impl Cover {
@@ -27,6 +32,8 @@ impl Cover {
             hq: false,
             rounded: None,
             placeholder: icons::MUSIC,
+            zoom: None,
+            zoom_speed: motion::SLOW,
         }
     }
 
@@ -53,6 +60,18 @@ impl Cover {
         self.placeholder = icon;
         self
     }
+
+    /// `group-hover:scale-105`: the picture grows inside its own clipped frame while `hovered`.
+    pub fn zoom(mut self, id: impl Into<ElementId>, hovered: bool) -> Self {
+        self.zoom = Some((id.into(), hovered));
+        self
+    }
+
+    /// How long that zoom takes; `duration-300` unless the original says `duration-500`.
+    pub fn zoom_speed(mut self, duration: Duration) -> Self {
+        self.zoom_speed = duration;
+        self
+    }
 }
 
 impl RenderOnce for Cover {
@@ -62,6 +81,13 @@ impl RenderOnce for Cover {
             .rounded
             .unwrap_or_else(|| style::to_px(style::radius(cx), window));
         let glyph = px((self.size.as_f32() * 0.22).max(12.));
+        // The frame keeps its size and clips; only the picture inside it grows.
+        let drawn = match self.zoom.clone() {
+            Some((id, hovered)) => {
+                motion::zoom_over(id, self.size, hovered, self.zoom_speed, window, cx)
+            }
+            None => self.size,
+        };
         div()
             .size(self.size)
             .rounded(radius)
@@ -74,7 +100,8 @@ impl RenderOnce for Cover {
             .map(|frame| match &self.artwork {
                 Some(artwork) => frame.child(
                     img(store::artwork_source(artwork, self.hq))
-                        .size(self.size)
+                        .size(drawn)
+                        .flex_shrink_0()
                         .object_fit(ObjectFit::Cover),
                 ),
                 None => frame.child(

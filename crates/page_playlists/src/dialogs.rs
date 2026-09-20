@@ -15,7 +15,9 @@ use gpui_kit::{
 };
 use store::{PlaylistsModel, SourcesModel, actions};
 use widgets::format::t;
-use widgets::{icons, style};
+use widgets::{icons, motion, style};
+
+use crate::cards::{hovered, track};
 
 /// `.popup`'s `min-width: 400px`.
 const DIALOG_WIDTH: gpui_kit::Pixels = px(400.);
@@ -84,8 +86,16 @@ impl AddPlaylist {
 }
 
 impl Render for AddPlaylist {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let folders = SourcesModel::global(cx).read(cx).capabilities().folders;
+        // Asked for every frame, so the channel outlives the banner and the next error fades in.
+        let reveal = motion::amount(
+            "add-playlist-error",
+            if self.error.is_some() { 1. } else { 0. },
+            motion::FAST,
+            window,
+            cx,
+        );
         v_flex()
             .gap_4()
             .w(DIALOG_WIDTH)
@@ -96,6 +106,7 @@ impl Render for AddPlaylist {
                         .py_2()
                         .rounded(px(6.))
                         .text_sm()
+                        .opacity(reveal)
                         .text_color(cx.theme().danger)
                         .bg(cx.theme().danger.opacity(0.1))
                         .border_1()
@@ -264,7 +275,7 @@ impl FolderPicker {
 }
 
 impl Render for FolderPicker {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let folders = PlaylistsModel::global(cx).read(cx).folders().to_vec();
         v_flex()
             .gap_3()
@@ -285,6 +296,17 @@ impl Render for FolderPicker {
                     .overflow_y_scroll()
                     .children(folders.into_iter().map(|folder| {
                         let id = folder.id.clone();
+                        let (hot, hover) = hovered(
+                            SharedString::from(format!("folder-row-hover-{}", folder.id)),
+                            window,
+                            cx,
+                        );
+                        let fill = motion::color(
+                            SharedString::from(format!("folder-row-fill-{}", folder.id)),
+                            style::white(if hot { style::HOVER } else { 0. }, cx),
+                            window,
+                            cx,
+                        );
                         h_flex()
                             .id(SharedString::from(format!("folder-{}", folder.id)))
                             .gap_2()
@@ -292,7 +314,8 @@ impl Render for FolderPicker {
                             .py_2()
                             .text_sm()
                             .rounded(style::radius_lg())
-                            .hover(|row| row.bg(style::white(style::HOVER, cx)))
+                            .bg(fill)
+                            .on_hover(track(hover))
                             .child(
                                 icons::icon(icons::FOLDER)
                                     .size(px(12.))

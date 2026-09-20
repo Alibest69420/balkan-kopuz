@@ -1,26 +1,55 @@
 //! The playlist and folder cards, and the menus they carry.
 
+use std::time::Duration;
+
 use api::{ArtworkRef, PlaylistCapability, PlaylistFolderInfo, PlaylistInfo};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, Div, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
-    Pixels, RenderOnce, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
-    px,
+    AnyElement, App, Div, ElementId, Entity, FontWeight, InteractiveElement as _, IntoElement,
+    ParentElement as _, Pixels, RenderOnce, SharedString, StatefulInteractiveElement as _,
+    Styled as _, Window, div, px,
 };
 use store::{Navigator, Route, SourcesModel, actions};
 use widgets::format::{t, t_with};
-use widgets::{Cover, icons, style};
+use widgets::{Cover, icons, motion, style};
 
 /// The card, and the `w-full h-32` picture inside its `p-4`.
 const CARD: Pixels = px(160.);
 const COVER: Pixels = px(128.);
+/// `group-hover:scale-105 duration-500` on a card's cover.
+const COVER_ZOOM: f32 = 1.05;
+const COVER_ZOOM_TIME: Duration = Duration::from_millis(500);
 
 /// The `gap-6` wrap every playlist grid lays its cards out in.
 pub(crate) fn card_grid() -> Div {
     div().flex().flex_wrap().gap_6()
+}
+
+/// Hover as a value a tween can read; `.hover()` refines a style instead of reporting the state.
+pub(crate) fn hovered(
+    id: impl Into<ElementId>,
+    window: &mut Window,
+    cx: &mut App,
+) -> (bool, Entity<bool>) {
+    let state = window.use_keyed_state(id, cx, |_, _| false);
+    let hovered = *state.read(cx);
+    (hovered, state)
+}
+
+/// The `on_hover` listener that keeps a [`hovered`] flag in step with the pointer.
+pub(crate) fn track(state: Entity<bool>) -> impl Fn(&bool, &mut Window, &mut App) + 'static {
+    move |hovered, _, cx| {
+        let hovered = *hovered;
+        state.update(cx, |flag, cx| {
+            if *flag != hovered {
+                *flag = hovered;
+                cx.notify();
+            }
+        });
+    }
 }
 
 /// A cover card with a title, a subtitle, a menu beside the title and an optional button over the cover.
@@ -83,10 +112,28 @@ impl Card {
 }
 
 impl RenderOnce for Card {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let group = SharedString::from(format!("card-{}", self.id));
         let cover_route = self.route.clone();
         let title_route = self.route;
+        let (hot, hover) = hovered(
+            SharedString::from(format!("card-hover-{}", self.id)),
+            window,
+            cx,
+        );
+        let fill = motion::color(
+            SharedString::from(format!("card-fill-{}", self.id)),
+            style::white(if hot { style::HOVER } else { style::RAISED }, cx),
+            window,
+            cx,
+        );
+        let cover = motion::length(
+            SharedString::from(format!("card-cover-{}", self.id)),
+            if hot { COVER * COVER_ZOOM } else { COVER },
+            COVER_ZOOM_TIME,
+            window,
+            cx,
+        );
         v_flex()
             .id(SharedString::from(format!("card-{}", self.id)))
             .group(group.clone())
@@ -94,22 +141,29 @@ impl RenderOnce for Card {
             .gap_4()
             .p_4()
             .rounded(style::radius_xl())
-            .bg(style::white(style::RAISED, cx))
+            .bg(fill)
             .border_1()
             .border_color(style::white(style::BORDER_SOFT, cx))
             .cursor_pointer()
-            .hover(|card| card.bg(style::white(style::HOVER, cx)))
+            .on_hover(track(hover))
             .child(
                 // The corner button is a sibling of the clickable cover, so pressing it is not a navigation.
                 div()
                     .relative()
                     .child(
+                        // `group-hover:scale-105` reads as the cover growing inside a frame that clips it.
                         div()
                             .id(SharedString::from(format!("cover-{}", self.id)))
+                            .size(COVER)
+                            .rounded(px(12.))
+                            .overflow_hidden()
+                            .flex()
+                            .items_center()
+                            .justify_center()
                             .on_click(move |_, _, cx| Navigator::navigate(cover_route.clone(), cx))
                             .child(
                                 Cover::new(self.artwork.as_ref())
-                                    .size(COVER)
+                                    .size(cover)
                                     .rounded(px(12.))
                                     .placeholder(self.placeholder),
                             ),
