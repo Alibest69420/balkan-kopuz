@@ -8,6 +8,7 @@ mod downloads;
 mod favorites;
 mod invalidation;
 mod jobs;
+pub mod layout;
 mod nav;
 mod notices;
 mod player;
@@ -26,6 +27,7 @@ pub use downloads::DownloadsModel;
 pub use favorites::FavoritesModel;
 pub use invalidation::{Invalidation, TablesChanged};
 pub use jobs::{JobEvent, JobsModel};
+pub use layout::{Layout, LayoutModel};
 pub use link::{Link, api};
 pub use nav::{Navigator, Route};
 pub use notices::{Notice, Notices};
@@ -35,6 +37,11 @@ pub use query::Query;
 pub use queue::QueueModel;
 pub use signin::{register_password_form, start_sign_in};
 pub use sources::SourcesModel;
+
+/// How the app is meant to look, for a view that only reads it.
+pub fn layout(cx: &App) -> &Layout {
+    LayoutModel::global(cx).read(cx).get()
+}
 
 /// Every row of a listing, the way the Dioxus frontend asks for "all".
 pub fn all() -> api::Page {
@@ -76,6 +83,7 @@ fn register<T: 'static>(cx: &mut App, build: impl FnOnce(&mut gpui_kit::Context<
 
 /// Create every model; call once after `link::init`, before opening a window.
 pub fn init(cx: &mut App) {
+    register(cx, LayoutModel::new);
     register(cx, Notices::new);
     register(cx, Invalidation::new);
     register(cx, ConfigModel::new);

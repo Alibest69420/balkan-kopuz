@@ -16,6 +16,9 @@ tracing = { workspace = true }
 api = { workspace = true }
 config = { workspace = true }
 i18n = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+directories = { workspace = true }
 link = { workspace = true }
 gpui-kit = { workspace = true }
 futures = { workspace = true }

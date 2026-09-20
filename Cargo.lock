@@ -3813,6 +3813,7 @@ dependencies = [
  "player_bar",
  "profile",
  "quick_search",
+ "settings_interface",
  "settings_sources",
  "side_panel",
  "sidebar",
@@ -5313,6 +5314,7 @@ dependencies = [
  "kopuz-i18n",
  "link",
  "settings_appearance",
+ "settings_interface",
  "settings_playback",
  "settings_sources",
  "store",
@@ -6846,6 +6848,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "settings_interface"
+version = "0.1.0"
+dependencies = [
+ "gpui-kit",
+ "kopuz-i18n",
+ "store",
+ "widgets",
+]
+
+[[package]]
 name = "settings_playback"
 version = "0.1.0"
 dependencies = [
@@ -7141,6 +7153,7 @@ name = "store"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "directories",
  "futures",
  "gpui-kit",
  "image",
@@ -7149,6 +7162,8 @@ dependencies = [
  "kopuz-i18n",
  "link",
  "profile",
+ "serde",
+ "toml 0.8.23",
  "tracing",
 ]
 
