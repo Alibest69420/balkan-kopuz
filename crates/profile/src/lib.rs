@@ -50,12 +50,11 @@ pub fn init() -> Session {
     }
 }
 
-/// How often the heartbeat prints, since a profiler nobody reads is worth nothing.
-const HEARTBEAT: Duration = Duration::from_secs(5);
+/// How often the heartbeat reports, since a profiler nobody reads is worth nothing.
+pub const HEARTBEAT: Duration = Duration::from_secs(5);
 
-/// Prints the heap and the counters on a fixed interval; call it from a timer the app already has.
+/// Reports the heap and the counters; drive it from a timer, not from a render.
 pub struct Heartbeat {
-    last: Instant,
     heap: Heap,
 }
 
@@ -67,18 +66,11 @@ impl Default for Heartbeat {
 
 impl Heartbeat {
     pub fn new() -> Self {
-        Self {
-            last: Instant::now(),
-            heap: Heap::new(),
-        }
+        Self { heap: Heap::new() }
     }
 
-    /// Logs a line when the interval has passed, and answers whether it did.
-    pub fn tick(&mut self) -> bool {
-        if self.last.elapsed() < HEARTBEAT {
-            return false;
-        }
-        self.last = Instant::now();
+    /// Logs one line of what the process is holding.
+    pub fn report(&mut self) {
         let counters = Counters::snapshot();
         let (allocated, resident) = self.heap.read();
         tracing::info!(
@@ -93,7 +85,6 @@ impl Heartbeat {
             slow_frames = counters.slow_frames,
             "profile"
         );
-        true
     }
 }
 

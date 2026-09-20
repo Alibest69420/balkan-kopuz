@@ -105,6 +105,8 @@ fn budget() -> usize {
 pub struct Residents {
     live: std::collections::HashMap<ArtworkKey, Resident>,
     clock: u64,
+    // Where the clock stood at the last sweep; anything drawn since is on screen and stays.
+    swept: u64,
 }
 
 struct Resident {
@@ -145,9 +147,13 @@ impl Residents {
             return;
         }
         let residents = cx.default_global::<Self>();
+        let swept = residents.swept;
+        residents.swept = residents.clock;
+        // A cover drawn since the last sweep is on screen: evicting it only makes it fetch again.
         let mut ages: Vec<(u64, ArtworkKey)> = residents
             .live
             .iter()
+            .filter(|(_, resident)| resident.used <= swept)
             .map(|(key, resident)| (resident.used, key.clone()))
             .collect();
         ages.sort_unstable_by_key(|(used, _)| *used);

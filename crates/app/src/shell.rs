@@ -6,7 +6,7 @@ use gpui_kit::component::{ActiveTheme as _, Root, WindowExt as _, h_flex, v_flex
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled,
-    Subscription, Window, div,
+    Subscription, Task, Window, div,
 };
 use gpui_kit::{FocusHandle, InteractiveElement as _, actions};
 use link::{Connection, ConnectionStatus};
@@ -29,12 +29,29 @@ pub struct Shell {
     overlays: Entity<overlays::Overlays>,
     // The theme these were applied for, so config edits reapply only on a change.
     applied_theme: (String, Option<config::CustomTheme>),
-    // Every frame passes through this render, so it is where the profiler counts them.
-    heartbeat: profile::Heartbeat,
+    // On its own timer: GPUI only renders on a change, and an idle app is when covers want releasing.
+    _heartbeat: Task<()>,
     _subscriptions: Vec<Subscription>,
 }
 
 impl Shell {
+    /// Reports the heap and releases the covers no longer drawn, whether or not anything repainted.
+    fn heartbeat(window: &mut Window, cx: &mut Context<Self>) -> Task<()> {
+        cx.spawn_in(window, async move |this, cx| {
+            let mut heartbeat = profile::Heartbeat::new();
+            loop {
+                cx.background_executor().timer(profile::HEARTBEAT).await;
+                let swept = this.update_in(cx, |_, window, cx| {
+                    heartbeat.report();
+                    store::Residents::sweep(window, cx)
+                });
+                if swept.is_err() {
+                    return;
+                }
+            }
+        })
+    }
+
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let connection = link::Link::connection(cx);
         let navigator = Navigator::global(cx);
@@ -96,7 +113,7 @@ impl Shell {
             mini_player: cx.new(|cx| fullscreen::MiniPlayer::new(window, cx)),
             overlays: cx.new(|cx| overlays::Overlays::new(window, cx)),
             applied_theme: (String::new(), None),
-            heartbeat: profile::Heartbeat::new(),
+            _heartbeat: Self::heartbeat(window, cx),
             _subscriptions: subscriptions,
         }
     }
@@ -164,10 +181,6 @@ impl Shell {
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _frame = profile::Frame::new();
-        if self.heartbeat.tick() {
-            // Covers are released on the heartbeat, not per frame: the sweep sorts what it holds.
-            store::Residents::sweep(window, cx);
-        }
         let connected = self.connection.read(cx).is_connected();
         let chrome = Chrome::global(cx).read(cx);
         let fullscreen = chrome.is_fullscreen();
