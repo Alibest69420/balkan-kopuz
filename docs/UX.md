@@ -63,9 +63,8 @@ anyway. Severities are the auditors'. Tick items as they land.
 
 ## Rough — works, feels unfinished
 
-- [ ] Re-sorting or typing blanks the page to a spinner: `set_fetch` discards
-      the held value (`store/src/query.rs:60`). No skeletons anywhere, though
-      the theme defines `skeleton.background`.
+- [x] Re-sorting or typing blanks the page to a spinner: `set_fetch` now keeps
+      the held value and marks it `is_stale()`. Skeletons themselves are §4.
 - [x] The artists grid builds every tile; so do the playlists grid, search album
       results and artist-detail albums. `page_artists/src/grid.rs:183`.
 - [x] The albums grid re-clones, re-dedupes and re-sorts the whole library on
@@ -76,9 +75,11 @@ anyway. Severities are the auditors'. Tick items as they land.
 - [ ] Playlist detail has no loading state, no empty state, no column header.
 - [ ] Cancelling a job has no pending state and swallows its failure.
 - [ ] The scan banner cannot be cancelled, unlike the download card.
-- [ ] Browser sign-in shows nothing while the browser is open — click, then
-      nothing, for as long as it takes.
-- [ ] If the config read fails every settings control renders enabled and dead.
+- [x] Browser sign-in shows nothing while the browser is open — click, then
+      nothing, for as long as it takes. Now a spinner and "Waiting for your
+      browser…", with a toast on success.
+- [x] If the config read fails every settings control renders enabled and dead.
+      The page says so instead, and swaps in when the daemon answers.
 - [x] The sidebar status dot latches at its first probe and then lies.
 - [ ] Error toasts auto-dismiss in 5s and never dedupe.
 - [ ] Every page fetches the entire library; paging is a TODO.
