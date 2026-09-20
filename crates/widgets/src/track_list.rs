@@ -11,9 +11,10 @@ use gpui_kit::component::menu::PopupMenu;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    ClickEvent, Context, EventEmitter, FocusHandle, Focusable, FontWeight, InteractiveElement as _,
-    IntoElement, ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled,
-    UniformListScrollHandle, WeakEntity, Window, actions, div, px, uniform_list,
+    AppContext as _, ClickEvent, Context, EventEmitter, FocusHandle, Focusable, FontWeight,
+    InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString,
+    StatefulInteractiveElement as _, Styled, UniformListScrollHandle, WeakEntity, Window, actions,
+    div, px, uniform_list,
 };
 use store::{DownloadsModel, FavoritesModel, Navigator, PlayerModel, Route, SourcesModel, actions};
 
@@ -119,6 +120,20 @@ pub enum TrackListEvent {
 pub struct TrackDrag {
     pub keys: Vec<String>,
     pub label: SharedString,
+}
+
+/// What follows the pointer during the drag: a chip naming what is being carried.
+impl Render for TrackDrag {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .px_2()
+            .py_1()
+            .rounded(cx.theme().radius)
+            .bg(cx.theme().popover)
+            .text_color(cx.theme().popover_foreground)
+            .text_sm()
+            .child(self.label.clone())
+    }
 }
 
 /// The shared track list: virtualized rows, selection, and the row menu.
@@ -382,6 +397,26 @@ impl TrackList {
             .h(style::row_height())
             .rounded(style::radius_lg())
             .bg(wash)
+            // The queue registers a drop target for this and nothing ever produced one, so the
+            // whole affordance was unreachable. A row inside a selection drags the selection.
+            .on_drag(
+                {
+                    let selected_keys = match selected {
+                        true => self.selected_keys(),
+                        false => vec![key.clone()],
+                    };
+                    // "Title +3" rather than a count, which would need a plural form per locale.
+                    let label = match selected_keys.len() {
+                        0 | 1 => SharedString::from(track.title.clone()),
+                        many => SharedString::from(format!("{} +{}", track.title, many - 1)),
+                    };
+                    TrackDrag {
+                        keys: selected_keys,
+                        label,
+                    }
+                },
+                |drag, _, _, cx| cx.new(|_| drag.clone()),
+            )
             // Upstream the wash is an inline style, which outranks `hover:bg-white/5`; a refinement does not.
             .when(!playing && !selected, |row| {
                 row.hover(|row| row.bg(style::white(style::RAISED, cx)))

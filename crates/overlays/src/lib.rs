@@ -141,12 +141,23 @@ impl Overlays {
 
     /// Switching source clears the error it belonged to, so what is here is about what plays now.
     fn playback_error(&self, cx: &App) -> Option<SharedString> {
-        let player = PlayerModel::global(cx);
-        let message = player.read(cx).error()?.message.clone();
-        if self.dismissed_error.as_deref() == Some(message.as_str()) {
+        let message = PlayerModel::global(cx).read(cx).error()?.message.clone();
+        if self.dismissed_error == Self::occurrence(cx) {
             return None;
         }
         Some(message.into())
+    }
+
+    /// What a dismissal is remembered by: the failure *and* the track it happened on.
+    ///
+    /// Keyed on the message alone, dismissing "Couldn't decode this stream" silenced it for every
+    /// later track that failed the same way — playback simply stopped, with no banner to say why.
+    fn occurrence(cx: &App) -> Option<String> {
+        let player = PlayerModel::global(cx);
+        let player = player.read(cx);
+        let message = &player.error()?.message;
+        let track = player.track().map(|track| track.key.as_str()).unwrap_or("");
+        Some(format!("{track}\u{1}{message}"))
     }
 
     /// A tween needs the hover state a `.hover()` refinement keeps to itself.
@@ -275,7 +286,7 @@ impl Overlays {
                     .tooltip(|window, cx| Tooltip::new(t("close")).build(window, cx))
                     .child(icons::icon(icons::CLOSE).size(SMALL_ICON))
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.dismissed_error = Some(message.to_string());
+                        this.dismissed_error = Self::occurrence(cx);
                         cx.notify();
                     })),
             )
