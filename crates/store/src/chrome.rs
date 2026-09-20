@@ -1,4 +1,4 @@
-use gpui_kit::{App, Context, Entity};
+use gpui_kit::{App, Context, Entity, SharedString};
 
 use crate::nav::Route;
 
@@ -17,6 +17,7 @@ pub struct Chrome {
     mini: bool,
     quick_search: bool,
     origin: Option<Route>,
+    search: SharedString,
 }
 
 impl Chrome {
@@ -31,7 +32,22 @@ impl Chrome {
             mini: false,
             quick_search: false,
             origin: None,
+            search: SharedString::default(),
         }
+    }
+
+    /// The query the browsing destination is showing; the palette is what puts one here.
+    pub fn search(&self) -> &SharedString {
+        &self.search
+    }
+
+    pub fn set_search(&mut self, query: impl Into<SharedString>, cx: &mut Context<Self>) {
+        let query = query.into();
+        if query == self.search {
+            return;
+        }
+        self.search = query;
+        crate::notify(cx);
     }
 
     pub fn panel(&self) -> Option<SidePanel> {

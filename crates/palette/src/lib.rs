@@ -104,6 +104,8 @@ enum Act {
     },
     /// Put a remembered query back in the box.
     Recall(SharedString),
+    /// Hand the query to Discover, which shows every match rather than the best few.
+    Browse(SharedString),
 }
 
 /// One drawn row, already ranked.
@@ -409,6 +411,11 @@ impl Palette {
                 };
                 Navigator::global(cx).update(cx, |navigator, cx| navigator.go(route, cx));
             }
+            Act::Browse(query) => {
+                self.close(cx);
+                Chrome::global(cx).update(cx, |chrome, cx| chrome.set_search(query, cx));
+                Navigator::global(cx).update(cx, |navigator, cx| navigator.go(Route::Discover, cx));
+            }
             Act::Recall(_) => {}
         }
     }
@@ -483,6 +490,8 @@ impl Palette {
                 };
                 section(&mut lines, &mut items, title, found);
             }
+            // Last, because enter belongs to the best hit: the way out of the best few and into all of them.
+            section(&mut lines, &mut items, t("discover"), self.browse_item());
         }
         self.items = items;
         self.lines = lines;
@@ -554,6 +563,22 @@ impl Palette {
             target: None,
             faded: false,
         }
+    }
+
+    /// The row that hands the query on to Discover; a blank box has nothing to hand over.
+    fn browse_item(&self) -> Vec<Item> {
+        if self.query.is_empty() {
+            return Vec::new();
+        }
+        vec![Item {
+            title: t_with("palette_all_results", &[("query", self.query.clone())]),
+            subtitle: None,
+            icon: icons::COMPASS,
+            hint: None,
+            act: Act::Browse(SharedString::from(self.query.clone())),
+            target: None,
+            faded: false,
+        }]
     }
 
     fn recent_command_items(&self, cx: &gpui_kit::App) -> Vec<Item> {
