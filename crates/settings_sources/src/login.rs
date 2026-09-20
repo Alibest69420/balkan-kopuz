@@ -53,6 +53,9 @@ impl LoginForm {
             .update(cx, |state, cx| state.set_value("", window, cx));
         self.error = None;
         self.loading = false;
+        // A dialog whose whole purpose is a text field should not need the mouse first.
+        self.username
+            .update(cx, |state, cx| state.focus(window, cx));
         cx.notify();
     }
 
@@ -60,7 +63,9 @@ impl LoginForm {
         t_with("login_to_service", &[("service", self.service.to_string())])
     }
 
-    fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Send the sign-in. This closes the dialog itself on success and keeps it open with the
+    /// reason on failure, so whatever calls it must not close the dialog too.
+    pub fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.loading {
             return;
         }

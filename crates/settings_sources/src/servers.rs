@@ -334,6 +334,17 @@ impl MediaServers {
             dialog
                 .title(form.read(cx).title())
                 .w(ui::dialog_width())
+                // Enter submits instead of discarding. The dialog's default OK closes and saves
+                // nothing, and a filled-in sign-in form is exactly what Enter gets pressed on.
+                .on_ok({
+                    let form = form.clone();
+                    move |_, window, cx| {
+                        form.update(cx, |form, cx| form.submit(window, cx));
+                        false
+                    }
+                })
+                // A stray click outside should not throw away a typed password.
+                .overlay_closable(false)
                 .child(form.clone())
                 .footer(div())
         });
@@ -346,6 +357,16 @@ impl MediaServers {
             dialog
                 .title(t("add_media_server"))
                 .w(ui::dialog_width())
+                // Enter saves the draft rather than throwing it away.
+                .on_ok({
+                    let form = form.clone();
+                    move |_, window, cx| {
+                        form.update(cx, |form, cx| form.save(window, cx));
+                        false
+                    }
+                })
+                // A click outside should not discard a half-filled server definition.
+                .overlay_closable(false)
                 .child(form.clone())
                 .footer(div())
         });

@@ -144,6 +144,15 @@ impl LocalLibraries {
             dialog
                 .title(t("add_local_library"))
                 .w(ui::dialog_width())
+                // Enter saves rather than discarding what was typed.
+                .on_ok({
+                    let form = form.clone();
+                    move |_, window, cx| {
+                        form.update(cx, |form, cx| form.save(window, cx));
+                        false
+                    }
+                })
+                .overlay_closable(false)
                 .child(form.clone())
                 .footer(div())
         });
@@ -309,6 +318,8 @@ impl AddLibrary {
         self.directories.clear();
         self.error = None;
         self.saving = false;
+        // The caret belongs in the first field, not nowhere.
+        self.name.update(cx, |state, cx| state.focus(window, cx));
         cx.notify();
     }
 
@@ -327,7 +338,8 @@ impl AddLibrary {
         });
     }
 
-    fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Closes the dialog itself on success and keeps it open with the reason otherwise.
+    pub fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.saving {
             return;
         }

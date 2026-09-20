@@ -93,6 +93,8 @@ impl AddServer {
         self.form = None;
         self._form_subscription = None;
         self.ensure_service(window, cx);
+        // The name is the first thing asked for, so put the caret in it.
+        self.name.update(cx, |state, cx| state.focus(window, cx));
         cx.notify();
     }
 
@@ -193,7 +195,9 @@ impl AddServer {
                 .is_some_and(|check| check.sign_in == SignInKind::Browser)
     }
 
-    fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Save the draft. Closes the dialog itself once the daemon accepts it and keeps it open with
+    /// the problems otherwise, so whatever calls this must not close the dialog as well.
+    pub fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.saving || self.blocked() || self.service.is_none() {
             return;
         }

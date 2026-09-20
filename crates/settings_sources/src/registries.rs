@@ -111,6 +111,15 @@ impl RadioRegistries {
             dialog
                 .title(t("add_radio_registry"))
                 .w(ui::dialog_width())
+                // Enter saves rather than discarding what was typed.
+                .on_ok({
+                    let form = form.clone();
+                    move |_, window, cx| {
+                        form.update(cx, |form, cx| form.save(window, cx));
+                        false
+                    }
+                })
+                .overlay_closable(false)
                 .child(form.clone())
                 .footer(div())
         });
@@ -260,10 +269,13 @@ impl AddRegistry {
             .update(cx, |state, cx| state.set_value("", window, cx));
         self.error = None;
         self.saving = false;
+        // The caret belongs in the one field this dialog is for.
+        self.url.update(cx, |state, cx| state.focus(window, cx));
         cx.notify();
     }
 
-    fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Closes the dialog itself on success and keeps it open with the reason otherwise.
+    pub fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.saving {
             return;
         }
