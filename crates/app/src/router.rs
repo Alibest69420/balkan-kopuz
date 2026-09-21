@@ -75,15 +75,24 @@ fn build(route: &Route, window: &mut Window, cx: &mut Context<Shell>) -> AnyView
         Route::Album(id) => cx
             .new(|cx| page_albums::AlbumDetail::new(id, window, cx))
             .into(),
-        Route::Artist { name, channel } => match channel {
-            // A remote artist has a channel id and its own profile page.
-            Some(channel) => cx
-                .new(|cx| discover::CatalogArtist::new(channel, name, window, cx))
-                .into(),
-            None => cx
-                .new(|cx| page_artists::ArtistDetail::new(name, window, cx))
-                .into(),
-        },
+        // A source that presents artists itself gets its own profile; with only a name the daemon resolves one.
+        Route::Artist { name, channel } => {
+            let remote = store::SourcesModel::global(cx)
+                .read(cx)
+                .capabilities()
+                .artists
+                == api::ArtistPresentation::Remote;
+            match remote || channel.is_some() {
+                true => cx
+                    .new(|cx| {
+                        discover::CatalogArtist::new(channel.unwrap_or_default(), name, window, cx)
+                    })
+                    .into(),
+                false => cx
+                    .new(|cx| page_artists::ArtistDetail::new(name, window, cx))
+                    .into(),
+            }
+        }
         Route::PlaylistFolder(id) => cx
             .new(|cx| page_playlists::PlaylistFolder::new(id, window, cx))
             .into(),

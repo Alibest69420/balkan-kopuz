@@ -1132,13 +1132,9 @@ fn point_remote(query: &Entity<Query<Option<CatalogDetail>>>, id: Option<String>
                     let Some(id) = id else {
                         return Ok(None);
                     };
-                    api.catalog_detail(CatalogDetailRequest {
-                        kind: CatalogItemKind::Album,
-                        id,
-                        continuation: None,
-                    })
-                    .await
-                    .map(Some)
+                    api.catalog_detail(CatalogDetailRequest::by_id(CatalogItemKind::Album, id))
+                        .await
+                        .map(Some)
                 }
             },
             cx,

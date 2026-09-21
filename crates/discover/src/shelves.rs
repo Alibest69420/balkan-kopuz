@@ -149,9 +149,8 @@ impl Shelves {
             let mut started = false;
             loop {
                 let request = CatalogDetailRequest {
-                    kind,
-                    id: id.clone(),
                     continuation: cursor.clone(),
+                    ..CatalogDetailRequest::by_id(kind, id.clone())
                 };
                 let Ok(call) = this.update(cx, |_, cx| {
                     Link::global(cx)

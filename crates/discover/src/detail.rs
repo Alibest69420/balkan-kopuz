@@ -82,21 +82,13 @@ impl CatalogPlaylist {
         self.error = None;
         cx.notify();
         let call = Link::global(cx).call(move |api| async move {
-            let request = CatalogDetailRequest {
-                kind: CatalogItemKind::Playlist,
-                id: id.clone(),
-                continuation: None,
-            };
+            let request = CatalogDetailRequest::by_id(CatalogItemKind::Playlist, id.clone());
             match api.catalog_detail(request).await {
                 Ok(detail) => Ok(detail),
                 // The route carries no kind, so an album opened here is a second try, not an id sniff.
                 Err(_) => {
-                    api.catalog_detail(CatalogDetailRequest {
-                        kind: CatalogItemKind::Album,
-                        id,
-                        continuation: None,
-                    })
-                    .await
+                    api.catalog_detail(CatalogDetailRequest::by_id(CatalogItemKind::Album, id))
+                        .await
                 }
             }
         });
@@ -185,16 +177,19 @@ impl CatalogArtist {
         page
     }
 
-    /// The channel id wins; a caller that only has a name passes that and the daemon resolves it.
-    fn reference(&self) -> Option<String> {
-        [self.id.trim(), self.name.trim()]
-            .into_iter()
-            .find(|candidate| !candidate.is_empty())
-            .map(str::to_string)
+    /// Which of the two the caller holds travels in the request, rather than in one string's shape.
+    fn request(&self) -> Option<CatalogDetailRequest> {
+        match self.id.trim() {
+            "" => match self.name.trim() {
+                "" => None,
+                name => Some(CatalogDetailRequest::by_name(CatalogItemKind::Artist, name)),
+            },
+            id => Some(CatalogDetailRequest::by_id(CatalogItemKind::Artist, id)),
+        }
     }
 
     fn load(&mut self, cx: &mut Context<Self>) {
-        let Some(reference) = self.reference() else {
+        let Some(request) = self.request() else {
             return;
         };
         self.generation += 1;
@@ -202,14 +197,8 @@ impl CatalogArtist {
         self.loading = true;
         self.error = None;
         cx.notify();
-        let call = Link::global(cx).call(move |api| async move {
-            api.catalog_detail(CatalogDetailRequest {
-                kind: CatalogItemKind::Artist,
-                id: reference,
-                continuation: None,
-            })
-            .await
-        });
+        let call =
+            Link::global(cx).call(move |api| async move { api.catalog_detail(request).await });
         self._load = Some(cx.spawn(async move |this, cx| {
             let result = call.await;
             this.update(cx, |this, cx| {
@@ -334,7 +323,7 @@ impl Render for CatalogArtist {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("catalog-artist");
         widgets::scroll::smooth("catalog-artist-scroll", &self.scroll, window, cx);
-        if self.reference().is_none() {
+        if self.request().is_none() {
             return EmptyState::new(t("artist_none_selected"))
                 .icon(icons::MIC)
                 .into_any_element();
