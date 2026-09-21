@@ -7,6 +7,7 @@ pub mod dialogs;
 pub mod focus;
 pub mod format;
 pub mod header;
+pub mod hover;
 pub mod icons;
 pub mod karaoke;
 pub mod marker;

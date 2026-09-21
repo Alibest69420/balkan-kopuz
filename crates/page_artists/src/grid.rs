@@ -252,7 +252,7 @@ impl Render for Artists {
 /// `rounded-full` photo that zooms under the pointer, and a centred label that goes accent.
 fn tile(entry: &ArtistEntry, window: &mut Window, cx: &mut App) -> impl IntoElement {
     let name = SharedString::from(entry.name.clone());
-    let (hot, hover) = controls::hovered(
+    let (hot, hover) = motion::hovered(
         SharedString::from(format!("artist-tile-hover-{}", entry.name)),
         window,
         cx,
@@ -309,7 +309,7 @@ fn tile(entry: &ArtistEntry, window: &mut Window, cx: &mut App) -> impl IntoElem
                 .text_color(label)
                 .child(name),
         )
-        .on_hover(controls::track(hover))
+        .on_hover(motion::track(hover))
         .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
 }
 

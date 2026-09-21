@@ -18,7 +18,7 @@ use widgets::format::{t, t_with};
 use widgets::track_list::{TrackActions, TrackList, TrackListEvent, columns};
 use widgets::{DetailHeader, EmptyState, detail_header_skeleton, icons, motion, style};
 
-use crate::cards::{hovered, tweened};
+use crate::cards::tweened;
 
 /// `w-64 h-64`: the showcase cover.
 const HERO: Pixels = px(256.);
@@ -289,7 +289,7 @@ impl Render for PlaylistDetail {
         let name = SharedString::from(playlist.name.clone());
         // These buttons carry no border; `tweened` still wants a colour for the edge it would paint.
         let clear = style::white(0., cx);
-        let (play_hot, play_hover) = hovered("play-playlist-hover", window, cx);
+        let (play_hot, play_hover) = motion::hovered("play-playlist-hover", window, cx);
         let play_fill = motion::color(
             "play-playlist-fill",
             if play_hot {
@@ -301,7 +301,7 @@ impl Render for PlaylistDetail {
             cx,
         );
         let play_text = cx.theme().primary_foreground;
-        let (radio_hot, radio_hover) = hovered("playlist-radio-hover", window, cx);
+        let (radio_hot, radio_hover) = motion::hovered("playlist-radio-hover", window, cx);
         let radio_fill = motion::color(
             "playlist-radio-fill",
             style::white(if radio_hot { style::HOVER } else { 0. }, cx),
@@ -319,9 +319,9 @@ impl Render for PlaylistDetail {
             cx,
         );
         // The frame still tracks the pointer while the download button is loading.
-        let (download_hot, download_hover) = hovered("playlist-download-hover", window, cx);
+        let (download_hot, download_hover) = motion::hovered("playlist-download-hover", window, cx);
         let download_hot = download_hot && !active;
-        let (delete_hot, delete_hover) = hovered("playlist-delete-hover", window, cx);
+        let (delete_hot, delete_hover) = motion::hovered("playlist-delete-hover", window, cx);
         let outline = |hot: bool, cx: &mut Context<Self>| {
             (
                 style::white(if hot { style::HOVER } else { 0. }, cx),

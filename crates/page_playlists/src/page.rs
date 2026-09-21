@@ -14,7 +14,7 @@ use store::{DownloadsModel, JobsModel, PlaylistsModel, SourcesModel, actions};
 use widgets::format::t;
 use widgets::{EmptyState, Loading, PageHeader, icons, motion, style};
 
-use crate::cards::{Card, card_grid, folder_card, hovered, playlist_card, tweened};
+use crate::cards::{Card, card_grid, folder_card, playlist_card, tweened};
 use crate::dialogs;
 
 pub struct Playlists {
@@ -31,7 +31,7 @@ fn tweened_chrome(
     window: &mut Window,
     cx: &mut App,
 ) -> impl IntoElement {
-    let (hot, hover) = hovered(SharedString::from(format!("{id}-hover")), window, cx);
+    let (hot, hover) = motion::hovered(SharedString::from(format!("{id}-hover")), window, cx);
     let background = motion::color(
         SharedString::from(format!("{id}-fill")),
         style::white(if hot { fill.1 } else { fill.0 }, cx),

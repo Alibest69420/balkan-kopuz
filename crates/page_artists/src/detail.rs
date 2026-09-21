@@ -356,7 +356,7 @@ impl ArtistDetail {
         let busy = JobsModel::global(cx).read(cx).is_running(JobKind::Download);
         let playable = !keys.is_empty();
         let downloadable = playable && !busy;
-        let (photo_hot, photo_hover) = controls::hovered("artist-photo-hover", window, cx);
+        let (photo_hot, photo_hover) = motion::hovered("artist-photo-hover", window, cx);
         let scrim = motion::amount(
             "artist-photo-scrim",
             if photo_hot { 1. } else { 0. },
@@ -364,7 +364,7 @@ impl ArtistDetail {
             window,
             cx,
         );
-        let (shuffle_hot, shuffle_hover) = controls::hovered("artist-shuffle-hover", window, cx);
+        let (shuffle_hot, shuffle_hover) = motion::hovered("artist-shuffle-hover", window, cx);
         let shuffle_fill = motion::color(
             "artist-shuffle-fill",
             style::white(if shuffle_hot { style::HOVER } else { 0. }, cx),
@@ -382,7 +382,7 @@ impl ArtistDetail {
             cx,
         );
         // A disabled Button registers no hover listener, so its flag would stay stuck where it was.
-        let (play_hot, play_hover) = controls::hovered("artist-play-hover", window, cx);
+        let (play_hot, play_hover) = motion::hovered("artist-play-hover", window, cx);
         let play_hot = play_hot && playable;
         let play_fill = motion::color(
             "artist-play-fill",
@@ -397,7 +397,7 @@ impl ArtistDetail {
         let play_text = cx.theme().primary_foreground;
         // These buttons carry no border; `tweened` still wants a colour for the edge it would paint.
         let clear = style::white(0., cx);
-        let (download_hot, download_hover) = controls::hovered("artist-download-hover", window, cx);
+        let (download_hot, download_hover) = motion::hovered("artist-download-hover", window, cx);
         let download_hot = download_hot && downloadable;
         let download_fill = motion::color(
             "artist-download-fill",
@@ -453,7 +453,7 @@ impl ArtistDetail {
                         gpui_kit::component::tooltip::Tooltip::new(t("change_photo"))
                             .build(window, cx)
                     })
-                    .on_hover(controls::track(photo_hover))
+                    .on_hover(motion::track(photo_hover))
                     .on_click(cx.listener(|this, _, _, cx| this.pick_photo(cx)))
             });
 
@@ -464,7 +464,7 @@ impl ArtistDetail {
                 &[("count", keys.len().to_string())],
             ))
             .meta(total_duration(total))
-            .action(controls::framed(
+            .action(widgets::hover::framed(
                 "artist-shuffle",
                 shuffle_hover,
                 controls::tweened(
@@ -497,7 +497,7 @@ impl ArtistDetail {
                     true => controls::tweened(play, play_fill, play_text, clear, cx),
                     false => play.primary(),
                 };
-                controls::framed("artist-play", play_hover, play)
+                widgets::hover::framed("artist-play", play_hover, play)
             });
         if capabilities.downloads {
             let download = Button::new("artist-download-all")
@@ -528,7 +528,7 @@ impl ArtistDetail {
                     .border_color(style::white(style::ACTIVE, cx))
                     .text_color(style::white(0.70, cx)),
             };
-            header = header.action(controls::framed(
+            header = header.action(widgets::hover::framed(
                 "artist-download-all",
                 download_hover,
                 download,
@@ -754,7 +754,7 @@ fn album_card(album: &AlbumInfo, window: &mut Window, cx: &mut App) -> AnyElemen
     });
     let route = Route::Album(album.id.clone().into());
     let group = SharedString::from(format!("album-card-{}", album.id));
-    let (hot, hover) = controls::hovered(
+    let (hot, hover) = motion::hovered(
         SharedString::from(format!("album-card-hover-{}", album.id)),
         window,
         cx,
@@ -781,7 +781,7 @@ fn album_card(album: &AlbumInfo, window: &mut Window, cx: &mut App) -> AnyElemen
         .rounded(style::radius_xl())
         .bg(fill)
         .cursor_pointer()
-        .on_hover(controls::track(hover))
+        .on_hover(motion::track(hover))
         .child(
             v_flex()
                 .id(SharedString::from(format!("album-open-{}", album.id)))

@@ -8,9 +8,9 @@ use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _};
 use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, Div, ElementId, Entity, FontWeight, Hsla, InteractiveElement as _,
-    IntoElement, ParentElement as _, Pixels, RenderOnce, SharedString,
-    StatefulInteractiveElement as _, Styled as _, Window, div, px,
+    AnyElement, App, Div, Entity, FontWeight, Hsla, InteractiveElement as _, IntoElement,
+    ParentElement as _, Pixels, RenderOnce, SharedString, StatefulInteractiveElement as _,
+    Styled as _, Window, div, px,
 };
 use store::{Navigator, Route, Target};
 use widgets::format::t_with;
@@ -28,18 +28,7 @@ pub(crate) fn card_grid() -> Div {
     div().flex().flex_wrap().gap_6()
 }
 
-/// Hover as a value a tween can read; `.hover()` refines a style instead of reporting the state.
-pub(crate) fn hovered(
-    id: impl Into<ElementId>,
-    window: &mut Window,
-    cx: &mut App,
-) -> (bool, Entity<bool>) {
-    let state = window.use_keyed_state(id, cx, |_, _| false);
-    let hovered = *state.read(cx);
-    (hovered, state)
-}
-
-/// Keep animation hover on the frame: a Button's tooltip owns its hover listener.
+/// The tween reaches the variant too, since a Button's own hover overrides the instance style.
 pub(crate) fn tweened(
     id: &'static str,
     button: Button,
@@ -49,7 +38,6 @@ pub(crate) fn tweened(
     edge: Hsla,
     cx: &App,
 ) -> impl IntoElement {
-    // The variant must use the tween too, since it overrides the button's hover style.
     let button = button
         .custom(
             ButtonCustomVariant::new(cx)
@@ -61,24 +49,7 @@ pub(crate) fn tweened(
         .bg(fill)
         .border_color(edge)
         .text_color(text);
-    div()
-        .id(SharedString::from(format!("{id}-frame")))
-        .flex()
-        .on_hover(track(hover))
-        .child(button)
-}
-
-/// The `on_hover` listener that keeps a [`hovered`] flag in step with the pointer.
-pub(crate) fn track(state: Entity<bool>) -> impl Fn(&bool, &mut Window, &mut App) + 'static {
-    move |hovered, _, cx| {
-        let hovered = *hovered;
-        state.update(cx, |flag, cx| {
-            if *flag != hovered {
-                *flag = hovered;
-                cx.notify();
-            }
-        });
-    }
+    widgets::hover::framed(id, hover, button)
 }
 
 /// A cover card with a title, a subtitle, a menu beside the title and an optional button over the cover.
@@ -146,7 +117,7 @@ impl RenderOnce for Card {
         let group = SharedString::from(format!("card-{}", self.id));
         let cover_route = self.route.clone();
         let title_route = self.route;
-        let (hot, hover) = hovered(
+        let (hot, hover) = motion::hovered(
             SharedString::from(format!("card-hover-{}", self.id)),
             window,
             cx,
@@ -176,7 +147,7 @@ impl RenderOnce for Card {
             .border_1()
             .border_color(style::white(style::BORDER_SOFT, cx))
             .cursor_pointer()
-            .on_hover(track(hover))
+            .on_hover(motion::track(hover))
             .child(
                 // The corner button is a sibling of the clickable cover, so pressing it is not a navigation.
                 div()

@@ -8,8 +8,7 @@ use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{Selectable as _, Sizable as _, h_flex};
 use gpui_kit::{
-    App, Div, ElementId, Entity, Hsla, InteractiveElement as _, IntoElement, ParentElement as _,
-    SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
+    App, Div, Hsla, IntoElement, ParentElement as _, SharedString, Styled as _, Window,
 };
 use store::ConfigModel;
 use widgets::format::t;
@@ -33,44 +32,6 @@ pub(crate) fn tweened(button: Button, fill: Hsla, text: Hsla, edge: Hsla, cx: &A
         .bg(fill)
         .border_color(edge)
         .text_color(text)
-}
-
-/// A control in the frame that owns its hover: a Button's tooltip installs an `on_hover` of its
-/// own, and a second one on the same element is a panic rather than a warning.
-pub(crate) fn framed(
-    id: &'static str,
-    hover: Entity<bool>,
-    control: impl IntoElement,
-) -> impl IntoElement {
-    div()
-        .id(SharedString::from(format!("{id}-frame")))
-        .flex()
-        .on_hover(track(hover))
-        .child(control)
-}
-
-/// Hover as a value a tween can read; `.hover()` refines a style instead of reporting the state.
-pub(crate) fn hovered(
-    id: impl Into<ElementId>,
-    window: &mut Window,
-    cx: &mut App,
-) -> (bool, Entity<bool>) {
-    let state = window.use_keyed_state(id, cx, |_, _| false);
-    let hovered = *state.read(cx);
-    (hovered, state)
-}
-
-/// The `on_hover` listener that keeps a [`hovered`] flag in step with the pointer.
-pub(crate) fn track(state: Entity<bool>) -> impl Fn(&bool, &mut Window, &mut App) + 'static {
-    move |hovered, _, cx| {
-        let hovered = *hovered;
-        state.update(cx, |flag, cx| {
-            if *flag != hovered {
-                *flag = hovered;
-                cx.notify();
-            }
-        });
-    }
 }
 
 /// Which config key a view-mode toggle writes.
@@ -175,7 +136,7 @@ fn segment(
     window: &mut Window,
     cx: &mut App,
 ) -> impl IntoElement {
-    let (hot, hover) = hovered(SharedString::from(format!("{id}-hover")), window, cx);
+    let (hot, hover) = motion::hovered(SharedString::from(format!("{id}-hover")), window, cx);
     let fill = motion::color(
         SharedString::from(format!("{id}-fill")),
         style::white(if selected { style::HOVER } else { 0. }, cx),
@@ -195,12 +156,10 @@ fn segment(
         window,
         cx,
     );
-    // The frame owns the hover: a Button's tooltip installs an `on_hover` of its own, and two panic.
-    div()
-        .id(SharedString::from(format!("{id}-frame")))
-        .flex()
-        .on_hover(track(hover))
-        .child(finish(tweened(
+    widgets::hover::framed(
+        id,
+        hover,
+        finish(tweened(
             Button::new(id)
                 .xsmall()
                 .h_7()
@@ -211,7 +170,8 @@ fn segment(
             label,
             style::white(0., cx),
             cx,
-        )))
+        )),
+    )
 }
 
 /// Grid ⇄ list, writing `key`'s config field.

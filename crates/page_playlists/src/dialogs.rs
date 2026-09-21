@@ -17,7 +17,7 @@ use store::{PlaylistsModel, SourcesModel, actions};
 use widgets::format::t;
 use widgets::{icons, motion, style};
 
-use crate::cards::{hovered, track};
+// hover state and its listener are shared; see widgets::motion and widgets::hover.
 
 /// `.popup`'s `min-width: 400px`.
 const DIALOG_WIDTH: gpui_kit::Pixels = px(400.);
@@ -304,7 +304,7 @@ impl Render for FolderPicker {
                     .overflow_y_scroll()
                     .children(folders.into_iter().map(|folder| {
                         let id = folder.id.clone();
-                        let (hot, hover) = hovered(
+                        let (hot, hover) = motion::hovered(
                             SharedString::from(format!("folder-row-hover-{}", folder.id)),
                             window,
                             cx,
@@ -323,7 +323,7 @@ impl Render for FolderPicker {
                             .text_sm()
                             .rounded(style::radius_lg())
                             .bg(fill)
-                            .on_hover(track(hover))
+                            .on_hover(motion::track(hover))
                             .child(
                                 icons::icon(icons::FOLDER)
                                     .size(px(12.))
