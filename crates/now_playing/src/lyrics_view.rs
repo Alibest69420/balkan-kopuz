@@ -9,14 +9,13 @@ use gpui_kit::component::button::Button;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, Context, Entity, HighlightStyle, Hsla, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement as _, Styled, StyledText, Subscription, Task, Window, div, point,
-    px, relative, rems,
+    AnyElement, Context, Entity, Hsla, InteractiveElement as _, IntoElement, ParentElement as _,
+    Pixels, Render, ScrollHandle, SharedString, StatefulInteractiveElement as _, Styled,
+    Subscription, Task, Window, div, point, px, relative, rems,
 };
 use store::{ConfigModel, PlayerModel, Playhead};
 use widgets::format::t;
-use widgets::{icons, style};
+use widgets::{KaraokeText, icons, style};
 
 // Where the active line parks in the panel, as a fraction of its height.
 const COMFORT_OFFSET: f32 = 0.42;
@@ -570,20 +569,18 @@ fn line_element(
         return body.child(line.text.clone()).into_any_element();
     }
 
-    // No gradient sweeps a glyph in GPUI, so each chunk lights as a whole as the voice reaches it.
-    let highlights = line.chunks.iter().map(|chunk| {
-        let fill = chunk_fill(chunk, time);
-        let alpha = (DIM + (1.0 - DIM) * fill) * tint;
-        (
-            chunk.range.clone(),
-            HighlightStyle {
-                color: Some(sung.alpha(alpha)),
-                ..HighlightStyle::default()
-            },
-        )
-    });
-    body.child(StyledText::new(line.text.clone()).with_highlights(highlights))
-        .into_any_element()
+    let fills = line
+        .chunks
+        .iter()
+        .map(|chunk| (chunk.range.clone(), chunk_fill(chunk, time)))
+        .collect();
+    body.child(KaraokeText::new(
+        line.text.clone(),
+        sung.alpha(tint),
+        sung.alpha(DIM * tint),
+        fills,
+    ))
+    .into_any_element()
 }
 
 /// Every line but the lit ones recedes with distance from the anchor.
@@ -676,10 +673,7 @@ impl Render for LyricsView {
         };
 
         let synced = matches!(self.lyrics, Lyrics::Synced { .. });
-        // A frame request notifies, and a notify marks every ancestor dirty — so this re-renders
-        // the whole window, routed page included, at refresh rate. Ask only when something really
-        // moves between playhead ticks: the glide, or a line carrying per-word timing to fill.
-        // Line-synced words change at most once a line, which the quarter-second tick covers.
+        // A frame request re-renders the whole window: ask only while the glide or a fill moves.
         let filling = playing && self.has_karaoke(active);
         if synced && (filling || settling) {
             window.request_animation_frame();
