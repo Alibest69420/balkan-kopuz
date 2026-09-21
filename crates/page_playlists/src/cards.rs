@@ -224,10 +224,11 @@ impl RenderOnce for Card {
                             ),
                     )
                     .children(self.target.clone().map(|target| {
+                        // A hidden element takes its own open menu with it, so the dots only dim.
                         div()
                             .flex_shrink_0()
-                            .invisible()
-                            .group_hover(group, |menu| menu.visible())
+                            .opacity(widgets::focus::RESTING)
+                            .group_hover(group, |menu| menu.opacity(1.))
                             .child(
                                 Button::new(SharedString::from(format!("card-menu-{}", self.id)))
                                     .ghost()

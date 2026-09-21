@@ -253,10 +253,7 @@ impl Library {
         );
         let dots = motion::amount(
             motion::row_id("library-card-dots", index),
-            match hovered || self.menu_open.as_ref() == Some(&tile.id) {
-                true => 1.,
-                false => 0.,
-            },
+            widgets::focus::reveal(hovered || cursor || self.menu_open.as_ref() == Some(&tile.id)),
             motion::FAST,
             window,
             cx,

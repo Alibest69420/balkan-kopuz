@@ -880,15 +880,20 @@ impl Palette {
             .w_full()
             .px_2()
             .cursor_pointer()
+            .tab_index(0)
             .when(item.faded, |row| row.opacity(FADED))
             .child(
                 h_flex()
+                    .relative()
                     .size_full()
                     .px_3()
                     .gap_3()
                     .items_center()
                     .rounded(style::radius_lg())
-                    .when(chosen, |row| row.bg(style::accent(CHOSEN, cx)))
+                    .when(chosen, |row| {
+                        row.bg(style::accent(CHOSEN, cx))
+                            .child(widgets::focus::ring(style::radius_lg(), cx))
+                    })
                     .child(
                         icons::icon(item.icon)
                             .with_size(style::text_11())
@@ -928,7 +933,13 @@ impl Palette {
                     cx.notify();
                 }
             }))
-            .on_click(cx.listener(move |this, _, window, cx| this.activate(index, window, cx)))
+            // Clicking a row focuses it, so the caret has to be handed back to anything still open.
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.activate(index, window, cx);
+                if this.open {
+                    this.input.update(cx, |state, cx| state.focus(window, cx));
+                }
+            }))
     }
 
     /// The chip that says which mode, or which thing, the box is narrowed to.

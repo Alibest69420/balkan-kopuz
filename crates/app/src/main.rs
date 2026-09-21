@@ -23,9 +23,6 @@ fn keymap(cx: &mut App) {
             debug_overlay::ToggleDebugOverlay,
             Some("Shell"),
         ),
-        // The bar walks its tabs with left and right; without these the Shell seeks instead.
-        KeyBinding::new("left", gpui_kit::NoAction, Some("NavBar")),
-        KeyBinding::new("right", gpui_kit::NoAction, Some("NavBar")),
         // Bindings beat key listeners, so without this the Shell's space would
         // toggle playback instead of typing one; NoAction suppresses it.
         KeyBinding::new("space", gpui_kit::NoAction, Some("Input")),
@@ -102,6 +99,7 @@ fn main() -> anyhow::Result<()> {
             metadata_dialog::register(cx);
             settings_sources::register(cx);
             settings_interface::init(cx);
+            shortcuts::init(cx);
             library::register(cx);
             page_home::register(cx);
             topbar::register_settings(cx);

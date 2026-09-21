@@ -141,9 +141,9 @@ impl Shell {
         });
     }
 
-    /// Dismiss the innermost thing that is open, so Escape always undoes the most recent step.
+    /// The tail of one chain: the palette, a menu, a dialog and a selection all stop Escape first.
     pub fn escape(&mut self, cx: &mut Context<Self>) {
-        // The mini window is the innermost thing open, and it is a window rather than a flag.
+        // The mini window is the innermost thing the Shell can see, and it is a window, not a flag.
         if now_playing::mini_is_open(cx) {
             now_playing::close_mini(cx);
             return;

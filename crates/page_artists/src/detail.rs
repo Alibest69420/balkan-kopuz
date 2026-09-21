@@ -818,8 +818,9 @@ fn album_card(album: &AlbumInfo, window: &mut Window, cx: &mut App) -> AnyElemen
                 .absolute()
                 .bottom_3()
                 .right_3()
-                .invisible()
-                .group_hover(group, |menu| menu.visible())
+                // A hidden element takes its own open menu with it, so the dots only dim.
+                .opacity(widgets::focus::RESTING)
+                .group_hover(group, |menu| menu.opacity(1.))
                 .child(
                     Button::new(SharedString::from(format!("album-menu-{}", album.id)))
                         .custom(style::button(

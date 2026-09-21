@@ -251,7 +251,7 @@ impl Library {
             density: Density::default(),
             tile: TileSize::default(),
             search,
-            focus: cx.focus_handle(),
+            focus: widgets::focus::stop_handle(cx),
             scroll: UniformListScrollHandle::new(),
             tracks,
             albums,
@@ -925,6 +925,7 @@ impl Render for Library {
             .pt_8()
             .track_focus(&self.focus)
             .key_context("Library")
+            .tab_index(0)
             .on_action(
                 cx.listener(|this, _: &FocusFilter, window, cx| this.focus_filter(window, cx)),
             )

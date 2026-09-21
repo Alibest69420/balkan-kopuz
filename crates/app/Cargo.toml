@@ -46,5 +46,6 @@ palette = { path = "../palette" }
 overlays = { path = "../overlays" }
 status = { path = "../status" }
 metadata_dialog = { path = "../metadata_dialog" }
+shortcuts = { path = "../shortcuts" }
 profile = { path = "../profile" }
 tikv-jemallocator = "0.6"

@@ -9,12 +9,13 @@ use gpui_kit::component::menu::ContextMenuExt as _;
 use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Div, DragMoveEvent, ElementId, FocusHandle,
+    AnyElement, App, AppContext as _, Context, Div, DragMoveEvent, ElementId,
     InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Pixels, Render,
     SharedString, Stateful, StatefulInteractiveElement as _, Styled, Subscription,
     UniformListScrollHandle, Window, div, px, uniform_list,
 };
 use store::{LayoutModel, Navigator, PlaylistsModel, Route, Target};
+use widgets::focus::{Axis, Roving, Step};
 use widgets::format::t;
 use widgets::{EmptyState, TrackDrag, icons, menus, motion, style};
 
@@ -106,13 +107,12 @@ impl Row {
 pub struct PlaylistsPanel {
     rows: Vec<Row>,
     width: Pixels,
-    cursor: usize,
+    roving: Roving,
     hovered: Option<SharedString>,
     handle_hovered: bool,
     // The window was too narrow to spare a column at launch; asking for the panel clears it.
     suppressed: bool,
     shown: bool,
-    focus: FocusHandle,
     scroll: UniformListScrollHandle,
     _subscriptions: Vec<Subscription>,
 }
@@ -142,12 +142,11 @@ impl PlaylistsPanel {
         let mut this = Self {
             rows: Vec::new(),
             width: px(store::layout(cx).panel.width),
-            cursor: 0,
+            roving: Roving::new(Axis::Column, cx),
             hovered: None,
             handle_hovered: false,
             suppressed: shown && window.viewport_size().width < NARROW_WINDOW,
             shown,
-            focus: cx.focus_handle(),
             scroll: UniformListScrollHandle::new(),
             _subscriptions: subscriptions,
         };
@@ -202,7 +201,7 @@ impl PlaylistsPanel {
             })
             .collect();
         self.width = px(store::layout(cx).panel.width);
-        self.cursor = self.cursor.min(self.rows.len().saturating_sub(1));
+        self.roving.set_len(self.rows.len());
     }
 
     fn open(&self, index: usize, cx: &mut App) {
@@ -212,26 +211,14 @@ impl PlaylistsPanel {
     }
 
     fn key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
-        let last = self.rows.len().saturating_sub(1);
-        let cursor = match event.keystroke.key.as_str() {
-            "up" => self.cursor.saturating_sub(1),
-            "down" => (self.cursor + 1).min(last),
-            "home" => 0,
-            "end" => last,
-            "enter" => {
-                self.open(self.cursor, cx);
-                return;
+        match self.roving.walk(event) {
+            Step::Moved(at) => {
+                self.scroll
+                    .scroll_to_item(at, gpui_kit::ScrollStrategy::Nearest);
+                cx.notify();
             }
-            _ => {
-                cx.propagate();
-                return;
-            }
-        };
-        if cursor != self.cursor {
-            self.cursor = cursor;
-            self.scroll
-                .scroll_to_item(cursor, gpui_kit::ScrollStrategy::Top);
-            cx.notify();
+            Step::Activate(at) => self.open(at, cx),
+            Step::Ignored => cx.propagate(),
         }
     }
 
@@ -256,7 +243,7 @@ impl PlaylistsPanel {
         let current = Navigator::global(cx).read(cx).current().clone();
         let active = current == row.route();
         let hovered = self.hovered.as_ref() == Some(&row.id);
-        let focused = self.focus.is_focused(window) && self.cursor == index;
+        let focused = self.roving.is_active(index, window);
         let wash = motion::color(
             ElementId::from((ElementId::from("panel-row"), row.id.clone())),
             match (active, hovered) {
@@ -298,7 +285,7 @@ impl PlaylistsPanel {
                 }
             }))
             .on_click(cx.listener(move |this, _, _, cx| {
-                this.cursor = index;
+                this.roving.set_cursor(index);
                 Navigator::navigate(route.clone(), cx);
             }))
             .on_drag(
@@ -344,14 +331,7 @@ impl PlaylistsPanel {
                     .child(row.detail.clone()),
             )
             .when(focused, |element| {
-                element.child(
-                    div()
-                        .absolute()
-                        .inset_0()
-                        .rounded(style::radius_lg())
-                        .border_1()
-                        .border_color(cx.theme().ring),
-                )
+                element.child(widgets::focus::ring(style::radius_lg(), cx))
             })
             .child(self.slot(index, 0., cx))
             .child(self.slot(index + 1, 0.5, cx))
@@ -478,14 +458,11 @@ impl Render for PlaylistsPanel {
             .into_any_element(),
         };
 
-        v_flex()
-            .id("playlists-panel")
+        self.roving
+            .group(v_flex().id("playlists-panel"), "PlaylistsPanel")
             .relative()
             .h_full()
             .w_full()
-            .track_focus(&self.focus)
-            .key_context("PlaylistsPanel")
-            .tab_index(0)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| this.key(event, cx)))
             .bg(style::black(SCRIM, cx))
             .border_r_1()

@@ -126,6 +126,8 @@ pub struct ThemeEditor {
     name: Entity<InputState>,
     rows: Vec<ColorRow>,
     vars: HashMap<String, String>,
+    // What was last loaded or saved; anything else on screen is an edit nobody has kept yet.
+    baseline: (String, HashMap<String, String>),
     _subscriptions: Vec<Subscription>,
 }
 
@@ -176,9 +178,36 @@ impl ThemeEditor {
             selected: None,
             name,
             rows,
+            baseline: (String::new(), vars.clone()),
             vars,
             _subscriptions: subscriptions,
         }
+    }
+
+    /// Whether the editor holds edits the saved theme does not; the dot and the prompt ask this.
+    pub(crate) fn dirty(&self, cx: &Context<Self>) -> bool {
+        self.name.read(cx).value().trim() != self.baseline.0 || self.vars != self.baseline.1
+    }
+
+    /// Leaving a theme mid-edit asks first; saying yes is what actually swaps it.
+    fn choose(&mut self, id: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.dirty(cx) {
+            self.load(id, window, cx);
+            return;
+        }
+        let editor = cx.entity().downgrade();
+        widgets::dialogs::confirm_discard(
+            t("theme_unsaved_title"),
+            t("theme_unsaved_body"),
+            move |window, cx| {
+                let id = id.clone();
+                if let Some(editor) = editor.upgrade() {
+                    editor.update(cx, |this, cx| this.load(id, window, cx));
+                }
+            },
+            window,
+            cx,
+        );
     }
 
     fn row(&self, key: &str) -> Option<&ColorRow> {
@@ -241,6 +270,10 @@ impl ThemeEditor {
             self.vars.remove(*key);
             self.set_var(key, value, false, window, cx);
         }
+        self.baseline = (
+            self.name.read(cx).value().trim().to_string(),
+            self.vars.clone(),
+        );
         cx.notify();
     }
 
@@ -433,10 +466,24 @@ impl ThemeEditor {
             .rounded(style::radius_xl())
             .bg(style::white(style::RAISED, cx))
             .child(
-                div()
-                    .text_xs()
-                    .text_color(style::slate_400(cx))
-                    .child(label),
+                h_flex()
+                    .gap_2()
+                    .items_center()
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(style::slate_400(cx))
+                            .child(label),
+                    )
+                    .when(self.dirty(cx), |head| {
+                        head.child(
+                            div()
+                                .size_1p5()
+                                .rounded_full()
+                                .bg(cx.theme().primary)
+                                .flex_shrink_0(),
+                        )
+                    }),
             )
     }
 }
@@ -474,7 +521,7 @@ impl Render for ThemeEditor {
                             .icon(icons::icon(icons::PLUS))
                             .label(t("new_theme"))
                             .on_click(
-                                cx.listener(|this, _, window, cx| this.load(None, window, cx)),
+                                cx.listener(|this, _, window, cx| this.choose(None, window, cx)),
                             ),
                     )
                     .child(v_flex().w_full().gap_1().children(saved.into_iter().map(
@@ -502,7 +549,7 @@ impl Render for ThemeEditor {
                                 .label(SharedString::from(name))
                                 .selected(chosen)
                                 .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.load(Some(target.clone()), window, cx)
+                                    this.choose(Some(target.clone()), window, cx)
                                 }))
                         },
                     ))),

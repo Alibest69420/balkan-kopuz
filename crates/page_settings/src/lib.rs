@@ -5,7 +5,7 @@ use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, ElementId, Entity, FontWeight,
-    InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString,
+    InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render, SharedString,
     StatefulInteractiveElement as _, Styled, Subscription, Window, div, rems,
 };
 use settings_appearance::AppearanceSettings;
@@ -13,6 +13,7 @@ use settings_interface::InterfaceSettings;
 use settings_playback::PlaybackSettings;
 use settings_sources::SourceSettings;
 use store::ConfigModel;
+use widgets::focus::{Axis, Roving, Step};
 use widgets::format::{t, t_with};
 use widgets::{EmptyState, PageHeader, icons, motion, style};
 
@@ -114,6 +115,7 @@ impl Category {
 
 pub struct Settings {
     category: Category,
+    rail: Roving,
     hovered: Option<Category>,
     scroll: gpui_kit::ScrollHandle,
     search: Entity<InputState>,
@@ -142,8 +144,17 @@ impl Settings {
             }),
             cx.observe(&ConfigModel::global(cx), |_, _, cx| cx.notify()),
         ];
+        let mut rail = Roving::new(Axis::Row, cx);
+        rail.set_len(Category::ALL.len());
+        rail.set_cursor(
+            Category::ALL
+                .iter()
+                .position(|held| *held == category)
+                .unwrap_or(0),
+        );
         let mut settings = Self {
             category,
+            rail,
             hovered: None,
             scroll: gpui_kit::ScrollHandle::new(),
             search,
@@ -237,7 +248,8 @@ impl Settings {
         let items: Vec<_> = Category::ALL
             .iter()
             .copied()
-            .map(|category| {
+            .enumerate()
+            .map(|(index, category)| {
                 let selected = category == self.category;
                 let hovered = self.hovered == Some(category);
                 let surface = style::white(
@@ -258,15 +270,20 @@ impl Settings {
                 );
                 let mark = underline.opacity(if selected { 1. } else { 0. });
                 (
+                    index,
                     category,
+                    self.rail.is_active(index, window),
                     motion::color(channel("fan-bg", category.slug()), surface, window, cx),
                     motion::color(channel("fan-ink", category.slug()), ink, window, cx),
                     motion::color(channel("fan-mark", category.slug()), mark, window, cx),
                 )
             })
             .collect();
-        h_flex()
-            .id("settings-fan")
+        self.rail
+            .group(h_flex().id("settings-fan"), "SettingsRail")
+            .on_key_down(
+                cx.listener(|this, event: &KeyDownEvent, window, cx| this.walk(event, window, cx)),
+            )
             .w_full()
             .flex_none()
             .mb_4()
@@ -275,34 +292,56 @@ impl Settings {
             .border_b_1()
             .border_color(style::white(FAN_BORDER, cx))
             .bg(style::black(FAN_BG, cx))
-            .children(items.into_iter().map(|(category, surface, ink, mark)| {
-                h_flex()
-                    .id(category.slug())
-                    .flex_none()
-                    .h_11()
-                    .px_3()
-                    .gap_2()
-                    .items_center()
-                    .border_b_2()
-                    .border_color(mark)
-                    .bg(surface)
-                    .text_xs()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(ink)
-                    .cursor_pointer()
-                    .child(icons::icon(category.icon()))
-                    .child(category.label())
-                    .on_hover(cx.listener(move |this, over: &bool, _, cx| {
-                        let held = over.then_some(category);
-                        if this.hovered != held {
-                            this.hovered = held;
-                            cx.notify();
-                        }
-                    }))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.choose(category, window, cx);
-                    }))
-            }))
+            .children(
+                items
+                    .into_iter()
+                    .map(|(index, category, ringed, surface, ink, mark)| {
+                        h_flex()
+                            .id(category.slug())
+                            .relative()
+                            .flex_none()
+                            .h_11()
+                            .px_3()
+                            .gap_2()
+                            .items_center()
+                            .border_b_2()
+                            .border_color(mark)
+                            .bg(surface)
+                            .text_xs()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(ink)
+                            .cursor_pointer()
+                            .child(icons::icon(category.icon()))
+                            .child(category.label())
+                            .on_hover(cx.listener(move |this, over: &bool, _, cx| {
+                                let held = over.then_some(category);
+                                if this.hovered != held {
+                                    this.hovered = held;
+                                    cx.notify();
+                                }
+                            }))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.rail.set_cursor(index);
+                                this.choose(category, window, cx);
+                            }))
+                            .when(ringed, |item| {
+                                item.child(widgets::focus::ring(style::radius_md(), cx))
+                            })
+                    }),
+            )
+    }
+
+    /// Left and right walk the fan; enter shows whatever the walk landed on.
+    fn walk(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        match self.rail.walk(event) {
+            Step::Moved(_) => cx.notify(),
+            Step::Activate(at) => {
+                if let Some(category) = Category::ALL.get(at).copied() {
+                    self.choose(category, window, cx);
+                }
+            }
+            Step::Ignored => cx.propagate(),
+        }
     }
 
     /// The box that filters every category at once.

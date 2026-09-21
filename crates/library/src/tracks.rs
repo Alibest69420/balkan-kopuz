@@ -347,8 +347,8 @@ impl Library {
                 .justify_end()
                 .on_click(|_, _, cx| cx.stop_propagation())
                 .when(!menu_open, |cell| {
-                    cell.invisible()
-                        .group_hover(ROW_GROUP, |dots| dots.visible())
+                    cell.opacity(widgets::focus::RESTING)
+                        .group_hover(ROW_GROUP, |dots| dots.opacity(1.))
                 })
                 .child(
                     Button::new(("library-row-dots", slot))

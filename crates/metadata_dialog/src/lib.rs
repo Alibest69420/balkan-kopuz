@@ -49,6 +49,8 @@ fn open(key: String, editable: bool, window: &mut Window, cx: &mut App) {
                 t("metadata")
             })
             .w(DIALOG_WIDTH)
+            // An edit in progress is typed text; only Cancel or Save may end it.
+            .overlay_closable(!editing)
             .child(view.clone())
     });
 }

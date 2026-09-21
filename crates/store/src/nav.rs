@@ -282,7 +282,12 @@ mod tests {
     #[test]
     fn a_route_that_is_no_longer_a_place_lands_somewhere() {
         // Most-played is an order over the library, not a page of its own.
-        for route in [Route::Favorites, Route::Activity, Route::Albums, Route::Artists] {
+        for route in [
+            Route::Favorites,
+            Route::Activity,
+            Route::Albums,
+            Route::Artists,
+        ] {
             assert_eq!(route.redirect(), Route::Library);
         }
         assert_eq!(Route::Playlists.redirect(), Route::Library);

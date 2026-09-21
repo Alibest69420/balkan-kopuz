@@ -30,6 +30,17 @@ pub(crate) fn label(name: &str) -> &'static str {
     }
 }
 
+/// The registry id a destination's tab shares, so its tooltip can name the key it answers to.
+pub(crate) fn command(name: &str) -> &'static str {
+    match name {
+        "home" => "nav.home",
+        "library" => "nav.library",
+        "discover" => "nav.discover",
+        "radio" => "nav.radio",
+        _ => "",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

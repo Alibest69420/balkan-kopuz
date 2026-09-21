@@ -60,55 +60,67 @@ pub(crate) fn card(
         window,
         cx,
     );
-    // Only the card under the pointer builds a button; the rest are a cover and two lines.
-    let play = over.then(|| play_button(tile, window, cx)).flatten();
+    let focus = widgets::focus::handle(format!("home-card:{}", tile.key), window, cx);
+    let focused = focus.is_focused(window);
+    // Only the card under the pointer or the keyboard builds a button; the rest are cover and lines.
+    let play = (over || focused)
+        .then(|| play_button(tile, window, cx))
+        .flatten();
     let route = tile.route.clone();
-    v_flex()
-        .id(motion::channel(&tile.key, ROOT))
-        .w(size)
-        .mr(px(GAP))
-        .flex_shrink_0()
-        .gap_3()
-        .cursor_pointer()
-        .on_hover(motion::track(pointer))
-        .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
-        .child(
-            div()
-                .relative()
-                .child(
-                    Cover::new(tile.artwork.as_ref())
-                        .size(size)
-                        .rounded(radius)
-                        .placeholder(tile.placeholder)
-                        .zoom(motion::channel(&tile.key, COVER), over),
-                )
-                .children(play),
-        )
-        .child(
-            v_flex()
-                .w(size)
-                .gap_0p5()
-                .when(tile.round, |lines| lines.items_center())
-                .child(
+    let opens = tile.route.clone();
+    widgets::focus::stop(
+        v_flex().id(motion::channel(&tile.key, ROOT)),
+        &focus,
+        move |_, cx| Navigator::navigate(opens.clone(), cx),
+    )
+    .relative()
+    .w(size)
+    .mr(px(GAP))
+    .flex_shrink_0()
+    .gap_3()
+    .cursor_pointer()
+    .on_hover(motion::track(pointer))
+    .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
+    .child(
+        div()
+            .relative()
+            .child(
+                Cover::new(tile.artwork.as_ref())
+                    .size(size)
+                    .rounded(radius)
+                    .placeholder(tile.placeholder)
+                    .zoom(motion::channel(&tile.key, COVER), over),
+            )
+            .children(play),
+    )
+    .child(
+        v_flex()
+            .w(size)
+            .gap_0p5()
+            .when(tile.round, |lines| lines.items_center())
+            .child(
+                div()
+                    .truncate()
+                    .text_sm()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(title)
+                    .child(tile.title.clone()),
+            )
+            .when(!tile.subtitle.is_empty(), |lines| {
+                lines.child(
                     div()
                         .truncate()
-                        .text_sm()
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(title)
-                        .child(tile.title.clone()),
+                        .text_xs()
+                        .text_color(style::white(style::TEXT_SUBTLE, cx))
+                        .child(tile.subtitle.clone()),
                 )
-                .when(!tile.subtitle.is_empty(), |lines| {
-                    lines.child(
-                        div()
-                            .truncate()
-                            .text_xs()
-                            .text_color(style::white(style::TEXT_SUBTLE, cx))
-                            .child(tile.subtitle.clone()),
-                    )
-                }),
-        )
-        .context_menu(menus::builder(tile.target.clone()))
-        .into_any_element()
+            }),
+    )
+    .when(focused, |card| {
+        card.child(widgets::focus::ring(style::radius_xl(), cx))
+    })
+    .context_menu(menus::builder(tile.target.clone()))
+    .into_any_element()
 }
 
 /// `bg-indigo-500` over the cover's bottom-right corner: play, or pause what this card is playing.

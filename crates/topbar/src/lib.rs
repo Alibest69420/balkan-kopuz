@@ -18,6 +18,7 @@ use gpui_kit::{
 };
 use store::layout::NavPosition;
 use store::{Chrome, LayoutModel, Navigator, Route, SourcesModel};
+use widgets::focus::{Axis, Roving, Step};
 use widgets::format::t;
 use widgets::{icons, motion, style};
 
@@ -71,8 +72,8 @@ pub struct TopBar {
     position: NavPosition,
     activity: Option<AnyView>,
     probe: gpui_kit::Entity<SourceProbe>,
-    focus: FocusHandle,
-    cursor: usize,
+    tabs: Roving,
+    search_focus: FocusHandle,
     hovered: Option<&'static str>,
     compact: bool,
     _subscriptions: Vec<Subscription>,
@@ -105,8 +106,8 @@ impl TopBar {
             position: NavPosition::Top,
             activity: None,
             probe,
-            focus: cx.focus_handle(),
-            cursor: 0,
+            tabs: Roving::new(Axis::Row, cx),
+            search_focus: widgets::focus::stop_handle(cx),
             hovered: None,
             compact: window.viewport_size().width < COMPACT_BELOW,
             _subscriptions: subscriptions,
@@ -134,7 +135,7 @@ impl TopBar {
             })
             .collect();
         self.position = nav.position;
-        self.cursor = self.cursor.min(self.destinations.len().saturating_sub(1));
+        self.tabs.set_len(self.destinations.len());
     }
 
     fn open(&self, index: usize, cx: &mut App) {
@@ -148,24 +149,10 @@ impl TopBar {
 
     /// Left and right walk the strip; enter opens what the walk landed on.
     fn key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
-        let last = self.destinations.len().saturating_sub(1);
-        let cursor = match event.keystroke.key.as_str() {
-            "left" => self.cursor.saturating_sub(1),
-            "right" => (self.cursor + 1).min(last),
-            "home" => 0,
-            "end" => last,
-            "enter" => {
-                self.open(self.cursor, cx);
-                return;
-            }
-            _ => {
-                cx.propagate();
-                return;
-            }
-        };
-        if cursor != self.cursor {
-            self.cursor = cursor;
-            cx.notify();
+        match self.tabs.walk(event) {
+            Step::Moved(_) => cx.notify(),
+            Step::Activate(at) => self.open(at, cx),
+            Step::Ignored => cx.propagate(),
         }
     }
 
@@ -209,7 +196,7 @@ impl TopBar {
             cx,
         );
         let label = t(tabs::label(name));
-        let tooltip = label.clone();
+        let tooltip = commands::tooltip(tabs::command(name), label.clone(), cx);
         h_flex()
             .id(ElementId::from((ElementId::from("nav-tab"), name)))
             .relative()
@@ -235,7 +222,7 @@ impl TopBar {
                 }
             }))
             .on_click(cx.listener(move |this, _, _, cx| {
-                this.cursor = index;
+                this.tabs.set_cursor(index);
                 this.open(index, cx);
             }))
             .child(
@@ -256,7 +243,9 @@ impl TopBar {
                 )
             })
             .when(active, |tab| tab.child(marker(vertical, cx)))
-            .when(focused && self.cursor == index, |tab| tab.child(ring(cx)))
+            .when(focused, |tab| {
+                tab.child(widgets::focus::ring(style::radius_lg(), cx))
+            })
             .into_any_element()
     }
 
@@ -267,7 +256,6 @@ impl TopBar {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let vertical = self.position == NavPosition::Left;
-        let focused = self.focus.is_focused(window);
         let tabs = self
             .destinations
             .clone()
@@ -275,60 +263,63 @@ impl TopBar {
             .enumerate()
             .map(|(index, name)| {
                 let active = current == Some(name);
-                self.tab(index, name, active, focused, window, cx)
+                let ringed = self.tabs.is_active(index, window);
+                self.tab(index, name, active, ringed, window, cx)
             })
             .collect::<Vec<_>>();
         let strip = match vertical {
             true => v_flex().w_full().gap_1(),
             false => h_flex().h_full().gap_1(),
         };
-        strip
-            .id("nav-strip")
-            .track_focus(&self.focus)
-            .key_context("NavBar")
-            .tab_index(0)
+        self.tabs
+            .group(strip.id("nav-strip"), "NavBar")
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| this.key(event, cx)))
             .children(tabs)
             .into_any_element()
     }
 
     /// The palette's doorway: it looks like a field, and clicking it opens the palette.
-    fn search(&self, cx: &mut Context<Self>) -> AnyElement {
-        h_flex()
-            .id("nav-search")
-            .w_full()
-            .max_w(SEARCH_MAX)
-            .h(SEARCH_HEIGHT)
-            .px_2()
-            .gap_2()
-            .rounded(style::radius_lg())
-            .border_1()
-            .border_color(style::white(style::BORDER, cx))
-            .bg(style::white(style::RAISED, cx))
-            .cursor_pointer()
-            .hover(|field| field.bg(style::white(style::HOVER, cx)))
-            .tab_index(0)
-            .on_click(cx.listener(|_, _, _, cx| {
-                Chrome::global(cx).update(cx, |chrome, cx| chrome.set_quick_search(true, cx));
-            }))
-            .child(
-                Icon::default()
-                    .path(icons::SEARCH)
-                    .size(px(14.))
-                    .flex_shrink_0()
-                    .text_color(style::white(style::TEXT_MUTED, cx)),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .truncate()
-                    .text_sm()
-                    .text_color(style::white(style::TEXT_MUTED, cx))
-                    .child(t("search_placeholder")),
-            )
-            .child(hint(cx))
-            .into_any_element()
+    fn search(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let focused = self.search_focus.is_focused(window);
+        widgets::focus::stop(h_flex().id("nav-search"), &self.search_focus, |_, cx| {
+            Chrome::global(cx).update(cx, |chrome, cx| chrome.set_quick_search(true, cx));
+        })
+        .relative()
+        .w_full()
+        .max_w(SEARCH_MAX)
+        .h(SEARCH_HEIGHT)
+        .px_2()
+        .gap_2()
+        .rounded(style::radius_lg())
+        .border_1()
+        .border_color(style::white(style::BORDER, cx))
+        .bg(style::white(style::RAISED, cx))
+        .cursor_pointer()
+        .hover(|field| field.bg(style::white(style::HOVER, cx)))
+        .on_click(cx.listener(|_, _, _, cx| {
+            Chrome::global(cx).update(cx, |chrome, cx| chrome.set_quick_search(true, cx));
+        }))
+        .child(
+            Icon::default()
+                .path(icons::SEARCH)
+                .size(px(14.))
+                .flex_shrink_0()
+                .text_color(style::white(style::TEXT_MUTED, cx)),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .truncate()
+                .text_sm()
+                .text_color(style::white(style::TEXT_MUTED, cx))
+                .child(t("search_placeholder")),
+        )
+        .child(hint(cx))
+        .when(focused, |field| {
+            field.child(widgets::focus::ring(style::radius_lg(), cx))
+        })
+        .into_any_element()
     }
 
     fn history(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -343,7 +334,7 @@ impl TopBar {
             .child(
                 chrome_button("nav-back", icons::CHEVRON_LEFT, cx)
                     .disabled(!back)
-                    .tooltip(t("go_back"))
+                    .tooltip(commands::tooltip("nav.back", t("go_back"), cx))
                     .on_click(|_, _, cx| {
                         Navigator::global(cx).update(cx, |this, cx| this.go_back(cx));
                     }),
@@ -351,7 +342,7 @@ impl TopBar {
             .child(
                 chrome_button("nav-forward", icons::CHEVRON_RIGHT, cx)
                     .disabled(!forward)
-                    .tooltip(t("go_forward"))
+                    .tooltip(commands::tooltip("nav.forward", t("go_forward"), cx))
                     .on_click(|_, _, cx| {
                         Navigator::global(cx).update(cx, |this, cx| this.go_forward(cx));
                     }),
@@ -377,7 +368,7 @@ impl TopBar {
             )
             .child(
                 chrome_button("nav-settings", icons::SETTINGS, cx)
-                    .tooltip(t("settings"))
+                    .tooltip(commands::tooltip("app.settings", t("settings"), cx))
                     .on_click(|_, _, cx| {
                         Navigator::navigate(Route::Settings { section: None }, cx);
                     }),
@@ -391,7 +382,7 @@ impl Render for TopBar {
         let _timing = profile::render("topbar");
         let current = Navigator::global(cx).read(cx).current().destination_of();
         let strip = self.strip(current, window, cx);
-        let search = self.search(cx);
+        let search = self.search(window, cx);
         let history = self.history(cx);
         let cluster = self.cluster(cx);
 
@@ -453,17 +444,6 @@ fn marker(vertical: bool, cx: &App) -> AnyElement {
     .into_any_element()
 }
 
-/// The focus ring, drawn over the tab rather than around it, so focusing never moves anything.
-fn ring(cx: &App) -> AnyElement {
-    div()
-        .absolute()
-        .inset_0()
-        .rounded(style::radius_lg())
-        .border_1()
-        .border_color(cx.theme().ring)
-        .into_any_element()
-}
-
 /// `ctrl-k`, said the way a keycap says it.
 fn hint(cx: &App) -> AnyElement {
     div()
@@ -480,6 +460,7 @@ fn hint(cx: &App) -> AnyElement {
 /// The bar's own icon buttons: no fill of their own, a wash under the pointer.
 fn chrome_button(id: &'static str, glyph: &'static str, cx: &App) -> Button {
     Button::new(id)
+        .tab_index(0)
         .custom(style::quiet_button(style::slate_400(cx), cx))
         .with_size(CHROME_GLYPH * (4. / 3.))
         .size(CHROME_BUTTON)

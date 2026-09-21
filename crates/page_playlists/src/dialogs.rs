@@ -153,11 +153,14 @@ pub(crate) fn open_add_playlist(window: &mut Window, cx: &mut App) {
             _subscriptions: vec![subscription],
         }
     });
+    let field = dialog.read(cx).name.clone();
     window.open_dialog(cx, move |plate, _, _| {
         let dialog = dialog.clone();
         plate
             .title(t("add_playlist"))
             .w(DIALOG_WIDTH)
+            // The backdrop must never throw away a typed name; the buttons are the way out.
+            .overlay_closable(false)
             .child(dialog.clone())
             .footer(
                 DialogFooter::new()
@@ -170,6 +173,7 @@ pub(crate) fn open_add_playlist(window: &mut Window, cx: &mut App) {
                     )),
             )
     });
+    field.update(cx, |state, cx| state.focus(window, cx));
 }
 
 type Save = Rc<dyn Fn(String, &mut App)>;
@@ -224,11 +228,14 @@ pub(crate) fn open_rename(
             _subscriptions: vec![subscription],
         }
     });
+    let field = prompt.read(cx).value.clone();
     window.open_dialog(cx, move |plate, _, _| {
         let prompt = prompt.clone();
         plate
             .title(title.clone())
             .w(PROMPT_WIDTH)
+            // The backdrop must never throw away a typed name; the buttons are the way out.
+            .overlay_closable(false)
             .child(prompt.clone())
             .footer(
                 DialogFooter::new()
@@ -241,6 +248,7 @@ pub(crate) fn open_rename(
                     )),
             )
     });
+    field.update(cx, |state, cx| state.focus(window, cx));
 }
 
 /// Pick the folder a playlist moves into, or make one on the spot.
@@ -381,6 +389,8 @@ pub(crate) fn open_folder_picker(playlist_id: String, window: &mut Window, cx: &
         plate
             .title(t("move_to_folder"))
             .w(PROMPT_WIDTH)
+            // The backdrop must never throw away a typed name; the buttons are the way out.
+            .overlay_closable(false)
             .child(picker.clone())
             .footer(
                 DialogFooter::new()

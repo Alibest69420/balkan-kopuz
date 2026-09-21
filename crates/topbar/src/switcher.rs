@@ -2,30 +2,27 @@ use std::time::Duration;
 
 use api::{SourceInfo, SourceKind, SourceState};
 use gpui_kit::base::StyledExt as _;
-use gpui_kit::component::popover::{Popover, PopoverState};
-use gpui_kit::component::tooltip::Tooltip;
-use gpui_kit::component::{ActiveTheme as _, Icon, Selectable, h_flex, v_flex};
+use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
+use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
+use gpui_kit::component::{ActiveTheme as _, Icon, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Anchor, Animation, AnimationExt as _, AnyElement, App, Context, ElementId, Entity, Hsla,
-    InteractiveElement as _, IntoElement, ParentElement as _, Pixels, RenderOnce, Rgba,
-    SharedString, StatefulInteractiveElement as _, Styled, Subscription, Task, Window, div,
-    pulsating_between, px, svg,
+    Anchor, Animation, AnimationExt as _, AnyElement, App, Context, Entity, Hsla, IntoElement,
+    ParentElement as _, Pixels, RenderOnce, Rgba, SharedString, Styled, Subscription, Task, Window,
+    div, pulsating_between, px, svg,
 };
 use link::Link;
 use store::{Navigator, Route, SourcesModel};
 use widgets::format::{t, text};
-use widgets::{icons, motion, style};
+use widgets::{icons, style};
 
 const GLYPH: Pixels = px(16.);
 const DOT: Pixels = px(6.);
 const CHEVRON: Pixels = px(10.);
 const CHECK: Pixels = px(11.);
-const ARROW: Pixels = px(9.);
 const POPOVER_WIDTH: Pixels = px(218.);
 const ROWS_HEIGHT: Pixels = px(320.);
 const RAIL_TILE: Pixels = px(40.);
-const HEAD_TOP: Pixels = px(10.);
 const SUBLINE_GAP: Pixels = px(2.);
 
 // The switcher's own dimmed tones, which are off the named alpha scale.
@@ -37,7 +34,6 @@ const LIBRARY_ICON: &str = "icons/folder-tree.svg";
 const SERVICE_ICON: &str = "icons/server.svg";
 const CLOUD_ICON: &str = "icons/cloud.svg";
 const MANAGE_ICON: &str = "icons/sliders-horizontal.svg";
-const FORWARD_ICON: &str = "icons/arrow-right.svg";
 
 /// Whether the active source answered the daemon's probe.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -174,28 +170,6 @@ impl SourceSwitcher {
     }
 }
 
-/// The row the pointer is over; a popover has no owning view to hang that state on.
-type Hovered = Entity<Option<SharedString>>;
-
-/// Enter marks this row, leave clears it only if it is still the marked one.
-fn track(state: &Hovered, id: SharedString) -> impl Fn(&bool, &mut Window, &mut App) + 'static {
-    let state = state.clone();
-    move |over, _, cx| {
-        let id = id.clone();
-        state.update(cx, |current, cx| {
-            if *over {
-                if current.as_ref() != Some(&id) {
-                    *current = Some(id);
-                    cx.notify();
-                }
-            } else if current.as_ref() == Some(&id) {
-                *current = None;
-                cx.notify();
-            }
-        });
-    }
-}
-
 impl RenderOnce for SourceSwitcher {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let active = self.sources.iter().find(|source| source.active);
@@ -208,6 +182,7 @@ impl RenderOnce for SourceSwitcher {
         let bare = self.bare;
         let count = self.sources.len();
         let sources = self.sources;
+        let status = self.status;
 
         div()
             .when(!bare, |frame| {
@@ -221,324 +196,144 @@ impl RenderOnce for SourceSwitcher {
                 (false, false) => frame.px_3().pt_3().pb_2(),
             })
             .child(
-                Popover::new("source-switcher")
-                    .anchor(Anchor::TopLeft)
-                    .p_0()
-                    .w(POPOVER_WIDTH)
-                    .rounded(style::radius_lg())
-                    .border_1()
-                    .border_color(style::white(style::BORDER, cx))
-                    .overflow_hidden()
-                    .trigger(SwitcherTrigger {
-                        label,
-                        mark,
-                        accent,
-                        status: self.status,
-                        collapsed,
-                        selected: false,
-                    })
-                    .content(move |_, window, cx| {
-                        let state = cx.entity();
-                        let hovered = window.use_keyed_state::<Option<SharedString>>(
-                            "source-hover",
-                            cx,
-                            |_, _| None,
-                        );
-                        let rows = sources
-                            .iter()
-                            .map(|source| row(source, &state, &hovered, window, cx))
-                            .collect::<Vec<_>>();
-                        let foot = footer(&state, &hovered, window, cx);
-                        let handle = window.use_keyed_state("source-rows-scroll", cx, |_, _| {
-                            gpui_kit::ScrollHandle::new()
-                        });
-                        let scroll = handle.read(cx).clone();
-                        widgets::scroll::smooth("source-rows", &scroll, window, cx);
-                        v_flex()
-                            .w_full()
-                            .child(header(count, cx))
-                            .child(
-                                v_flex()
-                                    .id("source-rows")
-                                    .p_1()
-                                    .max_h(ROWS_HEIGHT)
-                                    .overflow_y_scroll()
-                                    .track_scroll(&scroll)
-                                    .children(rows),
-                            )
-                            .child(foot)
+                trigger(label, mark, accent, status, collapsed, cx)
+                    .dropdown_menu_with_anchor(Anchor::TopLeft, move |menu, _, cx| {
+                        build(&sources, count, menu, cx)
                     }),
             )
     }
 }
 
-fn header(count: usize, cx: &App) -> impl IntoElement {
-    h_flex()
-        .justify_between()
-        .pt(HEAD_TOP)
-        .px_3()
-        .pb_2()
-        .border_b_1()
-        .border_color(style::white(style::BORDER, cx))
-        .child(
-            div()
-                .text_xs()
-                .font_semibold()
-                .text_color(style::white(style::TEXT_SECONDARY, cx))
-                .child(t("sources")),
-        )
-        .child(
-            div()
-                .text_xs()
-                .text_color(style::white(HEAD_COUNT, cx))
-                .child(SharedString::from(count.to_string())),
-        )
+/// Every source, then the way to manage them; a `PopupMenu` so escape, arrows and enter come free.
+fn build(sources: &[SourceInfo], count: usize, mut menu: PopupMenu, cx: &App) -> PopupMenu {
+    menu = menu
+        .max_w(POPOVER_WIDTH)
+        .min_w(POPOVER_WIDTH)
+        .max_h(ROWS_HEIGHT)
+        .scrollable(true)
+        .label(SharedString::from(format!("{}  {count}", t("sources"))));
+    for source in sources {
+        menu = menu.item(row(source, cx));
+    }
+    menu.separator().item(
+        PopupMenuItem::new(t("manage_sources"))
+            .icon(Icon::default().path(MANAGE_ICON).size(GLYPH))
+            .on_click(|_, _, cx| {
+                Navigator::navigate(
+                    Route::Settings {
+                        section: Some("library".into()),
+                    },
+                    cx,
+                );
+            }),
+    )
 }
 
-fn row(
-    source: &SourceInfo,
-    state: &Entity<PopoverState>,
-    hovered: &Hovered,
-    window: &mut Window,
-    cx: &mut App,
-) -> AnyElement {
+fn row(source: &SourceInfo, cx: &App) -> PopupMenuItem {
     let accent = accent_of(Some(source), cx);
     let active = source.active;
     let id = source.id.clone();
-    let mark = SharedString::from(id.clone());
-    let lit = active || hovered.read(cx).as_ref() == Some(&mark);
-    let surface = motion::color(
-        ElementId::from((ElementId::from("source-row"), mark.clone())),
-        if lit {
-            style::white(style::RAISED, cx)
-        } else {
-            style::white(0., cx)
-        },
-        window,
-        cx,
-    );
-    let state = state.clone();
-    h_flex()
-        .id(SharedString::from(format!("source-{}", source.id)))
-        .w_full()
-        .gap_2p5()
-        .p_2()
-        .rounded(style::radius_lg())
-        .cursor_pointer()
-        .bg(surface)
-        .on_hover(track(hovered, mark))
-        .child(glyph(&mark_of(source), GLYPH, accent))
-        .child(
-            v_flex()
-                .flex_1()
-                .min_w_0()
-                .gap(SUBLINE_GAP)
-                .child(
-                    div()
-                        .truncate()
-                        .text_sm()
-                        .map(|name| {
-                            if active {
-                                name.font_semibold().text_color(cx.theme().foreground)
-                            } else {
-                                name.font_medium().text_color(style::white(ROW_NAME, cx))
-                            }
-                        })
-                        .child(SharedString::from(source.name.clone())),
-                )
-                .child(
-                    div()
-                        .truncate()
-                        .text_size(style::text_11())
-                        .text_color(style::white(style::TEXT_SUBTLE, cx))
-                        .child(subline(source)),
-                ),
-        )
-        .when(active, |row| {
-            row.child(
-                Icon::default()
-                    .path(icons::CHECK)
-                    .size(CHECK)
-                    .text_color(accent),
+    let name = SharedString::from(source.name.clone());
+    let subline = subline(source);
+    let mark = mark_of(source);
+    let ink = match active {
+        true => cx.theme().foreground,
+        false => style::white(ROW_NAME, cx),
+    };
+    let muted = style::white(style::TEXT_SUBTLE, cx);
+    PopupMenuItem::element(move |_, _| {
+        h_flex()
+            .w_full()
+            .gap_2p5()
+            .child(glyph(&mark, GLYPH, accent))
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .gap(SUBLINE_GAP)
+                    .child(
+                        div()
+                            .truncate()
+                            .text_sm()
+                            .map(|line| match active {
+                                true => line.font_semibold(),
+                                false => line.font_medium(),
+                            })
+                            .text_color(ink)
+                            .child(name.clone()),
+                    )
+                    .child(
+                        div()
+                            .truncate()
+                            .text_size(style::text_11())
+                            .text_color(muted)
+                            .child(subline.clone()),
+                    ),
             )
-        })
-        .on_click(move |_, window, cx| {
-            // Dismiss first: the switch may open a sign-in dialog, which should not land behind
-            // this popover.
-            state.update(cx, |popover, cx| popover.dismiss(window, cx));
-            SourcesModel::global(cx)
-                .update(cx, |sources, cx| sources.switch(id.clone(), window, cx));
-        })
-        .into_any_element()
-}
-
-fn footer(
-    state: &Entity<PopoverState>,
-    hovered: &Hovered,
-    window: &mut Window,
-    cx: &mut App,
-) -> AnyElement {
-    let mark = SharedString::new_static("__manage");
-    let lit = hovered.read(cx).as_ref() == Some(&mark);
-    let surface = motion::color(
-        "manage-sources-bg",
-        if lit {
-            style::white(style::RAISED, cx)
-        } else {
-            style::white(0., cx)
-        },
-        window,
-        cx,
-    );
-    let ink = motion::color(
-        "manage-sources-ink",
-        if lit {
-            cx.theme().foreground
-        } else {
-            style::white(style::TEXT_SECONDARY, cx)
-        },
-        window,
-        cx,
-    );
-    let listener = track(hovered, mark);
-    let state = state.clone();
-    div()
-        .w_full()
-        .p_1()
-        .border_t_1()
-        .border_color(style::white(style::BORDER, cx))
-        .child(
-            h_flex()
-                .id("manage-sources")
-                .w_full()
-                .gap_2p5()
-                .p_2()
-                .rounded(style::radius_lg())
-                .cursor_pointer()
-                .text_sm()
-                .font_medium()
-                .bg(surface)
-                .text_color(ink)
-                .on_hover(listener)
-                .child(Icon::default().path(MANAGE_ICON).size(GLYPH))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .truncate()
-                        .child(t("manage_sources")),
+            .when(active, |row| {
+                row.child(
+                    Icon::default()
+                        .path(icons::CHECK)
+                        .size(CHECK)
+                        .text_color(accent),
                 )
-                .child(Icon::default().path(FORWARD_ICON).size(ARROW).ml_auto())
-                .on_click(move |_, window, cx| {
-                    Navigator::navigate(
-                        Route::Settings {
-                            section: Some("library".into()),
-                        },
-                        cx,
-                    );
-                    state.update(cx, |popover, cx| popover.dismiss(window, cx));
-                }),
-        )
-        .into_any_element()
+            })
+    })
+    .on_click(move |_, window, cx| {
+        SourcesModel::global(cx).update(cx, |sources, cx| sources.switch(id.clone(), window, cx));
+    })
 }
 
-/// The trigger tile: glyph, name, status dot and chevron.
-#[derive(IntoElement)]
-struct SwitcherTrigger {
+/// The trigger tile: glyph, name, status dot and chevron, on the Button the menu hangs off.
+fn trigger(
     label: SharedString,
     mark: Mark,
     accent: Hsla,
     status: Status,
     collapsed: bool,
-    selected: bool,
-}
-
-impl Selectable for SwitcherTrigger {
-    fn selected(mut self, selected: bool) -> Self {
-        self.selected = selected;
-        self
-    }
-
-    fn is_selected(&self) -> bool {
-        self.selected
-    }
-}
-
-impl RenderOnce for SwitcherTrigger {
-    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let label = self.label.clone();
-        let tooltip = self.label;
-        let hover = window.use_keyed_state("source-trigger-hover", cx, |_, _| false);
-        let lit = self.selected || *hover.read(cx);
-        let surface = motion::color(
-            "source-trigger-bg",
-            if lit {
-                style::white(style::RAISED, cx)
-            } else {
-                style::white(0., cx)
-            },
-            window,
-            cx,
-        );
-        let edge = motion::color(
-            "source-trigger-edge",
-            if self.selected {
-                style::white(style::ACTIVE, cx)
-            } else {
-                style::white(style::BORDER, cx)
-            },
-            window,
-            cx,
-        );
-        h_flex()
-            .id("source-trigger")
-            .w_full()
-            .gap_2p5()
-            .px_2p5()
-            .py_2()
-            .rounded(style::radius_lg())
-            .border_1()
-            .border_color(edge)
-            .cursor_pointer()
-            .bg(surface)
-            .on_hover(move |over, _, cx| {
-                hover.update(cx, |state, cx| {
-                    if *state != *over {
-                        *state = *over;
-                        cx.notify();
-                    }
-                });
-            })
-            .when(self.collapsed, |trigger| {
-                trigger
-                    .w(RAIL_TILE)
-                    .h(RAIL_TILE)
-                    .p_0()
-                    .justify_center()
-                    .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
-            })
-            .child(glyph(&self.mark, GLYPH, self.accent))
-            .when(!self.collapsed, |trigger| {
-                trigger
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .text_sm()
-                            .font_medium()
-                            .text_color(cx.theme().foreground)
-                            .child(label),
-                    )
-                    .child(dot(self.status, cx))
-                    .child(
-                        Icon::default()
-                            .path(icons::CHEVRON_DOWN)
-                            .size(CHEVRON)
-                            .text_color(style::white(HEAD_COUNT, cx)),
-                    )
-            })
-    }
+    cx: &App,
+) -> Button {
+    let tooltip = label.clone();
+    let tile = h_flex()
+        .w_full()
+        .gap_2p5()
+        .child(glyph(&mark, GLYPH, accent))
+        .when(!collapsed, |trigger| {
+            trigger
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .truncate()
+                        .text_sm()
+                        .font_medium()
+                        .text_color(cx.theme().foreground)
+                        .child(label),
+                )
+                .child(dot(status, cx))
+                .child(
+                    Icon::default()
+                        .path(icons::CHEVRON_DOWN)
+                        .size(CHEVRON)
+                        .text_color(style::white(HEAD_COUNT, cx)),
+                )
+        });
+    let button = Button::new("source-trigger")
+        .tab_index(0)
+        .custom(
+            ButtonCustomVariant::new(cx)
+                .color(style::white(style::BORDER, cx))
+                .hover(style::white(style::RAISED, cx))
+                .active(style::white(style::RAISED, cx))
+                .foreground(cx.theme().foreground),
+        )
+        .border_color(style::white(style::BORDER, cx))
+        .rounded(px(8.))
+        .map(|button| match collapsed {
+            true => button.size(RAIL_TILE).tooltip(tooltip),
+            false => button.w_full().h_auto().px_2p5().py_2(),
+        });
+    button.child(tile)
 }
 
 fn dot(status: Status, cx: &App) -> AnyElement {
