@@ -5,8 +5,8 @@ use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, ElementId, Entity, FontWeight,
-    InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render, SharedString,
-    StatefulInteractiveElement as _, Styled, Subscription, Window, div, rems,
+    InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Pixels, Render,
+    SharedString, StatefulInteractiveElement as _, Styled, Subscription, Window, div, px, rems,
 };
 use settings_appearance::AppearanceSettings;
 use settings_interface::InterfaceSettings;
@@ -33,6 +33,72 @@ const NOTICE: f32 = 0.70;
 /// `prefix` over a category's slug: one stable tween channel per rail item.
 fn channel(prefix: &'static str, slug: &'static str) -> ElementId {
     (ElementId::from(prefix), slug).into()
+}
+
+/// Where each rail tab sits, so the mark can travel between them rather than jump.
+#[derive(Default)]
+struct Spans {
+    // Left edge and width, relative to the strip's own origin so a scrolled rail still agrees.
+    held: Vec<(&'static str, Pixels, Pixels)>,
+    origin: Pixels,
+}
+
+impl Spans {
+    fn of(&self, category: Category) -> Option<(Pixels, Pixels)> {
+        self.held
+            .iter()
+            .find(|(slug, _, _)| *slug == category.slug())
+            .map(|(_, left, width)| (*left - self.origin, *width))
+    }
+
+    fn put(&mut self, slug: &'static str, left: Pixels, width: Pixels) -> bool {
+        match self.held.iter_mut().find(|(held, _, _)| *held == slug) {
+            Some(entry) if entry.1 == left && entry.2 == width => false,
+            Some(entry) => {
+                entry.1 = left;
+                entry.2 = width;
+                true
+            }
+            None => {
+                self.held.push((slug, left, width));
+                true
+            }
+        }
+    }
+}
+
+/// The strip's own left edge, which every tab's position is measured against.
+fn strip_origin(spans: Entity<Spans>) -> impl IntoElement {
+    gpui_kit::canvas(
+        move |bounds, _, cx| {
+            spans.update(cx, |spans, cx| {
+                if spans.origin != bounds.origin.x {
+                    spans.origin = bounds.origin.x;
+                    cx.notify();
+                }
+            });
+        },
+        |_, _, _, _| {},
+    )
+    .absolute()
+    .size_full()
+}
+
+/// A zero-size probe that reports where its tab landed; GPUI has no other way to ask.
+fn measure(category: Category, spans: Entity<Spans>) -> impl IntoElement {
+    let slug = category.slug();
+    gpui_kit::canvas(
+        move |bounds, _, cx| {
+            spans.update(cx, |spans, cx| {
+                if spans.put(slug, bounds.origin.x, bounds.size.width) {
+                    cx.notify();
+                }
+            });
+        },
+        |_, _, _, _| {},
+    )
+    .absolute()
+    .size_full()
 }
 
 /// Which panel the rail is showing.
@@ -116,6 +182,8 @@ impl Category {
 pub struct Settings {
     category: Category,
     rail: Roving,
+    // A ring belongs to the keyboard; a click already says where it landed.
+    ringing: bool,
     hovered: Option<Category>,
     scroll: gpui_kit::ScrollHandle,
     search: Entity<InputState>,
@@ -155,6 +223,7 @@ impl Settings {
         let mut settings = Self {
             category,
             rail,
+            ringing: false,
             hovered: None,
             scroll: gpui_kit::ScrollHandle::new(),
             search,
@@ -268,23 +337,39 @@ impl Settings {
                     },
                     cx,
                 );
-                let mark = underline.opacity(if selected { 1. } else { 0. });
                 (
                     index,
                     category,
-                    self.rail.is_active(index, window),
+                    self.rail.is_active(index, window) && self.ringing,
                     motion::color(channel("fan-bg", category.slug()), surface, window, cx),
                     motion::color(channel("fan-ink", category.slug()), ink, window, cx),
-                    motion::color(channel("fan-mark", category.slug()), mark, window, cx),
                 )
             })
             .collect();
+        // The mark travels to the chosen tab, so it has to know where the tabs actually are.
+        let spans = window.use_keyed_state("settings-fan-spans", cx, |_, _| Spans::default());
+        let measured = spans.read(cx).of(self.category);
+        let start = motion::length(
+            ElementId::from("settings-fan-start"),
+            measured.map(|span| span.0).unwrap_or_default(),
+            motion::MEDIUM,
+            window,
+            cx,
+        );
+        let width = motion::length(
+            ElementId::from("settings-fan-width"),
+            measured.map(|span| span.1).unwrap_or_default(),
+            motion::MEDIUM,
+            window,
+            cx,
+        );
         self.rail
             .group(h_flex().id("settings-fan"), "SettingsRail")
             .on_key_down(
                 cx.listener(|this, event: &KeyDownEvent, window, cx| this.walk(event, window, cx)),
             )
             .w_full()
+            .relative()
             .flex_none()
             .mb_4()
             .gap_0p5()
@@ -292,10 +377,21 @@ impl Settings {
             .border_b_1()
             .border_color(style::white(FAN_BORDER, cx))
             .bg(style::black(FAN_BG, cx))
+            .child(strip_origin(spans.clone()))
+            .child(
+                div()
+                    .absolute()
+                    .bottom_0()
+                    .left(start)
+                    .w(width)
+                    .h(px(2.))
+                    .bg(underline),
+            )
             .children(
                 items
                     .into_iter()
-                    .map(|(index, category, ringed, surface, ink, mark)| {
+                    .map(|(index, category, ringed, surface, ink)| {
+                        let spans = spans.clone();
                         h_flex()
                             .id(category.slug())
                             .relative()
@@ -304,9 +400,8 @@ impl Settings {
                             .px_3()
                             .gap_2()
                             .items_center()
-                            .border_b_2()
-                            .border_color(mark)
                             .bg(surface)
+                            .child(measure(category, spans))
                             .text_xs()
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(ink)
@@ -322,6 +417,7 @@ impl Settings {
                             }))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.rail.set_cursor(index);
+                                this.ringing = false;
                                 this.choose(category, window, cx);
                             }))
                             .when(ringed, |item| {
@@ -333,6 +429,7 @@ impl Settings {
 
     /// Left and right walk the fan; enter shows whatever the walk landed on.
     fn walk(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        self.ringing = true;
         match self.rail.walk(event) {
             Step::Moved(_) => cx.notify(),
             Step::Activate(at) => {
