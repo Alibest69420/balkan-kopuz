@@ -39,9 +39,18 @@ pub(crate) fn hovered(
     (hovered, state)
 }
 
-/// A `Button` paints its own hover style over the instance one, so the variant is handed the tween too.
-pub(crate) fn tweened(button: Button, fill: Hsla, text: Hsla, edge: Hsla, cx: &App) -> Button {
-    button
+/// Keep animation hover on the frame: a Button's tooltip owns its hover listener.
+pub(crate) fn tweened(
+    id: &'static str,
+    button: Button,
+    hover: Entity<bool>,
+    fill: Hsla,
+    text: Hsla,
+    edge: Hsla,
+    cx: &App,
+) -> impl IntoElement {
+    // The variant must use the tween too, since it overrides the button's hover style.
+    let button = button
         .custom(
             ButtonCustomVariant::new(cx)
                 .color(edge)
@@ -51,7 +60,12 @@ pub(crate) fn tweened(button: Button, fill: Hsla, text: Hsla, edge: Hsla, cx: &A
         )
         .bg(fill)
         .border_color(edge)
-        .text_color(text)
+        .text_color(text);
+    div()
+        .id(SharedString::from(format!("{id}-frame")))
+        .flex()
+        .on_hover(track(hover))
+        .child(button)
 }
 
 /// The `on_hover` listener that keeps a [`hovered`] flag in step with the pointer.
@@ -284,4 +298,81 @@ pub(crate) fn folder_card(folder: &PlaylistFolderInfo, playlists: &[PlaylistInfo
         id: folder.id.clone().into(),
         name: folder.name.clone().into(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{cell::Cell, rc::Rc};
+
+    use super::*;
+    use gpui_kit::component::Root;
+    use gpui_kit::test::TestWindowExt as _;
+    use gpui_kit::{
+        AppContext as _, Context, InputEvent as _, MouseMoveEvent, Render, TestAppContext, point,
+    };
+
+    struct ActionFixture {
+        hover: Entity<bool>,
+        clicks: Rc<Cell<usize>>,
+        loading: bool,
+    }
+
+    impl Render for ActionFixture {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let clicks = self.clicks.clone();
+            div().size(px(200.)).child(tweened(
+                "playlist-action",
+                Button::new("playlist-action")
+                    .label("Play")
+                    .tooltip("Play playlist")
+                    .loading(self.loading)
+                    .on_click(move |_, _, _| clicks.set(clicks.get() + 1)),
+                self.hover.clone(),
+                gpui_kit::black(),
+                gpui_kit::white(),
+                gpui_kit::black(),
+                cx,
+            ))
+        }
+    }
+
+    #[gpui_kit::test]
+    fn playlist_button_tooltips_preserve_hover_and_clicks(cx: &mut TestAppContext) {
+        cx.update(gpui_kit::init);
+        for loading in [false, true] {
+            let hover = cx.new(|_| false);
+            let clicks = Rc::new(Cell::new(0));
+            let view = cx.add_window({
+                let hover = hover.clone();
+                let clicks = clicks.clone();
+                move |window, cx| {
+                    let fixture = cx.new(|_| ActionFixture {
+                        hover,
+                        clicks,
+                        loading,
+                    });
+                    Root::new(fixture, window, cx)
+                }
+            });
+            cx.update_window(view.into(), |_, window, cx| {
+                window.render_frame(cx);
+                window.hover("playlist-action", cx);
+                assert!(*hover.read(cx));
+                window.click("playlist-action", cx);
+                assert_eq!(clicks.get(), usize::from(!loading));
+                window.dispatch_event(
+                    MouseMoveEvent {
+                        position: point(px(180.), px(180.)),
+                        pressed_button: None,
+                        modifiers: Default::default(),
+                    }
+                    .to_platform_input(),
+                    cx,
+                );
+                window.render_frame(cx);
+                assert!(!*hover.read(cx));
+            })
+            .unwrap();
+        }
+    }
 }

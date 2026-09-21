@@ -20,3 +20,6 @@ theme = { workspace = true }
 widgets = { workspace = true }
 gpui-kit = { workspace = true }
 tracing = { workspace = true }
+
+[dev-dependencies]
+gpui-kit = { workspace = true, features = ["test-support"] }

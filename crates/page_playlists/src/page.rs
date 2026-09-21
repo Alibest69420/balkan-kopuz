@@ -14,7 +14,7 @@ use store::{DownloadsModel, JobsModel, PlaylistsModel, SourcesModel, actions};
 use widgets::format::t;
 use widgets::{EmptyState, Loading, PageHeader, icons, motion, style};
 
-use crate::cards::{Card, card_grid, folder_card, hovered, playlist_card, track, tweened};
+use crate::cards::{Card, card_grid, folder_card, hovered, playlist_card, tweened};
 use crate::dialogs;
 
 pub struct Playlists {
@@ -44,18 +44,15 @@ fn tweened_chrome(
         window,
         cx,
     );
-    // The frame owns the hover: a Button's tooltip installs an `on_hover` of its own, and two panic.
-    div()
-        .id(SharedString::from(format!("{id}-frame")))
-        .flex()
-        .on_hover(track(hover))
-        .child(tweened(
-            button,
-            background,
-            foreground,
-            style::white(0., cx),
-            cx,
-        ))
+    tweened(
+        id,
+        button,
+        hover,
+        background,
+        foreground,
+        style::white(0., cx),
+        cx,
+    )
 }
 
 /// `w-10 h-10 rounded-full text-white/60`: the two buttons beside the page title.

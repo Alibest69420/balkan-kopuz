@@ -18,7 +18,7 @@ use widgets::format::{t, t_with};
 use widgets::track_list::{TrackActions, TrackList, TrackListEvent, columns};
 use widgets::{DetailHeader, EmptyState, detail_header_skeleton, icons, motion, style};
 
-use crate::cards::{hovered, track, tweened};
+use crate::cards::{hovered, tweened};
 
 /// `w-64 h-64`: the showcase cover.
 const HERO: Pixels = px(256.);
@@ -318,7 +318,7 @@ impl Render for PlaylistDetail {
             window,
             cx,
         );
-        // A loading Button registers no hover listener, so its flag would stay stuck where it was.
+        // The frame still tracks the pointer while the download button is loading.
         let (download_hot, download_hover) = hovered("playlist-download-hover", window, cx);
         let download_hot = download_hot && !active;
         let (delete_hot, delete_hover) = hovered("playlist-delete-hover", window, cx);
@@ -350,13 +350,14 @@ impl Render for PlaylistDetail {
                 &[("count", keys.len().to_string())],
             ))
             .action(tweened(
+                "play-playlist",
                 round_button("play-playlist", icons::PLAY)
-                    .on_hover(track(play_hover))
                     .tooltip(t("play"))
                     .on_click({
                         let keys = keys.clone();
                         move |_, _, cx| actions::play_all(keys.clone(), cx)
                     }),
+                play_hover,
                 play_fill,
                 play_text,
                 clear,
@@ -365,10 +366,11 @@ impl Render for PlaylistDetail {
         if capabilities.playlist_radio {
             let id = self.id.to_string();
             header = header.action(tweened(
+                "playlist-radio",
                 round_button("playlist-radio", icons::RADIO)
-                    .on_hover(track(radio_hover))
                     .tooltip(t("start_radio"))
                     .on_click(move |_, _, cx| actions::start_playlist_radio(id.clone(), cx)),
+                radio_hover,
                 radio_fill,
                 radio_text,
                 clear,
@@ -378,11 +380,11 @@ impl Render for PlaylistDetail {
         if capabilities.downloads {
             let keys = keys.clone();
             header = header.action(tweened(
+                "playlist-download",
                 Button::new("playlist-download")
                     .size_12()
                     .rounded_full()
                     .border_1()
-                    .on_hover(track(download_hover))
                     .icon(icons::icon(if stored {
                         icons::TRASH
                     } else {
@@ -406,6 +408,7 @@ impl Render for PlaylistDetail {
                             }
                         });
                     }),
+                download_hover,
                 download_fill,
                 download_text,
                 download_edge,
@@ -415,16 +418,17 @@ impl Render for PlaylistDetail {
         if capabilities.playlists != PlaylistCapability::None {
             let name = name.clone();
             header = header.action(tweened(
+                "playlist-delete",
                 Button::new("playlist-delete")
                     .size_12()
                     .rounded_full()
                     .border_1()
-                    .on_hover(track(delete_hover))
                     .icon(icons::icon(icons::TRASH))
                     .tooltip(t("delete_playlist"))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.delete(window, cx, name.clone())
                     })),
+                delete_hover,
                 delete_fill,
                 delete_text,
                 delete_edge,
