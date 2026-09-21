@@ -54,17 +54,7 @@ impl NowPlaying {
                     .items_center()
                     .justify_center()
                     .gap_2()
-                    .child(
-                        h_flex()
-                            .items_center()
-                            .gap_2()
-                            .child(self.transport(Metrics::COMPACT, true, window, cx))
-                            .child(self.transport_overflow(
-                                style::chrome().round_button,
-                                UTILITY_GLYPH,
-                                cx,
-                            )),
-                    )
+                    .child(self.transport(Metrics::COMPACT, true, window, cx))
                     .child(self.seek_row(window, cx)),
             )
             .child(self.utilities(window, cx))
@@ -99,8 +89,10 @@ impl NowPlaying {
         );
 
         h_flex()
-            .flex_shrink_0()
-            .gap_2()
+            // The same weight the meta block carries, so the transport between them is centred.
+            .flex_1()
+            .min_w_0()
+            .gap_1()
             .justify_end()
             .when(wanted.volume, |row| {
                 row.child(self.volume_control(window, cx))
