@@ -135,6 +135,12 @@ pub fn init(address: Address, cx: &mut App) -> anyhow::Result<()> {
 pub enum ConnectionStatus {
     Connecting,
     Connected,
+    /// The daemon answers, but not in the wire this build was compiled against.
+    /// Going on would read every field by the numbers the other side gave them.
+    Mismatched {
+        daemon: u32,
+        client: u32,
+    },
     /// The last attempt failed; another follows after [`RETRY_INTERVAL`].
     Unreachable(ApiError),
 }
@@ -173,6 +179,32 @@ impl Connection {
                         }
                         let timer = cx.background_executor().timer(RETRY_INTERVAL);
                         // "Retry now" is the same wait, cut short.
+                        futures::future::select(Box::pin(timer), Box::pin(retries.next())).await;
+                        continue;
+                    }
+
+                    // A daemon from another checkout reads fields by its own numbers, so a
+                    // mismatch is said out loud rather than left to show as a missing button.
+                    let spoken = link
+                        .call(|api| async move { api.daemon_status().await })
+                        .await
+                        .map(|status| status.proto_revision)
+                        .unwrap_or(api::WIRE_REVISION);
+                    if spoken != api::WIRE_REVISION {
+                        let wrong = ConnectionStatus::Mismatched {
+                            daemon: spoken,
+                            client: api::WIRE_REVISION,
+                        };
+                        if this
+                            .update(cx, |this, cx| {
+                                this.set_status(wrong, cx);
+                                cx.notify();
+                            })
+                            .is_err()
+                        {
+                            return;
+                        }
+                        let timer = cx.background_executor().timer(RETRY_INTERVAL);
                         futures::future::select(Box::pin(timer), Box::pin(retries.next())).await;
                         continue;
                     }
@@ -253,4 +285,42 @@ fn relay_events(link: &Link) -> futures::channel::mpsc::UnboundedReceiver<ApiEve
         }
     });
     rx
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The banner reads this to say which of the two is the stale one.
+    fn older(status: &ConnectionStatus) -> Option<bool> {
+        match status {
+            ConnectionStatus::Mismatched { daemon, client } => Some(daemon < client),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn a_daemon_speaking_this_wire_is_not_a_mismatch() {
+        assert_eq!(api::WIRE_REVISION, api::WIRE_REVISION);
+        assert_eq!(older(&ConnectionStatus::Connected), None);
+    }
+
+    /// A daemon predating the check answers zero, which is every build before it.
+    #[test]
+    fn a_silent_daemon_reads_as_the_older_one() {
+        let status = ConnectionStatus::Mismatched {
+            daemon: 0,
+            client: api::WIRE_REVISION,
+        };
+        assert_eq!(older(&status), Some(true));
+    }
+
+    #[test]
+    fn a_frontend_left_behind_says_so_the_other_way() {
+        let status = ConnectionStatus::Mismatched {
+            daemon: api::WIRE_REVISION + 1,
+            client: api::WIRE_REVISION,
+        };
+        assert_eq!(older(&status), Some(false));
+    }
 }

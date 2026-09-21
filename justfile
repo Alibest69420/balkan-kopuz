@@ -1,10 +1,21 @@
 # Everything runs inside the flake: a bare binary dies on NoWaylandLib.
 nix := "nix develop --command"
-daemon_dir := justfile_directory() / ".." / "kopuz"
+# The daemon is built from whatever checkout the client is built from. Two sources
+# is how `dont_recommend` ended up at field 16 on one side and 17 on the other,
+# and the only sign was a button quietly missing. `.cargo/config.toml` is
+# gitignored, so it is read rather than assumed; with no patch, the sibling.
+daemon_dir := env_var_or_default("KOPUZ_DAEMON_DIR", `
+    patch=$(sed -n 's|^kopuz-api = { path = "\(.*\)/crates/api".*|\1|p' .cargo/config.toml 2>/dev/null | head -1)
+    if [ -n "$patch" ]; then (cd "$patch" && pwd); else echo "$PWD/../kopuz"; fi
+`)
 socket := env_var_or_default("KOPUZ_SOCKET", env_var("XDG_RUNTIME_DIR") / "kopuzd-dev.sock")
 
 _default:
     @just --list
+
+# Which checkout both halves are built from, and what it has checked out.
+@source:
+    echo "{{ daemon_dir }}  ($(git -C {{ daemon_dir }} rev-parse --short HEAD 2>/dev/null || echo unknown))"
 
 # Build the frontend, and the daemon beside it.
 build profile="debug":
