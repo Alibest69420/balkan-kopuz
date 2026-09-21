@@ -9,8 +9,8 @@ use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_fl
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, Context, FontWeight, Hsla, ImageSource, InteractiveElement as _, IntoElement,
-    ObjectFit, ParentElement as _, Pixels, SharedString, StatefulInteractiveElement as _, Styled,
-    StyledImage as _, Window, div, img, point, px, relative, rems,
+    ParentElement as _, Pixels, SharedString, StatefulInteractiveElement as _, Styled, Window, div,
+    point, px, relative, rems,
 };
 use store::layout::{Backdrop, Side};
 use store::{Chrome, ConfigModel, FavoritesModel, Navigator, Route, SourcesModel};
@@ -410,7 +410,7 @@ impl NowPlaying {
                 // The sheet is read over, so the art never gets to be as bright as a wallpaper.
                 let darkening = config.config().cover_art_darkening.max(72);
                 let blur = config.config().cover_art_blur;
-                Some(paint(source, darkening, blur, cx))
+                Some(widgets::backdrop::wallpaper(source, darkening, blur, cx))
             }
         }
     }
@@ -429,37 +429,4 @@ fn round(id: &'static str, glyph: &'static str, tint: Hsla, cx: &gpui_kit::App) 
         .rounded(px(999.))
         .with_size(ACTION)
         .icon(icons::icon(glyph))
-}
-
-/// The art behind the sheet, blurred and darkened.
-fn paint(source: ImageSource, darkening: u8, blur: u8, cx: &gpui_kit::App) -> AnyElement {
-    let scrim = f32::from(darkening.min(95)) / 100.;
-    // Overscanned by the blur radius, so the softened edge never shows as a seam.
-    let scale = 1. + f32::from(blur.min(100)) * 0.004;
-    let inset = (1. - scale) / 2.;
-    div()
-        .absolute()
-        .top_0()
-        .left_0()
-        .size_full()
-        .overflow_hidden()
-        .bg(cx.theme().background)
-        .child(
-            img(store::blurred_backdrop(source, blur))
-                .absolute()
-                .top(relative(inset))
-                .left(relative(inset))
-                .w(relative(scale))
-                .h(relative(scale))
-                .object_fit(ObjectFit::Cover),
-        )
-        .child(
-            div()
-                .absolute()
-                .top_0()
-                .left_0()
-                .size_full()
-                .bg(cx.theme().background.opacity(scrim)),
-        )
-        .into_any_element()
 }

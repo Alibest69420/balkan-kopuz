@@ -1,5 +1,6 @@
 //! The app's shared UI vocabulary: covers, tiles, the track list, forms and the states pages show instead of rows.
 
+pub mod backdrop;
 pub mod cards;
 pub mod cover;
 pub mod dialogs;
