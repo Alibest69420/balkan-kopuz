@@ -44,6 +44,7 @@ pub static ROWS: &[Entry] = &[
     entry("player_bar_position", "appearance"),
     entry("interface_motion", "interface"),
     entry("interface_accent", "interface"),
+    entry("interface_ambient", "interface"),
     entry("interface_scale", "interface"),
     entry("interface_font", "interface"),
     entry("interface_skin", "interface"),

@@ -7,7 +7,7 @@ use gpui_kit::{
     Styled, Subscription, Window,
 };
 use store::LayoutModel;
-use store::layout::{Accent, Motion, Section as Group};
+use store::layout::{Accent, Ambient, Motion, Section as Group};
 use widgets::format::t;
 use widgets::settings::{SettingRow, choice, section, select_width};
 
@@ -57,6 +57,7 @@ impl Render for General {
         let layout = store::layout(cx);
         let motion = layout.motion;
         let accent = layout.accent;
+        let ambient = layout.ambient;
         let scale = layout.interface.scale;
         v_flex()
             .w_full()
@@ -91,6 +92,28 @@ impl Render for General {
                                 |value, cx| LayoutModel::edit(cx, |layout| layout.accent = value),
                             ))
                             .shown(cx),
+                    )
+                    // The light is the accent carried furthest, so it is only offered where it reaches.
+                    .children(
+                        (accent == Accent::On)
+                            .then(|| {
+                                SettingRow::new(t("interface_ambient"))
+                                    .description(t("interface_ambient_description"))
+                                    .control(choice(
+                                        "interface-ambient",
+                                        &ambient,
+                                        vec![
+                                            (Ambient::Glow, t("interface_ambient_glow")),
+                                            (Ambient::Full, t("interface_ambient_full")),
+                                            (Ambient::Off, t("interface_accent_off")),
+                                        ],
+                                        |value, cx| {
+                                            LayoutModel::edit(cx, |layout| layout.ambient = value)
+                                        },
+                                    ))
+                                    .shown(cx)
+                            })
+                            .flatten(),
                     )
                     .children(
                         SettingRow::new(t("interface_scale"))
