@@ -1,6 +1,7 @@
 //! App-wide mirrors of daemon state, each a GPUI entity reachable through `Model::global(cx)`.
 
 pub mod actions;
+pub mod ambient;
 mod artwork;
 mod backdrop;
 mod chrome;

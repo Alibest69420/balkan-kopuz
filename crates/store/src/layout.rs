@@ -32,6 +32,16 @@ pub enum Accent {
     Off,
 }
 
+/// How far the playing cover's light reaches across the window behind everything.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Ambient {
+    Off,
+    #[default]
+    Glow,
+    Full,
+}
+
 /// How much things move.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -450,6 +460,7 @@ pub struct Layout {
     pub notifications: Notifications,
     pub window: WindowState,
     pub accent: Accent,
+    pub ambient: Ambient,
     pub motion: Motion,
     pub skin: String,
     /// Command id to keystroke, overriding what the registry binds by default.
@@ -473,6 +484,7 @@ impl Default for Layout {
             notifications: Notifications::default(),
             window: WindowState::default(),
             accent: Accent::default(),
+            ambient: Ambient::default(),
             motion: Motion::default(),
             skin: "normal".into(),
             shortcuts: BTreeMap::new(),

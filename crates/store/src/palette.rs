@@ -1,10 +1,9 @@
 //! The colours a cover is made of, pulled off the UI thread and keyed by `ArtworkRef::version`.
 
-use api::{ArtworkRef, ArtworkRequest};
+use api::ArtworkRef;
 use gpui_kit::{App, Asset, Hsla, Rgba, Window};
-use link::Link;
 
-use crate::artwork::{ArtworkBytes, ArtworkKey};
+use crate::artwork::{ArtworkKey, thumbnail_bytes};
 
 /// A cover reduced to the two colours the chrome borrows: what it is mostly made of, and its liveliest.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -24,21 +23,9 @@ impl Asset for CoverPalette {
         source: Self::Source,
         cx: &mut App,
     ) -> impl Future<Output = Self::Output> + Send + 'static {
-        let resident = cx
-            .fetch_asset::<ArtworkBytes>(&source)
-            .and_then(Result::ok)
-            .map(|image| image.bytes.clone());
-        let call = resident.is_none().then(|| {
-            let target = source.target.clone();
-            Link::global(cx).call(move |api| async move {
-                api.artwork(ArtworkRequest { target, hq: false }).await
-            })
-        });
+        let bytes = thumbnail_bytes(&source, cx);
         async move {
-            let bytes = match resident {
-                Some(bytes) => bytes,
-                None => call?.await.ok()?.bytes,
-            };
+            let bytes = bytes.await?;
             let span = tracing::debug_span!("palette.extract");
             let _entered = span.enter();
             extract(&bytes)

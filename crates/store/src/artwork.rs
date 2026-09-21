@@ -60,6 +60,28 @@ impl Asset for ArtworkBytes {
     }
 }
 
+/// A cover's encoded thumbnail: the copy a view already holds if there is one, else a fetch of it.
+pub(crate) fn thumbnail_bytes(
+    key: &ArtworkKey,
+    cx: &mut App,
+) -> impl Future<Output = Option<Vec<u8>>> + Send + 'static + use<> {
+    let resident = cx
+        .fetch_asset::<ArtworkBytes>(key)
+        .and_then(Result::ok)
+        .map(|image| image.bytes.clone());
+    let call = resident.is_none().then(|| {
+        let target = key.target.clone();
+        Link::global(cx)
+            .call(move |api| async move { api.artwork(ArtworkRequest { target, hq: false }).await })
+    });
+    async move {
+        match resident {
+            Some(bytes) => Some(bytes),
+            None => call?.await.ok().map(|data| data.bytes),
+        }
+    }
+}
+
 /// The decoded dimensions, read from the header rather than by decoding the whole picture.
 fn probe_size(bytes: &[u8]) -> Option<(u32, u32)> {
     image::ImageReader::new(std::io::Cursor::new(bytes))
