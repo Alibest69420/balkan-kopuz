@@ -3,7 +3,7 @@
 use api::LoopMode;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, Context, FontWeight, Hsla, IntoElement, ParentElement as _, Pixels, Styled, Window, div,
@@ -40,7 +40,9 @@ impl Metrics {
         play: px(40.),
         side_glyph: px(14.),
         step_glyph: px(20.),
-        play_glyph: px(18.),
+        // The Dioxus bar drew this smaller than the skips and let a solid glyph carry the weight;
+        // these are outlines, so the size has to do it, as `HERO` already has it do.
+        play_glyph: px(22.),
         gap: px(8.),
     };
 
@@ -67,10 +69,15 @@ impl NowPlaying {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        let (playing, shuffle, loop_mode) = {
+        let (playing, shuffle, loop_mode, loaded) = {
             let player = PlayerModel::global(cx);
             let player = player.read(cx);
-            (player.is_playing(), player.shuffle(), player.loop_mode())
+            (
+                player.is_playing(),
+                player.shuffle(),
+                player.loop_mode(),
+                player.track().is_some(),
+            )
         };
         let wanted = store::layout(cx).player.clone();
         let accent = motion::accent(theme::Surface::Chrome, cx.theme().primary, window, cx);
@@ -133,6 +140,7 @@ impl NowPlaying {
                             previous_glyph,
                             cx,
                         )
+                        .disabled(!loaded)
                         .tooltip(t("previous_track"))
                         .on_click(|_, _, cx| {
                             PlayerModel::global(cx).update(cx, |player, cx| player.previous(cx));
@@ -150,6 +158,7 @@ impl NowPlaying {
                             play_glyph,
                             cx,
                         )
+                        .disabled(!loaded)
                         .tooltip(if playing { t("pause") } else { t("play") })
                         .on_click(|_, _, cx| {
                             PlayerModel::global(cx).update(cx, |player, cx| player.toggle(cx));
@@ -166,6 +175,7 @@ impl NowPlaying {
                         next_glyph,
                         cx,
                     )
+                    .disabled(!loaded)
                     .tooltip(t("next_track"))
                     .on_click(|_, _, cx| {
                         PlayerModel::global(cx).update(cx, |player, cx| player.next(cx));
