@@ -3,6 +3,7 @@
 use gpui_kit::base::slider::{Slider as BareSlider, SliderIndicator, SliderTrack};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex};
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Axis, Context, Hsla, InteractiveElement as _, IntoElement, ParentElement as _, Pixels,
     ScrollDelta, ScrollWheelEvent, StatefulInteractiveElement as _, Styled, Window, div, px,
@@ -52,6 +53,7 @@ impl NowPlaying {
     /// The mute glyph and the level beside it, sharing one wheel.
     pub(crate) fn volume_control(
         &self,
+        slider: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
@@ -83,7 +85,10 @@ impl NowPlaying {
                             }),
                     ),
             )
-            .child(div().w(TRACK_WIDTH).child(self.volume_bar(fill, cx)))
+            // The wheel still works over the glyph when the track it drew is what the title needed.
+            .when(slider, |control| {
+                control.child(div().w(TRACK_WIDTH).child(self.volume_bar(fill, cx)))
+            })
     }
 
     fn volume_bar(&self, fill: Hsla, cx: &Context<Self>) -> impl IntoElement + use<> {

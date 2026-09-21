@@ -184,7 +184,7 @@ impl NowPlaying {
                         h_flex()
                             .w_full()
                             .max_w(rems(COLUMN / 2.))
-                            .child(self.volume_control(window, cx)),
+                            .child(self.volume_control(true, window, cx)),
                     ),
             )
             .into_any_element()

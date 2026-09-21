@@ -16,6 +16,38 @@ use crate::transport::Metrics;
 
 const UTILITY_GLYPH: Pixels = px(12.);
 const TRANSPORT_WIDTH: Pixels = px(640.);
+
+/// What the right end still affords. The title is what pays for it, so as the window narrows the
+/// least useful goes first: the level's track, then share, then the mini window.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Affords {
+    level: bool,
+    share: bool,
+    mini: bool,
+    /// The dots beside the title; what it offers is on the block's own right-click either way.
+    menu: bool,
+    /// What the transport column takes, which is the rest of what the title has to live on.
+    transport: f32,
+}
+
+const LEVEL_NEEDS: Pixels = px(1200.);
+const SHARE_NEEDS: Pixels = px(1080.);
+const MINI_NEEDS: Pixels = px(980.);
+const WIDE_TRANSPORT: f32 = 0.4;
+const TIGHT_TRANSPORT: f32 = 0.32;
+
+fn affords(width: Pixels) -> Affords {
+    Affords {
+        level: width >= LEVEL_NEEDS,
+        share: width >= SHARE_NEEDS,
+        mini: width >= MINI_NEEDS,
+        menu: width >= MINI_NEEDS,
+        transport: match width >= LEVEL_NEEDS {
+            true => WIDE_TRANSPORT,
+            false => TIGHT_TRANSPORT,
+        },
+    }
+}
 // `bg-black/40` when something is painted behind the bar, `bg-black/60` when nothing is.
 const SCRIM_OVER_ART: f32 = 0.4;
 const SCRIM_PLAIN: f32 = 0.6;
@@ -47,7 +79,7 @@ impl NowPlaying {
             .child(self.track_meta(window, cx))
             .child(
                 v_flex()
-                    .w(relative(0.4))
+                    .w(relative(affords(window.viewport_size().width).transport))
                     // Past this the seek bar sprawls and the title beside it starves.
                     .max_w(TRANSPORT_WIDTH)
                     .flex_shrink_0()
@@ -65,6 +97,7 @@ impl NowPlaying {
     fn utilities(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let panel = Chrome::global(cx).read(cx).panel();
         let wanted = store::layout(cx).player.clone();
+        let room = affords(window.viewport_size().width);
         let muted = style::slate_400(cx);
         let accent = motion::accent(theme::Surface::Chrome, cx.theme().primary, window, cx);
         let queued = panel == Some(SidePanel::Queue);
@@ -91,7 +124,7 @@ impl NowPlaying {
             .gap_1()
             .justify_end()
             .when(wanted.volume, |row| {
-                row.child(self.volume_control(window, cx))
+                row.child(self.volume_control(room.level, window, cx))
             })
             .when(wanted.queue, |row| {
                 row.child(
@@ -128,22 +161,31 @@ impl NowPlaying {
                 )
             })
             .children(self.devices_button(window, cx))
-            .child(self.share_button(style::chrome().round_button, UTILITY_GLYPH, window, cx))
-            .child(
-                self.framed(
-                    "bar-mini",
-                    utility(
-                        "bar-mini",
-                        icons::COLLAPSE,
-                        self.control_glyph("bar-mini", muted, false, window, cx),
-                        cx,
-                    )
-                    .tooltip(t("mini_player"))
-                    .on_click(|_, _, cx| crate::open_mini(cx)),
+            .when(room.share, |row| {
+                row.child(self.share_button(
+                    style::chrome().round_button,
+                    UTILITY_GLYPH,
                     window,
                     cx,
-                ),
-            )
+                ))
+            })
+            .when(room.mini, |row| {
+                row.child(
+                    self.framed(
+                        "bar-mini",
+                        utility(
+                            "bar-mini",
+                            icons::COLLAPSE,
+                            self.control_glyph("bar-mini", muted, false, window, cx),
+                            cx,
+                        )
+                        .tooltip(t("mini_player"))
+                        .on_click(|_, _, cx| crate::open_mini(cx)),
+                        window,
+                        cx,
+                    ),
+                )
+            })
             .child(
                 self.framed(
                     "bar-sheet",
@@ -176,6 +218,11 @@ pub(crate) fn utility(id: &'static str, glyph: &'static str, tint: Hsla, cx: &Ap
     focus::quiet(button, cx)
 }
 
+/// Whether the title's own dots button still fits, which the meta block has to ask.
+pub(crate) fn menu_fits(window: &Window) -> bool {
+    affords(window.viewport_size().width).menu
+}
+
 /// The shape and glyph size of one bar-slot button, for a package contributing another.
 pub fn utility_metrics() -> (Pixels, Pixels) {
     (style::chrome().round_button, UTILITY_GLYPH)
@@ -184,4 +231,35 @@ pub fn utility_metrics() -> (Pixels, Pixels) {
 /// The bar owns its height; the shell does not have to guess it.
 pub fn bar_height() -> Pixels {
     style::chrome().player_height
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_wide_window_keeps_the_whole_bar() {
+        let room = affords(px(1400.));
+        assert!(room.level && room.share && room.mini && room.menu);
+        assert_eq!(room.transport, WIDE_TRANSPORT);
+    }
+
+    #[test]
+    fn the_level_is_the_first_thing_the_title_takes_back() {
+        let room = affords(px(1100.));
+        assert!(!room.level);
+        assert!(room.share && room.mini && room.menu);
+        assert_eq!(room.transport, TIGHT_TRANSPORT);
+    }
+
+    #[test]
+    fn a_narrow_window_keeps_only_what_the_bar_cannot_do_without() {
+        let room = affords(px(924.));
+        assert!(!room.level && !room.share && !room.mini && !room.menu);
+    }
+
+    #[test]
+    fn the_transport_never_takes_more_of_a_narrow_window_than_a_wide_one() {
+        assert!(affords(px(924.)).transport < affords(px(1400.)).transport);
+    }
 }

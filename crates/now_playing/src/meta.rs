@@ -169,16 +169,21 @@ impl NowPlaying {
                     .children(origin.map(|(label, route)| playing_from_link(label, route, cx))),
             )
             .children(self.marks(key, window, cx))
-            .children(target.clone().map(|target| {
-                let menu = self.control_glyph("track-meta-menu", muted, false, window, cx);
-                self.framed(
-                    "track-meta-menu",
-                    mark("track-meta-menu", icons::MORE, menu, cx)
-                        .dropdown_menu(menus::builder(target)),
-                    window,
-                    cx,
-                )
-            }));
+            .children(
+                crate::bar::menu_fits(window)
+                    .then_some(())
+                    .and(target.clone())
+                    .map(|target| {
+                        let menu = self.control_glyph("track-meta-menu", muted, false, window, cx);
+                        self.framed(
+                            "track-meta-menu",
+                            mark("track-meta-menu", icons::MORE, menu, cx)
+                                .dropdown_menu(menus::builder(target)),
+                            window,
+                            cx,
+                        )
+                    }),
+            );
 
         match target {
             Some(target) => block
