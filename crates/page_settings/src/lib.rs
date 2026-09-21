@@ -88,7 +88,10 @@ fn strip_origin(spans: Entity<Spans>) -> impl IntoElement {
     .flex_none()
 }
 
-/// A zero-size probe that reports where its tab landed; GPUI has no other way to ask.
+/// A probe that reports where its tab landed; GPUI has no other way to ask.
+///
+/// It must sit in a tab that carries no padding of its own: an absolute child is placed
+/// against the content box, so a padded tab would report itself an inset to the right.
 fn measure(category: Category, spans: Entity<Spans>) -> impl IntoElement {
     let slug = category.slug();
     gpui_kit::canvas(
@@ -367,23 +370,15 @@ impl Settings {
             window,
             cx,
         );
-        // The mark and the probe both sit inside this, so they share one coordinate space and
-        // the mark cannot drift when the rail is scrolled.
-        let track = h_flex()
-            .relative()
-            .h_full()
+        // The mark rides in the flow beside the tabs rather than absolutely over them: an
+        // absolute child does not scroll with the rail, so it drifted by the scroll offset.
+        let mark = h_flex()
             .flex_none()
-            .gap_0p5()
-            .child(strip_origin(spans.clone()))
-            .child(
-                div()
-                    .absolute()
-                    .bottom_0()
-                    .left(start)
-                    .w(width)
-                    .h(px(2.))
-                    .bg(underline),
-            );
+            .h(px(2.))
+            .mt(px(-2.))
+            .child(div().flex_none().w(start))
+            .child(div().flex_none().w(width).h_full().bg(underline));
+        let track = h_flex().h_full().flex_none().gap_0p5();
         self.rail
             .group(h_flex().id("settings-fan"), "SettingsRail")
             .on_key_down(
@@ -397,27 +392,36 @@ impl Settings {
             .border_color(style::white(FAN_BORDER, cx))
             .bg(style::black(FAN_BG, cx))
             .child(
-                track.children(
-                    items
-                        .into_iter()
-                        .map(|(index, category, ringed, surface, ink)| {
+                v_flex()
+                    .flex_none()
+                    .h_full()
+                    // A column centres what it holds, which would push the narrower mark right.
+                    .items_start()
+                    .child(strip_origin(spans.clone()))
+                    .child(track.children(items.into_iter().map(
+                        |(index, category, ringed, surface, ink)| {
                             let spans = spans.clone();
                             h_flex()
                                 .id(category.slug())
                                 .relative()
                                 .flex_none()
                                 .h_11()
-                                .px_3()
-                                .gap_2()
                                 .items_center()
                                 .bg(surface)
-                                .child(measure(category, spans))
                                 .text_xs()
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .text_color(ink)
                                 .cursor_pointer()
-                                .child(icons::icon(category.icon()))
-                                .child(category.label())
+                                .child(measure(category, spans))
+                                .child(
+                                    h_flex()
+                                        .h_full()
+                                        .px_3()
+                                        .gap_2()
+                                        .items_center()
+                                        .child(icons::icon(category.icon()))
+                                        .child(category.label()),
+                                )
                                 .on_hover(cx.listener(move |this, over: &bool, _, cx| {
                                     let held = over.then_some(category);
                                     if this.hovered != held {
@@ -433,8 +437,9 @@ impl Settings {
                                 .when(ringed, |item| {
                                     item.child(widgets::focus::ring(style::radius_md(), cx))
                                 })
-                        }),
-                ),
+                        },
+                    )))
+                    .child(mark),
             )
     }
 
