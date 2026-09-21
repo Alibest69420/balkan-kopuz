@@ -9,7 +9,7 @@ use gpui_kit::{
 };
 use store::{Chrome, ConfigModel, SidePanel};
 use widgets::format::t;
-use widgets::{icons, motion, style};
+use widgets::{focus, icons, motion, style};
 
 use crate::NowPlaying;
 use crate::transport::Metrics;
@@ -147,13 +147,14 @@ impl NowPlaying {
 
 /// The shape every button at the right end of the bar takes.
 pub(crate) fn utility(id: &'static str, glyph: &'static str, tint: Hsla, cx: &App) -> Button {
-    Button::new(id)
+    let button = Button::new(id)
         .ghost()
         .with_size(UTILITY_GLYPH * (4. / 3.))
         .size(style::chrome().round_button)
         .rounded(style::chrome().round_button / 2.)
         .icon(icons::icon(glyph))
-        .custom(style::bare_button(tint, cx))
+        .custom(style::bare_button(tint, cx));
+    focus::quiet(button, cx)
 }
 
 /// The shape and glyph size of one bar-slot button, for a package contributing another.

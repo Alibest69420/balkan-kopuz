@@ -16,7 +16,7 @@ use store::{
     actions,
 };
 use widgets::format::t;
-use widgets::{Cover, icons, menus, motion, style};
+use widgets::{Cover, focus, icons, menus, motion, style};
 
 use crate::NowPlaying;
 
@@ -144,10 +144,7 @@ impl NowPlaying {
             )
             .children(self.marks(key, title, window, cx))
             .children(target.clone().map(|target| {
-                Button::new("track-meta-menu")
-                    .ghost()
-                    .xsmall()
-                    .icon(icons::icon(icons::MORE))
+                mark("track-meta-menu", icons::MORE, muted, cx)
                     .dropdown_menu(menus::builder(target))
             }));
 
@@ -295,7 +292,7 @@ impl NowPlaying {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let key = self.track(cx).map(|track| track.key);
-        Button::new("meta-share")
+        focus::quiet(Button::new("meta-share"), cx)
             .ghost()
             .with_size(glyph * (4. / 3.))
             .size(size)
@@ -330,13 +327,14 @@ fn playing_from_link(label: SharedString, route: Route, cx: &App) -> impl IntoEl
 }
 
 fn mark(id: &'static str, glyph: &'static str, color: gpui_kit::Hsla, cx: &App) -> Button {
-    Button::new(id)
+    let button = Button::new(id)
         .ghost()
         .with_size(MARK_GLYPH * (4. / 3.))
         .size(style::chrome().round_button)
         .rounded(style::chrome().round_button / 2.)
         .icon(icons::icon(glyph))
-        .custom(style::bare_button(color, cx))
+        .custom(style::bare_button(color, cx));
+    focus::quiet(button, cx)
 }
 
 /// The one thing a `Target` is needed for here, kept out of the render so it allocates once.

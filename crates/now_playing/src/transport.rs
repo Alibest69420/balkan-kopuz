@@ -11,7 +11,7 @@ use gpui_kit::{
 };
 use store::PlayerModel;
 use widgets::format::t;
-use widgets::{icons, motion, style};
+use widgets::{focus, icons, motion, style};
 
 // Lucide names the shared icon set has no constant for yet.
 const TIMER: &str = "icons/timer.svg";
@@ -221,7 +221,7 @@ impl NowPlaying {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let tint = style::slate_400(cx);
-        Button::new("transport-overflow")
+        focus::quiet(Button::new("transport-overflow"), cx)
             .ghost()
             .with_size(glyph * (4. / 3.))
             .size(size)
@@ -257,11 +257,12 @@ fn bare(
     cx: &App,
 ) -> Button {
     // Button draws its glyph at three quarters of its own size, so the box is restated after it.
-    Button::new(id)
+    let button = Button::new(id)
         .ghost()
         .with_size(glyph_size * (4. / 3.))
         .size(size)
         .rounded(size / 2.)
         .icon(icons::icon(glyph))
-        .custom(style::bare_button(color, cx))
+        .custom(style::bare_button(color, cx));
+    focus::quiet(button, cx)
 }

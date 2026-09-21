@@ -1,9 +1,11 @@
 //! One tab stop per group, arrows within it: the keyboard shape every strip, list and grid wears.
 
+use gpui_kit::base::FocusableExt as _;
 use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::component::button::Button;
 use gpui_kit::{
-    AnyElement, App, Div, Entity, FocusHandle, InteractiveElement as _, IntoElement, KeyDownEvent,
-    Rems, SharedString, Stateful, Styled as _, Window, div,
+    AnyElement, App, Div, Entity, FocusHandle, Global, InteractiveElement as _, IntoElement,
+    KeyDownEvent, Rems, SharedString, Stateful, Styled as _, Window, div,
 };
 
 /// How the arrows walk a group: one row, one column, or a grid that many columns wide.
@@ -128,6 +130,42 @@ fn step(axis: Axis, cursor: usize, len: usize, key: &str) -> Step {
         _ => return Step::Ignored,
     };
     Step::Moved(moved)
+}
+
+/// Which device is driving focus. A ring answers "where will the keys land", which a pointer
+/// never has to ask: clicking a button and being left with a ring on it is the web's old
+/// `:focus` rather than its `:focus-visible`.
+#[derive(Default)]
+struct Modality {
+    keyboard: bool,
+}
+
+impl Global for Modality {}
+
+/// Whether focus is being moved by the keyboard, and so whether a ring is worth drawing.
+pub fn keyboard(cx: &App) -> bool {
+    cx.try_global::<Modality>()
+        .is_some_and(|modality| modality.keyboard)
+}
+
+fn drive(keyboard: bool, cx: &mut App) {
+    if self::keyboard(cx) == keyboard {
+        return;
+    }
+    cx.default_global::<Modality>().keyboard = keyboard;
+    // Rings are drawn wherever focus is, so the switch is a whole-window repaint; it is rare.
+    cx.refresh_windows();
+}
+
+/// Watch a root for what is driving focus. Every ring in the window follows it.
+pub fn watch(root: Div) -> Div {
+    root.capture_any_mouse_down(|_, _, cx| drive(false, cx))
+        .capture_key_down(|_, _, cx| drive(true, cx))
+}
+
+/// A button that rings for the keyboard and stays quiet under a click.
+pub fn quiet(button: Button, cx: &App) -> Button {
+    button.focus_ring(keyboard(cx))
 }
 
 /// The focus ring, drawn over a thing rather than around it, so focusing never moves anything.

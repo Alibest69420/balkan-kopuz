@@ -10,7 +10,7 @@ use gpui_kit::{
 };
 use store::{ConfigModel, PlayerModel};
 use widgets::format::t;
-use widgets::{icons, motion, style};
+use widgets::{focus, icons, motion, style};
 
 use crate::{NowPlaying, channel};
 
@@ -69,7 +69,7 @@ impl NowPlaying {
             .child(
                 self.control_slot("mute", style::chrome().round_button, window, cx)
                     .child(
-                        Button::new("mute")
+                        focus::quiet(Button::new("mute"), cx)
                             .ghost()
                             .with_size(GLYPH * (4. / 3.))
                             .size(style::chrome().round_button)

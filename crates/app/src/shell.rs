@@ -241,7 +241,7 @@ impl Render for Shell {
                 .into_any_element()
         };
 
-        topbar::mouse_history(div())
+        widgets::focus::watch(topbar::mouse_history(div()))
             .size_full()
             .track_focus(&self.focus)
             .key_context("Shell")
