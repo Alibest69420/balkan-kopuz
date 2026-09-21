@@ -86,6 +86,8 @@ pub(crate) fn banner(window: &mut Window, cx: &mut Context<Home>) -> Option<AnyE
             .id(key.clone())
             .relative()
             .w_full()
+            // `overflow_hidden` zeroes the automatic minimum height, so the scroller would crush it.
+            .flex_none()
             .gap_6()
             .p_6()
             .items_center()
