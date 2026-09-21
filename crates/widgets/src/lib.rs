@@ -13,6 +13,7 @@ pub mod playlist_picker;
 pub mod schema_form;
 pub mod scroll;
 pub mod settings;
+pub mod skin;
 pub mod states;
 pub mod style;
 pub mod track_list;

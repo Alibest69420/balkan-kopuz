@@ -149,11 +149,22 @@ Two colours the table does not list: the playback-error banner is
 `rose-500` at 15/20/70% — use `cx.theme().danger` at those alphas — and the
 scan and connecting states are amber, which is `cx.theme().warning`.
 
-## The Vaxry skin
+## Skins
 
-Not ported. `style::Skin::current(cx)` answers which skin `cfg.ui_style` asks
-for and falls back to `Normal`, so a later skin branches there rather than
-threading a flag through every call site. Do not add Vaxry branches now.
+A skin is metrics and chrome proportions; a palette is colour, and the two stay
+orthogonal. `widgets::skin` is the registry: a skin implements the `Skin` trait,
+returning a `Metrics` and a `Chrome` it may fill field by field from
+`Metrics::default()`, plus optional asset swaps. `Normal` is the only one
+registered and is the baseline every value above is measured in.
+
+`layout.skin` names the skin; `settings_interface::apply` resolves it once per
+change into the registry and hands the component theme its `radius` /
+`radius_lg`. Nothing above reads it: the helpers in `widgets::style` already
+answer with the active skin's numbers, which is why `style::radius_lg()`,
+`style::row_height()`, `style::media_row()`, `style::density_row(..)` and
+`style::chrome()` exist. A radius, a row height, a control height or a bar's
+own proportion is one of those calls, never a literal at the call site. Vaxry
+is not ported; it lands as another `impl Skin`, not as a branch.
 
 ## The `.hover()` panic
 

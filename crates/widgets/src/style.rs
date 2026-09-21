@@ -4,6 +4,8 @@ use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::button::ButtonCustomVariant;
 use gpui_kit::{App, Hsla, Pixels, Rems, px, rems};
 
+use crate::skin;
+
 /// `bg-white/5`: the raised surface a row, tile or thumb sits on.
 pub const RAISED: f32 = 0.05;
 /// `hover:bg-white/10`, and the resting surface of a pressed-looking control.
@@ -59,24 +61,54 @@ pub fn slate_500(cx: &App) -> Hsla {
     theme::dim_text(cx)
 }
 
-/// `rounded` — 4px.
+/// `rounded` — 4px under Normal.
 pub fn radius(_: &App) -> Rems {
-    rems(0.25)
+    skin::metrics().radius
 }
 
 /// `rounded-lg` — 8px, the row and small-control radius.
 pub fn radius_lg() -> Rems {
-    rems(0.5)
+    skin::metrics().radius_lg
 }
 
 /// `rounded-xl` — 12px, the card and panel radius.
 pub fn radius_xl() -> Rems {
-    rems(0.75)
+    skin::metrics().radius_xl
 }
 
 /// `rounded-2xl` — 16px.
 pub fn radius_2xl() -> Rems {
-    rems(1.)
+    skin::metrics().radius_2xl
+}
+
+/// The corner of a small piece of art or a pill sized in pixels: a queue thumb, a tab, a segment.
+pub fn thumb_radius() -> Pixels {
+    skin::metrics().thumb_radius
+}
+
+/// The corner of a cover big enough to read as a picture: the mini player's, a dialog's.
+pub fn cover_radius() -> Pixels {
+    skin::metrics().cover_radius
+}
+
+/// How tall a row stands at `density`: the user picks the step, the skin says what it measures.
+pub fn density_row(density: store::layout::Density) -> Pixels {
+    skin::metrics().density_row(density)
+}
+
+/// A row carrying a cover and two lines: the queue, an album's tracks, a shelf.
+pub fn media_row() -> Pixels {
+    skin::metrics().media_row
+}
+
+/// A bare one-line row, as the playlists panel draws it.
+pub fn list_row() -> Pixels {
+    skin::metrics().list_row
+}
+
+/// The chrome's proportions, so a bar never states its own height.
+pub fn chrome() -> skin::Chrome {
+    skin::chrome()
 }
 
 /// `text-[10px]`, which Tailwind cannot express on its scale.
@@ -91,35 +123,17 @@ pub fn text_11() -> Pixels {
 
 /// `h-14`: the track row, and so the virtualized row height.
 pub fn row_height() -> Rems {
-    rems(3.5)
+    skin::metrics().row_height
 }
 
 /// `w-10 h-10`: a desktop row's cover thumb.
 pub fn row_cover() -> Rems {
-    rems(2.5)
+    skin::metrics().row_cover
 }
 
 /// `w-9 h-9`: the square icon buttons in the chrome.
 pub fn icon_button() -> Rems {
-    rems(2.25)
-}
-
-/// Which skin is drawing. Only [`Skin::Normal`] is ported; Vaxry hangs off here.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum Skin {
-    #[default]
-    Normal,
-    Vaxry,
-}
-
-impl Skin {
-    /// The skin `cfg.ui_style` asks for; anything unported falls back to Normal.
-    pub fn current(cx: &App) -> Self {
-        match store::ConfigModel::global(cx).read(cx).config().ui_style {
-            config::UiStyle::Vaxry => Skin::Vaxry,
-            _ => Skin::Normal,
-        }
-    }
+    skin::metrics().icon_button
 }
 
 /// A rem measure in pixels, for the setters that take `Pixels` (`Cover::size`, `Icon::size`).
@@ -139,7 +153,7 @@ pub fn text_7xl() -> Rems {
 
 /// `rounded-md` — 6px, the cover thumbs and tab pills.
 pub fn radius_md() -> Rems {
-    rems(0.375)
+    skin::metrics().radius_md
 }
 
 /// `text-[9px]`, the repeat-one badge.

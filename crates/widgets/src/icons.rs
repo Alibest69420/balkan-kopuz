@@ -54,7 +54,10 @@ pub const WARNING: &str = "icons/triangle-alert.svg";
 pub const LOCK: &str = "icons/lock.svg";
 pub const COPY: &str = "icons/copy.svg";
 
-/// An icon by path, e.g. `icon(icons::PLAY)`.
+/// An icon by path, e.g. `icon(icons::PLAY)`; the active skin may swap what it draws.
 pub fn icon(path: &'static str) -> Icon {
-    Icon::default().path(path)
+    match crate::skin::asset(path) {
+        Some(swapped) => Icon::default().path(swapped),
+        None => Icon::default().path(path),
+    }
 }

@@ -19,11 +19,30 @@ impl Global for Applied {}
 /// Follow `layout.interface` from here on, re-applying it over whatever a theme change installs.
 pub fn watch(cx: &mut App) {
     cx.set_global(Applied::default());
-    apply(cx);
-    cx.observe(&LayoutModel::global(cx), |_, cx| apply(cx))
+    resolve(cx);
+    cx.observe(&LayoutModel::global(cx), |_, cx| resolve(cx))
         .detach();
     // `Root::render` pushes the theme's font size into the window every frame, so this is the lever.
-    cx.observe_global::<Theme>(apply).detach();
+    cx.observe_global::<Theme>(resolve).detach();
+}
+
+fn resolve(cx: &mut App) {
+    skin(cx);
+    apply(cx);
+}
+
+/// Resolve `layout.skin` once per change, and hand the component library the radii it draws with.
+fn skin(cx: &mut App) {
+    widgets::skin::select(&store::layout(cx).skin);
+    let metrics = widgets::skin::metrics();
+    let theme = Theme::global(cx);
+    if theme.radius == metrics.thumb_radius && theme.radius_lg == metrics.cover_radius {
+        return;
+    }
+    let theme = Theme::global_mut(cx);
+    theme.radius = metrics.thumb_radius;
+    theme.radius_lg = metrics.cover_radius;
+    cx.refresh_windows();
 }
 
 fn apply(cx: &mut App) {

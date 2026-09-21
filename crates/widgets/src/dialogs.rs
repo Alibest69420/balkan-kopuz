@@ -18,6 +18,7 @@ struct Dialogs {
     rename: Option<RenameOpener>,
     folder_picker: Option<FolderOpener>,
     shortcuts: Option<SheetOpener>,
+    url_download: Option<SheetOpener>,
 }
 
 impl Global for Dialogs {}
@@ -84,6 +85,21 @@ pub fn open_shortcuts(window: &mut Window, cx: &mut App) {
     match opener {
         Some(opener) => opener(window, cx),
         None => tracing::warn!("no shortcuts sheet is registered"),
+    }
+}
+
+/// Register the "fetch this URL" box; the downloads popover and `downloads.add_url` both ask for it.
+pub fn register_url_download(opener: impl Fn(&mut Window, &mut App) + 'static, cx: &mut App) {
+    dialogs(cx).url_download = Some(Rc::new(opener));
+}
+
+pub fn open_url_download(window: &mut Window, cx: &mut App) {
+    let opener = cx
+        .try_global::<Dialogs>()
+        .and_then(|dialogs| dialogs.url_download.clone());
+    match opener {
+        Some(opener) => opener(window, cx),
+        None => tracing::warn!("no url download dialog is registered"),
     }
 }
 

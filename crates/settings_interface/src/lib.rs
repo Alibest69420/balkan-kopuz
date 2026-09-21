@@ -2,6 +2,7 @@
 
 mod apply;
 mod general;
+mod skin;
 
 use std::rc::Rc;
 
@@ -59,6 +60,7 @@ pub fn register(
 /// Register the sections this crate owns; call once at startup, before the others.
 pub fn init(cx: &mut App) {
     general::register(cx);
+    skin::register(cx);
     apply::watch(cx);
 }
 
