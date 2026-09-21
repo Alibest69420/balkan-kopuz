@@ -82,6 +82,12 @@ impl NowPlaying {
         let muted = style::slate_400(cx);
         let lifted = style::white(0.7, cx);
         let origin = playing_from(cx);
+        // What is playing says which album it is from, but only the queue row carries its id.
+        let album = QueueModel::global(cx)
+            .read(cx)
+            .current()
+            .map(|track| SharedString::from(track.album_id.clone()))
+            .filter(|album| !album.is_empty());
         let target = key
             .clone()
             .map(|key| store::Target::track(key, title.clone()));
@@ -108,11 +114,11 @@ impl NowPlaying {
             )
             .child(
                 v_flex()
+                    // Sized by its text, not by the room going spare: the marks belong beside it.
                     .min_w_0()
-                    .flex_1()
                     .justify_center()
                     .gap_0p5()
-                    .child(self.marquee_title(title.clone(), window, cx))
+                    .child(self.marquee_title(title.clone(), album, window, cx))
                     .child(
                         div()
                             .id("bar-artist")
@@ -142,7 +148,7 @@ impl NowPlaying {
                     )
                     .children(origin.map(|(label, route)| playing_from_link(label, route, cx))),
             )
-            .children(self.marks(key, title, window, cx))
+            .children(self.marks(key, window, cx))
             .children(target.clone().map(|target| {
                 mark("track-meta-menu", icons::MORE, muted, cx)
                     .dropdown_menu(menus::builder(target))
@@ -160,6 +166,7 @@ impl NowPlaying {
     fn marquee_title(
         &self,
         title: SharedString,
+        album: Option<SharedString>,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
@@ -169,11 +176,17 @@ impl NowPlaying {
 
         div()
             .id("bar-title-frame")
-            .w_full()
+            .min_w_0()
             .overflow_hidden()
             .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
                 this.set_hovered("bar-title", *hovered, cx)
             }))
+            .when_some(album, |frame, album| {
+                frame
+                    .cursor_pointer()
+                    .hover(|frame| frame.underline())
+                    .on_click(move |_, _, cx| Navigator::navigate(Route::Album(album.clone()), cx))
+            })
             .when(long, |frame| {
                 frame.tooltip(move |window, cx| Tooltip::new(title.clone()).build(window, cx))
             })
@@ -208,11 +221,9 @@ impl NowPlaying {
     fn marks(
         &self,
         key: Option<String>,
-        title: SharedString,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Vec<gpui_kit::AnyElement> {
-        let _ = title;
         let wanted = store::layout(cx).player.clone();
         let capabilities = SourcesModel::global(cx).read(cx).capabilities();
         let favorite = key
