@@ -2,12 +2,18 @@
 
 use std::time::Duration;
 
+use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{App, Hsla, Window};
 use store::layout::Accent;
 use store::{PlayerModel, Swatches, api::ArtworkRef};
 
 /// How long the accent takes to travel on a track change.
 pub const ACCENT_TWEEN: Duration = Duration::from_millis(600);
+
+/// What a swatch is saturated to before chrome wears it; extraction favours mid-lightness over colour.
+const WORN_SATURATION: f32 = 0.62;
+/// Below this the cover has no colour of its own, and saturating it would invent one.
+const WORN_GREY: f32 = 0.3;
 
 /// Where an accent is being asked for, which is what *sheet only* discriminates on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,7 +57,20 @@ pub fn accent_from(
     window: &mut Window,
     cx: &mut App,
 ) -> Option<Hsla> {
-    swatches(artwork, window, cx).map(|swatches| swatches.vibrant)
+    let vibrant = swatches(artwork, window, cx)?.vibrant;
+    Some(worn(vibrant, cx.theme().background))
+}
+
+/// A swatch as chrome wears it: colourful enough to read at three pixels, and never below AA.
+fn worn(color: Hsla, background: Hsla) -> Hsla {
+    let saturated = match color.s >= WORN_GREY {
+        true => Hsla {
+            s: color.s.max(WORN_SATURATION),
+            ..color
+        },
+        false => color,
+    };
+    crate::readable_on(saturated, background)
 }
 
 /// The accent `surface` should be wearing: the playing cover's, or `None` to stay on the theme's.
@@ -77,7 +96,34 @@ fn playing(surface: Surface, cx: &App) -> Option<ArtworkRef> {
 
 #[cfg(test)]
 mod tests {
+    use gpui_kit::hsla;
+
     use super::*;
+
+    /// The steel blue a real cover extracted to, which read as dim and cleared only 4.12 on black.
+    fn measured() -> Hsla {
+        hsla(210. / 360., 0.386, 0.447, 1.)
+    }
+
+    #[test]
+    fn a_muted_swatch_is_worn_louder_than_it_was_extracted() {
+        let background = hsla(0., 0., 0., 1.);
+        let accent = worn(measured(), background);
+        assert!(accent.s >= WORN_SATURATION, "{} is still muted", accent.s);
+        assert!(crate::contrast(accent, background) >= crate::AA);
+    }
+
+    #[test]
+    fn a_grey_cover_is_not_given_colour_it_does_not_have() {
+        let grey = hsla(0., 0.04, 0.5, 1.);
+        assert_eq!(worn(grey, hsla(0., 0., 0., 1.)).s, grey.s);
+    }
+
+    #[test]
+    fn a_light_theme_darkens_the_accent_rather_than_brightening_it() {
+        let pale = hsla(210. / 360., 0.386, 0.75, 1.);
+        assert!(worn(pale, hsla(0., 0., 1., 1.)).l < pale.l);
+    }
 
     #[test]
     fn off_lends_its_accent_to_nothing() {
