@@ -21,8 +21,30 @@ pub struct PlayerModel {
     revision: Option<u64>,
     // The unknown token already resynced for, so a stream of stale positions cannot spin on refetch.
     resynced_for: Option<u64>,
+    // A seek asked for and not yet seen land; positions from before it are the old place.
+    seeking: Option<Seek>,
     _fetch: Option<Task<()>>,
     _subscription: Subscription,
+}
+
+/// A seek the daemon has been told about but has not yet reported back from.
+#[derive(Debug, Clone, Copy)]
+struct Seek {
+    to_ms: u64,
+    /// The daemon clock when it was asked for: anything stamped earlier predates it.
+    at_ms: u64,
+    since: Instant,
+}
+
+/// How near the target a reported position has to be to count as the seek having landed.
+const SEEK_LANDED_MS: u64 = 1_500;
+/// How long a seek is waited for before the daemon is believed whatever it says.
+const SEEK_GRACE: Duration = Duration::from_secs(2);
+
+/// Whether a reported position should replace a seek that has not been seen to land.
+fn landed(seek: &Seek, position_ms: u64, at_ms: u64, waited: Duration) -> bool {
+    waited >= SEEK_GRACE
+        || (at_ms >= seek.at_ms && position_ms.abs_diff(seek.to_ms) <= SEEK_LANDED_MS)
 }
 
 /// Anything at or below this is silence; f32 comparison needs a floor.
@@ -47,6 +69,7 @@ impl PlayerModel {
             muted_from: DEFAULT_UNMUTE,
             revision: None,
             resynced_for: None,
+            seeking: None,
             _fetch: None,
             _subscription: subscription,
         }
@@ -63,13 +86,21 @@ impl PlayerModel {
             } => {
                 // Only a position for the track we are showing may move our clock anchor.
                 if Some(*token) == self.token() {
-                    self.observed_at = Instant::now();
-                    self.state.now_ms = *at_ms;
-                    self.state.position = Some(PositionAnchor {
-                        ms: *position_ms,
-                        at_ms: *at_ms,
-                        playing: *playing,
-                    });
+                    // A seek in flight means the daemon is still reporting where it was.
+                    match self.seeking {
+                        Some(seek)
+                            if !landed(&seek, *position_ms, *at_ms, seek.since.elapsed()) => {}
+                        _ => {
+                            self.seeking = None;
+                            self.observed_at = Instant::now();
+                            self.state.now_ms = *at_ms;
+                            self.state.position = Some(PositionAnchor {
+                                ms: *position_ms,
+                                at_ms: *at_ms,
+                                playing: *playing,
+                            });
+                        }
+                    }
                 } else if let Some(fading) = self
                     .state
                     .fading
@@ -120,6 +151,8 @@ impl PlayerModel {
         }
         self.observed_at = Instant::now();
         self.optimistic_playing = None;
+        // A whole state is the daemon's own answer, so there is nothing left to wait for.
+        self.seeking = None;
         crate::notify(cx);
     }
 
@@ -258,9 +291,15 @@ impl PlayerModel {
     }
 
     pub fn seek(&mut self, position_ms: u64, cx: &mut Context<Self>) {
+        let at_ms = self.daemon_now_ms();
+        self.seeking = Some(Seek {
+            to_ms: position_ms,
+            at_ms,
+            since: Instant::now(),
+        });
         self.state.position = Some(PositionAnchor {
             ms: position_ms,
-            at_ms: self.daemon_now_ms(),
+            at_ms,
             playing: self.is_playing(),
         });
         crate::notify(cx);
@@ -455,6 +494,39 @@ impl Playhead {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn seek_at(to_ms: u64, at_ms: u64) -> Seek {
+        Seek {
+            to_ms,
+            at_ms,
+            since: Instant::now(),
+        }
+    }
+
+    #[test]
+    fn a_position_from_before_the_seek_is_where_it_used_to_be() {
+        let seek = seek_at(180_000, 5_000);
+        assert!(!landed(&seek, 12_000, 4_900, Duration::ZERO));
+    }
+
+    #[test]
+    fn a_position_at_the_target_is_the_seek_landing() {
+        let seek = seek_at(180_000, 5_000);
+        assert!(landed(&seek, 180_400, 5_100, Duration::ZERO));
+        assert!(landed(&seek, 178_600, 5_100, Duration::ZERO));
+    }
+
+    #[test]
+    fn a_later_stamp_somewhere_else_entirely_is_still_not_the_seek() {
+        let seek = seek_at(180_000, 5_000);
+        assert!(!landed(&seek, 12_000, 6_000, Duration::ZERO));
+    }
+
+    #[test]
+    fn a_seek_that_never_lands_gives_the_daemon_the_last_word() {
+        let seek = seek_at(180_000, 5_000);
+        assert!(landed(&seek, 12_000, 4_900, SEEK_GRACE));
+    }
 
     fn state(rev: u64, title: &str) -> PlayerState {
         PlayerState {
