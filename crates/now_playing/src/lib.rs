@@ -68,6 +68,8 @@ pub struct NowPlaying {
     volume: Entity<SliderState>,
     /// The fraction under the pointer while a drag runs; the release commits it.
     scrubbing: Option<f32>,
+    /// Whether the pointer is holding the level, which the daemon's own echo must not undo.
+    volume_held: bool,
     /// What the pointer is hovering the seek bar at, and how far along the track that is.
     preview: Option<(f32, Pixels)>,
     /// The right-hand clock counts down rather than naming the length.
@@ -144,6 +146,7 @@ impl NowPlaying {
             seek,
             volume,
             scrubbing: None,
+            volume_held: false,
             preview: None,
             remaining: false,
             wheel: 0.,
@@ -172,9 +175,11 @@ impl NowPlaying {
             self.seek
                 .update(cx, |state, cx| state.set_value(played, window, cx));
         }
-        let shown = volume::to_ui(level);
-        self.volume
-            .update(cx, |state, cx| state.set_value(shown, window, cx));
+        if !self.volume_held {
+            let shown = volume::to_ui(level);
+            self.volume
+                .update(cx, |state, cx| state.set_value(shown, window, cx));
+        }
         cx.notify();
     }
 
@@ -263,8 +268,14 @@ impl NowPlaying {
         cx: &mut Context<Self>,
     ) {
         let (shown, save) = match event {
-            SliderEvent::Change(value) => (value.end(), false),
-            SliderEvent::Release(value) => (value.end(), true),
+            SliderEvent::Change(value) => {
+                self.volume_held = true;
+                (value.end(), false)
+            }
+            SliderEvent::Release(value) => {
+                self.volume_held = false;
+                (value.end(), true)
+            }
         };
         let level = volume::to_wire(shown);
         PlayerModel::global(cx).update(cx, |player, cx| {
