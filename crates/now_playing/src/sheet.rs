@@ -431,10 +431,12 @@ fn round(id: &'static str, glyph: &'static str, tint: Hsla, cx: &gpui_kit::App) 
         .icon(icons::icon(glyph))
 }
 
-/// The art behind the sheet, darkened; GPUI has no backdrop blur, so the scrim carries the setting.
+/// The art behind the sheet, blurred and darkened.
 fn paint(source: ImageSource, darkening: u8, blur: u8, cx: &gpui_kit::App) -> AnyElement {
-    // A blur that cannot be drawn becomes more scrim instead, so the slider still does something.
-    let scrim = (f32::from(darkening.min(95)) + f32::from(blur.min(100)) * 0.2).min(95.) / 100.;
+    let scrim = f32::from(darkening.min(95)) / 100.;
+    // Overscanned by the blur radius, so the softened edge never shows as a seam.
+    let scale = 1. + f32::from(blur.min(100)) * 0.004;
+    let inset = (1. - scale) / 2.;
     div()
         .absolute()
         .top_0()
@@ -442,7 +444,15 @@ fn paint(source: ImageSource, darkening: u8, blur: u8, cx: &gpui_kit::App) -> An
         .size_full()
         .overflow_hidden()
         .bg(cx.theme().background)
-        .child(img(source).size_full().object_fit(ObjectFit::Cover))
+        .child(
+            img(store::blurred_backdrop(source, blur))
+                .absolute()
+                .top(relative(inset))
+                .left(relative(inset))
+                .w(relative(scale))
+                .h(relative(scale))
+                .object_fit(ObjectFit::Cover),
+        )
         .child(
             div()
                 .absolute()

@@ -2,6 +2,7 @@
 
 pub mod actions;
 mod artwork;
+mod backdrop;
 mod chrome;
 mod config;
 mod downloads;
@@ -24,6 +25,7 @@ mod target;
 use gpui_kit::{App, AppContext as _, Entity, Global};
 
 pub use artwork::{ArtworkBytes, ArtworkKey, Residents, artwork_source};
+pub use backdrop::blurred_backdrop;
 pub use chrome::{Chrome, SidePanel, register_mini_player, toggle_mini_player};
 pub use config::ConfigModel;
 pub use downloads::{BatchFinished, DownloadItem, DownloadsModel, ItemState};
