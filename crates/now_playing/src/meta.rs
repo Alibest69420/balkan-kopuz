@@ -9,7 +9,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Animation, AnimationExt as _, App, Context, FontWeight, InteractiveElement as _, IntoElement,
     ParentElement as _, Pixels, SharedString, StatefulInteractiveElement as _, Styled, Window, div,
-    px, relative,
+    px,
 };
 use store::{
     Chrome, FavoritesModel, Navigator, PlaylistsModel, QueueModel, Route, SourcesModel, Target,
@@ -21,10 +21,30 @@ use widgets::{Cover, focus, icons, menus, style};
 use crate::NowPlaying;
 
 const MARK_GLYPH: Pixels = px(16.);
-// A title this long in a bar-width column is worth walking past the pointer.
-const MARQUEE_MIN: usize = 28;
-const MARQUEE_TRAVEL: f32 = 0.4;
 const MARQUEE_PERIOD: std::time::Duration = std::time::Duration::from_millis(6_000);
+
+/// What `text_sm` is in rems, which is the size the title is drawn at and so the size it is measured at.
+const TITLE_REMS: f32 = 0.875;
+
+/// What the title measures as drawn, so overflow is a fact rather than a guess at a character count.
+fn title_width(title: &SharedString, window: &Window, cx: &App) -> Pixels {
+    let size = gpui_kit::rems(TITLE_REMS).to_pixels(window.rem_size());
+    let run = gpui_kit::TextRun {
+        len: title.len(),
+        font: gpui_kit::Font {
+            weight: FontWeight::BOLD,
+            ..gpui_kit::font(cx.theme().font_family.clone())
+        },
+        color: cx.theme().foreground,
+        background_color: None,
+        underline: None,
+        strikethrough: None,
+    };
+    window
+        .text_system()
+        .shape_line(title.clone(), size, &[run], None)
+        .width
+}
 
 /// The bar's cover, at whatever size the preference asks for.
 pub(crate) fn cover_size(cx: &App) -> Pixels {
@@ -173,10 +193,13 @@ impl NowPlaying {
         &self,
         title: SharedString,
         album: Option<SharedString>,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        let long = title.chars().count() > MARQUEE_MIN;
+        let natural = title_width(&title, window, cx);
+        // How far past its column the title runs, which is exactly how far it has to walk.
+        let overflow = (natural - self.title_room).max(px(0.));
+        let long = overflow > px(0.);
         let running = long && self.hovered == Some("bar-title");
         let shown = title.clone();
 
@@ -184,6 +207,14 @@ impl NowPlaying {
             .id("bar-title-frame")
             .min_w_0()
             .overflow_hidden()
+            .on_prepaint({
+                let owner = cx.entity().downgrade();
+                move |bounds, _, cx| {
+                    owner
+                        .update(cx, |this, cx| this.set_title_room(bounds.size.width, cx))
+                        .ok();
+                }
+            })
             .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
                 this.set_hovered("bar-title", *hovered, cx)
             }))
@@ -210,9 +241,11 @@ impl NowPlaying {
                                 .with_animation(
                                     "bar-title-marquee",
                                     Animation::new(MARQUEE_PERIOD).repeat(),
-                                    |label, progress| {
+                                    move |label, progress| {
+                                        // There and back over exactly what does not fit, so the
+                                        // end of the title is reached and never passed.
                                         let travel = 1. - (1. - 2. * progress).abs();
-                                        label.ml(relative(-travel * MARQUEE_TRAVEL))
+                                        label.ml(-overflow * travel)
                                     },
                                 )
                                 .into_any_element()

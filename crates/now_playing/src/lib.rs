@@ -70,6 +70,8 @@ pub struct NowPlaying {
     scrubbing: Option<f32>,
     /// Whether the pointer is holding the level, which the daemon's own echo must not undo.
     volume_held: bool,
+    /// How wide the bar's title column last measured, which is what a title has to fit.
+    title_room: Pixels,
     /// What the pointer is hovering the seek bar at, and how far along the track that is.
     preview: Option<(f32, Pixels)>,
     /// The right-hand clock counts down rather than naming the length.
@@ -147,6 +149,7 @@ impl NowPlaying {
             volume,
             scrubbing: None,
             volume_held: false,
+            title_room: Pixels::ZERO,
             preview: None,
             remaining: false,
             wheel: 0.,
@@ -181,6 +184,14 @@ impl NowPlaying {
                 .update(cx, |state, cx| state.set_value(shown, window, cx));
         }
         cx.notify();
+    }
+
+    /// Prepaint runs every frame, so a width that has not moved must not dirty the window.
+    fn set_title_room(&mut self, room: Pixels, cx: &mut Context<Self>) {
+        if self.title_room != room {
+            self.title_room = room;
+            cx.notify();
+        }
     }
 
     /// A leave only clears the control it belongs to; the enter of the next one has already landed.
