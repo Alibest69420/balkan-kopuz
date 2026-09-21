@@ -5,8 +5,8 @@ use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, ElementId, Entity, FontWeight,
-    InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Pixels, Render,
-    SharedString, StatefulInteractiveElement as _, Styled, Subscription, Window, div, px, rems,
+    InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render, SharedString,
+    StatefulInteractiveElement as _, Styled, Subscription, Window, div, px, rems,
 };
 use settings_appearance::AppearanceSettings;
 use settings_interface::InterfaceSettings;
@@ -15,7 +15,7 @@ use settings_sources::SourceSettings;
 use store::ConfigModel;
 use widgets::focus::{Axis, Roving, Step};
 use widgets::format::{t, t_with};
-use widgets::{EmptyState, PageHeader, icons, motion, style};
+use widgets::{EmptyState, PageHeader, icons, marker, motion, style};
 
 /// `border-white/9` under the fan, over `bg-black/92`.
 const FAN_BORDER: f32 = 0.09;
@@ -33,79 +33,6 @@ const NOTICE: f32 = 0.70;
 /// `prefix` over a category's slug: one stable tween channel per rail item.
 fn channel(prefix: &'static str, slug: &'static str) -> ElementId {
     (ElementId::from(prefix), slug).into()
-}
-
-/// Where each rail tab sits, so the mark can travel between them rather than jump.
-#[derive(Default)]
-struct Spans {
-    // Left edge and width, relative to the strip's own origin so a scrolled rail still agrees.
-    held: Vec<(&'static str, Pixels, Pixels)>,
-    origin: Pixels,
-}
-
-impl Spans {
-    fn of(&self, category: Category) -> Option<(Pixels, Pixels)> {
-        self.held
-            .iter()
-            .find(|(slug, _, _)| *slug == category.slug())
-            .map(|(_, left, width)| (*left - self.origin, *width))
-    }
-
-    fn put(&mut self, slug: &'static str, left: Pixels, width: Pixels) -> bool {
-        match self.held.iter_mut().find(|(held, _, _)| *held == slug) {
-            Some(entry) if entry.1 == left && entry.2 == width => false,
-            Some(entry) => {
-                entry.1 = left;
-                entry.2 = width;
-                true
-            }
-            None => {
-                self.held.push((slug, left, width));
-                true
-            }
-        }
-    }
-}
-
-/// Where the tabs start, measured from inside the strip so a scrolled rail moves it too.
-///
-/// An absolute probe would sit on the padding box, which does not scroll, while the tabs
-/// report where they actually are — the mark would then be out by the scroll offset.
-fn strip_origin(spans: Entity<Spans>) -> impl IntoElement {
-    gpui_kit::canvas(
-        move |bounds, _, cx| {
-            spans.update(cx, |spans, cx| {
-                if spans.origin != bounds.origin.x {
-                    spans.origin = bounds.origin.x;
-                    cx.notify();
-                }
-            });
-        },
-        |_, _, _, _| {},
-    )
-    .w_0()
-    .h_0()
-    .flex_none()
-}
-
-/// A probe that reports where its tab landed; GPUI has no other way to ask.
-///
-/// It must sit in a tab that carries no padding of its own: an absolute child is placed
-/// against the content box, so a padded tab would report itself an inset to the right.
-fn measure(category: Category, spans: Entity<Spans>) -> impl IntoElement {
-    let slug = category.slug();
-    gpui_kit::canvas(
-        move |bounds, _, cx| {
-            spans.update(cx, |spans, cx| {
-                if spans.put(slug, bounds.origin.x, bounds.size.width) {
-                    cx.notify();
-                }
-            });
-        },
-        |_, _, _, _| {},
-    )
-    .absolute()
-    .size_full()
 }
 
 /// Which panel the rail is showing.
@@ -354,22 +281,9 @@ impl Settings {
             })
             .collect();
         // The mark travels to the chosen tab, so it has to know where the tabs actually are.
-        let spans = window.use_keyed_state("settings-fan-spans", cx, |_, _| Spans::default());
-        let measured = spans.read(cx).of(self.category);
-        let start = motion::length(
-            ElementId::from("settings-fan-start"),
-            measured.map(|span| span.0).unwrap_or_default(),
-            motion::MEDIUM,
-            window,
-            cx,
-        );
-        let width = motion::length(
-            ElementId::from("settings-fan-width"),
-            measured.map(|span| span.1).unwrap_or_default(),
-            motion::MEDIUM,
-            window,
-            cx,
-        );
+        let marks = marker::marks("settings-fan-marks", window, cx);
+        let (start, width) =
+            marker::slide("settings-fan", &marks, self.category.slug(), window, cx);
         // The mark rides in the flow beside the tabs rather than absolutely over them: an
         // absolute child does not scroll with the rail, so it drifted by the scroll offset.
         let mark = h_flex()
@@ -397,10 +311,10 @@ impl Settings {
                     .h_full()
                     // A column centres what it holds, which would push the narrower mark right.
                     .items_start()
-                    .child(strip_origin(spans.clone()))
+                    .child(marker::origin(marker::Along::Row, marks.clone()))
                     .child(track.children(items.into_iter().map(
                         |(index, category, ringed, surface, ink)| {
-                            let spans = spans.clone();
+                            let marks = marks.clone();
                             h_flex()
                                 .id(category.slug())
                                 .relative()
@@ -412,7 +326,7 @@ impl Settings {
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .text_color(ink)
                                 .cursor_pointer()
-                                .child(measure(category, spans))
+                                .child(marker::probe(category.slug(), marker::Along::Row, marks))
                                 .child(
                                     h_flex()
                                         .h_full()
@@ -558,36 +472,5 @@ impl Render for Settings {
                             .child(self.panel())
                     }),
             )
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_tab_is_placed_against_the_strip_not_the_window() {
-        let mut spans = Spans {
-            origin: px(100.),
-            ..Default::default()
-        };
-        spans.put(Category::Interface.slug(), px(340.), px(96.));
-        assert_eq!(spans.of(Category::Interface), Some((px(240.), px(96.))));
-    }
-
-    #[test]
-    fn a_scrolled_strip_moves_its_tabs_and_its_origin_together() {
-        // Scrolled 60px right: the strip's content and every tab in it move by the same amount.
-        let mut spans = Spans {
-            origin: px(40.),
-            ..Default::default()
-        };
-        spans.put(Category::Interface.slug(), px(280.), px(96.));
-        assert_eq!(spans.of(Category::Interface), Some((px(240.), px(96.))));
-    }
-
-    #[test]
-    fn a_tab_nobody_has_measured_yet_places_nothing() {
-        assert_eq!(Spans::default().of(Category::Tools), None);
     }
 }
