@@ -35,6 +35,20 @@ pub(crate) fn tweened(button: Button, fill: Hsla, text: Hsla, edge: Hsla, cx: &A
         .text_color(text)
 }
 
+/// A control in the frame that owns its hover: a Button's tooltip installs an `on_hover` of its
+/// own, and a second one on the same element is a panic rather than a warning.
+pub(crate) fn framed(
+    id: &'static str,
+    hover: Entity<bool>,
+    control: impl IntoElement,
+) -> impl IntoElement {
+    div()
+        .id(SharedString::from(format!("{id}-frame")))
+        .flex()
+        .on_hover(track(hover))
+        .child(control)
+}
+
 /// Hover as a value a tween can read; `.hover()` refines a style instead of reporting the state.
 pub(crate) fn hovered(
     id: impl Into<ElementId>,

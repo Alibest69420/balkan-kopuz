@@ -464,44 +464,46 @@ impl ArtistDetail {
                 &[("count", keys.len().to_string())],
             ))
             .meta(total_duration(total))
-            .action(controls::tweened(
-                round_button("artist-shuffle", icons::SHUFFLE)
-                    .selected(shuffle)
-                    .on_hover(controls::track(shuffle_hover))
-                    .tooltip(if shuffle {
-                        t("shuffle_on")
-                    } else {
-                        t("shuffle_off")
-                    })
-                    .on_click(move |_, _, cx| {
-                        PlayerModel::global(cx)
-                            .update(cx, |player, cx| player.set_shuffle(!shuffle, cx))
-                    }),
-                shuffle_fill,
-                shuffle_text,
-                clear,
-                cx,
+            .action(controls::framed(
+                "artist-shuffle",
+                shuffle_hover,
+                controls::tweened(
+                    round_button("artist-shuffle", icons::SHUFFLE)
+                        .selected(shuffle)
+                        .tooltip(if shuffle {
+                            t("shuffle_on")
+                        } else {
+                            t("shuffle_off")
+                        })
+                        .on_click(move |_, _, cx| {
+                            PlayerModel::global(cx)
+                                .update(cx, |player, cx| player.set_shuffle(!shuffle, cx))
+                        }),
+                    shuffle_fill,
+                    shuffle_text,
+                    clear,
+                    cx,
+                ),
             ))
             .action({
                 let play = round_button("artist-play", icons::PLAY)
-                    .on_hover(controls::track(play_hover))
                     .tooltip(t("play"))
                     .disabled(!playable)
                     .on_click({
                         let keys = keys.clone();
                         move |_, _, cx| actions::play_all(keys.clone(), cx)
                     });
-                match playable {
+                let play = match playable {
                     true => controls::tweened(play, play_fill, play_text, clear, cx),
                     false => play.primary(),
-                }
+                };
+                controls::framed("artist-play", play_hover, play)
             });
         if capabilities.downloads {
             let download = Button::new("artist-download-all")
                 .size_12()
                 .rounded_full()
                 .border_1()
-                .on_hover(controls::track(download_hover))
                 .icon(icons::icon(if stored {
                     icons::TRASH
                 } else {
@@ -517,7 +519,7 @@ impl ArtistDetail {
                     let keys = keys.clone();
                     move |_, _, cx| set_downloaded(keys.clone(), !stored, cx)
                 });
-            header = header.action(match downloadable {
+            let download = match downloadable {
                 true => {
                     controls::tweened(download, download_fill, download_text, download_edge, cx)
                 }
@@ -525,7 +527,12 @@ impl ArtistDetail {
                     .ghost()
                     .border_color(style::white(style::ACTIVE, cx))
                     .text_color(style::white(0.70, cx)),
-            });
+            };
+            header = header.action(controls::framed(
+                "artist-download-all",
+                download_hover,
+                download,
+            ));
         }
         header.into_any_element()
     }
