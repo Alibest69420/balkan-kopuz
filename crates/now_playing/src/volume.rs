@@ -60,11 +60,24 @@ impl NowPlaying {
         let level = PlayerModel::global(cx).read(cx).volume();
         let tint = self.control_glyph("mute", style::slate_400(cx), false, window, cx);
         let fill = motion::accent(theme::Surface::Chrome, cx.theme().foreground, window, cx);
+        // The knob answers the pointer rather than sitting there, which is what the seek bar does.
+        let (over, pointer) = motion::hovered("volume-hover", window, cx);
+        let knob = motion::length(
+            "volume-knob",
+            match over || self.volume_held {
+                true => KNOB,
+                false => px(0.),
+            },
+            motion::FAST,
+            window,
+            cx,
+        );
 
         h_flex()
             .id("volume")
             .gap_2()
             .items_center()
+            .on_hover(motion::track(pointer))
             .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, window, cx| {
                 this.scroll_volume(event, window, cx)
             }))
@@ -87,11 +100,11 @@ impl NowPlaying {
             )
             // The wheel still works over the glyph when the track it drew is what the title needed.
             .when(slider, |control| {
-                control.child(div().w(TRACK_WIDTH).child(self.volume_bar(fill, cx)))
+                control.child(div().w(TRACK_WIDTH).child(self.volume_bar(fill, knob, cx)))
             })
     }
 
-    fn volume_bar(&self, fill: Hsla, cx: &Context<Self>) -> impl IntoElement + use<> {
+    fn volume_bar(&self, fill: Hsla, knob: Pixels, cx: &Context<Self>) -> impl IntoElement + use<> {
         let filled = self.volume.read(cx).percentage().end;
         let track = style::white(style::ACTIVE, cx);
         BareSlider::new(&self.volume)
@@ -124,10 +137,10 @@ impl NowPlaying {
                             .child(
                                 div()
                                     .absolute()
-                                    .top(-(KNOB - TRACK_BAR) / 2.)
+                                    .top(-(knob - TRACK_BAR) / 2.)
                                     .left(relative(filled))
-                                    .ml(-KNOB / 2.)
-                                    .size(KNOB)
+                                    .ml(-knob / 2.)
+                                    .size(knob)
                                     .rounded_full()
                                     .bg(fill),
                             ),
