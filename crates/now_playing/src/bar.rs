@@ -54,7 +54,8 @@ const SCRIM_PLAIN: f32 = 0.6;
 
 impl NowPlaying {
     pub(crate) fn render_bar(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let over_art = {
+        // Anything behind the window is worth seeing through the bar, including the cover's own light.
+        let over_art = theme::ambient(cx).is_some() || {
             let config = ConfigModel::global(cx);
             let config = config.read(cx);
             let config = config.config();

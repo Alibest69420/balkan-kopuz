@@ -11,7 +11,9 @@ use config::AppConfig;
 use gpui_kit::component::{Theme, ThemeConfig, ThemeMode};
 use gpui_kit::{App, Window};
 
-pub use accent::{ACCENT_TWEEN, Surface, accent_for, accent_from, swatches, wash_for};
+pub use accent::{
+    ACCENT_TWEEN, Surface, accent_for, accent_from, ambient, ground, swatches, wash_for,
+};
 pub use contrast::{AA, AA_LARGE, contrast, luminance, readable, readable_at, readable_on};
 pub use palettes::{BUILT_IN, palette};
 

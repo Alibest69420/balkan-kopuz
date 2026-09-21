@@ -1,3 +1,4 @@
+mod backdrop;
 mod router;
 mod shell;
 

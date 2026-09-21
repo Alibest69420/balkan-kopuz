@@ -276,6 +276,10 @@ impl Render for Shell {
             )
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
+            .children(match compact {
+                true => None,
+                false => crate::backdrop::layer(window, cx),
+            })
             .child(body)
             .when(sheet_open && connected && !compact, |shell| {
                 shell.child(div().absolute().inset_0().child(self.fullscreen.clone()))

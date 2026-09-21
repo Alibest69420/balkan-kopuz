@@ -4,7 +4,8 @@ use std::time::Duration;
 
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{App, Hsla, Window};
-use store::layout::Accent;
+use store::ambient::{Ground, Spread};
+use store::layout::{Accent, Ambient};
 use store::{PlayerModel, Swatches, api::ArtworkRef};
 
 /// How long the accent takes to travel on a track change.
@@ -82,6 +83,29 @@ pub fn accent_for(surface: Surface, window: &mut Window, cx: &mut App) -> Option
 pub fn wash_for(surface: Surface, window: &mut Window, cx: &mut App) -> Option<Hsla> {
     let artwork = playing(surface, cx)?;
     swatches(Some(&artwork), window, cx).map(|swatches| swatches.dominant)
+}
+
+/// The cover that lights the window and how far, or `None` where a preference keeps it the theme's.
+pub fn ambient(cx: &App) -> Option<(ArtworkRef, Spread)> {
+    let spread = match store::layout(cx).ambient {
+        Ambient::Off => return None,
+        Ambient::Glow => Spread::Glow,
+        Ambient::Full => Spread::Full,
+    };
+    playing(Surface::Chrome, cx).map(|artwork| (artwork, spread))
+}
+
+/// What that light falls on: the active theme's background, and the faintest ink it has to leave readable.
+pub fn ground(cx: &App) -> Ground {
+    let bytes = |colour: Hsla| {
+        let colour: gpui_kit::Rgba = colour.into();
+        [colour.r, colour.g, colour.b].map(|channel| (channel * 255.).round() as u8)
+    };
+    Ground {
+        background: bytes(cx.theme().background),
+        ink: bytes(cx.theme().muted_foreground),
+        dark: crate::colors(cx).dark,
+    }
 }
 
 fn playing(surface: Surface, cx: &App) -> Option<ArtworkRef> {
