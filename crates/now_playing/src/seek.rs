@@ -21,7 +21,9 @@ const KNOB: Pixels = px(12.);
 // The floating time that follows the pointer, and how far above the bar it sits.
 const PREVIEW_LIFT: Pixels = px(26.);
 const PREVIEW_WIDTH: Pixels = px(56.);
-const SCAN_PERIOD: std::time::Duration = std::time::Duration::from_millis(1_200);
+const SCAN_PERIOD: std::time::Duration = std::time::Duration::from_millis(1_400);
+/// How much of the track the sweep covers; the rest is how far it has to travel.
+const SCAN_WIDTH: f32 = 0.25;
 
 impl NowPlaying {
     /// The clocks either side of the bar; the right one toggles between the length and what is left.
@@ -238,12 +240,17 @@ fn scan(color: Hsla) -> impl IntoElement {
         .absolute()
         .top_0()
         .h_full()
-        .w(relative(0.25))
         .rounded_full()
-        .bg(color.opacity(0.5))
+        .bg(color)
         .with_animation(
             "seek-scan",
             Animation::new(SCAN_PERIOD).repeat(),
-            |bar, progress| bar.left(relative(progress * 1.25 - 0.25)),
+            |bar, progress| {
+                // Both edges are held inside the track, so it grows in and out of the round ends
+                // rather than being cut square against them: an overflow clip is a rectangle here.
+                let lead = progress * (1. + SCAN_WIDTH);
+                let (left, right) = ((lead - SCAN_WIDTH).max(0.), lead.min(1.));
+                bar.left(relative(left)).w(relative(right - left))
+            },
         )
 }
