@@ -15,7 +15,6 @@ use crate::transport::Metrics;
 use crate::{clock, track_duration_ms};
 
 const COVER: Pixels = px(56.);
-const COVER_RADIUS: Pixels = px(8.);
 const RESTORE: Pixels = px(28.);
 const RESTORE_GLYPH: Pixels = px(12.);
 
@@ -67,7 +66,7 @@ impl NowPlaying {
                     .child(
                         Cover::new(artwork.as_ref())
                             .size(COVER)
-                            .rounded(COVER_RADIUS),
+                            .rounded(style::cover_radius()),
                     )
                     .child(
                         v_flex()

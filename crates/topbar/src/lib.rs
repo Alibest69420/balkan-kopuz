@@ -26,10 +26,6 @@ pub use bounds::{remember as remember_bounds, saved_bounds};
 pub use settings::register as register_settings;
 pub use switcher::{SourceProbe, SourceSwitcher, Status};
 
-/// How tall the bar is across the top; the rail is this wide per row instead.
-pub const BAR_HEIGHT: Pixels = px(44.);
-/// The left rail's width, when the bar is stood on its side.
-pub const RAIL_WIDTH: Pixels = px(200.);
 /// Below this the tab labels go, leaving the glyphs.
 pub const COMPACT_BELOW: Pixels = px(700.);
 /// The width past which a table stops stretching and a grid starts centring.
@@ -37,9 +33,7 @@ pub const CONTENT_MAX: Pixels = px(1400.);
 
 const GLYPH: Pixels = px(16.);
 const CHROME_GLYPH: Pixels = px(15.);
-const CHROME_BUTTON: Pixels = px(30.);
 const SEARCH_MAX: Pixels = px(440.);
-const SEARCH_HEIGHT: Pixels = px(30.);
 const UNDERLINE: Pixels = px(2.);
 const RAIL_MARKER: Pixels = px(3.);
 // `bg-black/40` and `border-white/5`: the chrome's own scrim, as the rail wore it.
@@ -287,7 +281,7 @@ impl TopBar {
         .relative()
         .w_full()
         .max_w(SEARCH_MAX)
-        .h(SEARCH_HEIGHT)
+        .h(style::chrome().search_height)
         .px_2()
         .gap_2()
         .rounded(style::radius_lg())
@@ -389,7 +383,7 @@ impl Render for TopBar {
         match self.position {
             NavPosition::Top => h_flex()
                 .w_full()
-                .h(BAR_HEIGHT)
+                .h(style::chrome().bar_height)
                 .flex_shrink_0()
                 .items_center()
                 .gap_2()
@@ -417,7 +411,7 @@ impl Render for TopBar {
                 .into_any_element(),
             NavPosition::Left => v_flex()
                 .h_full()
-                .w(RAIL_WIDTH)
+                .w(style::chrome().rail_width)
                 .flex_shrink_0()
                 .gap_2()
                 .p_2()
@@ -463,7 +457,7 @@ fn chrome_button(id: &'static str, glyph: &'static str, cx: &App) -> Button {
         .tab_index(0)
         .custom(style::quiet_button(style::slate_400(cx), cx))
         .with_size(CHROME_GLYPH * (4. / 3.))
-        .size(CHROME_BUTTON)
-        .rounded(CHROME_BUTTON / 4.)
+        .size(style::chrome().button)
+        .rounded(style::chrome().button / 4.)
         .icon(icons::icon(glyph))
 }

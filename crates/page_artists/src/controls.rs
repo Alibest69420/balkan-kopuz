@@ -9,7 +9,7 @@ use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{Selectable as _, Sizable as _, h_flex};
 use gpui_kit::{
     App, Div, ElementId, Entity, Hsla, InteractiveElement as _, IntoElement, ParentElement as _,
-    Pixels, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, px,
+    SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
 };
 use store::ConfigModel;
 use widgets::format::t;
@@ -19,8 +19,6 @@ use widgets::{icons, motion, style};
 const SEGMENT_IDLE: f32 = 0.40;
 /// `hover:text-white/80` on that same half.
 const SEGMENT_HOT: f32 = 0.80;
-/// `rounded-md`, which the shared radius helpers do not carry.
-const SEGMENT_RADIUS: Pixels = px(6.);
 
 /// A `Button` paints its own hover style over the instance one, so the variant is handed the tween too.
 pub(crate) fn tweened(button: Button, fill: Hsla, text: Hsla, edge: Hsla, cx: &App) -> Button {
@@ -193,7 +191,7 @@ fn segment(
                 .xsmall()
                 .h_7()
                 .px_3()
-                .rounded(SEGMENT_RADIUS)
+                .rounded(style::thumb_radius())
                 .selected(selected),
             fill,
             label,

@@ -23,8 +23,6 @@ use crate::states::catalog_failure;
 const TILE: Pixels = px(176.);
 // One ‹ or › press, matching the Dioxus frontend's 800 px nudge.
 const STEP: Pixels = px(800.);
-// The shared track list's row height, which a list shelf has to reserve up front.
-const ROW: Pixels = px(60.);
 // `w-8 h-8` on a carousel arrow, and its `hover:scale-105`.
 const NUDGE: Pixels = px(32.);
 const NUDGE_HOVER: Pixels = px(33.6);
@@ -351,7 +349,12 @@ impl Shelves {
                         )
                     }),
             )
-            .child(div().w_full().h(ROW * rows as f32).child(list))
+            .child(
+                div()
+                    .w_full()
+                    .h(style::media_row() * rows as f32)
+                    .child(list),
+            )
             .into_any_element()
     }
 

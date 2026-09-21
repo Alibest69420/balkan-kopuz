@@ -96,22 +96,13 @@ pub enum ViewMode {
     Table,
 }
 
-/// Row height in a table, and how much padding a tile gets.
+/// Row height in a table, and how much padding a tile gets; what a step measures is the skin's to say.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Density {
     Compact,
     #[default]
     Comfortable,
-}
-
-impl Density {
-    pub fn row_height(self) -> f32 {
-        match self {
-            Density::Compact => 32.,
-            Density::Comfortable => 56.,
-        }
-    }
 }
 
 /// How wide a tile is in a band grid.

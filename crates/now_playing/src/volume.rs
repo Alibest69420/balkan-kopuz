@@ -20,7 +20,6 @@ const TRACK_WIDTH: Pixels = px(96.);
 const TRACK_HIT: Pixels = px(16.);
 const TRACK_BAR: Pixels = px(3.);
 const KNOB: Pixels = px(10.);
-const BUTTON: Pixels = px(36.);
 const GLYPH: Pixels = px(14.);
 // A wheel notch this many pixels of travel; a trackpad flick used to arrive as one step per event.
 const PIXELS_PER_NOTCH: f32 = 60.;
@@ -68,19 +67,21 @@ impl NowPlaying {
                 this.scroll_volume(event, window, cx)
             }))
             .child(
-                self.control_slot("mute", BUTTON, window, cx).child(
-                    Button::new("mute")
-                        .ghost()
-                        .with_size(GLYPH * (4. / 3.))
-                        .size(BUTTON)
-                        .rounded(BUTTON / 2.)
-                        .icon(icons::icon(glyph_for(level)))
-                        .custom(style::bare_button(tint, cx))
-                        .tooltip(t("volume"))
-                        .on_click(|_, _, cx| {
-                            PlayerModel::global(cx).update(cx, |player, cx| player.toggle_mute(cx))
-                        }),
-                ),
+                self.control_slot("mute", style::chrome().round_button, window, cx)
+                    .child(
+                        Button::new("mute")
+                            .ghost()
+                            .with_size(GLYPH * (4. / 3.))
+                            .size(style::chrome().round_button)
+                            .rounded(style::chrome().round_button / 2.)
+                            .icon(icons::icon(glyph_for(level)))
+                            .custom(style::bare_button(tint, cx))
+                            .tooltip(t("volume"))
+                            .on_click(|_, _, cx| {
+                                PlayerModel::global(cx)
+                                    .update(cx, |player, cx| player.toggle_mute(cx))
+                            }),
+                    ),
             )
             .child(div().w(TRACK_WIDTH).child(self.volume_bar(fill, cx)))
     }

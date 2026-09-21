@@ -29,7 +29,6 @@ const MAX_WIDTH: Pixels = px(420.);
 /// A window narrower than this opens with the panel closed.
 pub const NARROW_WINDOW: Pixels = px(1100.);
 
-const ROW_HEIGHT: Pixels = px(34.);
 const HANDLE_WIDTH: Pixels = px(6.);
 const GLYPH: Pixels = px(14.);
 const CLOSE_BUTTON: Pixels = px(24.);
@@ -270,7 +269,7 @@ impl PlaylistsPanel {
             )))
             .relative()
             .w_full()
-            .h(ROW_HEIGHT)
+            .h(style::list_row())
             .px_2()
             .gap_2()
             .rounded(style::radius_lg())
@@ -349,8 +348,8 @@ impl PlaylistsPanel {
             .absolute()
             .left_0()
             .right_0()
-            .top(ROW_HEIGHT * top)
-            .h(ROW_HEIGHT / 2.)
+            .top(style::list_row() * top)
+            .h(style::list_row() / 2.)
             .on_drop::<RowDrag>(cx.listener(move |this, drag: &RowDrag, _, cx| {
                 let id = drag.id.to_string();
                 this.pin(&id, at, cx);

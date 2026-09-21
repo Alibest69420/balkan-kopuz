@@ -49,7 +49,6 @@ const TURN_WIDTH: f32 = 18.;
 const SNUG: f32 = 1.375;
 const RELAXED: f32 = 1.625;
 // `absolute bottom-4 right-4 w-9 h-9 rounded-full bg-black/40` with a `w-5 h-5` glyph.
-const SYNC_BUTTON: Pixels = px(36.);
 const SYNC_GLYPH: Pixels = px(20.);
 const SYNC_SCRIM: f32 = 0.4;
 
@@ -702,8 +701,8 @@ impl Render for LyricsView {
                             cx,
                         )
                         .with_size(SYNC_GLYPH * (4. / 3.))
-                        .size(SYNC_BUTTON)
-                        .rounded(SYNC_BUTTON / 2.)
+                        .size(style::chrome().round_button)
+                        .rounded(style::chrome().round_button / 2.)
                         .icon(icons::icon(icons::REFRESH))
                         .border_1()
                         .shadow_lg()

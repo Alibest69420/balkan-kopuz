@@ -22,7 +22,6 @@ use widgets::{Cover, Loading, icons, motion, style};
 // Measured geometry: `max-w-lg`, the `w-24 h-24` cover, its `rounded-lg`, the `max-h-[60vh]` body.
 const DIALOG_WIDTH: Pixels = px(512.);
 const COVER_SIZE: Pixels = px(96.);
-const COVER_RADIUS: Pixels = px(8.);
 const BODY_HEIGHT: Pixels = px(360.);
 const LOADING_HEIGHT: Pixels = px(160.);
 
@@ -282,16 +281,16 @@ impl MetadataDialog {
         match &self.cover {
             CoverEdit::Set(path) => img(path.clone())
                 .size(COVER_SIZE)
-                .rounded(COVER_RADIUS)
+                .rounded(style::cover_radius())
                 .object_fit(ObjectFit::Cover)
                 .into_any_element(),
             CoverEdit::Remove => Cover::new(None)
                 .size(COVER_SIZE)
-                .rounded(COVER_RADIUS)
+                .rounded(style::cover_radius())
                 .into_any_element(),
             CoverEdit::Keep => Cover::new(self.track.as_ref().and_then(|t| t.artwork.as_ref()))
                 .size(COVER_SIZE)
-                .rounded(COVER_RADIUS)
+                .rounded(style::cover_radius())
                 .hq(true)
                 .into_any_element(),
         }

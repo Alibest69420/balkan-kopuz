@@ -26,7 +26,6 @@ const DEBOUNCE: Duration = Duration::from_millis(300);
 const RESULTS: u32 = 60;
 // `w-11 h-11` station art, and `rounded-md` on it; `Cover` only takes pixels.
 const ART: Pixels = px(44.);
-const ART_RADIUS: Pixels = px(6.);
 
 // The width the streams column reserves on the right of a selected row.
 fn streams_width() -> gpui_kit::Rems {
@@ -374,7 +373,7 @@ impl Radio {
                     .child(
                         Cover::new(station.artwork.as_ref())
                             .size(ART)
-                            .rounded(ART_RADIUS)
+                            .rounded(style::thumb_radius())
                             .placeholder(icons::RADIO),
                     )
                     .child(
@@ -456,7 +455,7 @@ impl Radio {
         .child(
             Cover::new(station.artwork.as_ref())
                 .size(ART)
-                .rounded(ART_RADIUS)
+                .rounded(style::thumb_radius())
                 .placeholder(icons::RADIO),
         )
         .child(

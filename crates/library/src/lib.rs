@@ -32,6 +32,7 @@ use store::{
     SourcesModel, Target,
 };
 use widgets::format::t;
+use widgets::style;
 
 pub use facet::Facet;
 pub use filters::{Chip, Filters, Sort};
@@ -999,7 +1000,7 @@ impl Library {
         match self.filters.facet {
             Facet::Tracks => {
                 let shown = columns::visible(&self.columns).len();
-                let height = px(self.density.row_height());
+                let height = style::density_row(self.density);
                 let covers = self.density == Density::Comfortable;
                 skeleton::rows(14, height, covers, shown, cx).into_any_element()
             }

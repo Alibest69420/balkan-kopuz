@@ -19,7 +19,6 @@ use crate::channel;
 const PANEL_WIDTH: gpui_kit::Pixels = px(280.);
 // `w-10 h-10 rounded-md` with a `text-sm` glyph: the tile in front of a device's name.
 const ROW_TILE: gpui_kit::Pixels = px(40.);
-const ROW_TILE_RADIUS: gpui_kit::Pixels = px(6.);
 const ROW_ICON: gpui_kit::Pixels = px(14.);
 
 /// The active source's id, but only while it has devices of its own and is signed in.
@@ -241,7 +240,7 @@ fn device_row(
                 .flex()
                 .items_center()
                 .justify_center()
-                .rounded(ROW_TILE_RADIUS)
+                .rounded(style::thumb_radius())
                 .bg(tile)
                 .child(icons::icon(glyph).size(ROW_ICON).text_color(mark)),
         )

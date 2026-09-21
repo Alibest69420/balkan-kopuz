@@ -108,6 +108,7 @@ fn main() -> anyhow::Result<()> {
             now_playing::register_settings(cx);
             store::register_mini_player(now_playing::toggle_mini, cx);
             status::register_settings(cx);
+            status::register_url_download(cx);
             page_playlists::register(cx);
             commands::init(cx);
             theme::apply_named("default", None, cx);

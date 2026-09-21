@@ -24,8 +24,6 @@ use crate::ops;
 
 // TODO(offline): filtering the listing to downloaded tracks waits on an offline seam the checklist flags as wrong.
 
-// One virtualized row, so a disc's list can be sized to its contents inside the page's own scroll.
-const ROW_HEIGHT: Pixels = px(60.);
 // `w-64 h-64` on the showcase, `max-w-[300px]` on the catalog-styled page.
 const HERO_COVER: Pixels = px(256.);
 const REMOTE_COVER: Pixels = px(300.);
@@ -643,7 +641,7 @@ impl AlbumDetail {
                     .child(
                         div()
                             .w_full()
-                            .h(ROW_HEIGHT * group.count as f32)
+                            .h(style::media_row() * group.count as f32)
                             .child(group.list.clone()),
                     )
             }))

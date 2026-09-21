@@ -20,9 +20,6 @@ use widgets::{Cover, icons, menus, motion, style};
 
 use crate::NowPlaying;
 
-// `w-14` with a `rounded-md` corner, and the sizes the cover preference asks for instead.
-const COVER_RADIUS: Pixels = px(6.);
-const MARK_BUTTON: Pixels = px(36.);
 const MARK_GLYPH: Pixels = px(16.);
 // A title this long in a bar-width column is worth walking past the pointer.
 const MARQUEE_MIN: usize = 28;
@@ -106,7 +103,7 @@ impl NowPlaying {
                     .child(
                         Cover::new(track.as_ref().and_then(|track| track.artwork.as_ref()))
                             .size(size)
-                            .rounded(COVER_RADIUS),
+                            .rounded(style::thumb_radius()),
                     ),
             )
             .child(
@@ -336,8 +333,8 @@ fn mark(id: &'static str, glyph: &'static str, color: gpui_kit::Hsla, cx: &App) 
     Button::new(id)
         .ghost()
         .with_size(MARK_GLYPH * (4. / 3.))
-        .size(MARK_BUTTON)
-        .rounded(MARK_BUTTON / 2.)
+        .size(style::chrome().round_button)
+        .rounded(style::chrome().round_button / 2.)
         .icon(icons::icon(glyph))
         .custom(style::bare_button(color, cx))
 }

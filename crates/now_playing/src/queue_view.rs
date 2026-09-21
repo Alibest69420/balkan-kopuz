@@ -15,21 +15,16 @@ use store::{ConfigModel, PlaylistsModel, QueueModel, Target};
 use widgets::format::{duration, t};
 use widgets::{Cover, EmptyState, TrackDrag, dialogs, icons, menus, motion, style};
 
-// Virtualized rows need one resolved height; a section heading takes the same, so they share a list.
-const ROW_HEIGHT: Pixels = px(60.);
 // Above this point in a row a drop lands before it, below it after.
 const DROP_SPLIT: Pixels = px(23.);
 const LEAD_WIDTH: Pixels = px(16.);
 const ROW_COVER: Pixels = px(40.);
-const ROW_COVER_RADIUS: Pixels = px(6.);
 const LEAD_GLYPH: Pixels = px(12.);
 const REORDER_BUTTON: Pixels = px(14.);
 const REORDER_GLYPH: Pixels = px(9.);
 const ROW_SUBTITLE: f32 = 0.65;
 const ROW_GROUP: &str = "queue-row";
-const JUMP_BUTTON: Pixels = px(36.);
 const JUMP_GLYPH: Pixels = px(20.);
-const TOOL_BUTTON: Pixels = px(28.);
 const TOOL_GLYPH: Pixels = px(13.);
 
 const CLEAR: &str = "icons/list-x.svg";
@@ -334,7 +329,7 @@ impl QueueView {
             .id(("queue-row", index))
             .group(ROW_GROUP)
             .relative()
-            .h(ROW_HEIGHT)
+            .h(style::media_row())
             .w_full()
             .flex()
             .items_center()
@@ -377,7 +372,7 @@ impl QueueView {
                 row.child(
                     Cover::new(artwork.as_ref())
                         .size(ROW_COVER)
-                        .rounded(ROW_COVER_RADIUS),
+                        .rounded(style::thumb_radius()),
                 )
             })
             .child(
@@ -439,7 +434,7 @@ impl QueueView {
             .child(
                 drop_zone(("queue-drop-after", index), at + 1, count)
                     .bottom_0()
-                    .h(ROW_HEIGHT - DROP_SPLIT),
+                    .h(style::media_row() - DROP_SPLIT),
             )
             .context_menu(menus::builder(Target::QueueItem { index: at, key }))
             .into_any_element()
@@ -552,8 +547,8 @@ impl Render for QueueView {
                             cx,
                         )
                         .with_size(JUMP_GLYPH * (4. / 3.))
-                        .size(JUMP_BUTTON)
-                        .rounded(JUMP_BUTTON / 2.)
+                        .size(style::chrome().round_button)
+                        .rounded(style::chrome().round_button / 2.)
                         .icon(icons::icon(icons::REFRESH))
                         .border_1()
                         .shadow_lg()
@@ -570,7 +565,7 @@ impl Render for QueueView {
 fn heading(label: SharedString, count: Option<usize>, cx: &App) -> Stateful<Div> {
     h_flex()
         .id("queue-heading")
-        .h(ROW_HEIGHT)
+        .h(style::media_row())
         .w_full()
         .items_end()
         .gap_2()
@@ -586,8 +581,8 @@ fn tool(id: &'static str, glyph: &'static str, cx: &App) -> Button {
     Button::new(id)
         .custom(style::quiet_button(style::slate_500(cx), cx))
         .with_size(TOOL_GLYPH * (4. / 3.))
-        .size(TOOL_BUTTON)
-        .rounded(TOOL_BUTTON / 2.)
+        .size(style::chrome().tool_button)
+        .rounded(style::chrome().tool_button / 2.)
         .icon(icons::icon(glyph))
 }
 

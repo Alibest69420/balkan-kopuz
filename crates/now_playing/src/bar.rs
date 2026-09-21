@@ -14,9 +14,6 @@ use widgets::{icons, motion, style};
 use crate::NowPlaying;
 use crate::transport::Metrics;
 
-// The bar's own height, measured from the Dioxus frontend's `h-24`.
-const BAR_HEIGHT: Pixels = px(96.);
-const UTILITY_BUTTON: Pixels = px(36.);
 const UTILITY_GLYPH: Pixels = px(12.);
 const TRANSPORT_WIDTH: Pixels = px(640.);
 // `bg-black/40` when something is painted behind the bar, `bg-black/60` when nothing is.
@@ -39,7 +36,7 @@ impl NowPlaying {
 
         h_flex()
             .w_full()
-            .h(BAR_HEIGHT)
+            .h(style::chrome().player_height)
             .flex_shrink_0()
             .px_4()
             .gap_4()
@@ -62,7 +59,11 @@ impl NowPlaying {
                             .items_center()
                             .gap_2()
                             .child(self.transport(Metrics::COMPACT, true, window, cx))
-                            .child(self.transport_overflow(UTILITY_BUTTON, UTILITY_GLYPH, cx)),
+                            .child(self.transport_overflow(
+                                style::chrome().round_button,
+                                UTILITY_GLYPH,
+                                cx,
+                            )),
                     )
                     .child(self.seek_row(window, cx)),
             )
@@ -128,7 +129,7 @@ impl NowPlaying {
                 )
             })
             .children(self.devices_button(window, cx))
-            .child(self.share_button(UTILITY_BUTTON, UTILITY_GLYPH, cx))
+            .child(self.share_button(style::chrome().round_button, UTILITY_GLYPH, cx))
             .child(
                 utility("bar-mini", icons::COLLAPSE, muted, cx)
                     .tooltip(t("mini_player"))
@@ -149,18 +150,18 @@ pub(crate) fn utility(id: &'static str, glyph: &'static str, tint: Hsla, cx: &Ap
     Button::new(id)
         .ghost()
         .with_size(UTILITY_GLYPH * (4. / 3.))
-        .size(UTILITY_BUTTON)
-        .rounded(UTILITY_BUTTON / 2.)
+        .size(style::chrome().round_button)
+        .rounded(style::chrome().round_button / 2.)
         .icon(icons::icon(glyph))
         .custom(style::bare_button(tint, cx))
 }
 
 /// The shape and glyph size of one bar-slot button, for a package contributing another.
 pub fn utility_metrics() -> (Pixels, Pixels) {
-    (UTILITY_BUTTON, UTILITY_GLYPH)
+    (style::chrome().round_button, UTILITY_GLYPH)
 }
 
 /// The bar owns its height; the shell does not have to guess it.
 pub fn bar_height() -> Pixels {
-    BAR_HEIGHT
+    style::chrome().player_height
 }

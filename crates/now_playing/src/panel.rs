@@ -22,9 +22,6 @@ const MAX_WIDTH: Pixels = px(600.);
 const DEFAULT_WIDTH: Pixels = px(320.);
 // `bg-black/40`: the column darkens whatever the window paints behind it.
 const SCRIM: f32 = 0.4;
-const TAB_HEIGHT: Pixels = px(28.);
-const TAB_RADIUS: Pixels = px(6.);
-const CLOSE_BUTTON: Pixels = px(36.);
 const CLOSE_GLYPH: Pixels = px(14.);
 
 /// Carried by the left-edge handle; nothing is dropped, so it paints nothing.
@@ -78,8 +75,8 @@ impl NowPlaying {
                         Button::new("panel-close")
                             .custom(style::quiet_button(style::white(0.4, cx), cx))
                             .with_size(CLOSE_GLYPH * (4. / 3.))
-                            .size(CLOSE_BUTTON)
-                            .rounded(CLOSE_BUTTON / 2.)
+                            .size(style::chrome().round_button)
+                            .rounded(style::chrome().round_button / 2.)
                             .icon(icons::icon(icons::CLOSE))
                             .tooltip(t("close"))
                             .on_click(|_, _, cx| {
@@ -169,8 +166,8 @@ impl NowPlaying {
             .label(t(key))
             .selected(active)
             .px_4()
-            .h(TAB_HEIGHT)
-            .rounded(TAB_RADIUS)
+            .h(style::chrome().tab_height)
+            .rounded(style::thumb_radius())
             .text_xs()
             .font_medium()
             // The tween goes to every state layer: a Button's own hover is refined over the base,

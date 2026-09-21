@@ -107,7 +107,7 @@ impl Library {
             true => self.lines.len(),
             false => self.total(),
         };
-        let height = px(self.density.row_height());
+        let height = style::density_row(self.density);
         let sticky = grouped.then(|| self.sticky_group()).flatten();
         v_flex()
             .size_full()
