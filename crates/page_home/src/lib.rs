@@ -10,7 +10,9 @@ pub use settings::register;
 
 use std::collections::HashMap;
 
-use api::{AlbumPage, ArtistPage, JobKind, Page, Table, TrackPage};
+use api::{
+    AlbumPage, ArtistPage, JobKind, Page, StatsView, Table, TrackFilter, TrackPage, TrackSort,
+};
 use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -22,14 +24,16 @@ use store::{JobsModel, PlaylistsModel, Query, SourcesModel};
 use widgets::format::t;
 use widgets::{EmptyState, icons};
 
-use data::{ARTIST_SAMPLE_WINDOW, RECENT_TRACKS_WINDOW, RECENTLY_ADDED_WINDOW, Shelf};
+use data::{RECENT_TRACKS_WINDOW, RECENTLY_ADDED_WINDOW, Shelf};
 
 pub struct Home {
     albums: Entity<Query<AlbumPage>>,
     recently_added: Entity<Query<AlbumPage>>,
     artists: Entity<Query<ArtistPage>>,
     recents: Entity<Query<TrackPage>>,
-    samples: Entity<Query<TrackPage>>,
+    // A ranking needs both the counts and the tracks they name.
+    stats: Entity<Query<StatsView>>,
+    played: Entity<Query<TrackPage>>,
     genre: Entity<Query<Option<String>>>,
     shelves: Vec<Shelf>,
     // One scroller per shelf, kept across rebuilds so new data does not throw a row back to its start.
@@ -75,13 +79,23 @@ impl Home {
                 cx,
             )
         });
-        let samples = cx.new(|cx| {
+        let stats = cx.new(|cx| {
             Query::new(
-                &[Table::Tracks],
+                &[Table::Recents],
+                |client| async move { client.stats().await },
+                cx,
+            )
+        });
+        // The daemon can order by play count, so the most-played tracks are one bounded read.
+        let played = cx.new(|cx| {
+            Query::new(
+                &[Table::Recents, Table::Tracks],
                 |client| async move {
-                    client
-                        .artist_sample_tracks(page(ARTIST_SAMPLE_WINDOW))
-                        .await
+                    let filter = TrackFilter {
+                        sort: TrackSort::PlayCount,
+                        ..Default::default()
+                    };
+                    client.tracks(filter, page(PLAYED_WINDOW)).await
                 },
                 cx,
             )
@@ -100,7 +114,8 @@ impl Home {
             cx.observe(&recently_added, |this, _, cx| this.rebuild(cx)),
             cx.observe(&artists, |this, _, cx| this.rebuild(cx)),
             cx.observe(&recents, |this, _, cx| this.rebuild(cx)),
-            cx.observe(&samples, |this, _, cx| this.rebuild(cx)),
+            cx.observe(&stats, |this, _, cx| this.rebuild(cx)),
+            cx.observe(&played, |this, _, cx| this.rebuild(cx)),
             cx.observe(&genre, |this, _, cx| this.rebuild(cx)),
             cx.observe(&PlaylistsModel::global(cx), |this, _, cx| this.rebuild(cx)),
             cx.observe(&SourcesModel::global(cx), |this, _, cx| this.rebuild(cx)),
@@ -111,7 +126,8 @@ impl Home {
             recently_added,
             artists,
             recents,
-            samples,
+            stats,
+            played,
             genre,
             shelves: Vec::new(),
             scroll: store::layout::SHELVES
@@ -132,7 +148,12 @@ impl Home {
             recently_added: self.recently_added.read(cx).value(),
             artists: self.artists.read(cx).value(),
             recents: self.recents.read(cx).value(),
-            samples: self.samples.read(cx).value(),
+            played: self.played.read(cx).value(),
+            plays: self
+                .stats
+                .read(cx)
+                .value()
+                .map(|stats| &stats.listen_counts),
             genre: self.genre.read(cx).value().and_then(|genre| genre.as_ref()),
             playlists: &playlists,
             seed: self.seed,
@@ -199,6 +220,9 @@ impl Render for Home {
             })
     }
 }
+
+/// How many of the most-played tracks are resolved to name their artists.
+const PLAYED_WINDOW: u32 = 200;
 
 fn page(limit: u32) -> Page {
     Page { offset: 0, limit }

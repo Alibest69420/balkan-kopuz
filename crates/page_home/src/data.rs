@@ -11,7 +11,6 @@ use widgets::icons;
 /// Recently Added shows a shelf, but untitled and same-titled albums drop out afterwards.
 pub(crate) const RECENTLY_ADDED_WINDOW: u32 = 64;
 pub(crate) const RECENT_TRACKS_WINDOW: u32 = 50;
-pub(crate) const ARTIST_SAMPLE_WINDOW: u32 = 30;
 
 /// How far a shelf reaches. Only the tiles in view are built, so this is reach, not cost.
 const SHELF: usize = 18;
@@ -38,21 +37,32 @@ pub(crate) struct Tile {
     pub placeholder: &'static str,
 }
 
+/// How a shelf is drawn, which follows from what it holds rather than from where it sits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Form {
+    /// A flat list of equals: a row that glides sideways.
+    Row,
+    /// The newest session leads, because it is the one most likely wanted back.
+    Mosaic,
+    /// A ranking, so it is numbered and carries the count it is ranked by.
+    Ranked,
+}
+
 /// One row of the page, under the name the layout orders it by.
 pub(crate) struct Shelf {
     pub name: &'static str,
     pub tiles: Vec<Tile>,
-    /// The lead shelf draws larger tiles than the rest.
-    pub lead: bool,
+    pub form: Form,
 }
 
 impl Shelf {
     fn new(name: &'static str, tiles: Vec<Tile>) -> Self {
-        Self {
-            name,
-            tiles,
-            lead: name == "jump_back_in",
-        }
+        let form = match name {
+            "jump_back_in" => Form::Mosaic,
+            "top_artists" => Form::Ranked,
+            _ => Form::Row,
+        };
+        Self { name, tiles, form }
     }
 }
 
@@ -61,7 +71,9 @@ pub(crate) struct Inputs<'a> {
     pub recently_added: Option<&'a AlbumPage>,
     pub artists: Option<&'a ArtistPage>,
     pub recents: Option<&'a TrackPage>,
-    pub samples: Option<&'a TrackPage>,
+    /// The most-played tracks, in the daemon's own play order, so an artist can be ranked.
+    pub played: Option<&'a TrackPage>,
+    pub plays: Option<&'a HashMap<String, u64>>,
     pub genre: Option<&'a String>,
     pub playlists: &'a [PlaylistInfo],
     pub seed: u64,
@@ -157,7 +169,10 @@ pub(crate) fn build(inputs: Inputs<'_>) -> Vec<Shelf> {
                 .map(|album| album_tile("made-for-you", album))
                 .collect(),
         ),
-        Shelf::new("top_artists", top_artists(inputs.samples, inputs.artists)),
+        Shelf::new(
+            "top_artists",
+            top_artists(inputs.played, inputs.plays, inputs.artists),
+        ),
         Shelf::new(
             "your_playlists",
             inputs
@@ -268,44 +283,69 @@ fn playlist_tile(playlist: &PlaylistInfo) -> Tile {
     }
 }
 
-fn top_artists(samples: Option<&TrackPage>, artists: Option<&ArtistPage>) -> Vec<Tile> {
+/// How many artists a ranking is worth reading; past this it stops being a top anything.
+pub(crate) const RANKED: usize = 8;
+
+/// Sum the listen counts per artist. An artist with no plays is not in the ranking.
+pub(crate) fn plays_by_artist(
+    played: &[TrackInfo],
+    plays: &HashMap<String, u64>,
+) -> Vec<(String, u64)> {
+    let mut totals: HashMap<String, u64> = HashMap::new();
+    for track in played {
+        if is_unknown_artist(&track.artist) {
+            continue;
+        }
+        // The counts are keyed by uid; `key` is the library ref and would match nothing.
+        let Some(count) = plays.get(&track.uid) else {
+            continue;
+        };
+        *totals.entry(track.artist.clone()).or_default() += count;
+    }
+    let mut ranked: Vec<(String, u64)> = totals.into_iter().collect();
+    // Ties settle by name, so a redraw cannot shuffle two artists past each other.
+    ranked.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+    ranked.truncate(RANKED);
+    ranked
+}
+
+/// Who actually gets played, in order. Empty until the counts arrive, rather than alphabetical.
+fn top_artists(
+    played: Option<&TrackPage>,
+    plays: Option<&HashMap<String, u64>>,
+    artists: Option<&ArtistPage>,
+) -> Vec<Tile> {
     // TODO(offline): offline mode draws these from the downloaded tracks instead.
+    let (Some(played), Some(plays)) = (played, plays) else {
+        return Vec::new();
+    };
+    let played = played.items.as_slice();
     let photos: HashMap<String, &ArtworkRef> = artists
         .map(|page| page.artists.as_slice())
         .unwrap_or(&[])
         .iter()
         .filter_map(|artist| Some((artist_key(&artist.name), artist.artwork.as_ref()?)))
         .collect();
-    let mut seen = HashSet::new();
-    let mut out = Vec::new();
-    for track in samples.map(|page| page.items.as_slice()).unwrap_or(&[]) {
-        if is_unknown_artist(&track.artist) || !seen.insert(track.artist.clone()) {
-            continue;
-        }
-        out.push(Tile {
-            key: SharedString::from(format!("artist-{}", track.artist)),
-            title: track.artist.clone().into(),
-            subtitle: SharedString::default(),
-            artwork: photos
-                .get(&artist_key(&track.artist))
-                .map(|art| (*art).clone()),
+    plays_by_artist(played, plays)
+        .into_iter()
+        .map(|(artist, count)| Tile {
+            key: SharedString::from(format!("artist-{artist}")),
+            title: artist.clone().into(),
+            subtitle: t_with("home_plays", &[("count", count.to_string())]),
+            artwork: photos.get(&artist_key(&artist)).map(|art| (*art).clone()),
             route: Route::Artist {
-                name: track.artist.clone().into(),
+                name: artist.clone().into(),
                 channel: None,
             },
             target: Target::Artist {
-                name: track.artist.clone().into(),
+                name: artist.into(),
                 channel: None,
             },
             play: Play::None,
             round: true,
             placeholder: icons::MIC,
-        });
-        if out.len() >= SHELF {
-            break;
-        }
-    }
-    out
+        })
+        .collect()
 }
 
 /// Fisher-Yates from the page's own seed, so a row keeps its order until its data changes.
@@ -384,12 +424,57 @@ mod tests {
             recently_added: None,
             artists: None,
             recents: None,
-            samples: None,
+            played: None,
+            plays: None,
             genre: None,
             playlists: &[],
             seed: 1,
         });
         let names: Vec<&str> = shelves.iter().map(|shelf| shelf.name).collect();
         assert_eq!(names, store::layout::SHELVES);
+    }
+
+    #[test]
+    fn a_shelf_is_drawn_the_way_its_contents_ask_to_be() {
+        assert_eq!(Shelf::new("jump_back_in", Vec::new()).form, Form::Mosaic);
+        assert_eq!(Shelf::new("top_artists", Vec::new()).form, Form::Ranked);
+        assert_eq!(Shelf::new("recently_added", Vec::new()).form, Form::Row);
+    }
+
+    #[test]
+    fn an_artist_is_ranked_by_the_plays_of_every_track_of_theirs() {
+        let played = vec![
+            track("t1", "One", "NONEP", "a1"),
+            track("t2", "Two", "NONEP", "a1"),
+            track("t3", "Three", "AKASAKI", "a2"),
+        ];
+        // Keyed by uid, which is what the daemon counts against.
+        let plays = HashMap::from([
+            ("t1".to_string(), 3),
+            ("t2".to_string(), 4),
+            ("t3".to_string(), 5),
+        ]);
+        // NONEP's two tracks outweigh AKASAKI's one, which counting tracks would miss.
+        assert_eq!(
+            plays_by_artist(&played, &plays),
+            vec![("NONEP".to_string(), 7), ("AKASAKI".to_string(), 5)]
+        );
+    }
+
+    #[test]
+    fn a_track_nobody_has_played_is_not_in_the_ranking() {
+        let played = vec![track("t1", "One", "NONEP", "a1")];
+        assert!(plays_by_artist(&played, &HashMap::new()).is_empty());
+    }
+
+    #[test]
+    fn without_the_counts_the_ranking_is_empty_rather_than_alphabetical() {
+        let played = TrackPage {
+            total: 1,
+            offset: 0,
+            items: vec![track("t1", "One", "NONEP", "a1")],
+        };
+        assert!(top_artists(None, None, None).is_empty());
+        assert!(top_artists(Some(&played), None, None).is_empty());
     }
 }

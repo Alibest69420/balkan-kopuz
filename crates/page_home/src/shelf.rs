@@ -12,7 +12,7 @@ use widgets::{icons, motion, scroll, style};
 
 use crate::Home;
 use crate::cards::{card, step};
-use crate::data::Shelf;
+use crate::data::{Form, Shelf};
 
 /// The shelf's own channels, keyed off its name.
 const HOVER: u64 = 0;
@@ -32,7 +32,8 @@ pub(crate) fn shelf(
     cx: &mut Context<Home>,
 ) -> AnyElement {
     let name = SharedString::new_static(shelf.name);
-    let stride = step(shelf.lead);
+    let lead = shelf.form == Form::Mosaic;
+    let stride = step(lead);
     scroll::smooth_x(shelf.name, handle, stride, window, cx);
     let (over, pointer) = motion::hovered(motion::channel(&name, HOVER), window, cx);
     let (back, forward) = scroll::room_x(handle);
@@ -42,7 +43,7 @@ pub(crate) fn shelf(
     // The tiles out of view stand as one empty box each way, so the row keeps its true width.
     cards.push(spacer(stride * first as f32));
     for tile in &shelf.tiles[first..last] {
-        cards.push(card(tile, shelf.lead, window, cx));
+        cards.push(card(tile, lead, window, cx));
     }
     cards.push(spacer(stride * (shelf.tiles.len() - last) as f32));
 
@@ -68,7 +69,7 @@ pub(crate) fn shelf(
                 .child(
                     div()
                         .font_weight(FontWeight::SEMIBOLD)
-                        .map(|heading| match shelf.lead {
+                        .map(|heading| match lead {
                             true => heading.text_3xl(),
                             false => heading.text_2xl(),
                         })
