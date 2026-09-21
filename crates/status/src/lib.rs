@@ -8,6 +8,7 @@ mod downloads;
 mod settings;
 mod startup;
 mod toasts;
+mod url_download;
 
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -26,6 +27,7 @@ pub use banner::ConnectionBanner;
 pub use settings::register as register_settings;
 pub use startup::StartupError;
 pub use toasts::Toasts;
+pub use url_download::register as register_url_download;
 
 /// Lucide names this crate needs that `widgets::icons` does not carry.
 pub const BELL: &str = "icons/bell.svg";
@@ -34,7 +36,6 @@ pub const DONE: &str = "icons/circle-check.svg";
 pub const FAILED: &str = "icons/circle-x.svg";
 pub const RETRY: &str = "icons/rotate-cw.svg";
 
-const BUTTON: Pixels = px(30.);
 const GLYPH: Pixels = px(15.);
 const POPOVER_WIDTH: Pixels = px(320.);
 /// A list inside a popover scrolls rather than growing past the window.
@@ -70,16 +71,21 @@ impl StatusCluster {
         let downloads = DownloadsModel::global(cx);
         let notices = Notices::global(cx);
         let navigator = Navigator::global(cx);
+        let list = cx.new(|cx| downloads::DownloadsList::new(window, cx));
         let subscriptions = vec![
             cx.observe(&jobs, |this, _, cx| this.recount(cx)),
             cx.observe(&downloads, |this, _, cx| this.recount(cx)),
             cx.observe(&notices, |this, _, cx| this.recount(cx)),
             cx.observe(&navigator, |this, _, cx| this.honour_intent(cx)),
+            // A dialog over an open popover reads as two layers of chrome: the popover stands down.
+            cx.subscribe(&list, |this, _, _: &downloads::Dismiss, cx| {
+                this.set_open(None, cx)
+            }),
         ];
         let mut this = Self {
             open: None,
             activity: cx.new(|cx| activity::ActivityList::new(window, cx)),
-            downloads: cx.new(|cx| downloads::DownloadsList::new(window, cx)),
+            downloads: list,
             centre: cx.new(|cx| centre::NoticeCentre::new(window, cx)),
             running: 0,
             pending: 0,
@@ -145,6 +151,9 @@ impl StatusCluster {
             return;
         }
         self.open = open;
+        if open == Some(Which::Downloads) {
+            self.downloads.update(cx, |list, cx| list.opened(cx));
+        }
         if open == Some(Which::Centre) {
             Notices::global(cx).update(cx, |notices, cx| notices.mark_seen(cx));
         }
@@ -161,8 +170,8 @@ impl StatusCluster {
         Button::new(id)
             .custom(style::quiet_button(style::slate_400(cx), cx))
             .with_size(GLYPH * (4. / 3.))
-            .size(BUTTON)
-            .rounded(BUTTON / 4.)
+            .size(style::chrome().button)
+            .rounded(style::chrome().button / 4.)
             .icon(icons::icon(glyph))
             .tooltip(tip)
     }

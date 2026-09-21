@@ -1,0 +1,350 @@
+//! Fetching a URL to a file: the tool, the formats and every option are the daemon's.
+
+use api::ApiEvent;
+use api::schema::{ChoiceOption, FieldValue};
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::{
+    ActiveTheme as _, Disableable as _, Icon, Sizable as _, WindowExt as _, h_flex, v_flex,
+};
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::{
+    AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
+    ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _, Styled,
+    Subscription, Task, Window, div, px,
+};
+use store::{Link, Notices, Query};
+use widgets::format::{t, text};
+use widgets::{FieldChanged, SchemaForm, focus, icons, style};
+
+const DIALOG_WIDTH: Pixels = px(460.);
+const OPTIONS_HEIGHT: Pixels = px(240.);
+
+/// Wire the box the popover's chip and `downloads.add_url` both open.
+pub fn register(cx: &mut App) {
+    widgets::dialogs::register_url_download(open, cx);
+}
+
+pub(crate) fn open(window: &mut Window, cx: &mut App) {
+    let dialog = cx.new(|cx| UrlDownload::new(window, cx));
+    let field = dialog.read(cx).url.clone();
+    window.open_dialog(cx, move |plate, _, _| {
+        plate
+            .title(t("downloader_url_title"))
+            .w(DIALOG_WIDTH)
+            // The backdrop must never throw away a typed URL; the buttons are the way out.
+            .overlay_closable(false)
+            .child(dialog.clone())
+            .footer(div())
+    });
+    field.update(cx, |state, cx| state.focus(window, cx));
+}
+
+/// A URL, a format, the daemon's own options, and whatever it refused with.
+pub(crate) struct UrlDownload {
+    url: Entity<InputState>,
+    formats: Entity<Query<Vec<ChoiceOption>>>,
+    format: Option<String>,
+    options: Entity<SchemaForm>,
+    show_options: bool,
+    starting: bool,
+    failure: Option<SharedString>,
+    _start: Option<Task<()>>,
+    _subscriptions: Vec<Subscription>,
+}
+
+impl UrlDownload {
+    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let url =
+            cx.new(|cx| InputState::new(window, cx).placeholder(t("downloader_url_placeholder")));
+        let formats =
+            cx.new(|cx| Query::new(&[], |api| async move { api.download_formats().await }, cx));
+        let options = cx.new(|cx| SchemaForm::new(Vec::new(), window, cx));
+        let connection = Link::connection(cx);
+
+        let subscriptions = vec![
+            cx.subscribe_in(
+                &url,
+                window,
+                |this, _, event: &InputEvent, window, cx| match event {
+                    InputEvent::PressEnter { .. } => this.start(window, cx),
+                    InputEvent::Change => this.clear_failure(cx),
+                    _ => {}
+                },
+            ),
+            cx.observe(&formats, |_, _, cx| cx.notify()),
+            cx.subscribe_in(
+                &options,
+                window,
+                |this, _, changed: &FieldChanged, window, cx| {
+                    this.save_setting(changed.0.clone(), window, cx)
+                },
+            ),
+            cx.subscribe_in(
+                &connection,
+                window,
+                |this, _, event: &ApiEvent, window, cx| {
+                    if matches!(event, ApiEvent::Resync) {
+                        this.load_settings(window, cx);
+                    }
+                },
+            ),
+        ];
+
+        let mut dialog = Self {
+            url,
+            formats,
+            format: None,
+            options,
+            show_options: false,
+            starting: false,
+            failure: None,
+            _start: None,
+            _subscriptions: subscriptions,
+        };
+        dialog.load_settings(window, cx);
+        dialog
+    }
+
+    /// The picked format, or the first the daemon offers: the box never names one itself.
+    fn format(&self, cx: &Context<Self>) -> Option<String> {
+        let offered = self.formats.read(cx).value();
+        self.format
+            .clone()
+            .filter(|picked| {
+                offered.is_some_and(|options| options.iter().any(|option| &option.value == picked))
+            })
+            .or_else(|| {
+                offered
+                    .and_then(|options| options.first())
+                    .map(|option| option.value.clone())
+            })
+    }
+
+    fn clear_failure(&mut self, cx: &mut Context<Self>) {
+        if self.failure.take().is_some() {
+            cx.notify();
+        }
+    }
+
+    fn start(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let url = self.url.read(cx).value().trim().to_string();
+        if url.is_empty() || self.starting {
+            return;
+        }
+        let format = self.format(cx).unwrap_or_default();
+        self.starting = true;
+        self.failure = None;
+        cx.notify();
+        let call =
+            Link::global(cx).call(move |api| async move { api.download_url(url, format).await });
+        self._start = Some(cx.spawn_in(window, async move |this, cx| {
+            // Whether the tool is there and the folder writable is the daemon's to check.
+            let result = call.await;
+            this.update_in(cx, |this, window, cx| {
+                this.starting = false;
+                match result {
+                    Ok(_) => window.close_dialog(cx),
+                    // A refusal keeps the typed URL on screen with the reason beside it.
+                    Err(error) => {
+                        tracing::warn!(%error, "the download was refused");
+                        this.failure = Some(store::human(&error));
+                        cx.notify();
+                    }
+                }
+            })
+            .ok();
+        }));
+    }
+
+    fn load_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let call = Link::global(cx).call(|api| async move { api.downloader_settings().await });
+        cx.spawn_in(window, async move |this, cx| {
+            let Ok(specs) = call.await else { return };
+            this.update_in(cx, |this, window, cx| {
+                this.options
+                    .update(cx, |form, cx| form.set_specs(specs, window, cx));
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn save_setting(&mut self, value: FieldValue, window: &mut Window, cx: &mut Context<Self>) {
+        let call = Link::global(cx)
+            .call(move |api| async move { api.set_downloader_settings(vec![value]).await });
+        cx.spawn_in(window, async move |this, cx| match call.await {
+            Ok(specs) => {
+                this.update_in(cx, |this, window, cx| {
+                    this.options
+                        .update(cx, |form, cx| form.set_specs(specs, window, cx));
+                })
+                .ok();
+            }
+            Err(error) => {
+                tracing::warn!(%error, "saving a downloader setting failed");
+                this.update(cx, |_, cx| Notices::error(store::human(&error), cx))
+                    .ok();
+            }
+        })
+        .detach();
+    }
+
+    /// One tab stop per chip: the arrows here would seek, so Tab and Enter are the walk.
+    fn chips(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let picked = self.format(cx);
+        let formats = self.formats.read(cx).value().cloned().unwrap_or_default();
+        let chips: Vec<AnyElement> = formats
+            .iter()
+            .map(|option| self.chip(option, picked.as_deref(), window, cx))
+            .collect();
+        h_flex().gap_1p5().flex_wrap().children(chips)
+    }
+
+    fn chip(
+        &self,
+        option: &ChoiceOption,
+        picked: Option<&str>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let selected = picked == Some(option.value.as_str());
+        let focus = focus::handle(format!("url-format:{}", option.value), window, cx);
+        let focused = focus.is_focused(window);
+        let this = cx.entity();
+        let pick = option.value.clone();
+        let click = pick.clone();
+        let entity = this.clone();
+        focus::stop(
+            div().id(SharedString::from(format!("url-format-{}", option.value))),
+            &focus,
+            move |_, cx| {
+                let pick = pick.clone();
+                this.update(cx, |this, cx| {
+                    this.format = Some(pick);
+                    cx.notify();
+                });
+            },
+        )
+        .relative()
+        .px_2p5()
+        .py_1()
+        .rounded(style::radius_lg())
+        .cursor_pointer()
+        .text_xs()
+        .bg(match selected {
+            true => style::white(style::ACTIVE, cx),
+            false => style::white(style::RAISED, cx),
+        })
+        .text_color(match selected {
+            true => cx.theme().foreground,
+            false => style::slate_400(cx),
+        })
+        .hover(|chip| chip.bg(style::white(style::HOVER, cx)))
+        .child(text(&option.label))
+        .on_click(move |_, _, cx| {
+            let pick = click.clone();
+            entity.update(cx, |this, cx| {
+                this.format = Some(pick);
+                cx.notify();
+            });
+        })
+        .when(focused, |chip| {
+            chip.child(focus::ring(style::radius_lg(), cx))
+        })
+        .into_any_element()
+    }
+
+    fn failure_box(&self, failure: SharedString, cx: &Context<Self>) -> impl IntoElement {
+        let danger = cx.theme().danger;
+        h_flex()
+            .w_full()
+            .gap_2()
+            .items_start()
+            .px_3()
+            .py_2()
+            .rounded(style::radius_lg())
+            .border_1()
+            .border_color(danger.opacity(0.3))
+            .bg(danger.opacity(0.1))
+            .text_sm()
+            .text_color(danger)
+            .child(Icon::default().path(icons::WARNING).small())
+            .child(div().flex_1().min_w_0().child(failure))
+    }
+}
+
+impl Render for UrlDownload {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let empty = self.url.read(cx).value().trim().is_empty();
+        let chevron = match self.show_options {
+            true => icons::CHEVRON_UP,
+            false => icons::CHEVRON_DOWN,
+        };
+        v_flex()
+            .w_full()
+            .gap_3()
+            .child(
+                Input::new(&self.url)
+                    .bg(style::white(style::HOVER, cx))
+                    .border_color(style::white(style::BORDER, cx))
+                    .rounded(style::radius_lg())
+                    .px_3()
+                    .py_2()
+                    .text_sm(),
+            )
+            .child(self.chips(window, cx))
+            .when_some(self.failure.clone(), |body, failure| {
+                body.child(self.failure_box(failure, cx))
+            })
+            .child(
+                h_flex().child(
+                    Button::new("url-download-options")
+                        .custom(style::quiet_button(style::slate_400(cx), cx))
+                        .xsmall()
+                        .icon(icons::icon(chevron))
+                        .label(t("downloader_options"))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.show_options = !this.show_options;
+                            cx.notify();
+                        })),
+                ),
+            )
+            .when(self.show_options, |body| {
+                body.child(
+                    div()
+                        .id("url-download-options-panel")
+                        .max_h(OPTIONS_HEIGHT)
+                        .overflow_y_scroll()
+                        .px_3()
+                        .py_2()
+                        .rounded(style::radius_lg())
+                        .border_1()
+                        .border_color(style::white(style::BORDER, cx))
+                        .bg(style::white(style::RAISED, cx))
+                        .child(self.options.clone()),
+                )
+            })
+            .child(
+                h_flex()
+                    .justify_end()
+                    .gap_2()
+                    .child(
+                        Button::new("url-download-cancel")
+                            .ghost()
+                            .label(t("cancel"))
+                            .disabled(self.starting)
+                            .on_click(|_, window, cx| window.close_dialog(cx)),
+                    )
+                    .child(
+                        Button::new("url-download-start")
+                            .primary()
+                            .icon(icons::icon(icons::DOWNLOAD))
+                            .label(t("downloader_download"))
+                            .loading(self.starting)
+                            .disabled(self.starting || empty)
+                            .on_click(cx.listener(|this, _, window, cx| this.start(window, cx))),
+                    ),
+            )
+    }
+}
