@@ -18,6 +18,10 @@ pub struct PlayerModel {
     optimistic_playing: Option<bool>,
     // The level to come back to when unmuting, so it is never a jump to full volume.
     muted_from: f32,
+    revision: Option<u64>,
+    // The unknown token already resynced for, so a stream of stale positions cannot spin on refetch.
+    resynced_for: Option<u64>,
+    _fetch: Option<Task<()>>,
     _subscription: Subscription,
 }
 
@@ -41,6 +45,9 @@ impl PlayerModel {
             observed_at: Instant::now(),
             optimistic_playing: None,
             muted_from: DEFAULT_UNMUTE,
+            revision: None,
+            resynced_for: None,
+            _fetch: None,
             _subscription: subscription,
         }
     }
@@ -54,9 +61,10 @@ impl PlayerModel {
                 at_ms,
                 playing,
             } => {
-                self.observed_at = Instant::now();
-                self.state.now_ms = *at_ms;
+                // Only a position for the track we are showing may move our clock anchor.
                 if Some(*token) == self.token() {
+                    self.observed_at = Instant::now();
+                    self.state.now_ms = *at_ms;
                     self.state.position = Some(PositionAnchor {
                         ms: *position_ms,
                         at_ms: *at_ms,
@@ -69,6 +77,9 @@ impl PlayerModel {
                     .filter(|fading| fading.from_token == *token)
                 {
                     fading.position_ms = *position_ms;
+                } else if self.resynced_for != Some(*token) {
+                    self.resynced_for = Some(*token);
+                    self.refetch(cx);
                 }
                 crate::notify(cx);
             }
@@ -76,23 +87,37 @@ impl PlayerModel {
                 self.state.buffered = ranges.clone();
                 crate::notify(cx);
             }
-            ApiEvent::Resync => self.refetch(cx),
+            ApiEvent::QueueChanged { .. } => self.refetch(cx),
+            ApiEvent::Resync => {
+                self.revision = None;
+                self.resynced_for = None;
+                self.refetch(cx);
+            }
             _ => {}
         }
     }
 
     fn refetch(&mut self, cx: &mut Context<Self>) {
+        if self._fetch.is_some() {
+            return;
+        }
         let call = Link::global(cx).call(|api| async move { api.player_state().await });
-        cx.spawn(async move |this, cx| {
-            if let Ok(state) = call.await {
-                this.update(cx, |this, cx| this.apply_state(state, cx)).ok();
-            }
-        })
-        .detach();
+        self._fetch = Some(cx.spawn(async move |this, cx| {
+            let state = call.await;
+            this.update(cx, |this, cx| {
+                this._fetch = None;
+                if let Ok(state) = state {
+                    this.apply_state(state, cx);
+                }
+            })
+            .ok();
+        }));
     }
 
     fn apply_state(&mut self, state: PlayerState, cx: &mut Context<Self>) {
-        self.state = state;
+        if !adopt_state(&mut self.state, &mut self.revision, state) {
+            return;
+        }
         self.observed_at = Instant::now();
         self.optimistic_playing = None;
         crate::notify(cx);
@@ -310,6 +335,20 @@ impl PlayerModel {
     }
 }
 
+/// A delayed snapshot must not restore the previous song after a newer stream event.
+fn adopt_state(
+    current: &mut PlayerState,
+    revision: &mut Option<u64>,
+    incoming: PlayerState,
+) -> bool {
+    if revision.is_some_and(|rev| incoming.rev < rev) {
+        return false;
+    }
+    *revision = Some(incoming.rev);
+    *current = incoming;
+    true
+}
+
 fn send(command: PlayerCommand, cx: &App) {
     Link::global(cx).fire(cx, "player command", move |api| async move {
         api.player_command(command).await
@@ -410,5 +449,51 @@ impl Playhead {
                 })
                 .ok();
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn state(rev: u64, title: &str) -> PlayerState {
+        PlayerState {
+            rev,
+            track: Some(NowPlaying {
+                title: title.into(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn an_old_snapshot_cannot_replace_the_new_song() {
+        let mut current = state(12, "new song");
+        let mut revision = Some(12);
+        assert!(!adopt_state(
+            &mut current,
+            &mut revision,
+            state(11, "old song")
+        ));
+        assert_eq!(current.track.as_ref().unwrap().title, "new song");
+        assert!(adopt_state(
+            &mut current,
+            &mut revision,
+            state(13, "next song")
+        ));
+        assert_eq!(current.track.as_ref().unwrap().title, "next song");
+    }
+
+    #[test]
+    fn reconnect_accepts_a_restarted_daemons_lower_revision() {
+        let mut current = state(120, "previous daemon");
+        let mut revision = None;
+        assert!(adopt_state(
+            &mut current,
+            &mut revision,
+            state(1, "restarted daemon")
+        ));
+        assert_eq!(current.track.as_ref().unwrap().title, "restarted daemon");
     }
 }
