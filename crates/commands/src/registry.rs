@@ -1051,8 +1051,8 @@ static COMMANDS: &[Command] = &[
         danger: false,
         applies: NOTHING,
         available: yes,
-        run: |_, _, _| tracing::warn!("the shortcuts sheet is not built yet"),
-        action: None,
+        run: |_, window, cx| widgets::dialogs::open_shortcuts(window, cx),
+        action: Some(|| Box::new(crate::keys::ShowShortcuts)),
     },
     Command {
         id: "app.settings",

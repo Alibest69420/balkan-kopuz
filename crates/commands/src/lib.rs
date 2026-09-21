@@ -11,7 +11,7 @@ use gpui_kit::{
 };
 use store::{Kind, Target};
 
-pub use keys::{keymap, keystroke_for};
+pub use keys::{conflict, context_for, default_keystroke, keymap, keystroke_for, rebind, written};
 pub use registry::{all, get};
 
 /// Where a command sits in the palette.
@@ -147,6 +147,42 @@ fn item(command: &'static Command, target: &Target, cx: &App) -> PopupMenuItem {
     };
     let target = target.clone();
     entry.on_click(move |_, window, cx| command.perform(target.clone(), window, cx))
+}
+
+/// How a keystroke is written on a keycap: `ctrl-shift-p` reads as `Ctrl Shift P`.
+pub fn keycap(keystroke: &str) -> SharedString {
+    let said: Vec<String> = keystroke
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .map(|part| match part {
+            "cmd" => "Cmd".to_string(),
+            "ctrl" => "Ctrl".to_string(),
+            "alt" => "Alt".to_string(),
+            "shift" => "Shift".to_string(),
+            "enter" => "Enter".to_string(),
+            "escape" => "Esc".to_string(),
+            "space" => "Space".to_string(),
+            "left" => "←".to_string(),
+            "right" => "→".to_string(),
+            "up" => "↑".to_string(),
+            "down" => "↓".to_string(),
+            other if other.chars().count() == 1 => other.to_uppercase(),
+            other => {
+                let mut said = other.to_string();
+                said[..1].make_ascii_uppercase();
+                said
+            }
+        })
+        .collect();
+    SharedString::from(said.join(" "))
+}
+
+/// An icon-only button's tooltip: what it does, and the key that does it without the pointer.
+pub fn tooltip(id: &str, label: SharedString, cx: &App) -> SharedString {
+    match keystroke_for(id, cx) {
+        Some(keystroke) => SharedString::from(format!("{label}  {}", keycap(&keystroke))),
+        None => label,
+    }
 }
 
 /// What the palette lists for `target`, in group order.

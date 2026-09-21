@@ -27,13 +27,16 @@ actions!(
         GoDiscover,
         GoRadio,
         OpenSettings,
+        ShowShortcuts,
     ]
 );
 
 /// Bare keys the Shell claims; typing one into a field must type it, so the field declines them.
 const SUPPRESS_IN_INPUT: &[&str] = &["m", "l", "q", "f", "/", "?", "left", "right"];
-/// Seeking with the arrows is wrong while a list is being walked with them.
+/// Seeking with the arrows is wrong while a group is being walked with them.
 const SUPPRESS_IN_LIST: &[&str] = &["left", "right"];
+/// Every key context whose own arrows walk a roving group.
+const ARROW_GROUPS: &[&str] = &["TrackList", "NavBar", "SettingsRail", "ShortcutList"];
 
 /// Run a command from a keystroke, through whichever window is in front.
 fn fire(id: &'static str, cx: &mut App) {
@@ -44,11 +47,14 @@ fn fire(id: &'static str, cx: &mut App) {
     let Some(window) = cx.active_window() else {
         return;
     };
-    window
-        .update(cx, |_, window, cx| {
+    // A window already being updated refuses a second update, which is why no binding ever fired.
+    cx.defer(move |cx| {
+        if let Err(error) = window.update(cx, |_, window, cx| {
             command.perform(Target::None, window, cx)
-        })
-        .ok();
+        }) {
+            tracing::warn!(%error, id, "a binding could not reach the window");
+        }
+    });
 }
 
 /// The app-wide handlers; they run last, so anything with focus gets the keystroke first.
@@ -70,6 +76,7 @@ pub(crate) fn register_handlers(cx: &mut App) {
     cx.on_action(|_: &GoDiscover, cx| fire("nav.discover", cx));
     cx.on_action(|_: &GoRadio, cx| fire("nav.radio", cx));
     cx.on_action(|_: &OpenSettings, cx| fire("app.settings", cx));
+    cx.on_action(|_: &ShowShortcuts, cx| fire("app.shortcuts", cx));
 }
 
 fn bind(keystroke: &str, action: Box<dyn gpui_kit::Action>, context: &str) -> Option<KeyBinding> {
@@ -108,7 +115,13 @@ pub fn keymap(cx: &mut App) {
             continue;
         };
         match overrides.get(command.id) {
-            Some(keystroke) => bindings.extend(bind(keystroke, action(), first.context)),
+            // The vacated default goes dead first: a reinstall appends, and the last binding wins.
+            Some(keystroke) => {
+                for binding in command.keys.iter().filter(|b| b.keystroke != keystroke) {
+                    bindings.extend(bind(binding.keystroke, Box::new(NoAction), binding.context));
+                }
+                bindings.extend(bind(keystroke, action(), first.context));
+            }
             None => {
                 for binding in command.keys {
                     bindings.extend(bind(binding.keystroke, action(), binding.context));
@@ -119,8 +132,10 @@ pub fn keymap(cx: &mut App) {
     for keystroke in SUPPRESS_IN_INPUT {
         bindings.extend(bind(keystroke, Box::new(NoAction), "Input"));
     }
-    for keystroke in SUPPRESS_IN_LIST {
-        bindings.extend(bind(keystroke, Box::new(NoAction), "TrackList"));
+    for context in ARROW_GROUPS {
+        for keystroke in SUPPRESS_IN_LIST {
+            bindings.extend(bind(keystroke, Box::new(NoAction), context));
+        }
     }
     cx.bind_keys(bindings);
 }
@@ -133,4 +148,61 @@ pub fn keystroke_for(id: &str, cx: &App) -> Option<String> {
     get(id)
         .and_then(|command| command.keys.first())
         .map(|binding| binding.keystroke.to_string())
+}
+
+/// What a command answers to out of the box, so a row can say whether it has been changed.
+pub fn default_keystroke(id: &str) -> Option<&'static str> {
+    get(id)
+        .and_then(|command| command.keys.first())
+        .map(|binding| binding.keystroke)
+}
+
+/// The key context a command's binding lives in; a rebind may only collide outside it.
+pub fn context_for(id: &str) -> Option<&'static str> {
+    get(id)
+        .and_then(|command| command.keys.first())
+        .map(|binding| binding.context)
+}
+
+/// The command `keystroke` would take over from inside `id`'s own context, overrides included.
+pub fn conflict(id: &str, keystroke: &str, cx: &App) -> Option<&'static crate::Command> {
+    let context = context_for(id)?;
+    all().iter().find(|held| {
+        held.id != id
+            && context_for(held.id) == Some(context)
+            && keystroke_for(held.id, cx).as_deref() == Some(keystroke)
+    })
+}
+
+/// Point `id` at `keystroke`, or back at its default when `None`, and reinstall the keymap.
+pub fn rebind(id: &str, keystroke: Option<String>, cx: &mut App) {
+    let id = id.to_string();
+    store::LayoutModel::edit(cx, move |layout| match keystroke.clone() {
+        Some(keystroke) => {
+            layout.shortcuts.insert(id.clone(), keystroke);
+        }
+        None => {
+            layout.shortcuts.remove(&id);
+        }
+    });
+    keymap(cx);
+}
+
+/// A pressed keystroke in the form the keymap parses back, so a recording round-trips.
+pub fn written(keystroke: &gpui_kit::Keystroke) -> String {
+    let mut said = String::new();
+    if keystroke.modifiers.control {
+        said.push_str("ctrl-");
+    }
+    if keystroke.modifiers.alt {
+        said.push_str("alt-");
+    }
+    if keystroke.modifiers.shift {
+        said.push_str("shift-");
+    }
+    if keystroke.modifiers.platform {
+        said.push_str("cmd-");
+    }
+    said.push_str(&keystroke.key);
+    said
 }
