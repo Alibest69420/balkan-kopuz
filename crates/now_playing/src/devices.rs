@@ -39,33 +39,32 @@ impl NowPlaying {
             .read(cx)
             .external()
             .is_some_and(|external| external.device.is_some());
-        let tint = motion::color(
-            "devices-glyph",
+        // Lit with the accent the queue and lyrics glyphs wear, not a colour of its own.
+        let accent = motion::accent(theme::Surface::Chrome, cx.theme().primary, window, cx);
+        let tint = self.control_glyph(
+            "devices",
             if elsewhere {
-                cx.theme().primary_hover
+                accent
             } else {
                 style::slate_400(cx)
             },
+            elsewhere,
             window,
             cx,
         );
         let devices = self.devices.clone();
         let owner = cx.entity().downgrade();
 
-        Some(
-            Popover::new("external-devices")
-                .anchor(Anchor::BottomRight)
-                .open(self.devices_open)
-                .on_open_change(
-                    cx.listener(|this, open: &bool, _, cx| this.set_devices_open(*open, cx)),
-                )
-                .trigger(
-                    utility("devices", icons::SPEAKER, tint, cx).tooltip(t("external_play_on")),
-                )
-                .content(move |_, window, cx| {
-                    device_list(devices.clone(), owner.clone(), window, cx)
-                }),
-        )
+        // The popover wants a `Selectable` trigger, so the frame goes around the whole of it.
+        let popover = Popover::new("external-devices")
+            .anchor(Anchor::BottomRight)
+            .open(self.devices_open)
+            .on_open_change(
+                cx.listener(|this, open: &bool, _, cx| this.set_devices_open(*open, cx)),
+            )
+            .trigger(utility("devices", icons::SPEAKER, tint, cx).tooltip(t("external_play_on")))
+            .content(move |_, window, cx| device_list(devices.clone(), owner.clone(), window, cx));
+        Some(self.framed("devices", popover, window, cx))
     }
 
     fn set_devices_open(&mut self, open: bool, cx: &mut Context<Self>) {

@@ -133,6 +133,7 @@ impl NowPlaying {
                             previous_glyph,
                             cx,
                         )
+                        .tooltip(t("previous_track"))
                         .on_click(|_, _, cx| {
                             PlayerModel::global(cx).update(cx, |player, cx| player.previous(cx));
                         }),
@@ -165,6 +166,7 @@ impl NowPlaying {
                         next_glyph,
                         cx,
                     )
+                    .tooltip(t("next_track"))
                     .on_click(|_, _, cx| {
                         PlayerModel::global(cx).update(cx, |player, cx| player.next(cx));
                     }),

@@ -16,7 +16,7 @@ use store::{
     actions,
 };
 use widgets::format::t;
-use widgets::{Cover, focus, icons, menus, motion, style};
+use widgets::{Cover, focus, icons, menus, style};
 
 use crate::NowPlaying;
 
@@ -150,8 +150,14 @@ impl NowPlaying {
             )
             .children(self.marks(key, window, cx))
             .children(target.clone().map(|target| {
-                mark("track-meta-menu", icons::MORE, muted, cx)
-                    .dropdown_menu(menus::builder(target))
+                let menu = self.control_glyph("track-meta-menu", muted, false, window, cx);
+                self.framed(
+                    "track-meta-menu",
+                    mark("track-meta-menu", icons::MORE, menu, cx)
+                        .dropdown_menu(menus::builder(target)),
+                    window,
+                    cx,
+                )
             }));
 
         match target {
@@ -230,52 +236,56 @@ impl NowPlaying {
             .as_deref()
             .is_some_and(|key| FavoritesModel::global(cx).read(cx).is_favorite(key));
         let muted = style::slate_400(cx);
-        let heart = motion::color(
-            "meta-heart",
+        let heart = self.control_glyph(
+            "meta-favorite",
             if favorite { cx.theme().danger } else { muted },
+            favorite,
             window,
             cx,
         );
-        let dislike = motion::color(
+        let dislike = self.control_glyph(
             "meta-dont-recommend",
             if favorite { muted.opacity(0.4) } else { muted },
+            favorite,
             window,
             cx,
         );
 
         let mut marks = Vec::new();
         if wanted.favorite {
-            marks.push(
-                mark("meta-favorite", icons::HEART, heart, cx)
-                    .tooltip(if favorite {
-                        t("remove_from_favorites")
-                    } else {
-                        t("add_to_favorites")
-                    })
-                    .disabled(key.is_none())
-                    .on_click({
-                        let key = key.clone();
-                        move |_, _, cx| {
-                            if let Some(key) = key.clone() {
-                                FavoritesModel::global(cx)
-                                    .update(cx, |favorites, cx| favorites.toggle(key, cx));
-                            }
+            let button = mark("meta-favorite", icons::HEART, heart, cx)
+                .tooltip(if favorite {
+                    t("remove_from_favorites")
+                } else {
+                    t("add_to_favorites")
+                })
+                .disabled(key.is_none())
+                .on_click({
+                    let key = key.clone();
+                    move |_, _, cx| {
+                        if let Some(key) = key.clone() {
+                            FavoritesModel::global(cx)
+                                .update(cx, |favorites, cx| favorites.toggle(key, cx));
                         }
-                    })
+                    }
+                });
+            marks.push(
+                self.framed("meta-favorite", button, window, cx)
                     .into_any_element(),
             );
         }
         if capabilities.dont_recommend {
+            let button = mark("meta-dont-recommend", icons::THUMBS_DOWN, dislike, cx)
+                .tooltip(t("dont_recommend"))
+                // Like and dislike are one setting on the remote, so both at once would undo the heart.
+                .disabled(key.is_none() || favorite)
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    if let Some(key) = key.clone() {
+                        this.dont_recommend(key, cx);
+                    }
+                }));
             marks.push(
-                mark("meta-dont-recommend", icons::THUMBS_DOWN, dislike, cx)
-                    .tooltip(t("dont_recommend"))
-                    // Like and dislike are one setting on the remote, so both at once would undo the heart.
-                    .disabled(key.is_none() || favorite)
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        if let Some(key) = key.clone() {
-                            this.dont_recommend(key, cx);
-                        }
-                    }))
+                self.framed("meta-dont-recommend", button, window, cx)
                     .into_any_element(),
             );
         }
@@ -300,23 +310,27 @@ impl NowPlaying {
         &self,
         size: Pixels,
         glyph: Pixels,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let key = self.track(cx).map(|track| track.key);
-        focus::quiet(Button::new("meta-share"), cx)
+        let tint = self.control_glyph("meta-share", style::slate_400(cx), false, window, cx);
+        let button = focus::quiet(Button::new("meta-share"), cx)
             .ghost()
             .with_size(glyph * (4. / 3.))
             .size(size)
             .rounded(size / 2.)
             .icon(icons::icon(icons::SHARE))
-            .custom(style::bare_button(style::slate_400(cx), cx))
-            .tooltip(t("share_musicbrainz"))
+            .custom(style::bare_button(tint, cx))
+            // It copies whatever page the source itself publishes, which is rarely MusicBrainz.
+            .tooltip(t("share"))
             .disabled(key.is_none())
             .on_click(move |_, _, cx| {
                 if let Some(key) = key.clone() {
                     actions::share_track(key, cx);
                 }
-            })
+            });
+        self.framed("meta-share", button, window, cx)
     }
 }
 

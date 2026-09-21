@@ -321,7 +321,7 @@ impl NowPlaying {
                             })),
                         )
                     })
-                    .child(self.share_button(ACTION, ACTION_GLYPH, cx))
+                    .child(self.share_button(ACTION, ACTION_GLYPH, window, cx))
                     .child(
                         round("sheet-actions", icons::MORE, style::white(0.7, cx), cx)
                             .dropdown_menu(menus::builder(track_target(track))),

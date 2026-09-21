@@ -67,23 +67,19 @@ impl NowPlaying {
         let wanted = store::layout(cx).player.clone();
         let muted = style::slate_400(cx);
         let accent = motion::accent(theme::Surface::Chrome, cx.theme().primary, window, cx);
-        let queue_tint = motion::color(
-            "bar-queue-glyph",
-            if panel == Some(SidePanel::Queue) {
-                accent
-            } else {
-                muted
-            },
+        let queued = panel == Some(SidePanel::Queue);
+        let lyrical = panel == Some(SidePanel::Lyrics);
+        let queue_tint = self.control_glyph(
+            "bar-queue",
+            if queued { accent } else { muted },
+            queued,
             window,
             cx,
         );
-        let lyrics_tint = motion::color(
-            "bar-lyrics-glyph",
-            if panel == Some(SidePanel::Lyrics) {
-                accent
-            } else {
-                muted
-            },
+        let lyrics_tint = self.control_glyph(
+            "bar-lyrics",
+            if lyrical { accent } else { muted },
+            lyrical,
             window,
             cx,
         );
@@ -99,40 +95,71 @@ impl NowPlaying {
             })
             .when(wanted.queue, |row| {
                 row.child(
-                    utility("bar-queue", icons::LIST, queue_tint, cx)
-                        .tooltip(t("up_next"))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.devices_open = false;
-                            Chrome::global(cx)
-                                .update(cx, |chrome, cx| chrome.toggle_panel(SidePanel::Queue, cx));
-                        })),
+                    self.framed(
+                        "bar-queue",
+                        utility("bar-queue", icons::LIST, queue_tint, cx)
+                            .tooltip(t("up_next"))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.devices_open = false;
+                                Chrome::global(cx).update(cx, |chrome, cx| {
+                                    chrome.toggle_panel(SidePanel::Queue, cx)
+                                });
+                            })),
+                        window,
+                        cx,
+                    ),
                 )
             })
             .when(wanted.lyrics, |row| {
                 row.child(
-                    utility("bar-lyrics", icons::LYRICS, lyrics_tint, cx)
-                        .tooltip(t("lyrics"))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.devices_open = false;
-                            Chrome::global(cx).update(cx, |chrome, cx| {
-                                chrome.toggle_panel(SidePanel::Lyrics, cx)
-                            });
-                        })),
+                    self.framed(
+                        "bar-lyrics",
+                        utility("bar-lyrics", icons::LYRICS, lyrics_tint, cx)
+                            .tooltip(t("lyrics"))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.devices_open = false;
+                                Chrome::global(cx).update(cx, |chrome, cx| {
+                                    chrome.toggle_panel(SidePanel::Lyrics, cx)
+                                });
+                            })),
+                        window,
+                        cx,
+                    ),
                 )
             })
             .children(self.devices_button(window, cx))
-            .child(self.share_button(style::chrome().round_button, UTILITY_GLYPH, cx))
+            .child(self.share_button(style::chrome().round_button, UTILITY_GLYPH, window, cx))
             .child(
-                utility("bar-mini", icons::COLLAPSE, muted, cx)
+                self.framed(
+                    "bar-mini",
+                    utility(
+                        "bar-mini",
+                        icons::COLLAPSE,
+                        self.control_glyph("bar-mini", muted, false, window, cx),
+                        cx,
+                    )
                     .tooltip(t("mini_player"))
                     .on_click(|_, _, cx| crate::open_mini(cx)),
+                    window,
+                    cx,
+                ),
             )
             .child(
-                utility("bar-sheet", icons::EXPAND, muted, cx)
+                self.framed(
+                    "bar-sheet",
+                    utility(
+                        "bar-sheet",
+                        icons::EXPAND,
+                        self.control_glyph("bar-sheet", muted, false, window, cx),
+                        cx,
+                    )
                     .tooltip(t("now_playing"))
                     .on_click(|_, _, cx| {
                         Chrome::global(cx).update(cx, |chrome, cx| chrome.toggle_sheet(cx))
                     }),
+                    window,
+                    cx,
+                ),
             )
     }
 }

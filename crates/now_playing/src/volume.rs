@@ -185,6 +185,19 @@ impl NowPlaying {
             )
     }
 
+    /// One bar control in the frame that owns its wash, which is what `bare_button` paints nothing for.
+    pub(crate) fn framed(
+        &self,
+        id: &'static str,
+        control: impl IntoElement,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> gpui_kit::AnyElement {
+        self.control_slot(id, style::chrome().round_button, window, cx)
+            .child(control)
+            .into_any_element()
+    }
+
     /// A control's glyph colour: a lit one holds its accent, the rest lift to the foreground on hover.
     pub(crate) fn control_glyph(
         &self,
