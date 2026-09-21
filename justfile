@@ -72,6 +72,25 @@ watch profile="debug" *args:
         echo "the frontend exited; bringing it back"
     done
 
+# The daemon on its own, for a frontend that is going to be rebuilt and restarted beside it.
+daemon profile="debug":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd {{ daemon_dir }} && {{ nix }} cargo build -p kopuz-kopuzd {{ if profile == "release" { "--release" } else { "" } }}
+    export KOPUZ_SOCKET={{ socket }}
+    rm -f "$KOPUZ_SOCKET"
+    exec {{ nix }} {{ daemon_dir }}/target/{{ profile }}/kopuzd --socket "$KOPUZ_SOCKET"
+
+# The frontend on its own, against a daemon already listening; `just daemon` starts one.
+app profile="debug" *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    {{ nix }} cargo build {{ if profile == "release" { "--release" } else { "" } }}
+    export KOPUZ_SOCKET={{ socket }}
+    # Uncoupled on purpose, so this only ever reports a daemon it did not start rather than starting one.
+    [ -S "$KOPUZ_SOCKET" ] || { echo "nothing listening on $KOPUZ_SOCKET; start one with 'just daemon'"; exit 1; }
+    exec {{ nix }} ./target/{{ profile }}/kopuz-gpui {{ args }}
+
 # Everything CI checks, in the order that fails fastest.
 check:
     {{ nix }} cargo fmt --all -- --check
