@@ -67,7 +67,10 @@ impl Spans {
     }
 }
 
-/// The strip's own left edge, which every tab's position is measured against.
+/// Where the tabs start, measured from inside the strip so a scrolled rail moves it too.
+///
+/// An absolute probe would sit on the padding box, which does not scroll, while the tabs
+/// report where they actually are — the mark would then be out by the scroll offset.
 fn strip_origin(spans: Entity<Spans>) -> impl IntoElement {
     gpui_kit::canvas(
         move |bounds, _, cx| {
@@ -80,8 +83,9 @@ fn strip_origin(spans: Entity<Spans>) -> impl IntoElement {
         },
         |_, _, _, _| {},
     )
-    .absolute()
-    .size_full()
+    .w_0()
+    .h_0()
+    .flex_none()
 }
 
 /// A zero-size probe that reports where its tab landed; GPUI has no other way to ask.
@@ -363,20 +367,13 @@ impl Settings {
             window,
             cx,
         );
-        self.rail
-            .group(h_flex().id("settings-fan"), "SettingsRail")
-            .on_key_down(
-                cx.listener(|this, event: &KeyDownEvent, window, cx| this.walk(event, window, cx)),
-            )
-            .w_full()
+        // The mark and the probe both sit inside this, so they share one coordinate space and
+        // the mark cannot drift when the rail is scrolled.
+        let track = h_flex()
             .relative()
+            .h_full()
             .flex_none()
-            .mb_4()
             .gap_0p5()
-            .overflow_x_scroll()
-            .border_b_1()
-            .border_color(style::white(FAN_BORDER, cx))
-            .bg(style::black(FAN_BG, cx))
             .child(strip_origin(spans.clone()))
             .child(
                 div()
@@ -386,44 +383,58 @@ impl Settings {
                     .w(width)
                     .h(px(2.))
                     .bg(underline),
+            );
+        self.rail
+            .group(h_flex().id("settings-fan"), "SettingsRail")
+            .on_key_down(
+                cx.listener(|this, event: &KeyDownEvent, window, cx| this.walk(event, window, cx)),
             )
-            .children(
-                items
-                    .into_iter()
-                    .map(|(index, category, ringed, surface, ink)| {
-                        let spans = spans.clone();
-                        h_flex()
-                            .id(category.slug())
-                            .relative()
-                            .flex_none()
-                            .h_11()
-                            .px_3()
-                            .gap_2()
-                            .items_center()
-                            .bg(surface)
-                            .child(measure(category, spans))
-                            .text_xs()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(ink)
-                            .cursor_pointer()
-                            .child(icons::icon(category.icon()))
-                            .child(category.label())
-                            .on_hover(cx.listener(move |this, over: &bool, _, cx| {
-                                let held = over.then_some(category);
-                                if this.hovered != held {
-                                    this.hovered = held;
-                                    cx.notify();
-                                }
-                            }))
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.rail.set_cursor(index);
-                                this.ringing = false;
-                                this.choose(category, window, cx);
-                            }))
-                            .when(ringed, |item| {
-                                item.child(widgets::focus::ring(style::radius_md(), cx))
-                            })
-                    }),
+            .w_full()
+            .flex_none()
+            .mb_4()
+            .overflow_x_scroll()
+            .border_b_1()
+            .border_color(style::white(FAN_BORDER, cx))
+            .bg(style::black(FAN_BG, cx))
+            .child(
+                track.children(
+                    items
+                        .into_iter()
+                        .map(|(index, category, ringed, surface, ink)| {
+                            let spans = spans.clone();
+                            h_flex()
+                                .id(category.slug())
+                                .relative()
+                                .flex_none()
+                                .h_11()
+                                .px_3()
+                                .gap_2()
+                                .items_center()
+                                .bg(surface)
+                                .child(measure(category, spans))
+                                .text_xs()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(ink)
+                                .cursor_pointer()
+                                .child(icons::icon(category.icon()))
+                                .child(category.label())
+                                .on_hover(cx.listener(move |this, over: &bool, _, cx| {
+                                    let held = over.then_some(category);
+                                    if this.hovered != held {
+                                        this.hovered = held;
+                                        cx.notify();
+                                    }
+                                }))
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.rail.set_cursor(index);
+                                    this.ringing = false;
+                                    this.choose(category, window, cx);
+                                }))
+                                .when(ringed, |item| {
+                                    item.child(widgets::focus::ring(style::radius_md(), cx))
+                                })
+                        }),
+                ),
             )
     }
 
@@ -542,5 +553,36 @@ impl Render for Settings {
                             .child(self.panel())
                     }),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_tab_is_placed_against_the_strip_not_the_window() {
+        let mut spans = Spans {
+            origin: px(100.),
+            ..Default::default()
+        };
+        spans.put(Category::Interface.slug(), px(340.), px(96.));
+        assert_eq!(spans.of(Category::Interface), Some((px(240.), px(96.))));
+    }
+
+    #[test]
+    fn a_scrolled_strip_moves_its_tabs_and_its_origin_together() {
+        // Scrolled 60px right: the strip's content and every tab in it move by the same amount.
+        let mut spans = Spans {
+            origin: px(40.),
+            ..Default::default()
+        };
+        spans.put(Category::Interface.slug(), px(280.), px(96.));
+        assert_eq!(spans.of(Category::Interface), Some((px(240.), px(96.))));
+    }
+
+    #[test]
+    fn a_tab_nobody_has_measured_yet_places_nothing() {
+        assert_eq!(Spans::default().of(Category::Tools), None);
     }
 }
