@@ -2,6 +2,7 @@
 
 mod cards;
 mod data;
+mod ranked;
 mod resume;
 mod settings;
 mod shelf;
@@ -201,7 +202,11 @@ impl Render for Home {
             let Some(handle) = self.scroll.get(shelf.name).cloned() else {
                 continue;
             };
-            rows.push(shelf::shelf(shelf, &handle, window, cx));
+            // A ranking is a list and a shelf is a row; `Form` is what says which a name gets.
+            rows.push(match shelf.form {
+                data::Form::Ranked => ranked::ranked(shelf, window, cx),
+                _ => shelf::shelf(shelf, &handle, window, cx),
+            });
         }
         // Nothing to show is only worth saying once the library has actually answered.
         let bare = banner.is_none() && rows.is_empty() && self.albums.read(cx).is_settled();
