@@ -9,6 +9,7 @@ type BatchMetadataOpener = Rc<dyn Fn(Vec<String>, &mut Window, &mut App)>;
 type RenameOpener =
     Rc<dyn Fn(SharedString, SharedString, Rc<dyn Fn(String, &mut App)>, &mut Window, &mut App)>;
 type FolderOpener = Rc<dyn Fn(String, &mut Window, &mut App)>;
+type SheetOpener = Rc<dyn Fn(&mut Window, &mut App)>;
 
 #[derive(Default)]
 struct Dialogs {
@@ -16,6 +17,7 @@ struct Dialogs {
     batch_metadata: Option<BatchMetadataOpener>,
     rename: Option<RenameOpener>,
     folder_picker: Option<FolderOpener>,
+    shortcuts: Option<SheetOpener>,
 }
 
 impl Global for Dialogs {}
@@ -70,6 +72,21 @@ pub fn register_folder_picker(
     dialogs(cx).folder_picker = Some(Rc::new(opener));
 }
 
+/// Register the sheet `?` opens; the registry's `app.shortcuts` is what asks for it.
+pub fn register_shortcuts(opener: impl Fn(&mut Window, &mut App) + 'static, cx: &mut App) {
+    dialogs(cx).shortcuts = Some(Rc::new(opener));
+}
+
+pub fn open_shortcuts(window: &mut Window, cx: &mut App) {
+    let opener = cx
+        .try_global::<Dialogs>()
+        .and_then(|dialogs| dialogs.shortcuts.clone());
+    match opener {
+        Some(opener) => opener(window, cx),
+        None => tracing::warn!("no shortcuts sheet is registered"),
+    }
+}
+
 pub fn open_track_metadata(key: String, editable: bool, window: &mut Window, cx: &mut App) {
     let opener = cx
         .try_global::<Dialogs>()
@@ -104,6 +121,39 @@ pub fn open_folder_picker(playlist_id: String, window: &mut Window, cx: &mut App
         Some(opener) => opener(playlist_id, window, cx),
         None => tracing::warn!("no folder picker is registered"),
     }
+}
+
+/// Ask before edits are thrown away; `go` runs only when the answer is yes.
+pub fn confirm_discard(
+    title: SharedString,
+    description: impl Into<SharedString>,
+    go: impl Fn(&mut Window, &mut App) + 'static,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    use gpui_kit::component::WindowExt as _;
+    use gpui_kit::component::button::ButtonVariant;
+    use gpui_kit::component::dialog::DialogButtonProps;
+
+    let description = description.into();
+    let go = Rc::new(go);
+    window.open_alert_dialog(cx, move |alert, _, _| {
+        let go = go.clone();
+        alert
+            .title(title.clone())
+            .description(description.clone())
+            .button_props(
+                DialogButtonProps::default()
+                    .show_cancel(true)
+                    .ok_text(crate::format::t("discard_changes"))
+                    .ok_variant(ButtonVariant::Danger)
+                    .cancel_text(crate::format::t("cancel")),
+            )
+            .on_ok(move |_, window, cx| {
+                go(window, cx);
+                true
+            })
+    });
 }
 
 /// Ask before something irreversible; `description` should name what goes, not just warn.

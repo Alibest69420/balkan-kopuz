@@ -109,65 +109,86 @@ impl RenderOnce for Tile {
         // A tile is low-cardinality, so its hover is worth tracking: the wash and the zoom need it.
         let pointer = window.use_keyed_state(motion::channel(&self.id, HOVER), cx, |_, _| false);
         let hovered = *pointer.read(cx);
+        let focus = crate::focus::handle(format!("tile-focus:{}", self.id), window, cx);
+        let focused = focus.is_focused(window);
         let wash = motion::color(
             motion::channel(&self.id, WASH),
-            style::white(if hovered { style::RAISED } else { 0. }, cx),
+            style::white(
+                if hovered || focused {
+                    style::RAISED
+                } else {
+                    0.
+                },
+                cx,
+            ),
             window,
             cx,
         );
-        v_flex()
-            .id(motion::channel(&self.id, ROOT))
-            .flex_shrink_0()
-            .gap_3()
-            .p_2()
-            .rounded(style::radius_xl())
-            .bg(wash)
-            .on_hover(move |over, _, cx| {
-                pointer.update(cx, |pointer, cx| {
-                    *pointer = *over;
-                    cx.notify();
-                })
+        let opens = self.route.clone();
+        crate::focus::stop(
+            v_flex().id(motion::channel(&self.id, ROOT)),
+            &focus,
+            move |_, cx| {
+                if let Some(route) = opens.clone() {
+                    Navigator::navigate(route, cx);
+                }
+            },
+        )
+        .relative()
+        .flex_shrink_0()
+        .gap_3()
+        .p_2()
+        .rounded(style::radius_xl())
+        .bg(wash)
+        .on_hover(move |over, _, cx| {
+            pointer.update(cx, |pointer, cx| {
+                *pointer = *over;
+                cx.notify();
             })
-            .when_some(self.route, |tile, route| {
-                tile.on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
-            })
-            .child(
-                div()
-                    .relative()
-                    .child(
-                        Cover::new(self.artwork.as_ref())
-                            .size(self.size)
-                            .rounded(radius)
-                            .placeholder(self.placeholder)
-                            .zoom(motion::channel(&self.id, COVER), hovered)
-                            .zoom_speed(self.zoom_speed),
-                    )
-                    .children(self.overlay),
-            )
-            .child(
-                v_flex()
-                    .w(self.size)
-                    .gap_0p5()
-                    .child(
+        })
+        .when_some(self.route, |tile, route| {
+            tile.on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
+        })
+        .child(
+            div()
+                .relative()
+                .child(
+                    Cover::new(self.artwork.as_ref())
+                        .size(self.size)
+                        .rounded(radius)
+                        .placeholder(self.placeholder)
+                        .zoom(motion::channel(&self.id, COVER), hovered)
+                        .zoom_speed(self.zoom_speed),
+                )
+                .children(self.overlay),
+        )
+        .child(
+            v_flex()
+                .w(self.size)
+                .gap_0p5()
+                .child(
+                    div()
+                        .truncate()
+                        .text_sm()
+                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                        .text_color(cx.theme().foreground)
+                        .when(round, |title| title.text_center())
+                        .child(self.title),
+                )
+                .when_some(self.subtitle, |meta, subtitle| {
+                    meta.child(
                         div()
                             .truncate()
-                            .text_sm()
-                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                            .text_color(cx.theme().foreground)
-                            .when(round, |title| title.text_center())
-                            .child(self.title),
+                            .text_xs()
+                            .text_color(style::white(style::TEXT_SUBTLE, cx))
+                            .when(round, |line| line.text_center())
+                            .child(subtitle),
                     )
-                    .when_some(self.subtitle, |meta, subtitle| {
-                        meta.child(
-                            div()
-                                .truncate()
-                                .text_xs()
-                                .text_color(style::white(style::TEXT_SUBTLE, cx))
-                                .when(round, |line| line.text_center())
-                                .child(subtitle),
-                        )
-                    }),
-            )
+                }),
+        )
+        .when(focused, |tile| {
+            tile.child(crate::focus::ring(style::radius_xl(), cx))
+        })
     }
 }
 

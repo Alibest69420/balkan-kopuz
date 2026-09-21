@@ -3,6 +3,7 @@
 pub mod cards;
 pub mod cover;
 pub mod dialogs;
+pub mod focus;
 pub mod format;
 pub mod header;
 pub mod icons;
@@ -18,6 +19,7 @@ pub mod track_list;
 
 pub use cards::{Tile, album_tile, artist_tile, playlist_tile, tile_grid};
 pub use cover::Cover;
+pub use focus::{Axis, Roving, Step};
 pub use format::{duration, t, t_with, text, total_duration};
 pub use header::{DetailHeader, PageHeader, detail_header_skeleton};
 pub use schema_form::{FieldChanged, SchemaForm};
