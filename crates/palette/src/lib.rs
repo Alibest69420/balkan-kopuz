@@ -716,11 +716,11 @@ impl Palette {
                         hint: None,
                         act: Act::Go(Route::Artist {
                             name: artist.name.clone().into(),
-                            channel: None,
+                            artist_id: artist.id.clone().map(Into::into),
                         }),
                         target: Some(Target::Artist {
                             name: artist.name.clone().into(),
-                            channel: None,
+                            artist_id: artist.id.clone().map(Into::into),
                         }),
                         faded: false,
                     },

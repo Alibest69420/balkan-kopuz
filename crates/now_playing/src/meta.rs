@@ -98,6 +98,12 @@ impl NowPlaying {
                 .map(|track| track.artist.clone())
                 .unwrap_or_default(),
         );
+        // `NowPlaying` carries no credits -- it is pushed on every state change
+        // -- so the id comes from the queue row the same track already has.
+        let artist_route = QueueModel::global(cx)
+            .read(cx)
+            .current()
+            .map(Route::artist_of);
         let size = cover_size(cx);
         let muted = style::slate_400(cx);
         let lifted = style::white(0.7, cx);
@@ -151,16 +157,10 @@ impl NowPlaying {
                                     .hover(move |label| label.text_color(lifted))
                             })
                             .on_click({
-                                let artist = artist.clone();
+                                let artist_route = artist_route.clone();
                                 move |_, _, cx| {
-                                    if !artist.is_empty() {
-                                        Navigator::navigate(
-                                            Route::Artist {
-                                                name: artist.clone(),
-                                                channel: None,
-                                            },
-                                            cx,
-                                        );
+                                    if let Some(route) = artist_route.clone() {
+                                        Navigator::navigate(route, cx);
                                     }
                                 }
                             })

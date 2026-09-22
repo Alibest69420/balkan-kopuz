@@ -103,7 +103,7 @@ fn album_card(album: &AlbumInfo, playing: &Playing, cx: &App) -> AnyElement {
 fn artist_card(name: &SharedString, playing: &Playing, cx: &App) -> AnyElement {
     let target = Target::Artist {
         name: name.clone(),
-        channel: None,
+        artist_id: None,
     };
     let tile = Tile::new(
         SharedString::from(format!("result-artist-{name}")),
@@ -114,7 +114,7 @@ fn artist_card(name: &SharedString, playing: &Playing, cx: &App) -> AnyElement {
     .round(true)
     .route(Route::Artist {
         name: name.clone(),
-        channel: None,
+        artist_id: None,
     });
     div()
         .id(SharedString::from(format!("result-artist-slot-{name}")))

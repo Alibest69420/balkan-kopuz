@@ -426,7 +426,7 @@ impl Shelves {
     fn artist_tile(&self, shelf: usize, item: &CatalogItem) -> AnyElement {
         let target = Target::Artist {
             name: item.title.clone().into(),
-            channel: Some(item.id.clone().into()),
+            artist_id: Some(item.id.clone().into()),
         };
         div()
             .id(SharedString::from(format!(

@@ -575,7 +575,7 @@ impl AlbumDetail {
         let name = SharedString::from(artist.to_string());
         let route = Route::Artist {
             name: name.clone(),
-            channel: None,
+            artist_id: None,
         };
         let target = if self.hovered == Some(id) {
             cx.theme().foreground
@@ -849,7 +849,7 @@ impl AlbumDetail {
         };
         let artist_route = Route::Artist {
             name: view.artist.clone(),
-            channel: None,
+            artist_id: view.artist_id.clone().map(Into::into),
         };
         let browse_id = view.browse_id.clone();
         let first_key = self.rows.first().map(|row| row.key.clone());
@@ -1039,6 +1039,7 @@ struct RemoteView {
     year: Option<SharedString>,
     artwork: Option<ArtworkRef>,
     browse_id: Option<String>,
+    artist_id: Option<String>,
 }
 
 impl RemoteView {
@@ -1057,6 +1058,9 @@ impl RemoteView {
                     .clone()
                     .or_else(|| remote.and_then(|detail| detail.artwork.clone())),
                 browse_id: remote.map(|detail| detail.id.clone()),
+                artist_id: remote
+                    .and_then(|detail| detail.artist_id.clone())
+                    .or_else(|| album.artist_id.clone()),
             }),
             (None, Some(detail)) => Some(Self {
                 id: detail.id.clone(),
@@ -1065,6 +1069,7 @@ impl RemoteView {
                 year: detail.year.clone().map(SharedString::from),
                 artwork: detail.artwork.clone(),
                 browse_id: Some(detail.id.clone()),
+                artist_id: detail.artist_id.clone(),
             }),
             (None, None) => None,
         }

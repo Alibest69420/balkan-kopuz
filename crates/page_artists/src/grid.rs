@@ -276,7 +276,7 @@ fn tile(entry: &ArtistEntry, window: &mut Window, cx: &mut App) -> impl IntoElem
     );
     let route = Route::Artist {
         name: name.clone(),
-        channel: None,
+        artist_id: entry.id.clone().map(Into::into),
     };
     v_flex()
         .id(SharedString::from(format!("artist-tile-{}", entry.name)))
@@ -316,6 +316,7 @@ fn tile(entry: &ArtistEntry, window: &mut Window, cx: &mut App) -> impl IntoElem
 /// One artist as a row, for the list view.
 fn row(entry: &ArtistEntry, cx: &App) -> impl IntoElement {
     let name = SharedString::from(entry.name.clone());
+    let artist_id = entry.id.clone().map(SharedString::from);
     h_flex()
         .id(SharedString::from(format!("artist-row-{}", entry.name)))
         .gap_3()
@@ -336,7 +337,7 @@ fn row(entry: &ArtistEntry, cx: &App) -> impl IntoElement {
             Navigator::navigate(
                 Route::Artist {
                     name: name.clone(),
-                    channel: None,
+                    artist_id: artist_id.clone(),
                 },
                 cx,
             )

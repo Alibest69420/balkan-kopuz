@@ -472,6 +472,7 @@ impl TrackList {
             (index + 1).to_string()
         };
         let artist = SharedString::from(track.artist.clone());
+        let artist_route = Route::artist_of(track);
         let album = SharedString::from(track.album.clone());
         let album_id = track.album_id.clone();
         let title = SharedString::from(track.title.clone());
@@ -687,17 +688,11 @@ impl TrackList {
                     .text_color(style::slate_500(cx))
                     .hover(|cell| cell.text_color(style::slate_400(cx)))
                     .on_click({
-                        let artist = artist.clone();
+                        let artist_route = artist_route.clone();
                         move |_, _, cx| {
                             // Without this the row's own click would play the track too.
                             cx.stop_propagation();
-                            Navigator::navigate(
-                                Route::Artist {
-                                    name: artist.clone(),
-                                    channel: None,
-                                },
-                                cx,
-                            )
+                            Navigator::navigate(artist_route.clone(), cx)
                         }
                     })
                     .tooltip({

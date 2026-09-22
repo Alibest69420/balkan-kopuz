@@ -120,11 +120,11 @@ impl Library {
             playing,
             target: Target::Artist {
                 name: artist.name.clone().into(),
-                channel: None,
+                artist_id: artist.id.clone().map(Into::into),
             },
             route: Route::Artist {
                 name: artist.name.clone().into(),
-                channel: None,
+                artist_id: artist.id.clone().map(Into::into),
             },
         }
     }

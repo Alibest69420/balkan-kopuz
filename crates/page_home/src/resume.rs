@@ -34,10 +34,7 @@ pub(crate) fn banner(window: &mut Window, cx: &mut Context<Home>) -> Option<AnyE
     let key = SharedString::new_static("home-continue");
     let route = match track.album_id.is_empty() {
         false => Route::Album(track.album_id.clone().into()),
-        true => Route::Artist {
-            name: artist.clone(),
-            channel: None,
-        },
+        true => Route::artist_of(track),
     };
     let target = Target::track(track.key.clone(), track.title.clone());
     let playing = PlayerModel::global(cx).read(cx).is_playing();

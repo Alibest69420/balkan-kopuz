@@ -16,10 +16,10 @@ pub enum Target {
         id: SharedString,
         title: SharedString,
     },
-    /// `channel` is set when the source presents the artist remotely.
+    /// `artist_id` is set when the click carried the source's own id.
     Artist {
         name: SharedString,
-        channel: Option<SharedString>,
+        artist_id: Option<SharedString>,
     },
     Playlist {
         id: SharedString,

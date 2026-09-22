@@ -21,10 +21,10 @@ pub enum Route {
     Albums,
     Album(SharedString),
     Artists,
-    /// `channel` routes to the remote profile when the source presents artists remotely.
+    /// `artist_id` is the source's own, where the click carried one.
     Artist {
         name: SharedString,
-        channel: Option<SharedString>,
+        artist_id: Option<SharedString>,
     },
     Playlists,
     PlaylistFolder(SharedString),
@@ -39,6 +39,21 @@ pub enum Route {
 }
 
 impl Route {
+    /// The artist page for a track's billed credit, carrying the source's own
+    /// id where the row had one.
+    pub fn artist_of(track: &api::TrackInfo) -> Route {
+        match track.primary_credit() {
+            Some(credit) => Route::Artist {
+                name: credit.name.clone().into(),
+                artist_id: credit.id.clone().map(Into::into),
+            },
+            None => Route::Artist {
+                name: track.artist.clone().into(),
+                artist_id: None,
+            },
+        }
+    }
+
     /// The sidebar item this route lights up.
     pub fn root(&self) -> Route {
         match self {
@@ -120,7 +135,7 @@ impl Route {
             | Route::Artists
             | Route::Favorites => "library",
             // A remote artist is reached through Discover, a local one through the library.
-            Route::Artist { channel, .. } => match channel {
+            Route::Artist { artist_id, .. } => match artist_id {
                 Some(_) => "discover",
                 None => "library",
             },
@@ -342,7 +357,7 @@ mod tests {
         assert_eq!(
             Route::Artist {
                 name: "x".into(),
-                channel: None
+                artist_id: None
             }
             .destination_of(),
             Some("library")
@@ -350,7 +365,7 @@ mod tests {
         assert_eq!(
             Route::Artist {
                 name: "x".into(),
-                channel: Some("UC".into())
+                artist_id: Some("UC".into())
             }
             .destination_of(),
             Some("discover")

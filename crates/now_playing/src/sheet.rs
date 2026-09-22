@@ -13,7 +13,7 @@ use gpui_kit::{
     point, px, relative, rems,
 };
 use store::layout::{Backdrop, Side};
-use store::{Chrome, ConfigModel, FavoritesModel, Navigator, Route, SourcesModel};
+use store::{Chrome, ConfigModel, FavoritesModel, Navigator, QueueModel, Route, SourcesModel};
 use widgets::format::t;
 use widgets::{Cover, icons, menus, motion, style};
 
@@ -201,6 +201,15 @@ impl NowPlaying {
         let favorite = FavoritesModel::global(cx).read(cx).is_favorite(&track.key);
         let key = track.key.clone();
         let artist = track.artist.clone();
+        // `NowPlaying` carries no credits, so the id comes from the queue row.
+        let artist_route = QueueModel::global(cx)
+            .read(cx)
+            .current()
+            .map(Route::artist_of)
+            .unwrap_or_else(|| Route::Artist {
+                name: artist.clone().into(),
+                artist_id: None,
+            });
         let album = SharedString::from(track.album.clone());
         let heart = motion::color(
             "sheet-heart",
@@ -249,13 +258,7 @@ impl NowPlaying {
                                 }
                                 Chrome::global(cx)
                                     .update(cx, |chrome, cx| chrome.set_sheet(false, cx));
-                                Navigator::navigate(
-                                    Route::Artist {
-                                        name: artist.clone().into(),
-                                        channel: None,
-                                    },
-                                    cx,
-                                );
+                                Navigator::navigate(artist_route.clone(), cx);
                             }),
                     )
                     .when(!album.is_empty(), |row| {

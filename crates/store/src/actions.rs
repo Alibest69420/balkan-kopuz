@@ -99,7 +99,7 @@ fn remember_origin(context: &QueueContext, cx: &mut App) {
         QueueContext::Album { id } => Some(crate::Route::Album(id.clone().into())),
         QueueContext::Artist { name } => Some(crate::Route::Artist {
             name: name.clone().into(),
-            channel: None,
+            artist_id: None,
         }),
         QueueContext::Genre { name } => Some(crate::Route::Genre(name.clone().into())),
         QueueContext::Playlist { id } | QueueContext::PlaylistRadio { id } => {

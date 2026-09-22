@@ -22,6 +22,8 @@ pub fn joined_credit_primary(norm: &str) -> Option<&str> {
 pub struct ArtistEntry {
     pub name: String,
     pub artwork: Option<ArtworkRef>,
+    /// The source's own id, where a listing linked this name to one.
+    pub id: Option<String>,
 }
 
 /// Every credited name, deduped by exact spelling, minus joined credits whose primary stands alone.
@@ -96,11 +98,16 @@ pub fn grid_entries(
         *album_counts.entry(normalize(&album.artist)).or_default() += 1;
     }
 
+    let ids: HashMap<String, String> = artists
+        .iter()
+        .filter_map(|artist| Some((normalize(&artist.name), artist.id.clone()?)))
+        .collect();
     let mut keyed: Vec<(String, ArtistEntry)> = display
         .into_iter()
         .map(|(norm, name)| {
             let artwork = photos.get(&norm).cloned();
-            (norm, ArtistEntry { name, artwork })
+            let id = ids.get(&norm).cloned();
+            (norm, ArtistEntry { name, artwork, id })
         })
         .collect();
     keyed.sort_by(|(left, _), (right, _)| {

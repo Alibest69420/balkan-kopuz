@@ -245,10 +245,7 @@ fn track_tile(scope: &str, track: &TrackInfo) -> Tile {
     // Without an album row there is no album page to open, so the tile goes to the artist.
     let route = match track.album_id.is_empty() {
         false => Route::Album(track.album_id.clone().into()),
-        true => Route::Artist {
-            name: track.artist.clone().into(),
-            channel: None,
-        },
+        true => Route::artist_of(track),
     };
     Tile {
         key: SharedString::from(format!("{scope}-{}", track.uid)),
@@ -335,11 +332,11 @@ fn top_artists(
             artwork: photos.get(&artist_key(&artist)).map(|art| (*art).clone()),
             route: Route::Artist {
                 name: artist.clone().into(),
-                channel: None,
+                artist_id: None,
             },
             target: Target::Artist {
                 name: artist.into(),
-                channel: None,
+                artist_id: None,
             },
             play: Play::None,
             round: true,

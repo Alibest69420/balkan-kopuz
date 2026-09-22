@@ -76,16 +76,23 @@ fn build(route: &Route, window: &mut Window, cx: &mut Context<Shell>) -> AnyView
             .new(|cx| page_albums::AlbumDetail::new(id, window, cx))
             .into(),
         // A source that presents artists itself gets its own profile; with only a name the daemon resolves one.
-        Route::Artist { name, channel } => {
+        Route::Artist { name, artist_id } => {
             let remote = store::SourcesModel::global(cx)
                 .read(cx)
                 .capabilities()
                 .artists
                 == api::ArtistPresentation::Remote;
-            match remote || channel.is_some() {
+            // What the source presents decides the page on its own: a stale id
+            // on a library source would aim it at an unsupported fetch.
+            match remote {
                 true => cx
                     .new(|cx| {
-                        discover::CatalogArtist::new(channel.unwrap_or_default(), name, window, cx)
+                        discover::CatalogArtist::new(
+                            artist_id.unwrap_or_default(),
+                            name,
+                            window,
+                            cx,
+                        )
                     })
                     .into(),
                 false => cx

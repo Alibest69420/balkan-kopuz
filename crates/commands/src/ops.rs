@@ -172,13 +172,7 @@ pub fn go_to_artist(target: &Target, cx: &mut App) {
         if track.artist.is_empty() {
             return;
         }
-        Navigator::navigate(
-            Route::Artist {
-                name: track.artist.into(),
-                channel: None,
-            },
-            cx,
-        );
+        Navigator::navigate(Route::artist_of(&track), cx);
     });
 }
 

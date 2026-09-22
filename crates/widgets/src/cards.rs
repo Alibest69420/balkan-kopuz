@@ -210,7 +210,7 @@ pub fn artist_tile(artist: &ArtistInfo) -> Tile {
         .zoom_speed(motion::SLOWEST)
         .route(Route::Artist {
             name: artist.name.clone().into(),
-            channel: None,
+            artist_id: artist.id.clone().map(Into::into),
         })
 }
 
