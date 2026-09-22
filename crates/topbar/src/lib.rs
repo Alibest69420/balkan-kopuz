@@ -455,7 +455,15 @@ impl TopBar {
 impl Render for TopBar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("topbar");
-        let current = Navigator::global(cx).read(cx).current().destination_of();
+        let artists_remote = store::SourcesModel::global(cx)
+            .read(cx)
+            .capabilities()
+            .artists
+            == api::ArtistPresentation::Remote;
+        let current = Navigator::global(cx)
+            .read(cx)
+            .current()
+            .destination_of(artists_remote);
         let strip = self.strip(current, window, cx);
         let search = self.search(window, cx);
         let history = self.history(cx);

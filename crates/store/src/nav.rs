@@ -125,7 +125,12 @@ impl Route {
     }
 
     /// The destination this route lights up, detail pages included.
-    pub fn destination_of(&self) -> Option<&'static str> {
+    ///
+    /// `artists_remote` is [`api::ArtistPresentation::Remote`], the same fact
+    /// the router opens the page on, so the lit destination is the page that
+    /// actually opened. Holding an id says nothing: every click carries one
+    /// where its source issued one, library sources included.
+    pub fn destination_of(&self, artists_remote: bool) -> Option<&'static str> {
         Some(match self {
             Route::Home => "home",
             Route::Library
@@ -134,10 +139,9 @@ impl Route {
             | Route::Album(_)
             | Route::Artists
             | Route::Favorites => "library",
-            // A remote artist is reached through Discover, a local one through the library.
-            Route::Artist { artist_id, .. } => match artist_id {
-                Some(_) => "discover",
-                None => "library",
+            Route::Artist { .. } => match artists_remote {
+                true => "discover",
+                false => "library",
             },
             Route::Discover
             | Route::DiscoverPlaylist { .. }
@@ -346,33 +350,40 @@ mod tests {
         // Favorites is the exception: it is a filter on the library, so it lights the library.
         for name in DESTINATIONS.iter().filter(|name| **name != "favorites") {
             let route = Route::destination(name).expect("a destination route");
-            assert_eq!(route.destination_of(), Some(*name));
+            assert_eq!(route.destination_of(false), Some(*name));
         }
-        assert_eq!(Route::Favorites.destination_of(), Some("library"));
+        assert_eq!(Route::Favorites.destination_of(false), Some("library"));
+    }
+
+    /// An artist lights the destination the page actually opened under, which
+    /// is what the source presents. Every click carries an id where its source
+    /// issued one, so holding one says nothing about which page opens.
+    #[test]
+    fn an_artist_lights_up_by_presentation_not_by_holding_an_id() {
+        let with_id = Route::Artist {
+            name: "x".into(),
+            artist_id: Some("a-1".into()),
+        };
+        let bare = Route::Artist {
+            name: "x".into(),
+            artist_id: None,
+        };
+
+        assert_eq!(with_id.destination_of(true), Some("discover"));
+        assert_eq!(bare.destination_of(true), Some("discover"));
+        assert_eq!(with_id.destination_of(false), Some("library"));
+        assert_eq!(bare.destination_of(false), Some("library"));
     }
 
     #[test]
     fn a_detail_page_lights_the_destination_it_came_from() {
-        assert_eq!(Route::Album("x".into()).destination_of(), Some("library"));
         assert_eq!(
-            Route::Artist {
-                name: "x".into(),
-                artist_id: None
-            }
-            .destination_of(),
+            Route::Album("x".into()).destination_of(false),
             Some("library")
         );
+        assert_eq!(Route::Search.destination_of(false), Some("discover"));
         assert_eq!(
-            Route::Artist {
-                name: "x".into(),
-                artist_id: Some("UC".into())
-            }
-            .destination_of(),
-            Some("discover")
-        );
-        assert_eq!(Route::Search.destination_of(), Some("discover"));
-        assert_eq!(
-            Route::Playlist("x".into()).destination_of(),
+            Route::Playlist("x".into()).destination_of(false),
             Some("playlists")
         );
     }
@@ -389,7 +400,7 @@ mod tests {
     #[test]
     fn a_filtered_library_still_lights_the_library() {
         let route = Route::LibraryView("f=tracks&fav=1".into());
-        assert_eq!(route.destination_of(), Some("library"));
+        assert_eq!(route.destination_of(false), Some("library"));
         assert_eq!(route.root(), Route::Library);
         assert_eq!(
             route.library_view().map(|view| view.to_string()),
@@ -399,15 +410,18 @@ mod tests {
 
     #[test]
     fn settings_is_not_a_destination() {
-        assert_eq!(Route::Settings { section: None }.destination_of(), None);
+        assert_eq!(
+            Route::Settings { section: None }.destination_of(false),
+            None
+        );
     }
 
     #[test]
     fn a_redirected_route_never_becomes_the_destination_it_lights() {
         // Favorites lights Library and lands on it, so the bar and the page agree.
         assert_eq!(
-            Route::Favorites.clone().redirect().destination_of(),
-            Route::Favorites.destination_of()
+            Route::Favorites.clone().redirect().destination_of(false),
+            Route::Favorites.destination_of(false)
         );
     }
 }
