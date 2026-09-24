@@ -113,7 +113,8 @@ impl RenderOnce for Cover {
             .justify_center()
             .bg(style::white(style::RAISED, cx))
             .map(|frame| match &self.artwork {
-                Some(artwork) => frame.child(
+                Some(artwork) => frame.child({
+                    let faint = style::white(style::TEXT_FAINT, cx);
                     img(store::artwork_source(artwork, self.hq))
                         .size(drawn)
                         .flex_shrink_0()
@@ -126,9 +127,10 @@ impl RenderOnce for Cover {
                             Icon::default()
                                 .path(placeholder)
                                 .size(glyph)
+                                .text_color(faint)
                                 .into_any_element()
-                        }),
-                ),
+                        })
+                }),
                 None => frame.child(
                     Icon::default()
                         .path(self.placeholder)

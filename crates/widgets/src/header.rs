@@ -211,10 +211,10 @@ impl RenderOnce for DetailHeader {
                 v_flex()
                     .flex_1()
                     .min_w_0()
-                    .gap_4()
-                    .children(self.eyebrow)
+                    .children(self.eyebrow.map(|eyebrow| div().mb_2().child(eyebrow)))
                     .child(
                         div()
+                            .mb_6()
                             .line_clamp(3)
                             .text_size(rems(4.5))
                             .font_weight(FontWeight::SEMIBOLD)
@@ -223,7 +223,7 @@ impl RenderOnce for DetailHeader {
                     .when(!meta.is_empty(), |block| {
                         block.child(
                             h_flex()
-                                .gap_2()
+                                .gap_6()
                                 .items_center()
                                 .flex_wrap()
                                 .text_color(style::slate_400(cx))
@@ -234,17 +234,18 @@ impl RenderOnce for DetailHeader {
                                     ))
                                 })),
                         )
-                    })
-                    .when(!self.actions.is_empty(), |block| {
-                        block.child(
-                            h_flex()
-                                .gap_4()
-                                .items_center()
-                                .flex_wrap()
-                                .children(self.actions),
-                        )
                     }),
             )
+            // Upstream the actions are the row's third column, at its bottom-right, not under the facts.
+            .when(!self.actions.is_empty(), |row| {
+                row.child(
+                    h_flex()
+                        .flex_shrink_0()
+                        .gap_4()
+                        .items_center()
+                        .children(self.actions),
+                )
+            })
     }
 }
 
