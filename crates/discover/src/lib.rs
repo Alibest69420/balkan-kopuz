@@ -57,13 +57,13 @@ fn search_fetch(query: String) -> impl Fn(Arc<dyn KopuzApi>) -> Answer + 'static
     }
 }
 
-/// `text-sm font-semibold text-white/50`: the label over a band.
+/// `text-xl font-semibold text-white/80`: the heading over a band of results.
 fn band_label(title: SharedString, cx: &App) -> Div {
     div()
         .flex_shrink_0()
-        .text_xs()
+        .text_xl()
         .font_weight(FontWeight::SEMIBOLD)
-        .text_color(style::white(style::TEXT_MUTED, cx))
+        .text_color(style::white(0.8, cx))
         .child(title)
 }
 
@@ -581,7 +581,7 @@ impl Discover {
                 .children(albums)
                 .children(artists)
                 .when(found > 0, |body| {
-                    body.child(band_label(t("tracks"), cx).mb_2())
+                    body.child(band_label(t("tracks"), cx).mb_4())
                         .child(div().flex_1().min_h_0().pb_8().child(self.tracks.clone()))
                 })
                 .into_any_element()

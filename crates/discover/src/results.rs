@@ -132,13 +132,13 @@ fn strip(id: &'static str, title: SharedString, cards: Vec<AnyElement>, cx: &App
     gpui_kit::component::v_flex()
         .w_full()
         .flex_shrink_0()
-        .gap_2()
+        .gap_4()
         .mb_6()
         .child(
             div()
-                .text_xs()
+                .text_xl()
                 .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                .text_color(style::white(style::TEXT_MUTED, cx))
+                .text_color(style::white(0.8, cx))
                 .child(title),
         )
         .child(
