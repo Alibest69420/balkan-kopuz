@@ -302,6 +302,7 @@ impl Settings {
             .flex_none()
             .mb_4()
             .overflow_x_scroll()
+            .restrict_scroll_to_axis()
             .border_b_1()
             .border_color(style::white(FAN_BORDER, cx))
             .bg(style::black(FAN_BG, cx))
