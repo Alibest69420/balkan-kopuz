@@ -14,7 +14,7 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled as _, WeakEntity, Window, div, px, uniform_list,
 };
 use store::layout::{Column, Density};
-use store::{Target, actions};
+use store::{Navigator, Route, Target, actions};
 use widgets::format::{duration, t};
 use widgets::track_list::{TrackDrag, columns as frame};
 use widgets::{Cover, icons, menus, motion, style};
@@ -347,8 +347,8 @@ impl Library {
                 .justify_end()
                 .on_click(|_, _, cx| cx.stop_propagation())
                 .when(!menu_open, |cell| {
-                    cell.opacity(widgets::focus::RESTING)
-                        .group_hover(ROW_GROUP, |dots| dots.opacity(1.))
+                    cell.invisible()
+                        .group_hover(ROW_GROUP, |dots| dots.visible())
                 })
                 .child(
                     Button::new(("library-row-dots", slot))
@@ -438,8 +438,24 @@ impl Library {
                 )
                 .into_any_element()
             }
-            "artist" => text_cell(cell, slot, "library-artist", &track.artist, cx),
-            "album" => text_cell(cell, slot, "library-album", &track.album, cx),
+            "artist" => text_cell(
+                cell,
+                slot,
+                "library-artist",
+                &track.artist,
+                style::TEXT_SUBTLE,
+                Some(Route::artist_of(track)),
+                cx,
+            ),
+            "album" => text_cell(
+                cell,
+                slot,
+                "library-album",
+                &track.album,
+                style::TEXT_DIM,
+                (!track.album_id.is_empty()).then(|| Route::Album(track.album_id.clone().into())),
+                cx,
+            ),
             "plays" => cell
                 .text_xs()
                 .text_color(style::white(style::TEXT_DIM, cx))
@@ -452,6 +468,7 @@ impl Library {
                 .into_any_element(),
             _ => cell
                 .text_xs()
+                .font_family(SharedString::new_static("monospace"))
                 .text_color(style::white(style::TEXT_DIM, cx))
                 .child(
                     track
@@ -476,20 +493,23 @@ impl Library {
             .text_sm()
             .font_weight(FontWeight::MEDIUM)
             .text_color(style::white(style::TEXT_MUTED, cx))
-            .child(
-                frame::fixed(frame::INDEX).justify_center().child(
-                    Checkbox::new("library-select-all")
-                        .checked(all_picked)
-                        .accessibility_label(t("select_all_tracks"))
-                        .on_click(cx.listener(move |this, _: &bool, _, cx| {
-                            match this.selection.is_everything() {
-                                true => this.selection.clear(),
-                                false => this.selection.select_everything(),
-                            }
-                            cx.notify();
-                        })),
-                ),
-            );
+            .child(frame::fixed(frame::INDEX).justify_center().map(|cell| {
+                match self.selection.is_active() {
+                    true => cell.child(
+                        Checkbox::new("library-select-all")
+                            .checked(all_picked)
+                            .accessibility_label(t("select_all_tracks"))
+                            .on_click(cx.listener(move |this, _: &bool, _, cx| {
+                                match this.selection.is_everything() {
+                                    true => this.selection.clear(),
+                                    false => this.selection.select_everything(),
+                                }
+                                cx.notify();
+                            })),
+                    ),
+                    false => cell.child("#"),
+                }
+            }));
         for (column, spec) in columns::visible(&self.columns) {
             header = header.child(self.header_cell(column, spec, &sort, window, cx));
         }
@@ -522,11 +542,11 @@ impl Library {
             window,
             cx,
         );
-        // Ascending, descending, and a hint on anything that has never been sorted by.
+        // The active column says which way; any other shows its hint only under the pointer.
         let glyph = match (active, sort.descending) {
-            (true, false) => icons::CHEVRON_UP,
-            (true, true) => icons::CHEVRON_DOWN,
-            (false, _) => icons::SORT,
+            (true, false) => Some(icons::CHEVRON_UP),
+            (true, true) => Some(icons::CHEVRON_DOWN),
+            (false, _) => lit.then_some(icons::SORT),
         };
         let label = match spec.id {
             "duration" => icons::icon(icons::CLOCK).xsmall().into_any_element(),
@@ -574,7 +594,7 @@ impl Library {
                 }
             }))
             .child(label)
-            .when(sortable, |cell| {
+            .when_some(glyph.filter(|_| sortable), |cell, glyph| {
                 cell.child(
                     div()
                         .ml_1()
@@ -684,12 +704,28 @@ fn sized(column: &Column, spec: &'static Spec) -> Div {
     }
 }
 
-fn text_cell(cell: Div, slot: usize, id: &'static str, value: &str, cx: &App) -> AnyElement {
+fn text_cell(
+    cell: Div,
+    slot: usize,
+    id: &'static str,
+    value: &str,
+    ink: f32,
+    route: Option<Route>,
+    cx: &App,
+) -> AnyElement {
     let value = SharedString::from(value.to_string());
     cell.id((id, slot))
         .text_sm()
-        .text_color(style::slate_500(cx))
-        .hover(|cell| cell.text_color(style::slate_400(cx)))
+        .text_color(style::white(ink, cx))
+        .when_some(route, |cell, route| {
+            cell.cursor_pointer()
+                .hover(|cell| cell.underline())
+                .on_click(move |_, _, cx| {
+                    // Without this the row's own click would play the track too.
+                    cx.stop_propagation();
+                    Navigator::navigate(route.clone(), cx);
+                })
+        })
         .tooltip({
             let value = value.clone();
             move |window, cx| Tooltip::new(value.clone()).build(window, cx)
