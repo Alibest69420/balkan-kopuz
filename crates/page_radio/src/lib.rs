@@ -13,8 +13,9 @@ use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _,
-    IntoElement, ParentElement as _, Pixels, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement as _, Styled, Subscription, Task, Window, div, px, rems,
+    IntoElement, ListAlignment, ListOffset, ListState, ParentElement as _, Pixels, Render,
+    SharedString, StatefulInteractiveElement as _, Styled, Subscription, Task, Window, div, list,
+    px, rems,
 };
 use link::Link;
 use store::{Notices, Query, actions};
@@ -83,7 +84,9 @@ pub struct Radio {
     expanded: HashSet<String>,
     // The card under the pointer, which its wash tweens toward.
     hovered_card: Option<SharedString>,
-    scroll: ScrollHandle,
+    list: ListState,
+    keys: Vec<SharedString>,
+    lines: Vec<Line>,
     _debounce: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
@@ -119,7 +122,9 @@ impl Radio {
             pinned: HashSet::new(),
             expanded: HashSet::new(),
             hovered_card: None,
-            scroll: ScrollHandle::new(),
+            list: ListState::new(0, ListAlignment::Top, px(400.)),
+            keys: Vec::new(),
+            lines: Vec::new(),
             _debounce: None,
             _subscriptions: subscriptions,
         }
@@ -260,6 +265,7 @@ impl Radio {
                         .on_click(cx.listener(move |this, _, _, cx| {
                             cx.stop_propagation();
                             this.expanded.remove(&id);
+                            this.list.remeasure();
                             cx.notify();
                         }))
                         .into_any_element(),
@@ -277,6 +283,7 @@ impl Radio {
                         .on_click(cx.listener(move |this, _, _, cx| {
                             cx.stop_propagation();
                             this.expanded.insert(id.clone());
+                            this.list.remeasure();
                             cx.notify();
                         }))
                         .into_any_element(),
@@ -510,42 +517,116 @@ impl Radio {
             .child(label)
     }
 
-    fn selected(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+    /// What the list shows, in order: the pinned stations, then the directory or its state.
+    fn lines(&self, cx: &App) -> (Vec<SharedString>, Vec<Line>) {
         let query = self.query.trim().to_lowercase();
-        let stations: Vec<RadioStationInfo> = self
+        let mut keys = Vec::new();
+        let mut lines = Vec::new();
+        let pinned: Vec<RadioStationInfo> = self
             .stations
             .read(cx)
-            .value()?
-            .iter()
-            .filter(|station| self.pinned.contains(&station.id) && matches(station, &query))
-            .cloned()
-            .collect();
-        if stations.is_empty() {
-            return None;
+            .value()
+            .map(|stations| {
+                stations
+                    .iter()
+                    .filter(|station| self.pinned.contains(&station.id) && matches(station, &query))
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        if !pinned.is_empty() {
+            keys.push(SharedString::new_static("selected"));
+            lines.push(Line::SelectedHeading);
+            let last = pinned.len() - 1;
+            for (at, station) in pinned.into_iter().enumerate() {
+                keys.push(SharedString::from(format!("pinned-{}", station.id)));
+                lines.push(Line::Pinned(station, at == last));
+            }
         }
-        Some(
-            v_flex()
-                .w_full()
-                .child(self.heading(t("radio_selected"), cx))
-                .child(
-                    v_flex().w_full().gap_3().mb_8().children(
-                        stations
-                            .iter()
-                            .map(|station| self.pinned_row(station, window, cx))
-                            .collect::<Vec<_>>(),
-                    ),
-                )
-                .into_any_element(),
-        )
+        keys.push(SharedString::new_static("directory"));
+        lines.push(Line::DirectoryHeading);
+        let directory = self.directory.read(cx);
+        let status = if directory.is_loading() || !directory.is_settled() {
+            Some(Status::Loading)
+        } else if let Some(error) = directory.error() {
+            Some(Status::Failed(SharedString::from(error.to_string())))
+        } else if directory.value().is_none_or(|stations| stations.is_empty()) {
+            Some(Status::Empty)
+        } else {
+            None
+        };
+        match status {
+            Some(status) => {
+                keys.push(SharedString::new_static("status"));
+                lines.push(Line::Status(status));
+            }
+            None => {
+                for station in directory.value().cloned().unwrap_or_default() {
+                    keys.push(SharedString::from(format!("station-{}", station.id)));
+                    lines.push(Line::Station(station));
+                }
+            }
+        }
+        (keys, lines)
     }
 
-    fn browser(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let query = self.directory.read(cx);
-        let loading = query.is_loading() || !query.is_settled();
-        let error = query.error().map(|error| error.to_string());
-        let results = query.value().cloned().unwrap_or_default();
-        if loading {
-            return h_flex()
+    /// Point the list at new lines, keeping whichever line was at the top where it was.
+    fn adopt_lines(&mut self, keys: Vec<SharedString>, lines: Vec<Line>) {
+        self.lines = lines;
+        if keys == self.keys {
+            return;
+        }
+        let top = self.list.logical_scroll_top();
+        let anchor = self.keys.get(top.item_ix).cloned();
+        self.list.reset(keys.len());
+        if let Some(item_ix) = anchor.and_then(|anchor| keys.iter().position(|key| *key == anchor))
+        {
+            self.list.scroll_to(ListOffset {
+                item_ix,
+                offset_in_item: top.offset_in_item,
+            });
+        }
+        self.keys = keys;
+    }
+
+    fn line(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let Some(line) = self.lines.get(index).cloned() else {
+            return div().into_any_element();
+        };
+        match line {
+            Line::SelectedHeading => self.heading(t("radio_selected"), cx).into_any_element(),
+            Line::Pinned(station, last) => div()
+                .w_full()
+                .map(|slot| match last {
+                    true => slot.pb_8(),
+                    false => slot.pb_3(),
+                })
+                .child(self.pinned_row(&station, window, cx))
+                .into_any_element(),
+            Line::DirectoryHeading => {
+                let searching = !self.query.trim().is_empty();
+                h_flex()
+                    .w_full()
+                    .items_end()
+                    .justify_between()
+                    .child(self.heading(
+                        if searching {
+                            t("radio_search_results")
+                        } else {
+                            t("radio_top_stations")
+                        },
+                        cx,
+                    ))
+                    .child(
+                        div()
+                            .pb_3()
+                            .text_size(style::text_10())
+                            .text_color(style::white(0.25, cx))
+                            .child(t("radio_powered_by")),
+                    )
+                    .into_any_element()
+            }
+            Line::Status(Status::Loading) => h_flex()
                 .w_full()
                 .justify_center()
                 .items_center()
@@ -555,38 +636,46 @@ impl Radio {
                 .text_color(style::white(style::TEXT_DIM, cx))
                 .child(Spinner::new())
                 .child(t("radio_loading_stations"))
-                .into_any_element();
-        }
-        if let Some(error) = error {
-            return EmptyState::new(t("radio_search_failed"))
+                .into_any_element(),
+            Line::Status(Status::Failed(error)) => EmptyState::new(t("radio_search_failed"))
                 .detail(error)
                 .icon(icons::RADIO)
-                .into_any_element();
-        }
-        if results.is_empty() {
-            return EmptyState::new(t("radio_no_stations_match"))
+                .into_any_element(),
+            Line::Status(Status::Empty) => EmptyState::new(t("radio_no_stations_match"))
                 .icon(icons::RADIO)
-                .into_any_element();
+                .into_any_element(),
+            Line::Station(station) => div()
+                .w_full()
+                .pb_3()
+                .child(self.directory_row(&station, window, cx))
+                .into_any_element(),
         }
-        v_flex()
-            .w_full()
-            .gap_3()
-            .children(
-                results
-                    .iter()
-                    .map(|station| self.directory_row(station, window, cx))
-                    .collect::<Vec<_>>(),
-            )
-            .into_any_element()
     }
 }
 
+/// What the directory says in place of stations.
+#[derive(Clone)]
+enum Status {
+    Loading,
+    Failed(SharedString),
+    Empty,
+}
+
+/// One line of the page's list; only the ones on screen are ever built.
+#[derive(Clone)]
+enum Line {
+    SelectedHeading,
+    // The last pinned row carries the gap before the directory.
+    Pinned(RadioStationInfo, bool),
+    DirectoryHeading,
+    Status(Status),
+    Station(RadioStationInfo),
+}
+
 impl Render for Radio {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        widgets::scroll::smooth("radio-scroll", &self.scroll, window, cx);
-        let searching = !self.query.trim().is_empty();
-        let selected = self.selected(window, cx);
-        let browser = self.browser(window, cx);
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let (keys, lines) = self.lines(cx);
+        self.adopt_lines(keys, lines);
         v_flex()
             .size_full()
             .px_8()
@@ -631,40 +720,14 @@ impl Render for Radio {
                     )),
             )
             .child(
-                div()
-                    .id("radio-body")
-                    .flex_1()
-                    .min_h_0()
-                    .w_full()
-                    .overflow_y_scroll()
-                    .track_scroll(&self.scroll)
-                    .child(
-                        v_flex()
-                            .w_full()
-                            .children(selected)
-                            .child(
-                                h_flex()
-                                    .w_full()
-                                    .items_end()
-                                    .justify_between()
-                                    .child(self.heading(
-                                        if searching {
-                                            t("radio_search_results")
-                                        } else {
-                                            t("radio_top_stations")
-                                        },
-                                        cx,
-                                    ))
-                                    .child(
-                                        div()
-                                            .pb_3()
-                                            .text_size(style::text_10())
-                                            .text_color(style::white(0.25, cx))
-                                            .child(t("radio_powered_by")),
-                                    ),
-                            )
-                            .child(browser),
-                    ),
+                // Virtualized: a whole directory rebuilt on every scrolled frame is what made this page lag.
+                list(
+                    self.list.clone(),
+                    cx.processor(|this, index: usize, window, cx| this.line(index, window, cx)),
+                )
+                .flex_1()
+                .min_h_0()
+                .w_full(),
             )
     }
 }
