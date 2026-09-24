@@ -21,16 +21,14 @@ const COVER: u64 = 2;
 const TITLE: u64 = 3;
 const BUTTON: u64 = 4;
 const BUTTON_HOVER: u64 = 5;
+const WASH: u64 = 6;
 
 /// `gap-5` between cards, as the pixels the shelf's snap and its virtual window both count in.
 pub(crate) const GAP: f32 = 20.;
 
-/// `w-40`, and `w-48` on the shelf the page leads with.
-pub(crate) fn tile_size(lead: bool) -> Pixels {
-    match lead {
-        true => px(192.),
-        false => px(160.),
-    }
+/// `md:w-48`, which every shelf upstream settles on at desktop width.
+pub(crate) fn tile_size(_lead: bool) -> Pixels {
+    px(192.)
 }
 
 /// What one card occupies, which is what a row snaps to and steps by.
@@ -51,12 +49,21 @@ pub(crate) fn card(
         false => style::to_px(style::radius_xl(), window),
     };
     let (over, pointer) = motion::hovered(motion::channel(&tile.key, HOVER), window, cx);
+    // Upstream only artists and playlists take the accent; an album title stays white.
+    let tints = tile.round || matches!(tile.play, Play::Playlist(_));
     let title = motion::color(
         motion::channel(&tile.key, TITLE),
-        match over {
+        match over && tints {
             true => cx.theme().primary_hover,
             false => cx.theme().foreground,
         },
+        window,
+        cx,
+    );
+    let wash = motion::color_over(
+        motion::channel(&tile.key, WASH),
+        style::black(if over { 0.2 } else { 0. }, cx),
+        motion::SLOW,
         window,
         cx,
     );
@@ -77,7 +84,7 @@ pub(crate) fn card(
     .w(size)
     .mr(px(GAP))
     .flex_shrink_0()
-    .gap_3()
+    .gap_4()
     .cursor_pointer()
     .on_hover(motion::track(pointer))
     .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
@@ -91,27 +98,30 @@ pub(crate) fn card(
                     .placeholder(tile.placeholder)
                     .zoom(motion::channel(&tile.key, COVER), over),
             )
+            .child(div().absolute().inset_0().rounded(radius).bg(wash))
             .children(play),
     )
     .child(
         v_flex()
             .w(size)
-            .gap_0p5()
+            .px_1()
             .when(tile.round, |lines| lines.items_center())
             .child(
                 div()
                     .truncate()
-                    .text_sm()
-                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_base()
+                    .font_weight(FontWeight::BOLD)
                     .text_color(title)
                     .child(tile.title.clone()),
             )
             .when(!tile.subtitle.is_empty(), |lines| {
                 lines.child(
                     div()
+                        .mt_1()
                         .truncate()
-                        .text_xs()
-                        .text_color(style::white(style::TEXT_SUBTLE, cx))
+                        .text_sm()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(style::white(style::TEXT_MUTED, cx))
                         .child(tile.subtitle.clone()),
                 )
             }),

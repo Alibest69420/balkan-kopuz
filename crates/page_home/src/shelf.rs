@@ -58,9 +58,12 @@ pub(crate) fn shelf(
         cx,
     );
     let page = page_step(handle, stride);
+    // The whole shelf is the hover, so reaching up for an arrow does not fade it away.
     v_flex()
+        .id(ElementId::NamedInteger(name.clone(), 99))
         .w_full()
-        .gap_4()
+        .gap_6()
+        .on_hover(motion::track(pointer))
         .child(
             h_flex()
                 .w_full()
@@ -106,11 +109,12 @@ pub(crate) fn shelf(
                 .relative()
                 .w_full()
                 .id(ElementId::NamedInteger(name.clone(), 100))
-                .on_hover(motion::track(pointer))
                 .child(
                     h_flex()
                         .id(ElementId::NamedInteger(name.clone(), 101))
                         .w_full()
+                        .pt_2()
+                        .pb_6()
                         .items_start()
                         .overflow_x_scroll()
                         // Without this a bare wheel notch would scroll the page and slide the row at once.

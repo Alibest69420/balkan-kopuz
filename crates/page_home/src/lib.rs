@@ -14,16 +14,17 @@ use std::collections::HashMap;
 use api::{
     AlbumPage, ArtistPage, JobKind, Page, StatsView, Table, TrackFilter, TrackPage, TrackSort,
 };
-use gpui_kit::component::v_flex;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
-    ParentElement as _, Render, ScrollHandle, StatefulInteractiveElement as _, Styled,
-    Subscription, Window,
+    AnyElement, App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _,
+    IntoElement, ParentElement as _, Render, ScrollHandle, SharedString,
+    StatefulInteractiveElement as _, Styled, Subscription, Window, div, rems,
 };
-use store::{JobsModel, PlaylistsModel, Query, SourcesModel};
+use store::{JobsModel, Navigator, PlaylistsModel, Query, Route, SourcesModel};
 use widgets::format::t;
-use widgets::{EmptyState, icons};
+use widgets::{EmptyState, icons, style};
 
 use data::{RECENT_TRACKS_WINDOW, RECENTLY_ADDED_WINDOW, Shelf};
 
@@ -218,12 +219,49 @@ impl Render for Home {
             .p_8()
             .pb_32()
             .gap_12()
+            .child(heading(cx))
             .children(banner)
             .children(rows)
             .when(bare, |page| {
                 page.child(EmptyState::new(t("no_albums_found")).icon(icons::DISC))
             })
     }
+}
+
+/// `text-4xl font-black` "Home", and the pill that opens where the shelves are arranged.
+fn heading(cx: &App) -> AnyElement {
+    h_flex()
+        .w_full()
+        .justify_between()
+        .items_center()
+        .child(
+            div()
+                .text_size(rems(2.25))
+                .font_weight(FontWeight::BLACK)
+                .child(t("home")),
+        )
+        .child(
+            Button::new("home-customize")
+                .custom(style::quiet_button(
+                    style::white(style::TEXT_STRONG, cx),
+                    cx,
+                ))
+                .small()
+                .rounded_full()
+                .border_1()
+                .border_color(style::white(style::BORDER, cx))
+                .icon(icons::icon(icons::SETTINGS))
+                .label(t("customize_home"))
+                .on_click(|_, _, cx| {
+                    Navigator::navigate(
+                        Route::Settings {
+                            section: Some(SharedString::new_static("home")),
+                        },
+                        cx,
+                    )
+                }),
+        )
+        .into_any_element()
 }
 
 /// How many of the most-played tracks are resolved to name their artists.
