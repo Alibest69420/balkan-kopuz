@@ -64,8 +64,11 @@ const LAMP_HEIGHT: f32 = 0.38;
 /// Where the pool ends: a bell never reaches nothing, and the calm band is to be the theme's exactly.
 const LAMP_EDGE: f32 = 0.02;
 /// What `Full` carries through the middle band that `Glow` leaves to the theme.
-const FLOOR: f32 = 0.14;
+const FLOOR: f32 = 0.30;
 const PEAK: f32 = 0.40;
+/// `Full` is asked for to be seen: the sky and the lamp burn hotter and may reach further.
+const FULL_GAIN: f32 = 1.4;
+const PEAK_FULL: f32 = 0.62;
 
 /// WCAG AA for body text, which the faintest ink has to keep over the brightest the light gets.
 const READABLE: f32 = 4.5;
@@ -125,10 +128,14 @@ fn smooth(value: f32) -> f32 {
 }
 
 /// The most of itself the light ever adds on this ground.
-fn peak(ground: Ground) -> f32 {
+fn peak(ground: Ground, spread: Spread) -> f32 {
+    let top = match spread {
+        Spread::Glow => PEAK,
+        Spread::Full => PEAK_FULL,
+    };
     match ground.dark {
-        true => PEAK,
-        false => PEAK * LIGHT_GROUND,
+        true => top,
+        false => top * LIGHT_GROUND,
     }
 }
 
@@ -138,16 +145,19 @@ fn strength(u: f32, v: f32, spread: Spread, ground: Ground) -> f32 {
     let (across, up) = (u / LAMP_WIDTH, (1. - v) / LAMP_HEIGHT);
     let bell = (-(across * across + up * up)).exp();
     let lamp = ((bell - LAMP_EDGE) / (1. - LAMP_EDGE)).max(0.);
-    let floor = match spread {
-        Spread::Glow => 0.,
-        Spread::Full => FLOOR,
+    let (gain, floor) = match spread {
+        Spread::Glow => (1., 0.),
+        Spread::Full => (FULL_GAIN, FLOOR),
     };
-    let scale = peak(ground) / PEAK;
-    ((SKY * sky * sky + LAMP * lamp + floor) * scale).min(peak(ground))
+    let scale = match ground.dark {
+        true => 1.,
+        false => LIGHT_GROUND,
+    };
+    (((SKY * sky * sky + LAMP * lamp) * gain + floor) * scale).min(peak(ground, spread))
 }
 
 /// One cell's colour as it is cast: hue kept, lightness pinned, and never enough of it to lose the ink.
-fn tone(colour: [u8; 3], ground: Ground) -> Cell {
+fn tone(colour: [u8; 3], ground: Ground, spread: Spread) -> Cell {
     let [r, g, b] = colour.map(|channel| f32::from(channel) / 255.);
     let chroma = r.max(g).max(b) - r.min(g).min(b);
     let weight = smooth((chroma - CHROMA_QUIET) / (CHROMA_LOUD - CHROMA_QUIET));
@@ -164,14 +174,14 @@ fn tone(colour: [u8; 3], ground: Ground) -> Cell {
     let cast = [cast.r, cast.g, cast.b].map(|channel| linear((channel * 255.).round() as u8));
     Cell {
         colour: cast,
-        weight: weight * reach(cast, ground),
+        weight: weight * reach(cast, ground, spread),
     }
 }
 
 /// The share of the peak a colour may reach while the ground's faintest ink still reads over it.
-fn reach(colour: Rgb, ground: Ground) -> f32 {
+fn reach(colour: Rgb, ground: Ground, spread: Spread) -> f32 {
     let (background, ink) = (linear_rgb(ground.background), linear_rgb(ground.ink));
-    let most = peak(ground);
+    let most = peak(ground, spread);
     if contrast(ink, mix(background, colour, most)) >= READABLE {
         return 1.;
     }
@@ -187,13 +197,16 @@ fn reach(colour: Rgb, ground: Ground) -> f32 {
 }
 
 /// The cover as a few cells of cast colour, or nothing at all if none of them has any.
-fn grid(bytes: &[u8], ground: Ground) -> Option<Vec<Cell>> {
+fn grid(bytes: &[u8], ground: Ground, spread: Spread) -> Option<Vec<Cell>> {
     let cells = CELLS as u32;
     let small = image::load_from_memory(bytes)
         .ok()?
         .thumbnail_exact(cells, cells)
         .to_rgb8();
-    let grid: Vec<Cell> = small.pixels().map(|pixel| tone(pixel.0, ground)).collect();
+    let grid: Vec<Cell> = small
+        .pixels()
+        .map(|pixel| tone(pixel.0, ground, spread))
+        .collect();
     grid.iter()
         .any(|cell| cell.weight > f32::EPSILON)
         .then_some(grid)
@@ -253,7 +266,7 @@ fn grain(x: u32, y: u32) -> f32 {
 
 /// The whole field for one cover on one ground, in RGBA; `None` when the cover has no colour to cast.
 fn render(bytes: &[u8], ground: Ground, spread: Spread) -> Option<RgbaImage> {
-    let grid = grid(bytes, ground)?;
+    let grid = grid(bytes, ground, spread)?;
     let background = linear_rgb(ground.background);
     let [r, g, b] = ground.background;
     let place = |at: u32, of: u32| (at as f32 + 0.5) / of as f32;
@@ -414,9 +427,9 @@ mod tests {
                 strength(u, v, Spread::Glow, NIGHT),
                 strength(u, v, Spread::Full, NIGHT),
             );
-            assert!(glow <= PEAK && full <= PEAK);
+            assert!(glow <= PEAK && full <= PEAK_FULL);
             assert!(full >= glow);
-            assert!(strength(u, v, Spread::Full, DAY) <= PEAK * LIGHT_GROUND);
+            assert!(strength(u, v, Spread::Full, DAY) <= PEAK_FULL * LIGHT_GROUND);
         }
     }
 
@@ -472,27 +485,29 @@ mod tests {
             [255, 0, 220],
             [255, 255, 255],
         ];
-        for ground in [NIGHT, DAY] {
-            for colour in loud {
-                let cell = tone(colour, ground);
-                let worst = mix(
-                    linear_rgb(ground.background),
-                    cell.colour,
-                    peak(ground) * cell.weight.min(1.),
-                );
-                let ratio = contrast(linear_rgb(ground.ink), worst);
-                assert!(
-                    ratio >= READABLE - 0.05,
-                    "{colour:?} on {ground:?}: {ratio}"
-                );
+        for spread in [Spread::Glow, Spread::Full] {
+            for ground in [NIGHT, DAY] {
+                for colour in loud {
+                    let cell = tone(colour, ground, spread);
+                    let worst = mix(
+                        linear_rgb(ground.background),
+                        cell.colour,
+                        peak(ground, spread) * cell.weight.min(1.),
+                    );
+                    let ratio = contrast(linear_rgb(ground.ink), worst);
+                    assert!(
+                        ratio >= READABLE - 0.05,
+                        "{colour:?} on {ground:?} at {spread:?}: {ratio}"
+                    );
+                }
             }
         }
     }
 
     #[test]
     fn a_cell_between_a_colour_and_a_grey_keeps_the_colours_hue() {
-        let red = tone([220, 30, 40], NIGHT);
-        let grey = tone([128, 128, 128], NIGHT);
+        let red = tone([220, 30, 40], NIGHT, Spread::Glow);
+        let grey = tone([128, 128, 128], NIGHT, Spread::Glow);
         let mut grid = vec![grey; CELLS * CELLS];
         grid[0] = red;
         let between = sample(
