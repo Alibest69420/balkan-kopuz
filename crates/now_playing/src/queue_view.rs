@@ -353,6 +353,7 @@ impl QueueView {
             )
             .child(
                 div()
+                    .relative()
                     .w(LEAD_WIDTH)
                     .flex_shrink_0()
                     .flex()
@@ -364,7 +365,23 @@ impl QueueView {
                         if active {
                             slot.child(icons::icon(icons::VOLUME).size(LEAD_GLYPH))
                         } else {
-                            slot.child((index + 1).to_string())
+                            // Upstream the number steps aside for a play glyph under the pointer.
+                            slot.child(
+                                div()
+                                    .group_hover(ROW_GROUP, |number| number.invisible())
+                                    .child((index + 1).to_string()),
+                            )
+                            .child(
+                                div()
+                                    .absolute()
+                                    .inset_0()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .invisible()
+                                    .group_hover(ROW_GROUP, |play| play.visible())
+                                    .child(icons::icon(icons::PLAY).size(LEAD_GLYPH)),
+                            )
                         }
                     }),
             )

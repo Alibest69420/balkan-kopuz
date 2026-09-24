@@ -154,7 +154,7 @@ impl NowPlaying {
                             .when(!artist.is_empty(), |label| {
                                 label
                                     .cursor_pointer()
-                                    .hover(move |label| label.text_color(lifted))
+                                    .hover(move |label| label.text_color(lifted).underline())
                             })
                             .on_click({
                                 let artist_route = artist_route.clone();

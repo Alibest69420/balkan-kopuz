@@ -122,7 +122,7 @@ impl NowPlaying {
             // The same weight the meta block carries, so the transport between them is centred.
             .flex_1()
             .min_w_0()
-            .gap_1()
+            .gap_4()
             .justify_end()
             .when(wanted.volume, |row| {
                 row.child(self.volume_control(room.level, window, cx))
