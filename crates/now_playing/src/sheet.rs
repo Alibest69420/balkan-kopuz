@@ -407,8 +407,10 @@ impl NowPlaying {
                 let config = config.read(cx);
                 let source: ImageSource = if !config.config().custom_background_path.is_empty() {
                     PathBuf::from(&config.config().custom_background_path).into()
-                } else {
+                } else if config.config().cover_art_background {
                     store::artwork_source(artwork?, true)
+                } else {
+                    return None;
                 };
                 // The sheet is read over, so the art never gets to be as bright as a wallpaper.
                 let darkening = config.config().cover_art_darkening.max(72);
