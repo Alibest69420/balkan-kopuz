@@ -12,10 +12,12 @@ mod states;
 mod tracks;
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use api::{
-    AlbumInfo, AlbumPage, ArtistPage, ArtworkRef, Page, StatsView, Table, TrackInfo, TrackPage,
+    AlbumInfo, AlbumPage, ArtistPage, ArtworkRef, KopuzApi, Page, StatsView, Table, TrackInfo,
+    TrackPage,
 };
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::v_flex;
@@ -470,14 +472,14 @@ impl Library {
             false => self.pager.first(),
         };
         match self.filters.facet {
-            Facet::Tracks => self.fetch_tracks(page, cx),
-            Facet::Albums => self.fetch_albums(page, cx),
-            Facet::Artists => self.fetch_artists(page, cx),
+            Facet::Tracks => self.fetch_tracks(page, false, cx),
+            Facet::Albums => self.fetch_albums(page, false, cx),
+            Facet::Artists => self.fetch_artists(page, false, cx),
             Facet::Playlists => self.rebuild(cx),
         }
     }
 
-    fn fetch_tracks(&mut self, page: Page, cx: &mut Context<Self>) {
+    fn fetch_tracks(&mut self, page: Page, paging: bool, cx: &mut Context<Self>) {
         let filter = self.filters.track_filter(&self.sort);
         let folder = self.filters.folder.clone();
         // The download model holds what is stored; the wire has no "downloaded" narrowing.
@@ -489,44 +491,47 @@ impl Library {
                 .cloned()
                 .collect()
         });
-        self.tracks.update(cx, |query, cx| {
-            query.set_fetch(
-                move |api| {
-                    let filter = filter.clone();
-                    let folder = folder.clone();
-                    let stored = stored.clone();
-                    async move {
-                        if let Some(keys) = stored {
-                            let items = match keys.is_empty() {
-                                true => Vec::new(),
-                                false => api.tracks_by_keys(keys).await?,
-                            };
-                            return Ok(TrackPage {
-                                total: items.len() as u32,
-                                offset: 0,
-                                items,
-                            });
-                        }
-                        match folder {
-                            Some(prefix) => api.folder_tracks(prefix, page).await,
-                            None => api.tracks(filter, page).await,
-                        }
-                    }
-                },
-                cx,
-            )
+        let fetch = move |api: Arc<dyn KopuzApi>| {
+            let filter = filter.clone();
+            let folder = folder.clone();
+            let stored = stored.clone();
+            async move {
+                if let Some(keys) = stored {
+                    let items = match keys.is_empty() {
+                        true => Vec::new(),
+                        false => api.tracks_by_keys(keys).await?,
+                    };
+                    return Ok(TrackPage {
+                        total: items.len() as u32,
+                        offset: 0,
+                        items,
+                    });
+                }
+                match folder {
+                    Some(prefix) => api.folder_tracks(prefix, page).await,
+                    None => api.tracks(filter, page).await,
+                }
+            }
+        };
+        self.tracks.update(cx, |query, cx| match paging {
+            true => query.set_page(fetch, cx),
+            false => query.set_fetch(fetch, cx),
         });
     }
 
-    fn fetch_albums(&mut self, page: Page, cx: &mut Context<Self>) {
-        self.albums.update(cx, |query, cx| {
-            query.set_fetch(move |api| async move { api.albums(page).await }, cx)
+    fn fetch_albums(&mut self, page: Page, paging: bool, cx: &mut Context<Self>) {
+        let fetch = move |api: Arc<dyn KopuzApi>| async move { api.albums(page).await };
+        self.albums.update(cx, |query, cx| match paging {
+            true => query.set_page(fetch, cx),
+            false => query.set_fetch(fetch, cx),
         });
     }
 
-    fn fetch_artists(&mut self, page: Page, cx: &mut Context<Self>) {
-        self.artists.update(cx, |query, cx| {
-            query.set_fetch(move |api| async move { api.artists(page).await }, cx)
+    fn fetch_artists(&mut self, page: Page, paging: bool, cx: &mut Context<Self>) {
+        let fetch = move |api: Arc<dyn KopuzApi>| async move { api.artists(page).await };
+        self.artists.update(cx, |query, cx| match paging {
+            true => query.set_page(fetch, cx),
+            false => query.set_fetch(fetch, cx),
         });
     }
 
@@ -545,9 +550,9 @@ impl Library {
         };
         let facet = self.filters.facet;
         cx.defer_in(window, move |this, _, cx| match facet {
-            Facet::Tracks => this.fetch_tracks(page, cx),
-            Facet::Albums => this.fetch_albums(page, cx),
-            Facet::Artists => this.fetch_artists(page, cx),
+            Facet::Tracks => this.fetch_tracks(page, true, cx),
+            Facet::Albums => this.fetch_albums(page, true, cx),
+            Facet::Artists => this.fetch_artists(page, true, cx),
             Facet::Playlists => {}
         });
     }

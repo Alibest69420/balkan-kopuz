@@ -76,6 +76,19 @@ impl<T: Send + 'static> Query<T> {
         }
     }
 
+    /// Read another window of the same listing: the held rows still answer these inputs, so nothing dims.
+    pub fn set_page<Fut>(
+        &mut self,
+        fetch: impl Fn(Arc<dyn KopuzApi>) -> Fut + 'static,
+        cx: &mut Context<Self>,
+    ) where
+        Fut: Future<Output = Result<T, ApiError>> + Send + 'static,
+    {
+        self.fetch = box_fetch(fetch);
+        self.error = None;
+        self.refresh(cx);
+    }
+
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
         self.generation += 1;
         let generation = self.generation;
