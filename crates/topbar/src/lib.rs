@@ -202,8 +202,9 @@ impl TopBar {
         );
         let wash = motion::color_over(
             ElementId::from((ElementId::from("nav-tab-wash"), name)),
+            // Upstream the active tab is `bg-white/10` and a hovered one only `bg-white/5`.
             match (active, hovered) {
-                (true, _) => style::white(style::RAISED, cx),
+                (true, _) => style::white(style::HOVER, cx),
                 (false, true) => style::white(style::RAISED, cx),
                 (false, false) => style::white(0., cx),
             },
@@ -316,7 +317,14 @@ impl TopBar {
                 .flex_none()
                 .w(RAIL_MARKER)
                 .child(div().flex_none().h(start))
-                .child(div().flex_none().h(extent).w_full().bg(cx.theme().primary)),
+                .child(
+                    div()
+                        .flex_none()
+                        .h(extent)
+                        .w_full()
+                        .rounded_full()
+                        .bg(cx.theme().foreground),
+                ),
             false => h_flex()
                 .flex_none()
                 .h(UNDERLINE)
@@ -326,7 +334,8 @@ impl TopBar {
                         .flex_none()
                         .w((extent - INSET - INSET).max(px(0.)))
                         .h_full()
-                        .bg(cx.theme().primary),
+                        .rounded_full()
+                        .bg(cx.theme().foreground),
                 ),
         };
         let group = self
