@@ -59,7 +59,7 @@ impl NowPlaying {
                     .justify_center()
                     .px_4()
                     .py_3()
-                    .child(self.tab_strip(showing, true, window, cx)),
+                    .child(self.tab_strip(showing, false, window, cx)),
             )
             .child(
                 div()
@@ -211,6 +211,11 @@ impl NowPlaying {
                 artist_id: None,
             });
         let album = SharedString::from(track.album.clone());
+        let album_route = QueueModel::global(cx)
+            .read(cx)
+            .current()
+            .filter(|row| !row.album_id.is_empty())
+            .map(|row| Route::Album(row.album_id.clone().into()));
         let heart = motion::color(
             "sheet-heart",
             if favorite {
@@ -268,7 +273,24 @@ impl NowPlaying {
                                 .text_color(style::white(style::TEXT_DIM, cx))
                                 .child("•"),
                         )
-                        .child(div().truncate().child(album.clone()))
+                        .child(
+                            div()
+                                .id("sheet-album")
+                                .truncate()
+                                .text_color(style::white(style::TEXT_MUTED, cx))
+                                .when_some(album_route, |link, route| {
+                                    let lifted = style::white(0.8, cx);
+                                    link.cursor_pointer()
+                                        .hover(move |link| link.text_color(lifted).underline())
+                                        .on_click(move |_, _, cx| {
+                                            Chrome::global(cx).update(cx, |chrome, cx| {
+                                                chrome.set_sheet(false, cx)
+                                            });
+                                            Navigator::navigate(route.clone(), cx);
+                                        })
+                                })
+                                .child(album.clone()),
+                        )
                     }),
             )
             .children(origin.map(|(label, route)| {
@@ -410,7 +432,8 @@ impl NowPlaying {
                 } else if config.config().cover_art_background {
                     store::artwork_source(artwork?, true)
                 } else {
-                    return None;
+                    // No picture was asked for, so the sheet takes the same light the window does.
+                    return widgets::backdrop::ambient(window, cx);
                 };
                 // The sheet is read over, so the art never gets to be as bright as a wallpaper.
                 let darkening = config.config().cover_art_darkening.max(72);
