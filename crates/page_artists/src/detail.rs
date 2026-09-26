@@ -85,7 +85,10 @@ impl ArtistDetail {
                 &[Table::Tracks],
                 move |api| {
                     let artist = artist.clone();
-                    async move { api.artist_tracks(artist, store::all()).await }
+                    async move {
+                        api.artist_tracks(api::ArtistCredit::new(artist, None), store::all())
+                            .await
+                    }
                 },
                 cx,
             )
@@ -250,7 +253,7 @@ impl ArtistDetail {
             cx.update(|cx| {
                 actions::run(cx, move |api| async move {
                     api.upload_artwork(ArtworkUpload {
-                        target: ArtworkTarget::Artist(name),
+                        target: ArtworkTarget::Artist(api::ArtistCredit::new(name, None)),
                         content_type,
                         bytes,
                     })

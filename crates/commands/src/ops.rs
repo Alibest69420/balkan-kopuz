@@ -136,8 +136,10 @@ pub fn with_artist_keys(
     cx: &mut App,
     then: impl FnOnce(Vec<String>, &mut App) + 'static,
 ) {
-    let call = Link::global(cx)
-        .call(move |api| async move { api.artist_tracks(name, store::all()).await });
+    let call = Link::global(cx).call(move |api| async move {
+        api.artist_tracks(api::ArtistCredit::new(name, None), store::all())
+            .await
+    });
     cx.spawn(async move |cx| match call.await {
         Ok(page) => {
             let keys = keys_of(&page.items);
@@ -210,10 +212,13 @@ pub fn play_album(target: &Target, cx: &mut App) {
 }
 
 pub fn play_artist(target: &Target, cx: &mut App) {
-    if let Target::Artist { name, .. } = target {
+    if let Target::Artist { name, artist_id } = target {
         actions::play_context(
             QueueContext::Artist {
-                name: name.to_string(),
+                artist: api::ArtistCredit::new(
+                    name.to_string(),
+                    artist_id.as_ref().map(|id| id.to_string()),
+                ),
             },
             None,
             cx,

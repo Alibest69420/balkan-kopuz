@@ -57,7 +57,6 @@ impl Filters {
     pub fn track_filter(&self, sort: &Sort) -> TrackFilter {
         TrackFilter {
             search: non_empty(&self.search),
-            artist: None,
             album: None,
             genre: self.genre.clone(),
             favorite: self.favorites.then_some(true),

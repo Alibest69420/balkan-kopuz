@@ -107,8 +107,15 @@ impl Artists {
             return;
         }
         self.asked = names.clone();
-        let call = Link::global(cx)
-            .call(move |api| async move { api.refresh_artist_artwork(names).await });
+        let call = Link::global(cx).call(move |api| async move {
+            api.refresh_artist_artwork(
+                names
+                    .into_iter()
+                    .map(|name| api::ArtistCredit::new(name, None))
+                    .collect(),
+            )
+            .await
+        });
         self._refresh = Some(cx.spawn(async move |_, _| {
             if let Err(error) = call.await {
                 tracing::debug!(%error, "artist artwork refresh failed");

@@ -158,7 +158,7 @@ pub struct Library {
     _filter_delay: Option<Task<()>>,
     _resolve: Option<Task<()>>,
     _photos: Option<Task<()>>,
-    asked_photos: Vec<String>,
+    asked_photos: Vec<api::ArtistCredit>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -685,7 +685,7 @@ impl Library {
         if self.filters.facet != Facet::Artists {
             return;
         }
-        let names: Vec<String> = self
+        let names: Vec<api::ArtistCredit> = self
             .artists
             .read(cx)
             .value()
@@ -693,7 +693,7 @@ impl Library {
                 page.artists
                     .iter()
                     .filter(|artist| artist.artwork.is_none())
-                    .map(|artist| artist.name.clone())
+                    .map(|artist| artist.credit())
                     .collect()
             })
             .unwrap_or_default();

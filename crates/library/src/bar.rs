@@ -697,7 +697,9 @@ async fn gather(
                 keys.extend(page.items.into_iter().map(|track| track.key));
             }
             Facet::Artists => {
-                let page = api.artist_tracks(id, store::all()).await?;
+                let page = api
+                    .artist_tracks(api::ArtistCredit::new(id, None), store::all())
+                    .await?;
                 keys.extend(page.items.into_iter().map(|track| track.key));
             }
             Facet::Playlists => {
