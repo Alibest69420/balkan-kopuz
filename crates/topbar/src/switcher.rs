@@ -99,7 +99,7 @@ impl SourceProbe {
         self.status
     }
 
-    /// A server is asked whether it is still reachable; a local source always is.
+    /// The daemon answers for every source, local ones included.
     fn probe(&mut self, sources: &Entity<SourcesModel>, cx: &mut Context<Self>) {
         let Some(active) = sources.read(cx).active().cloned() else {
             self.probed = None;
@@ -110,11 +110,6 @@ impl SourceProbe {
             return;
         }
         self.probed = Some(active.id.clone());
-        if active.service.is_none() {
-            self.status = Status::Online;
-            self._probe = None;
-            return;
-        }
         self.status = Status::Connecting;
         let call =
             Link::global(cx).call(move |api| async move { api.validate_source(active.id).await });
@@ -389,14 +384,14 @@ fn mark_of(source: &SourceInfo) -> Mark {
     }
 }
 
-/// A FontAwesome class cannot be drawn here, so it picks the nearest bundled Lucide icon.
+/// A FontAwesome class cannot be drawn here; every brand shares one mark, the rest map by shape.
 fn bundled(class: &str) -> &'static str {
-    if class.contains("compact-disc") {
+    if class.contains("fa-brands") {
+        icons::MUSIC
+    } else if class.contains("compact-disc") {
         icons::DISC
     } else if class.contains("cloud") {
         CLOUD_ICON
-    } else if class.contains("youtube") || class.contains("apple") {
-        icons::MUSIC
     } else if class.contains("folder") {
         LIBRARY_ICON
     } else if class.contains("hard-drive") {
@@ -429,7 +424,8 @@ mod tests {
     #[test]
     fn an_unknown_class_still_draws_something() {
         assert_eq!(bundled("fa-solid fa-server"), SERVICE_ICON);
-        assert_eq!(bundled("fa-brands fa-soundcloud"), CLOUD_ICON);
+        assert_eq!(bundled("fa-brands fa-soundcloud"), icons::MUSIC);
+        assert_eq!(bundled("fa-solid fa-cloud"), CLOUD_ICON);
     }
 
     #[test]

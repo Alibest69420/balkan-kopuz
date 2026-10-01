@@ -335,11 +335,11 @@ fn wanted(
     in_flow || (ready && !dismissed && !has_content && !configured)
 }
 
-/// A source that could hold music: any server, or a local library with somewhere to scan.
+/// A source that could hold music: one that scans folders needs at least one to scan.
 fn configured(sources: &[SourceInfo]) -> bool {
     sources
         .iter()
-        .any(|source| source.service.is_some() || !source.directories.is_empty())
+        .any(|source| !source.capabilities.scan_folders || !source.directories.is_empty())
 }
 
 /// The local library the first run writes folders into: the live one, or whichever the daemon lists.

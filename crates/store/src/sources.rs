@@ -74,11 +74,6 @@ impl SourcesModel {
     }
 
     /// Make `id` active, and start whichever sign-in the daemon says it still needs.
-    ///
-    /// That answer rides on `switch_source` and used to be dropped on the floor, so switching to
-    /// a service whose sign-in is a browser — YouTube Music, Spotify, Apple Music, SoundCloud —
-    /// silently did nothing at all, and the only control left to press was a password form for a
-    /// service that has no password.
     pub fn switch(&mut self, id: String, window: &mut Window, cx: &mut Context<Self>) {
         let call = Link::global(cx).call(move |api| async move { api.switch_source(id).await });
         cx.spawn_in(window, async move |this, cx| {
