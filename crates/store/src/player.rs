@@ -1,8 +1,8 @@
 use std::time::{Duration, Instant};
 
 use api::{
-    ApiEvent, BufferedRange, ExternalPlayback, Intent, LoopMode, NowPlaying, Phase, PlayerCommand,
-    PlayerState, PositionAnchor, TrackKind,
+    ApiEvent, BufferedRange, ExternalPlayback, Intent, LoopMode, Phase, PlayerCommand, PlayerState,
+    PositionAnchor, TrackInfo, TrackKind,
 };
 use gpui_kit::{App, Context, Entity, Subscription, Task};
 use link::Link;
@@ -172,7 +172,7 @@ impl PlayerModel {
     }
 
     /// What to show as playing: the outgoing track during a crossfade, else the current one.
-    pub fn track(&self) -> Option<&NowPlaying> {
+    pub fn track(&self) -> Option<&TrackInfo> {
         match &self.state.fading {
             Some(fading) => Some(&fading.track),
             None => self.state.track.as_ref(),
@@ -531,7 +531,7 @@ mod tests {
     fn state(rev: u64, title: &str) -> PlayerState {
         PlayerState {
             rev,
-            track: Some(NowPlaying {
+            track: Some(TrackInfo {
                 title: title.into(),
                 ..Default::default()
             }),

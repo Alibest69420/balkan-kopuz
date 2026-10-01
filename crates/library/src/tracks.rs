@@ -444,7 +444,7 @@ impl Library {
                 "library-artist",
                 &track.artist,
                 style::TEXT_SUBTLE,
-                Some(Route::artist_of(track)),
+                Route::artist_of(track),
                 cx,
             ),
             "album" => text_cell(

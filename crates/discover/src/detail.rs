@@ -1,6 +1,6 @@
 //! What the catalog opens onto: one browsed playlist, and a source's own page for an artist.
 
-use api::{CatalogDetail, CatalogDetailRequest, CatalogItemKind};
+use api::{ArtistKey, CatalogDetail, CatalogDetailRequest, CatalogItemKind};
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
@@ -82,12 +82,12 @@ impl CatalogPlaylist {
         self.error = None;
         cx.notify();
         let call = Link::global(cx).call(move |api| async move {
-            let request = CatalogDetailRequest::by_id(CatalogItemKind::Playlist, id.clone());
+            let request = CatalogDetailRequest::new(CatalogItemKind::Playlist, id.clone());
             match api.catalog_detail(request).await {
                 Ok(detail) => Ok(detail),
                 // The route carries no kind, so an album opened here is a second try, not an id sniff.
                 Err(_) => {
-                    api.catalog_detail(CatalogDetailRequest::by_id(CatalogItemKind::Album, id))
+                    api.catalog_detail(CatalogDetailRequest::new(CatalogItemKind::Album, id))
                         .await
                 }
             }
@@ -142,8 +142,7 @@ impl Render for CatalogPlaylist {
 
 /// A remote artist profile: the source's own page for an artist the library does not hold.
 pub struct CatalogArtist {
-    id: SharedString,
-    name: SharedString,
+    key: ArtistKey,
     detail: Option<CatalogDetail>,
     shelves: Entity<Shelves>,
     loading: bool,
@@ -155,15 +154,9 @@ pub struct CatalogArtist {
 }
 
 impl CatalogArtist {
-    pub fn new(
-        id: SharedString,
-        name: SharedString,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub fn new(key: ArtistKey, _: &mut Window, cx: &mut Context<Self>) -> Self {
         let mut page = Self {
-            id,
-            name,
+            key,
             detail: None,
             shelves: cx.new(Shelves::new),
             loading: false,
@@ -177,21 +170,16 @@ impl CatalogArtist {
         page
     }
 
-    /// Which of the two the caller holds travels in the request, rather than in one string's shape.
-    fn request(&self) -> Option<CatalogDetailRequest> {
-        match self.id.trim() {
-            "" => match self.name.trim() {
-                "" => None,
-                name => Some(CatalogDetailRequest::by_name(CatalogItemKind::Artist, name)),
-            },
-            id => Some(CatalogDetailRequest::by_id(CatalogItemKind::Artist, id)),
-        }
+    /// Blank until the daemon answers: the key carries no display name.
+    fn name(&self) -> SharedString {
+        self.detail
+            .as_ref()
+            .map(|detail| SharedString::from(detail.title.clone()))
+            .unwrap_or_default()
     }
 
     fn load(&mut self, cx: &mut Context<Self>) {
-        let Some(request) = self.request() else {
-            return;
-        };
+        let request = CatalogDetailRequest::artist(&self.key);
         self.generation += 1;
         let generation = self.generation;
         self.loading = true;
@@ -323,11 +311,6 @@ impl Render for CatalogArtist {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("catalog-artist");
         widgets::scroll::smooth("catalog-artist-scroll", &self.scroll, window, cx);
-        if self.request().is_none() {
-            return EmptyState::new(t("artist_none_selected"))
-                .icon(icons::MIC)
-                .into_any_element();
-        }
         let banner = self
             .detail
             .clone()
@@ -344,7 +327,7 @@ impl Render for CatalogArtist {
                     .pt_6()
                     .pb_10()
                     .gap_8()
-                    .child(PageHeader::new(self.name.clone()).back(Route::Discover))
+                    .child(PageHeader::new(self.name()).back(Route::Discover))
                     .when(self.loading, |page| page.child(spinner_row()))
                     .when_some(self.error.clone(), |page, message| {
                         page.child(states::failed(

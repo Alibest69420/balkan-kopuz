@@ -60,8 +60,8 @@ fn build(route: &Route, window: &mut Window, cx: &mut Context<Shell>) -> AnyView
         Route::DiscoverPlaylist { id, title } => cx
             .new(|cx| discover::CatalogPlaylist::new(id, title, window, cx))
             .into(),
-        Route::DiscoverArtist { id, name } => cx
-            .new(|cx| discover::CatalogArtist::new(id, name, window, cx))
+        Route::DiscoverArtist(key) => cx
+            .new(|cx| discover::CatalogArtist::new(key, window, cx))
             .into(),
         // Both library routes collapse to one cache key, so a chip does not rebuild the page.
         // The four old listings redirect here, and only reach this arm if one ever slips through.
@@ -75,28 +75,19 @@ fn build(route: &Route, window: &mut Window, cx: &mut Context<Shell>) -> AnyView
         Route::Album(id) => cx
             .new(|cx| page_albums::AlbumDetail::new(id, window, cx))
             .into(),
-        // A source that presents artists itself gets its own profile; with only a name the daemon resolves one.
-        Route::Artist { name, artist_id } => {
+        // A source that presents artists itself gets its own profile.
+        Route::Artist(key) => {
             let remote = store::SourcesModel::global(cx)
                 .read(cx)
                 .capabilities()
                 .artists
                 == api::ArtistPresentation::Remote;
-            // What the source presents decides the page on its own: a stale id
-            // on a library source would aim it at an unsupported fetch.
             match remote {
                 true => cx
-                    .new(|cx| {
-                        discover::CatalogArtist::new(
-                            artist_id.unwrap_or_default(),
-                            name,
-                            window,
-                            cx,
-                        )
-                    })
+                    .new(|cx| discover::CatalogArtist::new(key, window, cx))
                     .into(),
                 false => cx
-                    .new(|cx| page_artists::ArtistDetail::new(name, window, cx))
+                    .new(|cx| page_artists::ArtistDetail::new(key, window, cx))
                     .into(),
             }
         }

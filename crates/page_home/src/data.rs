@@ -2,7 +2,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use api::{AlbumInfo, AlbumPage, ArtistPage, ArtworkRef, PlaylistInfo, TrackInfo, TrackPage};
+use api::{
+    AlbumInfo, AlbumPage, ArtistKey, ArtistPage, ArtworkRef, PlaylistInfo, TrackInfo, TrackPage,
+};
 use gpui_kit::SharedString;
 use store::{Route, Target};
 use widgets::format::t_with;
@@ -30,7 +32,8 @@ pub(crate) struct Tile {
     pub title: SharedString,
     pub subtitle: SharedString,
     pub artwork: Option<ArtworkRef>,
-    pub route: Route,
+    // `None` for a track with neither an album nor an artist the daemon keyed.
+    pub route: Option<Route>,
     pub target: Target,
     pub play: Play,
     pub round: bool,
@@ -95,10 +98,6 @@ fn named(album: &AlbumInfo) -> bool {
 
 fn title_key(album: &AlbumInfo) -> String {
     album.title.trim().to_lowercase()
-}
-
-fn artist_key(name: &str) -> String {
-    name.trim().to_lowercase()
 }
 
 /// Up to `limit` named albums in the order given, one per title.
@@ -193,7 +192,7 @@ fn album_tile(scope: &str, album: &AlbumInfo) -> Tile {
         title: album.title.clone().into(),
         subtitle: album.artist.clone().into(),
         artwork: album.artwork.clone(),
-        route: Route::Album(album.id.clone().into()),
+        route: Some(Route::Album(album.id.clone().into())),
         target: Target::Album {
             id: album.id.clone().into(),
             title: album.title.clone().into(),
@@ -244,7 +243,7 @@ fn recently_played(recents: &[TrackInfo]) -> Vec<Tile> {
 fn track_tile(scope: &str, track: &TrackInfo) -> Tile {
     // Without an album row there is no album page to open, so the tile goes to the artist.
     let route = match track.album_id.is_empty() {
-        false => Route::Album(track.album_id.clone().into()),
+        false => Some(Route::Album(track.album_id.clone().into())),
         true => Route::artist_of(track),
     };
     Tile {
@@ -269,7 +268,7 @@ fn playlist_tile(playlist: &PlaylistInfo) -> Tile {
             &[("count", playlist.track_keys.len().to_string())],
         ),
         artwork: playlist.artwork.clone(),
-        route: Route::Playlist(playlist.id.clone().into()),
+        route: Some(Route::Playlist(playlist.id.clone().into())),
         target: Target::Playlist {
             id: playlist.id.clone().into(),
             name: playlist.name.clone().into(),
@@ -287,21 +286,39 @@ pub(crate) const RANKED: usize = 8;
 pub(crate) fn plays_by_artist(
     played: &[TrackInfo],
     plays: &HashMap<String, u64>,
-) -> Vec<(String, u64)> {
-    let mut totals: HashMap<String, u64> = HashMap::new();
+) -> Vec<(ArtistKey, String, u64)> {
+    let mut totals: HashMap<ArtistKey, (String, u64)> = HashMap::new();
     for track in played {
         if is_unknown_artist(&track.artist) {
             continue;
         }
+        let Some(credit) = track.primary_credit() else {
+            continue;
+        };
+        let Some(key) = credit.key.clone() else {
+            continue;
+        };
         // The counts are keyed by uid; `key` is the library ref and would match nothing.
         let Some(count) = plays.get(&track.uid) else {
             continue;
         };
-        *totals.entry(track.artist.clone()).or_default() += count;
+        totals
+            .entry(key)
+            .or_insert_with(|| (credit.name.clone(), 0))
+            .1 += count;
     }
-    let mut ranked: Vec<(String, u64)> = totals.into_iter().collect();
-    // Ties settle by name, so a redraw cannot shuffle two artists past each other.
-    ranked.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+    let mut ranked: Vec<(ArtistKey, String, u64)> = totals
+        .into_iter()
+        .map(|(key, (name, count))| (key, name, count))
+        .collect();
+    // Ties settle by name, then key, so a redraw cannot shuffle two artists past each other.
+    ranked.sort_by(|left, right| {
+        right
+            .2
+            .cmp(&left.2)
+            .then_with(|| left.1.cmp(&right.1))
+            .then_with(|| left.0.cmp(&right.0))
+    });
     ranked.truncate(RANKED);
     ranked
 }
@@ -317,26 +334,23 @@ fn top_artists(
         return Vec::new();
     };
     let played = played.items.as_slice();
-    let photos: HashMap<String, &ArtworkRef> = artists
+    let photos: HashMap<&ArtistKey, &ArtworkRef> = artists
         .map(|page| page.artists.as_slice())
         .unwrap_or(&[])
         .iter()
-        .filter_map(|artist| Some((artist_key(&artist.name), artist.artwork.as_ref()?)))
+        .filter_map(|artist| Some((&artist.key, artist.artwork.as_ref()?)))
         .collect();
     plays_by_artist(played, plays)
         .into_iter()
-        .map(|(artist, count)| Tile {
+        .map(|(artist, name, count)| Tile {
             key: SharedString::from(format!("artist-{artist}")),
-            title: artist.clone().into(),
+            title: name.clone().into(),
             subtitle: t_with("home_plays", &[("count", count.to_string())]),
-            artwork: photos.get(&artist_key(&artist)).map(|art| (*art).clone()),
-            route: Route::Artist {
-                name: artist.clone().into(),
-                artist_id: None,
-            },
+            artwork: photos.get(&artist).map(|art| (*art).clone()),
+            route: Some(Route::Artist(artist.clone())),
             target: Target::Artist {
-                name: artist.into(),
-                artist_id: None,
+                key: artist,
+                name: name.into(),
             },
             play: Play::None,
             round: true,
@@ -359,6 +373,7 @@ fn shuffle<T>(items: &mut [T], seed: u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use api::ArtistCredit;
 
     fn track(uid: &str, title: &str, artist: &str, album_id: &str) -> TrackInfo {
         TrackInfo {
@@ -367,6 +382,10 @@ mod tests {
             title: title.into(),
             artist: artist.into(),
             album_id: album_id.into(),
+            credits: vec![ArtistCredit {
+                name: artist.into(),
+                key: Some(ArtistKey::new(artist)),
+            }],
             ..Default::default()
         }
     }
@@ -454,7 +473,10 @@ mod tests {
         // NONEP's two tracks outweigh AKASAKI's one, which counting tracks would miss.
         assert_eq!(
             plays_by_artist(&played, &plays),
-            vec![("NONEP".to_string(), 7), ("AKASAKI".to_string(), 5)]
+            vec![
+                (ArtistKey::new("NONEP"), "NONEP".to_string(), 7),
+                (ArtistKey::new("AKASAKI"), "AKASAKI".to_string(), 5)
+            ]
         );
     }
 

@@ -686,14 +686,13 @@ impl TrackList {
                     .id(("artist", index))
                     .text_sm()
                     .text_color(style::slate_500(cx))
-                    .hover(|cell| cell.text_color(style::slate_400(cx)))
-                    .on_click({
-                        let artist_route = artist_route.clone();
-                        move |_, _, cx| {
-                            // Without this the row's own click would play the track too.
-                            cx.stop_propagation();
-                            Navigator::navigate(artist_route.clone(), cx)
-                        }
+                    .when_some(artist_route.clone(), |cell, route| {
+                        cell.hover(|cell| cell.text_color(style::slate_400(cx)))
+                            .on_click(move |_, _, cx| {
+                                // Without this the row's own click would play the track too.
+                                cx.stop_propagation();
+                                Navigator::navigate(route.clone(), cx)
+                            })
                     })
                     .tooltip({
                         let artist = artist.clone();

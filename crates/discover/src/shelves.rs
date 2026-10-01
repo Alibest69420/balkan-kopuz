@@ -150,7 +150,7 @@ impl Shelves {
             loop {
                 let request = CatalogDetailRequest {
                     continuation: cursor.clone(),
-                    ..CatalogDetailRequest::by_id(kind, id.clone())
+                    ..CatalogDetailRequest::new(kind, id.clone())
                 };
                 let Ok(call) = this.update(cx, |_, cx| {
                     Link::global(cx)
@@ -424,9 +424,11 @@ impl Shelves {
     }
 
     fn artist_tile(&self, shelf: usize, item: &CatalogItem) -> AnyElement {
+        // An artist tile's id is the key the daemon minted for it.
+        let key = api::ArtistKey::new(item.id.clone());
         let target = Target::Artist {
+            key: key.clone(),
             name: item.title.clone().into(),
-            artist_id: Some(item.id.clone().into()),
         };
         div()
             .id(SharedString::from(format!(
@@ -440,10 +442,7 @@ impl Shelves {
                     .placeholder(icons::MIC)
                     .size(TILE)
                     .round(true)
-                    .route(Route::DiscoverArtist {
-                        id: item.id.clone().into(),
-                        name: item.title.clone().into(),
-                    }),
+                    .route(Route::DiscoverArtist(key)),
             )
             .context_menu(menus::builder(target))
             .into_any_element()

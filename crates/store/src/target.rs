@@ -16,10 +16,10 @@ pub enum Target {
         id: SharedString,
         title: SharedString,
     },
-    /// `artist_id` is set when the click carried the source's own id.
+    /// `name` only labels it; the key is what opens and plays it.
     Artist {
+        key: api::ArtistKey,
         name: SharedString,
-        artist_id: Option<SharedString>,
     },
     Playlist {
         id: SharedString,

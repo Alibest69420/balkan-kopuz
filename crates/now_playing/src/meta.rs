@@ -65,7 +65,17 @@ pub(crate) fn playing_from(cx: &App) -> Option<(SharedString, Route)> {
             .map(|track| SharedString::from(track.album.clone()))
             .filter(|album| !album.is_empty())
             .unwrap_or_else(|| id.clone()),
-        Route::Artist { name, .. } => name.clone(),
+        Route::Artist(artist) => QueueModel::global(cx)
+            .read(cx)
+            .current()
+            .and_then(|track| {
+                track
+                    .credits
+                    .iter()
+                    .find(|credit| credit.key.as_ref() == Some(artist))
+            })
+            .map(|credit| SharedString::from(credit.name.clone()))
+            .unwrap_or_default(),
         Route::Genre(name) => name.clone(),
         Route::Playlist(id) => PlaylistsModel::global(cx)
             .read(cx)
@@ -98,20 +108,13 @@ impl NowPlaying {
                 .map(|track| track.artist.clone())
                 .unwrap_or_default(),
         );
-        // `NowPlaying` carries no credits -- it is pushed on every state change
-        // -- so the id comes from the queue row the same track already has.
-        let artist_route = QueueModel::global(cx)
-            .read(cx)
-            .current()
-            .map(Route::artist_of);
+        let artist_route = track.as_ref().and_then(Route::artist_of);
         let size = cover_size(cx);
         let muted = style::slate_400(cx);
         let lifted = style::white(0.7, cx);
         let origin = playing_from(cx);
-        // What is playing says which album it is from, but only the queue row carries its id.
-        let album = QueueModel::global(cx)
-            .read(cx)
-            .current()
+        let album = track
+            .as_ref()
             .map(|track| SharedString::from(track.album_id.clone()))
             .filter(|album| !album.is_empty());
         let target = key
@@ -151,7 +154,7 @@ impl NowPlaying {
                             .truncate()
                             .text_xs()
                             .text_color(muted)
-                            .when(!artist.is_empty(), |label| {
+                            .when(artist_route.is_some(), |label| {
                                 label
                                     .cursor_pointer()
                                     .hover(move |label| label.text_color(lifted).underline())
@@ -401,6 +404,6 @@ fn mark(id: &'static str, glyph: &'static str, color: gpui_kit::Hsla, cx: &App) 
 }
 
 /// The one thing a `Target` is needed for here, kept out of the render so it allocates once.
-pub(crate) fn track_target(track: &api::NowPlaying) -> Target {
+pub(crate) fn track_target(track: &api::TrackInfo) -> Target {
     Target::track(track.key.clone(), track.title.clone())
 }

@@ -33,7 +33,7 @@ pub(crate) fn banner(window: &mut Window, cx: &mut Context<Home>) -> Option<AnyE
     let artwork = track.artwork.clone();
     let key = SharedString::new_static("home-continue");
     let route = match track.album_id.is_empty() {
-        false => Route::Album(track.album_id.clone().into()),
+        false => Some(Route::Album(track.album_id.clone().into())),
         true => Route::artist_of(track),
     };
     let target = Target::track(track.key.clone(), track.title.clone());
@@ -80,7 +80,11 @@ pub(crate) fn banner(window: &mut Window, cx: &mut Context<Home>) -> Option<AnyE
             .bg(wash)
             .cursor_pointer()
             .on_hover(motion::track(pointer))
-            .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
+            .on_click(move |_, _, cx| {
+                if let Some(route) = route.clone() {
+                    Navigator::navigate(route, cx)
+                }
+            })
             .child(
                 Cover::new(artwork.as_ref())
                     .size(px(STAGE_COVER))

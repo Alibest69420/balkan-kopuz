@@ -108,7 +108,8 @@ impl Library {
             .as_ref()
             .is_some_and(|(credited, _)| credited == &artist.name);
         Tile {
-            id: SharedString::from(artist.name.clone()),
+            // The id is the key, since a selection hands it back to `artist_tracks`.
+            id: SharedString::from(artist.key.to_string()),
             title: SharedString::from(artist.name.clone()),
             subtitle: t_with(
                 "library_artist_tracks",
@@ -119,13 +120,10 @@ impl Library {
             sort_rank: artist.track_count as u64,
             playing,
             target: Target::Artist {
+                key: artist.key.clone(),
                 name: artist.name.clone().into(),
-                artist_id: artist.id.clone().map(Into::into),
             },
-            route: Route::Artist {
-                name: artist.name.clone().into(),
-                artist_id: artist.id.clone().map(Into::into),
-            },
+            route: Route::Artist(artist.key.clone()),
         }
     }
 

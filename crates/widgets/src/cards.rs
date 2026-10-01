@@ -203,15 +203,12 @@ pub fn album_tile(album: &AlbumInfo) -> Tile {
 
 /// The artist tile: round, click opens the artist.
 pub fn artist_tile(artist: &ArtistInfo) -> Tile {
-    Tile::new(artist.name.clone(), artist.name.clone())
+    Tile::new(artist.key.to_string(), artist.name.clone())
         .artwork(artist.artwork.as_ref())
         .placeholder(icons::MIC)
         .round(true)
         .zoom_speed(motion::SLOWEST)
-        .route(Route::Artist {
-            name: artist.name.clone().into(),
-            artist_id: artist.id.clone().map(Into::into),
-        })
+        .route(Route::Artist(artist.key.clone()))
 }
 
 /// The playlist tile: click opens the playlist.

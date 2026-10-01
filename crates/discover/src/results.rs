@@ -1,6 +1,6 @@
 //! What a query turned up: the strips of albums and artists over the list of matching tracks.
 
-use api::{AlbumInfo, TrackInfo};
+use api::{AlbumInfo, ArtistKey, TrackInfo};
 use gpui_kit::component::menu::ContextMenuExt as _;
 use gpui_kit::component::{ActiveTheme as _, h_flex};
 use gpui_kit::{
@@ -34,23 +34,30 @@ impl Playing {
 }
 
 /// Search answers with tracks and albums; the artists behind them are worth a row of their own.
-pub fn artists_of(tracks: &[TrackInfo], albums: &[AlbumInfo]) -> Vec<SharedString> {
-    let mut names: Vec<SharedString> = Vec::new();
+pub fn artists_of(tracks: &[TrackInfo], albums: &[AlbumInfo]) -> Vec<(ArtistKey, SharedString)> {
+    let mut artists: Vec<(ArtistKey, SharedString)> = Vec::new();
     let credits = tracks
         .iter()
-        .map(|track| track.artist.as_str())
-        .chain(albums.iter().map(|album| album.artist.as_str()));
-    for credit in credits {
-        let credit = credit.trim();
-        if credit.is_empty() || names.len() >= STRIP {
+        .filter_map(|track| {
+            let credit = track.primary_credit()?;
+            Some((credit.key.clone()?, credit.name.as_str()))
+        })
+        .chain(
+            albums
+                .iter()
+                .filter_map(|album| Some((album.artist_key.clone()?, album.artist.as_str()))),
+        );
+    for (key, name) in credits {
+        let name = name.trim();
+        if name.is_empty() || artists.len() >= STRIP {
             continue;
         }
-        if names.iter().any(|held| held.eq_ignore_ascii_case(credit)) {
+        if artists.iter().any(|(held, _)| held == &key) {
             continue;
         }
-        names.push(credit.to_string().into());
+        artists.push((key, name.to_string().into()));
     }
-    names
+    artists
 }
 
 /// The badge the playing card wears, over its cover's top corner.
@@ -100,24 +107,21 @@ fn album_card(album: &AlbumInfo, playing: &Playing, cx: &App) -> AnyElement {
 }
 
 /// One artist credited on what a query turned up.
-fn artist_card(name: &SharedString, playing: &Playing, cx: &App) -> AnyElement {
+fn artist_card(key: &ArtistKey, name: &SharedString, playing: &Playing, cx: &App) -> AnyElement {
     let target = Target::Artist {
+        key: key.clone(),
         name: name.clone(),
-        artist_id: None,
     };
     let tile = Tile::new(
-        SharedString::from(format!("result-artist-{name}")),
+        SharedString::from(format!("result-artist-{key}")),
         name.clone(),
     )
     .placeholder(icons::MIC)
     .size(ARTIST_TILE)
     .round(true)
-    .route(Route::Artist {
-        name: name.clone(),
-        artist_id: None,
-    });
+    .route(Route::Artist(key.clone()));
     div()
-        .id(SharedString::from(format!("result-artist-slot-{name}")))
+        .id(SharedString::from(format!("result-artist-slot-{key}")))
         .flex_shrink_0()
         .child(match playing.is_artist(name) {
             true => tile.overlay(badge(cx)),
@@ -174,17 +178,17 @@ pub fn album_strip(
 
 /// The artists credited on what a query turned up.
 pub fn artist_strip(
-    names: &[SharedString],
+    artists: &[(ArtistKey, SharedString)],
     title: SharedString,
     playing: &Playing,
     cx: &App,
 ) -> Option<AnyElement> {
-    if names.is_empty() {
+    if artists.is_empty() {
         return None;
     }
-    let cards = names
+    let cards = artists
         .iter()
-        .map(|name| artist_card(name, playing, cx))
+        .map(|(key, name)| artist_card(key, name, playing, cx))
         .collect();
     Some(strip("result-artists", title, cards, cx))
 }
@@ -196,20 +200,28 @@ mod tests {
     fn track(artist: &str) -> TrackInfo {
         TrackInfo {
             artist: artist.to_string(),
+            credits: vec![api::ArtistCredit {
+                name: artist.to_string(),
+                key: Some(ArtistKey::new(artist.to_lowercase())),
+            }],
             ..TrackInfo::default()
         }
     }
 
+    fn names(artists: &[(ArtistKey, SharedString)]) -> Vec<&str> {
+        artists.iter().map(|(_, name)| name.as_ref()).collect()
+    }
+
     #[test]
-    fn a_credit_is_only_listed_once_however_it_is_cased() {
+    fn an_artist_is_only_listed_once_however_their_credit_is_cased() {
         let tracks = [track("Boards of Canada"), track("boards of canada")];
-        assert_eq!(artists_of(&tracks, &[]), ["Boards of Canada"]);
+        assert_eq!(names(&artists_of(&tracks, &[])), ["Boards of Canada"]);
     }
 
     #[test]
     fn a_track_with_no_credit_contributes_no_artist() {
         let tracks = [track("  "), track("Autechre")];
-        assert_eq!(artists_of(&tracks, &[]), ["Autechre"]);
+        assert_eq!(names(&artists_of(&tracks, &[])), ["Autechre"]);
     }
 
     #[test]

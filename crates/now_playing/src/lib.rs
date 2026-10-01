@@ -203,7 +203,7 @@ impl NowPlaying {
         }
     }
 
-    fn track(&self, cx: &App) -> Option<api::NowPlaying> {
+    fn track(&self, cx: &App) -> Option<api::TrackInfo> {
         PlayerModel::global(cx).read(cx).track().cloned()
     }
 }

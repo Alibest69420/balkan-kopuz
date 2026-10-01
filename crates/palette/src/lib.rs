@@ -714,13 +714,10 @@ impl Palette {
                         )),
                         icon: icons::MIC,
                         hint: None,
-                        act: Act::Go(Route::Artist {
-                            name: artist.name.clone().into(),
-                            artist_id: artist.id.clone().map(Into::into),
-                        }),
+                        act: Act::Go(Route::Artist(artist.key.clone())),
                         target: Some(Target::Artist {
+                            key: artist.key.clone(),
                             name: artist.name.clone().into(),
-                            artist_id: artist.id.clone().map(Into::into),
                         }),
                         faded: false,
                     },

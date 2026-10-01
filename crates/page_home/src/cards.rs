@@ -78,7 +78,11 @@ pub(crate) fn card(
     widgets::focus::stop(
         v_flex().id(motion::channel(&tile.key, ROOT)),
         &focus,
-        move |_, cx| Navigator::navigate(opens.clone(), cx),
+        move |_, cx| {
+            if let Some(route) = opens.clone() {
+                Navigator::navigate(route, cx)
+            }
+        },
     )
     .relative()
     .w(size)
@@ -87,7 +91,11 @@ pub(crate) fn card(
     .gap_4()
     .cursor_pointer()
     .on_hover(motion::track(pointer))
-    .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
+    .on_click(move |_, _, cx| {
+        if let Some(route) = route.clone() {
+            Navigator::navigate(route, cx)
+        }
+    })
     .child(
         div()
             .relative()

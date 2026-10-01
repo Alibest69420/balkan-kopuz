@@ -480,8 +480,8 @@ static COMMANDS: &[Command] = &[
         applies: ARTIST,
         available: yes,
         run: |target, _, cx| {
-            if let Target::Artist { name, .. } = &target {
-                ops::with_artist_keys(name.to_string(), cx, actions::append);
+            if let Target::Artist { key, .. } = &target {
+                ops::with_artist_keys(key.clone(), cx, actions::append);
             }
         },
         action: None,

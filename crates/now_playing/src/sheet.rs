@@ -13,7 +13,7 @@ use gpui_kit::{
     point, px, relative, rems,
 };
 use store::layout::{Backdrop, Side};
-use store::{Chrome, ConfigModel, FavoritesModel, Navigator, QueueModel, Route, SourcesModel};
+use store::{Chrome, ConfigModel, FavoritesModel, Navigator, Route, SourcesModel};
 use widgets::format::t;
 use widgets::{Cover, icons, menus, motion, style};
 
@@ -193,7 +193,7 @@ impl NowPlaying {
     /// Title, artist, album and where the queue came from, with the track's own marks beside them.
     fn title_block(
         &self,
-        track: &api::NowPlaying,
+        track: &api::TrackInfo,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
@@ -201,21 +201,10 @@ impl NowPlaying {
         let favorite = FavoritesModel::global(cx).read(cx).is_favorite(&track.key);
         let key = track.key.clone();
         let artist = track.artist.clone();
-        // `NowPlaying` carries no credits, so the id comes from the queue row.
-        let artist_route = QueueModel::global(cx)
-            .read(cx)
-            .current()
-            .map(Route::artist_of)
-            .unwrap_or_else(|| Route::Artist {
-                name: artist.clone().into(),
-                artist_id: None,
-            });
+        let artist_route = Route::artist_of(track);
         let album = SharedString::from(track.album.clone());
-        let album_route = QueueModel::global(cx)
-            .read(cx)
-            .current()
-            .filter(|row| !row.album_id.is_empty())
-            .map(|row| Route::Album(row.album_id.clone().into()));
+        let album_route =
+            (!track.album_id.is_empty()).then(|| Route::Album(track.album_id.clone().into()));
         let heart = motion::color(
             "sheet-heart",
             if favorite {
@@ -254,16 +243,15 @@ impl NowPlaying {
                         div()
                             .id("sheet-artist")
                             .truncate()
-                            .cursor_pointer()
-                            .hover(|link| link.underline())
                             .child(SharedString::from(artist.clone()))
-                            .on_click(move |_, _, cx| {
-                                if artist.is_empty() {
-                                    return;
-                                }
-                                Chrome::global(cx)
-                                    .update(cx, |chrome, cx| chrome.set_sheet(false, cx));
-                                Navigator::navigate(artist_route.clone(), cx);
+                            .when_some(artist_route, |link, route| {
+                                link.cursor_pointer()
+                                    .hover(|link| link.underline())
+                                    .on_click(move |_, _, cx| {
+                                        Chrome::global(cx)
+                                            .update(cx, |chrome, cx| chrome.set_sheet(false, cx));
+                                        Navigator::navigate(route.clone(), cx);
+                                    })
                             }),
                     )
                     .when(!album.is_empty(), |row| {

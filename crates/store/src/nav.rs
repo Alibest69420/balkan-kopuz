@@ -11,21 +11,14 @@ pub enum Route {
         id: SharedString,
         title: SharedString,
     },
-    DiscoverArtist {
-        id: SharedString,
-        name: SharedString,
-    },
+    DiscoverArtist(api::ArtistKey),
     Library,
     /// The library with a facet and a filter set on it, encoded so back and forward restore them.
     LibraryView(SharedString),
     Albums,
     Album(SharedString),
     Artists,
-    /// `artist_id` is the source's own, where the click carried one.
-    Artist {
-        name: SharedString,
-        artist_id: Option<SharedString>,
-    },
+    Artist(api::ArtistKey),
     Playlists,
     PlaylistFolder(SharedString),
     Playlist(SharedString),
@@ -39,19 +32,10 @@ pub enum Route {
 }
 
 impl Route {
-    /// The artist page for a track's billed credit, carrying the source's own
-    /// id where the row had one.
-    pub fn artist_of(track: &api::TrackInfo) -> Route {
-        match track.primary_credit() {
-            Some(credit) => Route::Artist {
-                name: credit.name.clone().into(),
-                artist_id: credit.id.clone().map(Into::into),
-            },
-            None => Route::Artist {
-                name: track.artist.clone().into(),
-                artist_id: None,
-            },
-        }
+    /// The artist page for a track's billed credit; a credit the daemon could not key opens nothing.
+    pub fn artist_of(track: &api::TrackInfo) -> Option<Route> {
+        let key = track.primary_credit()?.key.clone()?;
+        Some(Route::Artist(key))
     }
 
     /// The sidebar item this route lights up.
@@ -60,9 +44,9 @@ impl Route {
             Route::Genre(_) => Route::Search,
             Route::LibraryView(_) => Route::Library,
             Route::Album(_) => Route::Albums,
-            Route::Artist { .. } => Route::Artists,
+            Route::Artist(_) => Route::Artists,
             Route::Playlist(_) | Route::PlaylistFolder(_) => Route::Playlists,
-            Route::DiscoverPlaylist { .. } | Route::DiscoverArtist { .. } => Route::Discover,
+            Route::DiscoverPlaylist { .. } | Route::DiscoverArtist(_) => Route::Discover,
             Route::Settings { .. } => Route::Settings { section: None },
             other => other.clone(),
         }
@@ -128,8 +112,7 @@ impl Route {
     ///
     /// `artists_remote` is [`api::ArtistPresentation::Remote`], the same fact
     /// the router opens the page on, so the lit destination is the page that
-    /// actually opened. Holding an id says nothing: every click carries one
-    /// where its source issued one, library sources included.
+    /// actually opened.
     pub fn destination_of(&self, artists_remote: bool) -> Option<&'static str> {
         Some(match self {
             Route::Home => "home",
@@ -139,13 +122,13 @@ impl Route {
             | Route::Album(_)
             | Route::Artists
             | Route::Favorites => "library",
-            Route::Artist { .. } => match artists_remote {
+            Route::Artist(_) => match artists_remote {
                 true => "discover",
                 false => "library",
             },
             Route::Discover
             | Route::DiscoverPlaylist { .. }
-            | Route::DiscoverArtist { .. }
+            | Route::DiscoverArtist(_)
             | Route::Search
             | Route::Genre(_) => "discover",
             Route::Radio => "radio",
@@ -355,24 +338,13 @@ mod tests {
         assert_eq!(Route::Favorites.destination_of(false), Some("library"));
     }
 
-    /// An artist lights the destination the page actually opened under, which
-    /// is what the source presents. Every click carries an id where its source
-    /// issued one, so holding one says nothing about which page opens.
+    /// An artist lights the destination the page actually opened under, which is what the source presents.
     #[test]
-    fn an_artist_lights_up_by_presentation_not_by_holding_an_id() {
-        let with_id = Route::Artist {
-            name: "x".into(),
-            artist_id: Some("a-1".into()),
-        };
-        let bare = Route::Artist {
-            name: "x".into(),
-            artist_id: None,
-        };
+    fn an_artist_lights_up_by_presentation() {
+        let artist = Route::Artist(api::ArtistKey::new("lib:1"));
 
-        assert_eq!(with_id.destination_of(true), Some("discover"));
-        assert_eq!(bare.destination_of(true), Some("discover"));
-        assert_eq!(with_id.destination_of(false), Some("library"));
-        assert_eq!(bare.destination_of(false), Some("library"));
+        assert_eq!(artist.destination_of(true), Some("discover"));
+        assert_eq!(artist.destination_of(false), Some("library"));
     }
 
     #[test]

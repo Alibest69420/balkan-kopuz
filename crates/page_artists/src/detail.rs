@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use api::{
-    AlbumInfo, AlbumPage, ArtistPage, ArtworkTarget, ArtworkUpload, JobKind, PlaylistCapability,
+    AlbumInfo, ArtistKey, ArtworkTarget, ArtworkUpload, JobKind, PlaylistCapability,
     SourceCapabilities, Table, TrackInfo, TrackPage,
 };
 use config::{AlbumSortField, AlbumViewMode, ArtistViewOrder, SortCriterion, SortDirection};
@@ -33,7 +33,6 @@ use widgets::{
 };
 
 use crate::controls::{self, ViewModeKey};
-use crate::names;
 
 /// `w-64 h-64`: the showcase photo.
 const PHOTO: f32 = 256.;
@@ -66,10 +65,9 @@ impl Column {
 
 /// One artist from the library: tracks and albums.
 pub struct ArtistDetail {
-    name: SharedString,
+    key: ArtistKey,
     tracks: Entity<Query<TrackPage>>,
-    artists: Entity<Query<ArtistPage>>,
-    albums: Entity<Query<AlbumPage>>,
+    detail: Entity<Query<api::ArtistDetail>>,
     list: Entity<TrackList>,
     column: Option<(Column, SortDirection)>,
     scroll: ScrollHandle,
@@ -78,40 +76,33 @@ pub struct ArtistDetail {
 }
 
 impl ArtistDetail {
-    pub fn new(name: SharedString, _: &mut Window, cx: &mut Context<Self>) -> Self {
-        let artist = name.to_string();
+    pub fn new(key: ArtistKey, _: &mut Window, cx: &mut Context<Self>) -> Self {
+        let artist = key.clone();
         let tracks = cx.new(|cx| {
             Query::new(
                 &[Table::Tracks],
                 move |api| {
                     let artist = artist.clone();
-                    async move {
-                        api.artist_tracks(api::ArtistCredit::new(artist, None), store::all())
-                            .await
-                    }
+                    async move { api.artist_tracks(artist, store::all()).await }
                 },
                 cx,
             )
         });
-        let artists = cx.new(|cx| {
+        let artist = key.clone();
+        let detail = cx.new(|cx| {
             Query::new(
-                &[Table::Tracks],
-                |api| async move { api.artists(store::all()).await },
-                cx,
-            )
-        });
-        let albums = cx.new(|cx| {
-            Query::new(
-                &[Table::Albums],
-                |api| async move { api.albums(store::all()).await },
+                &[Table::Tracks, Table::Albums],
+                move |api| {
+                    let artist = artist.clone();
+                    async move { api.artist(artist).await }
+                },
                 cx,
             )
         });
         let list = cx.new(TrackList::new);
         let subscriptions = vec![
             cx.observe(&tracks, |this, _, cx| this.sync_rows(cx)),
-            cx.observe(&artists, |_, _, cx| cx.notify()),
-            cx.observe(&albums, |_, _, cx| cx.notify()),
+            cx.observe(&detail, |_, _, cx| cx.notify()),
             cx.observe(&ConfigModel::global(cx), |this, _, cx| this.sync_rows(cx)),
             cx.observe(&SourcesModel::global(cx), |this, _, cx| this.sync_rows(cx)),
             cx.observe(&DownloadsModel::global(cx), |_, _, cx| cx.notify()),
@@ -120,10 +111,9 @@ impl ArtistDetail {
             cx.subscribe(&list, Self::on_list_event),
         ];
         Self {
-            name,
+            key,
             tracks,
-            artists,
-            albums,
+            detail,
             list,
             column: None,
             scroll: ScrollHandle::new(),
@@ -202,21 +192,23 @@ impl ArtistDetail {
     }
 
     fn artwork(&self, cx: &App) -> Option<api::ArtworkRef> {
-        let artists = self.artists.read(cx).value()?;
-        names::photos_by_key(&artists.artists).remove(&names::normalize(&self.name))
+        self.detail.read(cx).value()?.info.artwork.clone()
+    }
+
+    /// Blank until the daemon answers: the key carries no display name.
+    fn name(&self, cx: &App) -> SharedString {
+        self.detail
+            .read(cx)
+            .value()
+            .map(|detail| SharedString::from(detail.info.name.clone()))
+            .unwrap_or_default()
     }
 
     fn artist_albums(&self, cx: &App) -> Vec<AlbumInfo> {
-        let Some(page) = self.albums.read(cx).value() else {
+        let Some(detail) = self.detail.read(cx).value() else {
             return Vec::new();
         };
-        let wanted = self.name.to_lowercase();
-        let mut albums: Vec<AlbumInfo> = page
-            .albums
-            .iter()
-            .filter(|album| album.artist.to_lowercase() == wanted)
-            .cloned()
-            .collect();
+        let mut albums = detail.albums.clone();
         let criteria: Vec<SortCriterion<AlbumSortField>> = controls::criteria(cx);
         sort_albums(&mut albums, &criteria);
         let mut seen = HashSet::new();
@@ -225,7 +217,7 @@ impl ArtistDetail {
     }
 
     fn pick_photo(&mut self, cx: &mut Context<Self>) {
-        let name = self.name.to_string();
+        let artist = self.key.clone();
         let paths = cx.prompt_for_paths(PathPromptOptions {
             files: true,
             directories: false,
@@ -253,7 +245,7 @@ impl ArtistDetail {
             cx.update(|cx| {
                 actions::run(cx, move |api| async move {
                     api.upload_artwork(ArtworkUpload {
-                        target: ArtworkTarget::Artist(api::ArtistCredit::new(name, None)),
+                        target: ArtworkTarget::Artist(artist),
                         content_type,
                         bytes,
                     })
@@ -269,7 +261,24 @@ impl Render for ArtistDetail {
         widgets::scroll::smooth("artist-detail-scroll", &self.scroll, window, cx);
         let config = controls::config(cx);
         let albums_view = config.artist_view_order == ArtistViewOrder::Albums;
-        let body = if albums_view {
+        let failed = {
+            let detail = self.detail.read(cx);
+            detail
+                .value()
+                .is_none()
+                .then(|| detail.error().cloned())
+                .flatten()
+        };
+        let body = if let Some(error) = failed {
+            let message = match error.code {
+                api::ErrorCode::NotFound => t("artist_not_found"),
+                _ => t_with(
+                    "artist_load_failed",
+                    &[("error", store::human(&error).to_string())],
+                ),
+            };
+            EmptyState::new(message).icon(icons::MIC).into_any_element()
+        } else if albums_view {
             self.albums_view(window, cx)
         } else {
             self.tracks_view(window, cx)
@@ -460,7 +469,7 @@ impl ArtistDetail {
                     .on_click(cx.listener(|this, _, _, cx| this.pick_photo(cx)))
             });
 
-        let mut header = DetailHeader::new(self.name.clone())
+        let mut header = DetailHeader::new(self.name(cx))
             .cover(photo)
             .meta(t_with(
                 "showcase_song_count",
@@ -682,7 +691,7 @@ impl ArtistDetail {
     fn albums_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let albums = self.artist_albums(cx);
         let mode = controls::config(cx).artist_album_view_mode;
-        let settled = self.albums.read(cx).is_settled();
+        let settled = self.detail.read(cx).is_settled();
         let fields = available_fields(&albums);
 
         let body = if !settled && albums.is_empty() {

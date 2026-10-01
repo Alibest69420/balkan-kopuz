@@ -1,8 +1,9 @@
 //! One album: the standard detail, and the catalog-styled one a remote source presents.
 
 use api::{
-    AlbumInfo, AlbumPage, AlbumPresentation, ArtworkRef, CatalogDetail, CatalogDetailRequest,
-    CatalogItemKind, PlaylistCapability, SourceCapabilities, Table, TrackInfo,
+    AlbumInfo, AlbumPage, AlbumPresentation, ArtistKey, ArtworkRef, CatalogDetail,
+    CatalogDetailRequest, CatalogItemKind, PlaylistCapability, SourceCapabilities, Table,
+    TrackInfo,
 };
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
@@ -568,15 +569,13 @@ impl AlbumDetail {
     fn artist_link(
         &self,
         artist: &str,
+        key: Option<ArtistKey>,
         id: &'static str,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let name = SharedString::from(artist.to_string());
-        let route = Route::Artist {
-            name: name.clone(),
-            artist_id: None,
-        };
+        let route = key.map(Route::Artist);
         let target = if self.hovered == Some(id) {
             cx.theme().foreground
         } else {
@@ -590,13 +589,16 @@ impl AlbumDetail {
             .text_sm()
             .font_weight(gpui_kit::FontWeight::BOLD)
             .text_color(ink)
-            // The rule has nothing to tween, so it stays a plain hover refinement.
-            .hover(|link| link.underline())
             .on_hover(
                 cx.listener(move |this, hovered: &bool, _, cx| this.track_hover(id, *hovered, cx)),
             )
-            .cursor_pointer()
-            .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
+            // An album that bills nobody the daemon could key opens nothing.
+            .when_some(route, |link, route| {
+                // The rule has nothing to tween, so it stays a plain hover refinement.
+                link.hover(|link| link.underline())
+                    .cursor_pointer()
+                    .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
+            })
             .child(name)
     }
 
@@ -771,7 +773,13 @@ impl AlbumDetail {
         let radius = cx.theme().radius * 3.;
         let mut header = DetailHeader::new(SharedString::from(album.title.clone()))
             .cover(self.cover(&album, HERO_COVER, radius, window, cx))
-            .eyebrow(self.artist_link(&album.artist, "album-artist", window, cx))
+            .eyebrow(self.artist_link(
+                &album.artist,
+                album.artist_key.clone(),
+                "album-artist",
+                window,
+                cx,
+            ))
             .meta(count)
             .meta(format!("{} {}", self.total_ms() / 60_000, t("min")))
             .action(self.shuffle_button(HERO_ACTION, false, window, cx))
@@ -847,10 +855,7 @@ impl AlbumDetail {
             artwork: view.artwork.clone(),
             ..AlbumInfo::default()
         };
-        let artist_route = Route::Artist {
-            name: view.artist.clone(),
-            artist_id: view.artist_id.clone().map(Into::into),
-        };
+        let artist_route = view.artist_key.clone().map(Route::Artist);
         let browse_id = view.browse_id.clone();
         let first_key = self.rows.first().map(|row| row.key.clone());
 
@@ -896,6 +901,7 @@ impl AlbumDetail {
                                     .gap_2()
                                     .child(self.artist_link(
                                         &view.artist,
+                                        view.artist_key.clone(),
                                         "album-remote-artist",
                                         window,
                                         cx,
@@ -942,7 +948,7 @@ impl AlbumDetail {
                                         window,
                                         cx,
                                     ))
-                                    .child({
+                                    .children(artist_route.map(|artist_route| {
                                         let button = Self::round_button(
                                             "album-remote-artist-button",
                                             icons::MIC,
@@ -963,7 +969,7 @@ impl AlbumDetail {
                                             window,
                                             cx,
                                         )
-                                    })
+                                    }))
                                     .child(self.play_button(REMOTE_ACTION, cx))
                                     .child(self.shuffle_button(REMOTE_SECONDARY, true, window, cx))
                                     .child({
@@ -1039,7 +1045,7 @@ struct RemoteView {
     year: Option<SharedString>,
     artwork: Option<ArtworkRef>,
     browse_id: Option<String>,
-    artist_id: Option<String>,
+    artist_key: Option<ArtistKey>,
 }
 
 impl RemoteView {
@@ -1058,9 +1064,9 @@ impl RemoteView {
                     .clone()
                     .or_else(|| remote.and_then(|detail| detail.artwork.clone())),
                 browse_id: remote.map(|detail| detail.id.clone()),
-                artist_id: remote
-                    .and_then(|detail| detail.artist_id.clone())
-                    .or_else(|| album.artist_id.clone()),
+                artist_key: remote
+                    .and_then(|detail| detail.artist_key.clone())
+                    .or_else(|| album.artist_key.clone()),
             }),
             (None, Some(detail)) => Some(Self {
                 id: detail.id.clone(),
@@ -1069,7 +1075,7 @@ impl RemoteView {
                 year: detail.year.clone().map(SharedString::from),
                 artwork: detail.artwork.clone(),
                 browse_id: Some(detail.id.clone()),
-                artist_id: detail.artist_id.clone(),
+                artist_key: detail.artist_key.clone(),
             }),
             (None, None) => None,
         }
@@ -1137,7 +1143,7 @@ fn point_remote(query: &Entity<Query<Option<CatalogDetail>>>, id: Option<String>
                     let Some(id) = id else {
                         return Ok(None);
                     };
-                    api.catalog_detail(CatalogDetailRequest::by_id(CatalogItemKind::Album, id))
+                    api.catalog_detail(CatalogDetailRequest::new(CatalogItemKind::Album, id))
                         .await
                         .map(Some)
                 }

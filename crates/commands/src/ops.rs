@@ -132,14 +132,12 @@ pub fn with_album_keys(
 }
 
 pub fn with_artist_keys(
-    name: String,
+    artist: api::ArtistKey,
     cx: &mut App,
     then: impl FnOnce(Vec<String>, &mut App) + 'static,
 ) {
-    let call = Link::global(cx).call(move |api| async move {
-        api.artist_tracks(api::ArtistCredit::new(name, None), store::all())
-            .await
-    });
+    let call = Link::global(cx)
+        .call(move |api| async move { api.artist_tracks(artist, store::all()).await });
     cx.spawn(async move |cx| match call.await {
         Ok(page) => {
             let keys = keys_of(&page.items);
@@ -171,10 +169,9 @@ fn with_track(key: String, cx: &mut App, then: impl FnOnce(TrackInfo, &mut App) 
 pub fn go_to_artist(target: &Target, cx: &mut App) {
     let Some(key) = first_key(target) else { return };
     with_track(key, cx, |track, cx| {
-        if track.artist.is_empty() {
-            return;
+        if let Some(route) = Route::artist_of(&track) {
+            Navigator::navigate(route, cx);
         }
-        Navigator::navigate(Route::artist_of(&track), cx);
     });
 }
 
@@ -212,13 +209,10 @@ pub fn play_album(target: &Target, cx: &mut App) {
 }
 
 pub fn play_artist(target: &Target, cx: &mut App) {
-    if let Target::Artist { name, artist_id } = target {
+    if let Target::Artist { key, .. } = target {
         actions::play_context(
             QueueContext::Artist {
-                artist: api::ArtistCredit::new(
-                    name.to_string(),
-                    artist_id.as_ref().map(|id| id.to_string()),
-                ),
+                artist: key.clone(),
             },
             None,
             cx,

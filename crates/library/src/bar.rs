@@ -698,7 +698,7 @@ async fn gather(
             }
             Facet::Artists => {
                 let page = api
-                    .artist_tracks(api::ArtistCredit::new(id, None), store::all())
+                    .artist_tracks(api::ArtistKey::new(id), store::all())
                     .await?;
                 keys.extend(page.items.into_iter().map(|track| track.key));
             }

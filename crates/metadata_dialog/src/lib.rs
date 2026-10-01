@@ -126,10 +126,14 @@ impl MetadataDialog {
 
     /// Take a row as the truth, refilling the editor with it.
     fn adopt(&mut self, track: TrackInfo, window: &mut Window, cx: &mut Context<Self>) {
-        let artist = if track.artists.is_empty() {
-            track.artist.clone()
-        } else {
-            track.artists.join(", ")
+        let artist = match track.credits.is_empty() {
+            true => track.artist.clone(),
+            false => track
+                .credits
+                .iter()
+                .map(|credit| credit.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", "),
         };
         let fields = [
             (&self.title, track.title.clone()),

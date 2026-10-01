@@ -97,10 +97,7 @@ pub fn play_context(context: QueueContext, start: Option<u32>, cx: &mut App) {
 fn remember_origin(context: &QueueContext, cx: &mut App) {
     let route = match context {
         QueueContext::Album { id } => Some(crate::Route::Album(id.clone().into())),
-        QueueContext::Artist { artist } => Some(crate::Route::Artist {
-            name: artist.name.clone().into(),
-            artist_id: artist.id.clone().map(Into::into),
-        }),
+        QueueContext::Artist { artist } => Some(crate::Route::Artist(artist.clone())),
         QueueContext::Genre { name } => Some(crate::Route::Genre(name.clone().into())),
         QueueContext::Playlist { id } | QueueContext::PlaylistRadio { id } => {
             Some(crate::Route::Playlist(id.clone().into()))

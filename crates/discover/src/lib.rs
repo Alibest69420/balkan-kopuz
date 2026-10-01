@@ -102,7 +102,7 @@ pub struct Discover {
     results: Entity<Query<SearchResults>>,
     tracks: Entity<TrackList>,
     result_albums: Vec<AlbumInfo>,
-    result_artists: Vec<SharedString>,
+    result_artists: Vec<(api::ArtistKey, SharedString)>,
     playing: Playing,
 
     _load: Option<Task<()>>,

@@ -78,7 +78,11 @@ fn row(
         cx,
     );
     let route = tile.route.clone();
-    let open = move |_: &mut Window, cx: &mut gpui_kit::App| Navigator::navigate(route.clone(), cx);
+    let open = move |_: &mut Window, cx: &mut gpui_kit::App| {
+        if let Some(route) = route.clone() {
+            Navigator::navigate(route, cx)
+        }
+    };
     let go = tile.route.clone();
     focus::stop(div().id(key.clone()), &handle, open)
         .relative()
@@ -92,7 +96,11 @@ fn row(
         .bg(wash)
         .cursor_pointer()
         .on_hover(motion::track(pointer))
-        .on_click(move |_, _, cx| Navigator::navigate(go.clone(), cx))
+        .on_click(move |_, _, cx| {
+            if let Some(route) = go.clone() {
+                Navigator::navigate(route, cx)
+            }
+        })
         .child(
             div()
                 .w(px(RANK))
