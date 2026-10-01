@@ -1,6 +1,6 @@
 //! Local libraries: the default "Local" source and the named ones, each with the folders it scans.
 
-use api::{LocalSourceDraft, SourceInfo, SourceKind};
+use api::{LocalSourceDraft, SourceInfo};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
@@ -94,7 +94,7 @@ impl LocalLibraries {
             .read(cx)
             .sources()
             .iter()
-            .filter(|source| matches!(source.kind, SourceKind::Local | SourceKind::LocalLibrary))
+            .filter(|source| source.capabilities.scan_folders)
             .cloned()
             .collect()
     }
@@ -166,12 +166,9 @@ impl LocalLibraries {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let id = source.id.clone();
-        let named = source.kind == SourceKind::LocalLibrary;
-        let name = if named {
-            SharedString::from(source.name.clone())
-        } else {
-            t("local")
-        };
+        // The daemon refuses to delete its default library, which it always lists as "local".
+        let deletable = source.id != "local";
+        let name = SharedString::from(source.name.clone());
         let folders = source.directories.clone();
 
         ui::hover_row(&id, window, cx)
@@ -214,7 +211,7 @@ impl LocalLibraries {
                                         })),
                                 )
                             })
-                            .when(named, |row| {
+                            .when(deletable, |row| {
                                 row.child(
                                     Button::new(SharedString::from(format!("delete-{id}")))
                                         .custom(ui::danger_text(cx))

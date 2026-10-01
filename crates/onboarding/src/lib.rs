@@ -5,7 +5,7 @@ mod pick;
 mod sync;
 mod ui;
 
-use api::{AlbumPage, JobKind, Page, ServiceInfo, SourceInfo, SourceKind, Table};
+use api::{AlbumPage, JobKind, Page, ServiceInfo, SourceInfo, Table};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -337,15 +337,9 @@ fn wanted(
 
 /// A source that could hold music: any server, or a local library with somewhere to scan.
 fn configured(sources: &[SourceInfo]) -> bool {
-    sources.iter().any(|source| match source.kind {
-        SourceKind::Server => true,
-        SourceKind::Local | SourceKind::LocalLibrary => !source.directories.is_empty(),
-        SourceKind::Unknown => false,
-    })
-}
-
-fn is_local(source: &SourceInfo) -> bool {
-    matches!(source.kind, SourceKind::Local | SourceKind::LocalLibrary)
+    sources
+        .iter()
+        .any(|source| source.service.is_some() || !source.directories.is_empty())
 }
 
 /// The local library the first run writes folders into: the live one, or whichever the daemon lists.
@@ -354,8 +348,12 @@ fn local_source(cx: &App) -> Option<SourceInfo> {
     let sources = model.read(cx).sources();
     sources
         .iter()
-        .find(|source| is_local(source) && source.active)
-        .or_else(|| sources.iter().find(|source| is_local(source)))
+        .find(|source| source.capabilities.scan_folders && source.active)
+        .or_else(|| {
+            sources
+                .iter()
+                .find(|source| source.capabilities.scan_folders)
+        })
         .cloned()
 }
 
@@ -365,16 +363,17 @@ fn active_source(cx: &App) -> Option<SourceInfo> {
 
 /// Nothing can be read from a source that is still waiting on a sign-in or has nowhere to look.
 fn ready_to_sync(source: &SourceInfo) -> bool {
-    if is_local(source) {
+    if source.capabilities.scan_folders {
         return !source.directories.is_empty();
     }
     source.authenticated || source.anonymous
 }
 
 fn job_for(source: &SourceInfo) -> JobKind {
-    match source.kind {
-        SourceKind::Server => JobKind::LibrarySync,
-        _ => JobKind::Scan,
+    if source.capabilities.scan_folders {
+        JobKind::Scan
+    } else {
+        JobKind::LibrarySync
     }
 }
 
@@ -384,7 +383,10 @@ mod tests {
 
     fn local(directories: &[&str]) -> SourceInfo {
         SourceInfo {
-            kind: SourceKind::Local,
+            capabilities: api::SourceCapabilities {
+                scan_folders: true,
+                ..Default::default()
+            },
             authenticated: true,
             directories: directories.iter().map(|path| path.to_string()).collect(),
             ..Default::default()
@@ -393,7 +395,7 @@ mod tests {
 
     fn server(authenticated: bool) -> SourceInfo {
         SourceInfo {
-            kind: SourceKind::Server,
+            service: Some(Default::default()),
             authenticated,
             ..Default::default()
         }

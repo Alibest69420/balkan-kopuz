@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use api::schema::{FieldSpec, FieldValue};
-use api::{ApiEvent, SignInKind, SourceFolderEntry, SourceInfo, SourceKind, SourceState, Table};
+use api::{ApiEvent, SignInKind, SourceFolderEntry, SourceInfo, SourceState, Table};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::spinner::Spinner;
@@ -149,7 +149,7 @@ impl MediaServers {
             .read(cx)
             .sources()
             .iter()
-            .filter(|source| source.kind == SourceKind::Server)
+            .filter(|source| source.service.is_some())
             .cloned()
             .collect()
     }
@@ -158,7 +158,7 @@ impl MediaServers {
         SourcesModel::global(cx)
             .read(cx)
             .active()
-            .filter(|source| source.kind == SourceKind::Server)
+            .filter(|source| source.service.is_some())
             .cloned()
     }
 

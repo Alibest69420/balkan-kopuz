@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use api::{SourceInfo, SourceKind, SourceState};
+use api::{SourceInfo, SourceState};
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
@@ -110,7 +110,7 @@ impl SourceProbe {
             return;
         }
         self.probed = Some(active.id.clone());
-        if active.kind != SourceKind::Server {
+        if active.service.is_none() {
             self.status = Status::Online;
             self._probe = None;
             return;
@@ -382,13 +382,10 @@ fn document(path: &str) -> String {
 }
 
 fn mark_of(source: &SourceInfo) -> Mark {
-    match (source.kind, source.service.as_ref()) {
-        (SourceKind::Server, Some(service)) => match &service.icon {
-            api::Icon::Svg(path) => Mark::Path(path.clone()),
-            api::Icon::Class(class) => Mark::Bundled(bundled(class)),
-        },
-        (SourceKind::LocalLibrary, _) => Mark::Bundled(LIBRARY_ICON),
-        _ => Mark::Bundled(LOCAL_ICON),
+    match source.service.as_ref().map(|service| &service.icon) {
+        Some(api::Icon::Svg(path)) => Mark::Path(path.clone()),
+        Some(api::Icon::Class(class)) => Mark::Bundled(bundled(class)),
+        None => Mark::Bundled(LOCAL_ICON),
     }
 }
 
@@ -410,9 +407,9 @@ fn bundled(class: &str) -> &'static str {
 }
 
 fn subline(source: &SourceInfo) -> SharedString {
-    match (source.kind, source.service.as_ref()) {
-        (SourceKind::Server, Some(service)) => text(&service.name).to_uppercase().into(),
-        _ => t("source_on_this_device"),
+    match source.service.as_ref() {
+        Some(service) => text(&service.name).to_uppercase().into(),
+        None => t("source_on_this_device"),
     }
 }
 
