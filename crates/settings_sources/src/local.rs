@@ -166,8 +166,6 @@ impl LocalLibraries {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let id = source.id.clone();
-        // The daemon refuses to delete its default library, which it always lists as "local".
-        let deletable = source.id != "local";
         let name = SharedString::from(source.name.clone());
         let folders = source.directories.clone();
 
@@ -211,35 +209,32 @@ impl LocalLibraries {
                                         })),
                                 )
                             })
-                            .when(deletable, |row| {
-                                row.child(
-                                    Button::new(SharedString::from(format!("delete-{id}")))
-                                        .custom(ui::danger_text(cx))
-                                        .small()
-                                        .label(t("delete"))
-                                        .disabled(locked)
-                                        .on_click(cx.listener({
+                            .child(
+                                Button::new(SharedString::from(format!("delete-{id}")))
+                                    .custom(ui::danger_text(cx))
+                                    .small()
+                                    .label(t("delete"))
+                                    .disabled(locked)
+                                    .on_click(cx.listener({
+                                        let id = id.clone();
+                                        let name = name.clone();
+                                        move |_: &mut Self, _, window, cx| {
                                             let id = id.clone();
-                                            let name = name.clone();
-                                            move |_: &mut Self, _, window, cx| {
-                                                let id = id.clone();
-                                                let entity = cx.entity();
-                                                widgets::dialogs::confirm_delete(
-                                                    t("delete"),
-                                                    name.clone(),
-                                                    move |_, cx| {
-                                                        let id = id.clone();
-                                                        entity.update(cx, |this, cx| {
-                                                            this.delete(id, cx)
-                                                        });
-                                                    },
-                                                    window,
-                                                    cx,
-                                                );
-                                            }
-                                        })),
-                                )
-                            }),
+                                            let entity = cx.entity();
+                                            widgets::dialogs::confirm_delete(
+                                                t("delete"),
+                                                name.clone(),
+                                                move |_, cx| {
+                                                    let id = id.clone();
+                                                    entity
+                                                        .update(cx, |this, cx| this.delete(id, cx));
+                                                },
+                                                window,
+                                                cx,
+                                            );
+                                        }
+                                    })),
+                            ),
                     ),
             )
             .when(folders.is_empty(), |row| {
