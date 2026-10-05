@@ -153,6 +153,8 @@ fn strip(id: &'static str, title: SharedString, cards: Vec<AnyElement>, cx: &App
                 .gap_4()
                 .pb_2()
                 .overflow_x_scroll()
+                // A bare wheel notch belongs to the page, not to the strip under the pointer.
+                .restrict_scroll_to_axis()
                 .children(cards),
         )
         .into_any_element()

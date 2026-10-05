@@ -9,7 +9,7 @@ use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, Render, ScrollHandle, SharedString,
+    ParentElement as _, Pixels, Render, ScrollHandle, ScrollWheelEvent, SharedString,
     StatefulInteractiveElement as _, Styled, Subscription, Task, Window, div, point, px,
 };
 use store::{Link, Navigator, Notices, PlayerModel, Route, SourcesModel, Target, actions};
@@ -294,6 +294,18 @@ impl Shelves {
                     .pt_1()
                     .pb_3()
                     .overflow_x_scroll()
+                    // A bare wheel notch belongs to the page; only a sideways gesture or shift slides the row.
+                    .restrict_scroll_to_axis()
+                    .on_scroll_wheel(cx.listener({
+                        let scroll = view.scroll.clone();
+                        move |_, event: &ScrollWheelEvent, window, cx| {
+                            let delta = event.delta.pixel_delta(window.line_height());
+                            if event.modifiers.shift && delta.y != px(0.) {
+                                widgets::scroll::nudge_x(&scroll, -delta.y);
+                                cx.stop_propagation();
+                            }
+                        }
+                    }))
                     .track_scroll(&view.scroll)
                     .children(tiles),
             )
