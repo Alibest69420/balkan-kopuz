@@ -6,14 +6,13 @@ mod ui;
 
 use api::{AlbumPage, JobKind, Page, ServiceInfo, SourceInfo, Table};
 use components::format::t;
-use components::{SectionHeading, icons, style};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use components::{StepFrame, Stepper};
+use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
     ParentElement as _, Render, ScrollHandle, StatefulInteractiveElement as _, Styled,
-    Subscription, Window, div, px,
+    Subscription, Window,
 };
 use settings_sources::add_source::{AddSource, SourceAdded};
 use store::{JobEvent, JobsModel, LayoutModel, Navigator, Query, Route, SourcesModel};
@@ -185,55 +184,6 @@ impl FirstRun {
         SourcesModel::global(cx).update(cx, |sources, cx| sources.switch(id, window, cx));
         cx.notify();
     }
-
-    fn header(&self, cx: &App) -> impl IntoElement {
-        v_flex()
-            .w_full()
-            .gap_2()
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .size_10()
-                    .rounded(style::radius_xl())
-                    .bg(style::accent(0.15, cx))
-                    .child(
-                        icons::icon(ui::SPARKLES)
-                            .size(px(18.))
-                            .text_color(cx.theme().primary),
-                    ),
-            )
-            .child(SectionHeading::new(t("first_run_title")))
-            .child(ui::hint(t("first_run_subtitle"), cx))
-    }
-
-    fn footer(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let quiet = style::bare_button(style::slate_400(cx), cx);
-        h_flex()
-            .w_full()
-            .pt_2()
-            .gap_2()
-            .items_center()
-            .justify_between()
-            .child(div().when(self.step != Step::Pick, |slot| {
-                slot.child(
-                    Button::new("first-run-back")
-                        .custom(quiet)
-                        .small()
-                        .icon(icons::icon(ui::ARROW_LEFT))
-                        .label(t("first_run_back"))
-                        .on_click(cx.listener(|this: &mut Self, _, _, cx| this.go_back(cx))),
-                )
-            }))
-            .child(
-                Button::new("first-run-skip")
-                    .custom(quiet)
-                    .small()
-                    .label(t("first_run_skip"))
-                    .on_click(cx.listener(|this: &mut Self, _, _, cx| this.dismiss(cx))),
-            )
-    }
 }
 
 impl Render for FirstRun {
@@ -242,9 +192,15 @@ impl Render for FirstRun {
         components::scroll::smooth("first-run-scroll", &self.scroll, window, cx);
         let step = self.step;
         let body = match step {
-            Step::Pick => self.pick_step(window, cx),
+            Step::Pick => self.pick_step(cx),
             Step::Sync => self.sync_step(window, cx),
         };
+        let stepper = Stepper::new([
+            t("first_run_step_source"),
+            t("first_run_step_connect"),
+            t("first_run_step_scan"),
+        ])
+        .current(step.index());
         v_flex()
             .id("first-run")
             .size_full()
@@ -252,25 +208,13 @@ impl Render for FirstRun {
             .track_scroll(&self.scroll)
             .bg(cx.theme().background)
             .child(
-                v_flex()
-                    .w_full()
-                    .max_w(ui::column_width())
-                    .mx_auto()
-                    .px_8()
-                    .py_12()
-                    .gap_6()
-                    .child(self.header(cx))
-                    .child(ui::rail(
-                        [
-                            t("first_run_step_source"),
-                            t("first_run_step_connect"),
-                            t("first_run_step_scan"),
-                        ],
-                        step.index(),
-                        cx,
-                    ))
-                    .child(body)
-                    .child(self.footer(cx)),
+                StepFrame::new(t("first_run_title"), t("first_run_subtitle"))
+                    .stepper(stepper)
+                    .when(step != Step::Pick, |frame| {
+                        frame.on_back(cx.listener(|this: &mut Self, _, _, cx| this.go_back(cx)))
+                    })
+                    .on_skip(cx.listener(|this: &mut Self, _, _, cx| this.dismiss(cx)))
+                    .child(body),
             )
     }
 }

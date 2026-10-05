@@ -1,22 +1,21 @@
 //! Step one: every service the daemon offers, each opening the shared "add source" form on itself.
 
 use api::ServiceInfo;
-use components::EmptyState;
 use components::dialogs::{DialogSize, FormDialog};
 use components::format::{t, text};
 use components::source_mark::{self, SourceMark};
+use components::{ChoiceCard, EmptyState};
 use components::{Heading, SectionHeading};
 use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, Context, IntoElement, ParentElement as _, SharedString,
-    StatefulInteractiveElement as _, Styled, Window, px,
+    AnyElement, Context, IntoElement, ParentElement as _, SharedString, Styled, Window, px,
 };
 
-use crate::{FirstRun, ui};
+use crate::FirstRun;
 
 impl FirstRun {
-    pub(crate) fn pick_step(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn pick_step(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let services: Vec<ServiceInfo> =
             self.services.read(cx).value().cloned().unwrap_or_default();
         v_flex()
@@ -29,15 +28,13 @@ impl FirstRun {
             .children(services.into_iter().map(|service| {
                 let accent = source_mark::accent(Some(&service), cx);
                 let detail = service.experimental.then(|| t("experimental"));
-                ui::choice_card(
+                ChoiceCard::new(
                     SharedString::from(format!("first-run-service-{}", service.id)),
-                    SourceMark::new(&service).size(px(18.)),
-                    accent,
                     text(&service.name),
-                    detail,
-                    window,
-                    cx,
                 )
+                .glyph(SourceMark::new(&service).size(px(18.)))
+                .accent(accent)
+                .detail(detail)
                 .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
                     this.open_add(service.clone(), window, cx)
                 }))
