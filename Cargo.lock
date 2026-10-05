@@ -1100,6 +1100,7 @@ version = "0.1.0"
 dependencies = [
  "gpui-kit",
  "kopuz-api",
+ "kopuz-config",
  "kopuz-i18n",
  "link",
  "primitives",

@@ -180,7 +180,7 @@ impl Render for Artists {
             .pt_8()
             .child(
                 PageHeader::new(t("artists"))
-                    .action(controls::view_mode_toggle(ViewModeKey::Artists, window, cx))
+                    .action(controls::view_mode_toggle(ViewModeKey::Artists, cx))
                     .action(controls::sort_control(
                         "artist-sort",
                         vec![

@@ -3,22 +3,18 @@
 use api::{AlbumInfo, AlbumPage, JobKind, Table};
 use components::format::t;
 use components::{
-    EmptyState, Frame, GridMode, Loading, PageHeader, TileGrid, album_row, album_tile, icons,
-    motion, style,
+    EmptyState, Frame, GridMode, Loading, PageHeader, SortControl, TileGrid, album_row, album_tile,
+    icons,
 };
-use config::{AlbumSortField, AlbumViewMode, SortCriterion, SortDirection};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use config::{AlbumSortField, AlbumViewMode, SortCriterion};
+use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
-    ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled,
+    App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled,
     Subscription, Window, div, px,
 };
 use store::{ConfigModel, JobsModel, Query, SourcesModel};
 
-use crate::clear_variant;
 use crate::sort;
 
 // TODO(offline): filtering the grid to downloaded albums waits on an offline seam the checklist flags as wrong.
@@ -28,9 +24,6 @@ const TILE: gpui_kit::Pixels = px(180.);
 // The tile's cover fills it inside `p-4`.
 const TILE_COVER: gpui_kit::Pixels = px(148.);
 
-// The two chrome controls track their own hover, since a Button cannot carry a tween.
-const SORT_CONTROL: &str = "albums-sort-frame";
-
 /// Every album, as tiles or as rows.
 pub struct Albums {
     albums: Entity<Query<AlbumPage>>,
@@ -38,7 +31,6 @@ pub struct Albums {
     visible: Vec<AlbumInfo>,
     sort_fields: Vec<AlbumSortField>,
     grid: TileGrid,
-    control: Option<&'static str>,
     // A library sync is offered once per visit, not once per refetch.
     synced: bool,
     _subscriptions: Vec<Subscription>,
@@ -72,7 +64,6 @@ impl Albums {
             visible: Vec::new(),
             sort_fields: Vec::new(),
             grid: TileGrid::new("albums-scroll"),
-            control: None,
             synced: false,
             _subscriptions: subscriptions,
         }
@@ -110,151 +101,28 @@ impl Albums {
             .unwrap_or_default()
     }
 
-    fn view_toggle(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        h_flex()
-            .gap_0p5()
-            .p_0p5()
-            .rounded(style::radius_lg())
-            .bg(style::white(style::RAISED, cx))
-            .border_1()
-            .border_color(style::white(style::BORDER_SOFT, cx))
-            .child(self.view_segment(
-                "albums-view-grid",
-                icons::GRID,
-                t("view_grid"),
-                AlbumViewMode::Grid,
-                window,
-                cx,
-            ))
-            .child(self.view_segment(
-                "albums-view-list",
-                icons::ROWS,
-                t("view_list"),
-                AlbumViewMode::List,
-                window,
-                cx,
-            ))
+    fn view_toggle(&self, cx: &App) -> impl IntoElement {
+        components::view_toggle(
+            "albums-view",
+            view_mode(cx) == AlbumViewMode::Grid,
+            |grid, cx| {
+                let mode = match grid {
+                    true => AlbumViewMode::Grid,
+                    false => AlbumViewMode::List,
+                };
+                ConfigModel::edit(cx, |config| config.album_view_mode = mode);
+            },
+        )
     }
 
-    /// `transition-all` on the switch: the frame carries the wash and the glyph its colour.
-    fn view_segment(
-        &self,
-        id: &'static str,
-        icon: &'static str,
-        label: SharedString,
-        mode: AlbumViewMode,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let active = view_mode(cx) == mode;
-        let hovered = self.control == Some(id);
-        let wash = style::white(if active { style::HOVER } else { 0. }, cx);
-        let target = match (active, hovered) {
-            (true, _) => cx.theme().foreground,
-            (false, true) => style::white(0.8, cx),
-            (false, false) => style::white(0.4, cx),
-        };
-        let background = motion::color(motion::id(id, "bg"), wash, window, cx);
-        let ink = motion::color(motion::id(id, "ink"), target, window, cx);
-        div()
-            .id(id)
-            .w_7()
-            .h_6()
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded(style::radius_md())
-            .bg(background)
-            .on_hover(
-                cx.listener(move |this, hovered: &bool, _, cx| {
-                    this.track_control(id, *hovered, cx)
-                }),
+    fn sort_control(&self, cx: &App) -> impl IntoElement {
+        SortControl::new("albums-sort", criteria(cx))
+            .fields(
+                self.sort_fields
+                    .iter()
+                    .map(|field| (*field, sort::label(*field))),
             )
-            .child(
-                Button::new(SharedString::from(format!("{id}-button")))
-                    .xsmall()
-                    .icon(icons::icon(icon))
-                    .tooltip(label)
-                    .size_full()
-                    // A Button paints its own hover, so the tween reaches it as a variant.
-                    .custom(clear_variant(ink, cx))
-                    .on_click(move |_, _, cx| set_view_mode(mode, cx)),
-            )
-    }
-
-    /// A leave for a control that is no longer the hovered one would clear its successor.
-    fn track_control(&mut self, id: &'static str, hovered: bool, cx: &mut Context<Self>) {
-        if !hovered && self.control != Some(id) {
-            return;
-        }
-        self.control = hovered.then_some(id);
-        cx.notify();
-    }
-
-    fn sort_control(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let available = self.sort_fields.clone();
-        let primary = criteria(cx).first().copied();
-        let label = match primary {
-            Some(criterion) => SharedString::from(format!(
-                "{}: {}",
-                t("sort_by"),
-                sort::label(criterion.field)
-            )),
-            None => t("sort_by"),
-        };
-        let hovered = self.control == Some(SORT_CONTROL);
-        let wash = style::white(if hovered { style::HOVER } else { style::RAISED }, cx);
-        let target = if hovered {
-            cx.theme().foreground
-        } else {
-            style::white(0.7, cx)
-        };
-        let background = motion::color(motion::id(SORT_CONTROL, "bg"), wash, window, cx);
-        let ink = motion::color(motion::id(SORT_CONTROL, "ink"), target, window, cx);
-        div()
-            .id(SORT_CONTROL)
-            .flex_shrink_0()
-            .rounded(style::radius_lg())
-            .bg(background)
-            .border_1()
-            .border_color(style::white(style::BORDER_SOFT, cx))
-            .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
-                this.track_control(SORT_CONTROL, *hovered, cx)
-            }))
-            .child(
-                Button::new("albums-sort")
-                    // A Button paints its own hover, so the frame carries the wash and the variant the ink.
-                    .custom(clear_variant(ink, cx))
-                    .icon(icons::icon(icons::SORT))
-                    .label(label)
-                    .h_7()
-                    .px_3()
-                    .text_xs()
-                    .dropdown_menu(move |mut menu, _, _| {
-                        for field in available.iter().copied() {
-                            menu = menu.item(
-                                PopupMenuItem::new(sort::label(field))
-                                    .checked(
-                                        primary.is_some_and(|criterion| criterion.field == field),
-                                    )
-                                    .on_click(move |_, _, cx| set_sort_field(field, cx)),
-                            );
-                        }
-                        menu = menu.separator();
-                        for direction in [SortDirection::Asc, SortDirection::Desc] {
-                            menu = menu.item(
-                                PopupMenuItem::new(sort::direction_label(direction))
-                                    .checked(
-                                        primary.is_some_and(|criterion| {
-                                            criterion.direction == direction
-                                        }),
-                                    )
-                                    .on_click(move |_, _, cx| set_sort_direction(direction, cx)),
-                            );
-                        }
-                        menu
-                    }),
-            )
+            .on_change(|sorted, cx| ConfigModel::edit(cx, |config| config.album_sort = sorted))
     }
 }
 
@@ -300,8 +168,8 @@ impl Render for Albums {
                     .items_center()
                     .gap_2()
                     .mb_4()
-                    .child(self.view_toggle(window, cx))
-                    .child(self.sort_control(window, cx)),
+                    .child(self.view_toggle(cx))
+                    .child(self.sort_control(cx)),
             )
             .child(
                 div()
@@ -323,35 +191,6 @@ fn view_mode(cx: &App) -> AlbumViewMode {
     ConfigModel::global(cx).read(cx).config().album_view_mode
 }
 
-fn set_view_mode(mode: AlbumViewMode, cx: &mut App) {
-    ConfigModel::edit(cx, |config| config.album_view_mode = mode);
-}
-
 fn criteria(cx: &App) -> Vec<SortCriterion<AlbumSortField>> {
     ConfigModel::global(cx).read(cx).config().album_sort.clone()
-}
-
-/// Make `field` decide the order, keeping the rest as tie-breakers.
-fn set_sort_field(field: AlbumSortField, cx: &mut App) {
-    let mut sorted = criteria(cx);
-    let direction = sorted
-        .first()
-        .map(|criterion| criterion.direction)
-        .unwrap_or_default();
-    sorted.retain(|criterion| criterion.field != field);
-    sorted.insert(0, SortCriterion::new(field, direction));
-    write_criteria(sorted, cx);
-}
-
-fn set_sort_direction(direction: SortDirection, cx: &mut App) {
-    let mut sorted = criteria(cx);
-    match sorted.first_mut() {
-        Some(criterion) => criterion.direction = direction,
-        None => sorted.push(SortCriterion::new(AlbumSortField::Title, direction)),
-    }
-    write_criteria(sorted, cx);
-}
-
-fn write_criteria(sorted: Vec<SortCriterion<AlbumSortField>>, cx: &mut App) {
-    ConfigModel::edit(cx, |config| config.album_sort = sorted);
 }

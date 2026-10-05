@@ -40,13 +40,6 @@ pub fn label(field: AlbumSortField) -> SharedString {
     })
 }
 
-pub fn direction_label(direction: SortDirection) -> SharedString {
-    t(match direction {
-        SortDirection::Asc => "sort_ascending",
-        SortDirection::Desc => "sort_descending",
-    })
-}
-
 fn compare(
     left: &AlbumInfo,
     right: &AlbumInfo,
@@ -65,8 +58,7 @@ fn compare(
 }
 
 fn compare_text(left: &str, right: &str) -> Ordering {
-    // Case-insensitive without allocating: a comparator runs O(n log n) times, and two Strings
-    // per comparison is tens of thousands of allocations across one library sort.
+    // Case-insensitive without allocating: a comparator runs O(n log n) times over the whole library.
     left.trim()
         .chars()
         .flat_map(char::to_lowercase)

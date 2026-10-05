@@ -112,7 +112,7 @@ impl NowPlaying {
                     .justify_center()
                     .px_4()
                     .py_3()
-                    .child(self.tab_strip(showing, false, window, cx)),
+                    .child(self.tab_strip(showing, false, cx)),
             )
             .child(
                 div()

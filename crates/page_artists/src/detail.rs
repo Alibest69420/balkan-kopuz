@@ -277,7 +277,7 @@ impl Render for ArtistDetail {
             };
             EmptyState::new(message).icon(icons::MIC).into_any_element()
         } else if albums_view {
-            self.albums_view(window, cx)
+            self.albums_view(cx)
         } else {
             self.tracks_view(window, cx)
         };
@@ -299,11 +299,7 @@ impl Render for ArtistDetail {
                                 Navigator::global(cx).update(cx, |nav, cx| nav.go_back(cx))
                             }),
                     )
-                    .child(controls::view_order_toggle(
-                        &config.artist_view_order,
-                        window,
-                        cx,
-                    )),
+                    .child(controls::view_order_toggle(&config.artist_view_order)),
             )
             .child(body)
     }
@@ -615,7 +611,7 @@ impl ArtistDetail {
         bar.into_any_element()
     }
 
-    fn albums_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn albums_view(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let albums = self.artist_albums(cx);
         let mode = controls::config(cx).artist_album_view_mode;
         let settled = self.detail.read(cx).is_settled();
@@ -667,11 +663,7 @@ impl ArtistDetail {
                     .justify_end()
                     .gap_2()
                     .items_center()
-                    .child(controls::view_mode_toggle(
-                        ViewModeKey::ArtistAlbums,
-                        window,
-                        cx,
-                    ))
+                    .child(controls::view_mode_toggle(ViewModeKey::ArtistAlbums, cx))
                     .child(controls::sort_control("artist-album-sort", fields, cx)),
             )
             .child(body)

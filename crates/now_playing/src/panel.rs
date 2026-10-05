@@ -1,11 +1,9 @@
 //! The docked column beside the content: the same queue and lyrics the sheet draws, in a narrower slot.
 
 use components::format::t;
-use components::{icons, motion, style};
-use gpui_kit::base::StyledExt as _;
-use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
-use gpui_kit::component::{ActiveTheme as _, Selectable as _, Sizable as _, h_flex, v_flex};
-use gpui_kit::prelude::FluentBuilder as _;
+use components::{Segment, Segmented, icons, style};
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::{
     AnyElement, AppContext as _, Context, DragMoveEvent, InteractiveElement as _, IntoElement,
     ParentElement as _, Pixels, Render, StatefulInteractiveElement as _, Styled, Window, div, px,
@@ -14,7 +12,6 @@ use store::layout::SheetTab;
 use store::{Chrome, SidePanel};
 
 use crate::NowPlaying;
-use crate::channel;
 
 // The Dioxus rightbar's drag bounds, and the width the shell's slot starts at.
 const MIN_WIDTH: Pixels = px(280.);
@@ -40,11 +37,7 @@ impl NowPlaying {
         self.panel_width.unwrap_or(DEFAULT_WIDTH)
     }
 
-    pub(crate) fn render_panel(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    pub(crate) fn render_panel(&mut self, _: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         // Devices is the bar's popover; this column only ever shows the queue or the lyrics.
         let showing = match Chrome::global(cx).read(cx).panel() {
             Some(SidePanel::Lyrics) => SheetTab::Lyrics,
@@ -70,7 +63,7 @@ impl NowPlaying {
                     .py_3()
                     .border_b_1()
                     .border_color(style::white(style::BORDER, cx))
-                    .child(self.tab_strip(showing, false, window, cx))
+                    .child(self.tab_strip(showing, false, cx))
                     .child(
                         Button::new("panel-close")
                             .custom(style::quiet_button(style::white(0.4, cx), cx))
@@ -101,86 +94,22 @@ impl NowPlaying {
         &self,
         showing: SheetTab,
         with_related: bool,
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        h_flex()
-            .gap_1()
-            .p_1()
-            .rounded(style::radius_lg())
-            .bg(style::white(style::HOVER, cx))
-            .child(self.tab("tab-queue", SheetTab::Queue, "up_next", showing, window, cx))
-            .child(self.tab(
-                "tab-lyrics",
-                SheetTab::Lyrics,
-                "lyrics",
-                showing,
-                window,
-                cx,
-            ))
-            .when(with_related, |strip| {
-                strip.child(self.tab(
-                    "tab-related",
-                    SheetTab::Related,
-                    "related",
-                    showing,
-                    window,
-                    cx,
-                ))
+        let mut tabs = vec![(SheetTab::Queue, "up_next"), (SheetTab::Lyrics, "lyrics")];
+        if with_related {
+            tabs.push((SheetTab::Related, "related"));
+        }
+        let page = cx.entity().downgrade();
+        Segmented::new("now-playing-tabs")
+            .segments(tabs.iter().map(|(_, key)| Segment::new(*key).label(t(key))))
+            .selected(tabs.iter().position(|(tab, _)| *tab == showing))
+            .on_select(move |index, _, cx| {
+                let Some((tab, _)) = tabs.get(*index).copied() else {
+                    return;
+                };
+                page.update(cx, |this, cx| this.set_tab(tab, cx)).ok();
             })
-    }
-
-    fn tab(
-        &self,
-        id: &'static str,
-        tab: SheetTab,
-        key: &str,
-        showing: SheetTab,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement + use<> {
-        let active = showing == tab;
-        let hovered = self.hovered == Some(id);
-        let wash = motion::color(
-            channel(id, "wash"),
-            match (active, hovered) {
-                (true, _) => style::white(style::ACTIVE, cx),
-                (false, true) => style::white(style::RAISED, cx),
-                (false, false) => cx.theme().transparent,
-            },
-            window,
-            cx,
-        );
-        let label = motion::color(
-            channel(id, "label"),
-            match (active, hovered) {
-                (true, _) => cx.theme().foreground,
-                (false, true) => style::white(0.8, cx),
-                (false, false) => style::white(0.5, cx),
-            },
-            window,
-            cx,
-        );
-        Button::new(id)
-            .xsmall()
-            .label(t(key))
-            .selected(active)
-            .px_4()
-            .h(style::chrome().tab_height)
-            .rounded(style::thumb_radius())
-            .text_xs()
-            .font_medium()
-            // The tween goes to every state layer: a Button's own hover is refined over the base,
-            // so an instance `.bg()` alone is overpainted for exactly as long as the pointer is on it.
-            .custom(
-                ButtonCustomVariant::new(cx)
-                    .color(style::rest(wash))
-                    .hover(wash)
-                    .active(wash)
-                    .foreground(label),
-            )
-            .on_hover(cx.listener(move |this, over: &bool, _, cx| this.set_hovered(id, *over, cx)))
-            .on_click(cx.listener(move |this, _, _, cx| this.set_tab(tab, cx)))
     }
 
     /// Which tab is showing, remembered so the app opens on the one it was left on.

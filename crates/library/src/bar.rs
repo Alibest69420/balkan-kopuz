@@ -3,10 +3,13 @@
 use api::TrackFilter;
 use commands::Command;
 use components::format::{t, t_with};
-use components::{ChipSize, ChipTone, PageHeader, SearchField, icons, style};
+use components::{
+    ChipSize, ChipTone, PageHeader, SearchField, Segment, Segmented, SortControl, icons, style,
+};
+use config::{SortCriterion, SortDirection};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, Context, IntoElement, ParentElement as _, SharedString, Styled as _, Window,
@@ -46,42 +49,30 @@ impl Library {
     /// Tracks, Albums, Artists, Playlists: the same listing, presented four ways.
     fn facet_switch(&self, cx: &mut Context<Self>) -> AnyElement {
         let active = self.filters().facet;
-        h_flex()
-            .gap_1()
-            .p_1()
-            .flex_shrink_0()
+        let page = cx.entity().downgrade();
+        div()
+            .flex()
             .self_start()
-            .rounded(style::radius_lg())
-            .bg(style::white(style::RAISED, cx))
-            .border_1()
-            .border_color(style::white(style::BORDER_SOFT, cx))
-            .children(Facet::ALL.iter().map(|facet| {
-                let facet = *facet;
-                let lit = facet == active;
-                let ink = match lit {
-                    true => cx.theme().foreground,
-                    false => style::white(style::TEXT_SECONDARY, cx),
-                };
-                let fill = match lit {
-                    true => style::white(style::HOVER, cx),
-                    false => gpui_kit::transparent_black(),
-                };
-                Button::new(SharedString::from(format!(
-                    "library-facet-{}",
-                    facet.name()
-                )))
-                .custom(style::button(fill, style::white(style::HOVER, cx), ink, cx))
-                .icon(icons::icon(facet.icon()))
-                .label(t(facet.label_key()))
-                .h_7()
-                .px_3()
-                .text_xs()
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    let mut filters = this.filters().clone();
-                    filters.facet = facet;
-                    this.set_filters(filters, true, cx);
-                }))
-            }))
+            .child(
+                Segmented::new("library-facet")
+                    .segments(Facet::ALL.iter().map(|facet| {
+                        Segment::new(facet.name())
+                            .icon(facet.icon())
+                            .label(t(facet.label_key()))
+                    }))
+                    .selected(Facet::ALL.iter().position(|facet| *facet == active))
+                    .on_select(move |index, _, cx| {
+                        let Some(facet) = Facet::ALL.get(*index).copied() else {
+                            return;
+                        };
+                        page.update(cx, |this, cx| {
+                            let mut filters = this.filters().clone();
+                            filters.facet = facet;
+                            this.set_filters(filters, true, cx);
+                        })
+                        .ok();
+                    }),
+            )
             .into_any_element()
     }
 
@@ -344,20 +335,22 @@ impl Library {
     }
 
     fn view_control(&self, cx: &mut Context<Self>) -> AnyElement {
-        let grid = self.mode == ViewMode::Grid;
-        let (icon, label) = match grid {
-            true => (icons::ROWS, t("view_list")),
-            false => (icons::GRID, t("view_grid")),
-        };
-        self.quiet("library-view", icon, label, cx)
-            .on_click(cx.listener(move |this, _, _, cx| {
+        let page = cx.entity().downgrade();
+        components::view_toggle(
+            "library-view",
+            self.mode == ViewMode::Grid,
+            move |grid, cx| {
                 let next = match grid {
-                    true => ViewMode::Table,
-                    false => ViewMode::Grid,
+                    true => ViewMode::Grid,
+                    false => ViewMode::Table,
                 };
-                this.write_facet(cx, move |facet| facet.mode = next);
-            }))
-            .into_any_element()
+                page.update(cx, |this, cx| {
+                    this.write_facet(cx, move |facet| facet.mode = next)
+                })
+                .ok();
+            },
+        )
+        .into_any_element()
     }
 
     fn tile_control(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -401,38 +394,36 @@ impl Library {
                 ("year", "sort_field_year"),
             ],
         };
-        let label = fields
+        // The listing holds one criterion; the shared control edits a stack, so it is a stack of one.
+        let criteria: Vec<SortCriterion<&'static str>> = fields
             .iter()
             .find(|(id, _)| *id == held.field)
-            .map(|(_, key)| t(key))
-            .unwrap_or_else(|| t("sort_by"));
+            .map(|(id, _)| {
+                let direction = match held.descending {
+                    true => SortDirection::Desc,
+                    false => SortDirection::Asc,
+                };
+                vec![SortCriterion::new(*id, direction)]
+            })
+            .unwrap_or_default();
         let page = cx.entity().downgrade();
-        let current = held.clone();
-        self.quiet(
-            "library-grid-sort",
-            icons::SORT,
-            SharedString::from(format!("{}: {label}", t("sort_by"))),
-            cx,
-        )
-        .dropdown_menu(move |mut menu, _, _| {
-            for (id, key) in fields.clone() {
-                let page = page.clone();
-                let current = current.clone();
-                menu = menu.item(
-                    PopupMenuItem::new(t(key))
-                        .checked(current.field == id)
-                        .on_click(move |_, _, cx| {
-                            let next = current.toggled(id).to_layout();
-                            page.update(cx, |this, cx| {
-                                this.write_facet(cx, move |facet| facet.sort = next)
-                            })
-                            .ok();
-                        }),
-                );
-            }
-            menu
-        })
-        .into_any_element()
+        SortControl::new("library-grid-sort", criteria)
+            .fields(fields.into_iter().map(|(id, key)| (id, t(key))))
+            .clearable(false)
+            .on_change(move |criteria, cx| {
+                let Some(first) = criteria.first() else {
+                    return;
+                };
+                let next = store::layout::Sort {
+                    field: first.field.to_string(),
+                    descending: first.direction == SortDirection::Desc,
+                };
+                page.update(cx, |this, cx| {
+                    this.write_facet(cx, move |facet| facet.sort = next)
+                })
+                .ok();
+            })
+            .into_any_element()
     }
 
     /// The pill over the listing while anything is picked. It never says nothing is.
