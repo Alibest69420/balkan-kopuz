@@ -155,15 +155,15 @@ impl Render for Artists {
                             self.entries.len(),
                             px(TILE),
                             mode,
-                            move |this: &mut Artists, index, _, _| {
+                            move |this: &mut Artists, index, _, cx| {
                                 let artist = &this.entries[index];
                                 match mode {
                                     GridMode::Tiles => components::artist_tile(artist)
                                         .size(px(TILE))
                                         .into_any_element(),
-                                    GridMode::Rows => {
-                                        components::artist_row(artist).into_any_element()
-                                    }
+                                    GridMode::Rows => components::artist_row(artist)
+                                        .thumb(store::ConfigModel::global(cx).read(cx).row_images())
+                                        .into_any_element(),
                                 }
                             },
                         )

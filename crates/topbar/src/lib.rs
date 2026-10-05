@@ -191,6 +191,7 @@ impl TopBar {
         let shortcut = commands::keystroke_for("app.palette", cx)
             .and_then(|held| gpui_kit::Keystroke::parse(&held).ok());
         SearchTrigger::new("nav-search", t("search_placeholder"))
+            .on_open(|_, cx| store::Chrome::open_quick_search(cx))
             .shortcut(shortcut)
             .into_any_element()
     }

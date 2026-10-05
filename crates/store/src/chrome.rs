@@ -103,6 +103,11 @@ impl Chrome {
         crate::notify(cx);
     }
 
+    /// Raise quick search, which is where typing in any search trigger actually goes.
+    pub fn open_quick_search(cx: &mut App) {
+        Self::global(cx).update(cx, |chrome, cx| chrome.set_quick_search(true, cx));
+    }
+
     pub fn set_quick_search(&mut self, open: bool, cx: &mut Context<Self>) {
         self.quick_search = open;
         crate::notify(cx);

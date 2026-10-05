@@ -141,14 +141,16 @@ impl Render for Albums {
                     self.visible.len(),
                     TILE,
                     mode,
-                    move |this: &mut Albums, index, _, _| {
+                    move |this: &mut Albums, index, _, cx| {
                         let album = &this.visible[index];
                         match mode {
                             GridMode::Tiles => album_tile(album)
                                 .size(TILE_COVER)
                                 .frame(Frame::Card)
                                 .into_any_element(),
-                            GridMode::Rows => album_row(album).into_any_element(),
+                            GridMode::Rows => album_row(album)
+                                .thumb(store::ConfigModel::global(cx).read(cx).row_images())
+                                .into_any_element(),
                         }
                     },
                 )

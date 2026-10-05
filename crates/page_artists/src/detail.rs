@@ -508,7 +508,9 @@ impl ArtistDetail {
                         .size(px(CARD - 32.))
                         .frame(components::Frame::Card)
                         .into_any_element(),
-                    AlbumViewMode::List => components::album_row(album).into_any_element(),
+                    AlbumViewMode::List => components::album_row(album)
+                        .thumb(store::ConfigModel::global(cx).read(cx).row_images())
+                        .into_any_element(),
                 })
                 .collect();
             div()

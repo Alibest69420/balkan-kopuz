@@ -1,5 +1,7 @@
 //! The one search box, and the one field-shaped button that opens quick search.
 
+use std::rc::Rc;
+
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{Sizable as _, h_flex};
@@ -9,9 +11,10 @@ use gpui_kit::{
     Pixels, RenderOnce, SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled,
     Window, div, px,
 };
-use store::Chrome;
 
 use crate::{focus, icons, style};
+
+type OnOpen = Rc<dyn Fn(&mut Window, &mut App)>;
 
 /// The widest a trigger in the chrome grows.
 const FIELD_MAX: Pixels = px(440.);
@@ -95,6 +98,7 @@ pub struct SearchTrigger {
     label: SharedString,
     shortcut: Option<Keystroke>,
     size: TriggerSize,
+    on_open: Option<OnOpen>,
 }
 
 impl SearchTrigger {
@@ -104,7 +108,14 @@ impl SearchTrigger {
             label: label.into(),
             shortcut: None,
             size: TriggerSize::Field,
+            on_open: None,
         }
+    }
+
+    /// What opening does; the owner decides where typing goes.
+    pub fn on_open(mut self, open: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.on_open = Some(Rc::new(open));
+        self
     }
 
     /// The keys that open quick search from anywhere, drawn as a keycap at the end.
@@ -119,10 +130,6 @@ impl SearchTrigger {
     }
 }
 
-fn open(_: &mut Window, cx: &mut App) {
-    Chrome::global(cx).update(cx, |chrome, cx| chrome.set_quick_search(true, cx));
-}
-
 impl RenderOnce for SearchTrigger {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let focus = focus::handle(format!("search-trigger:{}", self.id), window, cx);
@@ -132,48 +139,58 @@ impl RenderOnce for SearchTrigger {
             true => (style::TEXT_MUTED, style::BORDER),
             false => (style::TEXT_SECONDARY, style::BORDER_SOFT),
         };
-        focus::stop(h_flex().id(self.id), &focus, open)
-            .relative()
-            .gap_2()
-            .items_center()
-            .rounded(style::radius_lg())
-            .border_1()
-            .border_color(style::white(edge, cx))
-            .bg(style::white(style::RAISED, cx))
-            .cursor_pointer()
-            .hover(|trigger| trigger.bg(style::white(style::HOVER, cx)))
-            .text_color(style::white(ink, cx))
-            .map(|trigger| match field {
-                true => trigger
-                    .w_full()
-                    .max_w(FIELD_MAX)
-                    .h(style::chrome().search_height)
-                    .px_2()
-                    .text_sm(),
-                false => trigger.flex_shrink_0().h_8().px_3().text_xs(),
-            })
-            .on_click(|_, window, cx| open(window, cx))
-            .child(
-                icons::icon(icons::SEARCH)
-                    .with_size(match field {
-                        true => px(14.),
-                        false => style::text_11(),
-                    })
-                    .flex_shrink_0(),
-            )
-            .child(
-                div()
-                    .when(field, |label| label.flex_1())
-                    .min_w_0()
-                    .truncate()
-                    .child(self.label),
-            )
-            .children(
-                self.shortcut
-                    .map(|keys| crate::keycap::Keycap::stroke(&keys)),
-            )
-            .when(focused, |trigger| {
-                trigger.child(focus::ring(style::radius_lg(), cx))
-            })
+        let open = self.on_open;
+        let activate = open.clone();
+        focus::stop(h_flex().id(self.id), &focus, move |window, cx| {
+            if let Some(open) = activate.as_ref() {
+                open(window, cx);
+            }
+        })
+        .relative()
+        .gap_2()
+        .items_center()
+        .rounded(style::radius_lg())
+        .border_1()
+        .border_color(style::white(edge, cx))
+        .bg(style::white(style::RAISED, cx))
+        .cursor_pointer()
+        .hover(|trigger| trigger.bg(style::white(style::HOVER, cx)))
+        .text_color(style::white(ink, cx))
+        .map(|trigger| match field {
+            true => trigger
+                .w_full()
+                .max_w(FIELD_MAX)
+                .h(style::chrome().search_height)
+                .px_2()
+                .text_sm(),
+            false => trigger.flex_shrink_0().h_8().px_3().text_xs(),
+        })
+        .on_click(move |_, window, cx| {
+            if let Some(open) = open.as_ref() {
+                open(window, cx);
+            }
+        })
+        .child(
+            icons::icon(icons::SEARCH)
+                .with_size(match field {
+                    true => px(14.),
+                    false => style::text_11(),
+                })
+                .flex_shrink_0(),
+        )
+        .child(
+            div()
+                .when(field, |label| label.flex_1())
+                .min_w_0()
+                .truncate()
+                .child(self.label),
+        )
+        .children(
+            self.shortcut
+                .map(|keys| crate::keycap::Keycap::stroke(&keys)),
+        )
+        .when(focused, |trigger| {
+            trigger.child(focus::ring(style::radius_lg(), cx))
+        })
     }
 }

@@ -83,6 +83,7 @@ pub struct TrackList {
     scroll: UniformListScrollHandle,
     playing: Option<String>,
     row_images: bool,
+    stored: HashSet<String>,
     bound: Vec<gpui_kit::Subscription>,
 }
 
@@ -121,6 +122,7 @@ impl TrackList {
             scroll: UniformListScrollHandle::new(),
             playing: None,
             row_images: true,
+            stored: HashSet::new(),
             bound: Vec::new(),
         }
     }
@@ -129,6 +131,14 @@ impl TrackList {
     pub fn set_playing(&mut self, playing: Option<String>, cx: &mut Context<Self>) {
         if self.playing != playing {
             self.playing = playing;
+            cx.notify();
+        }
+    }
+
+    /// The keys with an offline copy, which their rows mark.
+    pub fn set_stored(&mut self, stored: HashSet<String>, cx: &mut Context<Self>) {
+        if self.stored != stored {
+            self.stored = stored;
             cx.notify();
         }
     }
@@ -405,6 +415,7 @@ impl TrackList {
             .lead(lead)
             .cover(self.options.show_cover && self.row_images)
             .playing(playing)
+            .stored(self.stored.contains(&key))
             .selected(selected)
             .picking(self.options.selectable && self.selection.is_active())
             .cursor(self.selection.cursor() == Some(index))

@@ -3,19 +3,20 @@
 use components::format::t;
 use components::{SectionHeading, TileRow};
 use gpui_kit::component::{h_flex, v_flex};
-use gpui_kit::{AnyElement, IntoElement, ParentElement as _, Styled};
+use gpui_kit::{AnyElement, App, IntoElement, ParentElement as _, Styled};
 
 use crate::data::Shelf;
 
 /// Two columns: eight names read as a list at a glance, sixteen as a wall of text.
 const COLUMNS: usize = 2;
 
-pub(crate) fn ranked(shelf: &Shelf) -> AnyElement {
+pub(crate) fn ranked(shelf: &Shelf, cx: &App) -> AnyElement {
+    let thumb = store::ConfigModel::global(cx).read(cx).row_images();
     let rows: Vec<AnyElement> = shelf
         .tiles
         .iter()
         .enumerate()
-        .map(|(index, tile)| row(index, tile))
+        .map(|(index, tile)| row(index, tile, thumb))
         .collect();
     // Down each column rather than across, so first and second are not side by side.
     let per = rows.len().div_ceil(COLUMNS);
@@ -39,8 +40,9 @@ pub(crate) fn ranked(shelf: &Shelf) -> AnyElement {
         .into_any_element()
 }
 
-fn row(index: usize, tile: &crate::data::Tile) -> AnyElement {
+fn row(index: usize, tile: &crate::data::Tile, thumb: bool) -> AnyElement {
     let row = TileRow::new(tile.key.clone(), tile.title.clone())
+        .thumb(thumb)
         .subtitle(tile.subtitle.clone())
         .artwork(tile.artwork.as_ref())
         .round(true)

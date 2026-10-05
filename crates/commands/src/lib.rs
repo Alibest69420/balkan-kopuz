@@ -99,6 +99,13 @@ impl Command {
 /// Build the registry's menu hook; call once at startup, after `store::init`.
 pub fn init(cx: &mut App) {
     components::menus::register(|target, menu, _window, cx| build_menu(target, menu, cx), cx);
+    components::settings::register_binding(
+        |key, cx| {
+            let config = store::ConfigModel::global(cx).read(cx);
+            (config.is_locked(key), config.just_saved(key))
+        },
+        cx,
+    );
     keys::register_handlers(cx);
 }
 

@@ -15,7 +15,7 @@ use gpui_kit::{
     Styled, Window, div, px, rems,
 };
 use store::layout::Ordered;
-use store::{ConfigModel, Layout, LayoutModel};
+use store::{Layout, LayoutModel};
 
 use crate::format::t;
 use crate::{icons, motion, style};
@@ -575,6 +575,16 @@ impl RenderOnce for Section {
     }
 }
 
+/// Answers whether a config key is pinned and whether its write just landed; the app wiring installs it.
+struct Binding(fn(&str, &App) -> (bool, bool));
+
+impl Global for Binding {}
+
+/// Install how a row learns the state of its key; `commands::init` is the only caller.
+pub fn register_binding(resolve: fn(&str, &App) -> (bool, bool), cx: &mut App) {
+    cx.set_global(Binding(resolve));
+}
+
 /// A row's control, built once the row knows whether it is locked.
 type Control = Box<dyn FnOnce(bool) -> AnyElement>;
 
@@ -634,8 +644,9 @@ impl SettingRow {
 
     /// Tie the row to a config key: locked when a managed file pins it, ticked once its write lands.
     pub fn bind(self, key: &str, cx: &App) -> Self {
-        let config = ConfigModel::global(cx).read(cx);
-        let (locked, saved) = (config.is_locked(key), config.just_saved(key));
+        let (locked, saved) = cx
+            .try_global::<Binding>()
+            .map_or((false, false), |binding| (binding.0)(key, cx));
         self.locked(locked).saved(saved)
     }
 

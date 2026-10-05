@@ -186,7 +186,7 @@ impl Render for Home {
             };
             // A ranking is a list and a shelf is a row; `Form` is what says which a name gets.
             rows.push(match shelf.form {
-                data::Form::Ranked => ranked::ranked(shelf),
+                data::Form::Ranked => ranked::ranked(shelf, cx),
                 _ => shelf::shelf(shelf, &handle),
             });
         }

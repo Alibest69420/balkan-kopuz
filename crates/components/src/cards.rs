@@ -330,6 +330,7 @@ pub struct TileRow {
     menu: Option<Target>,
     playing: bool,
     selected: bool,
+    thumb: bool,
 }
 
 impl TileRow {
@@ -347,6 +348,7 @@ impl TileRow {
             menu: None,
             playing: false,
             selected: false,
+            thumb: true,
         }
     }
 
@@ -406,6 +408,12 @@ impl TileRow {
         self
     }
 
+    /// Whether the row draws its cover thumbnail, which a setting turns off.
+    pub fn thumb(mut self, thumb: bool) -> Self {
+        self.thumb = thumb;
+        self
+    }
+
     pub fn selected(mut self, selected: bool) -> Self {
         self.selected = selected;
         self
@@ -432,7 +440,6 @@ impl RenderOnce for TileRow {
             window,
             cx,
         );
-        let covers = store::ConfigModel::global(cx).read(cx).row_images();
         let opens = self.click.clone();
         let row = crate::focus::stop(
             h_flex().id(motion::channel(&id, ROOT)),
@@ -470,7 +477,7 @@ impl RenderOnce for TileRow {
                     .child(lead),
             )
         })
-        .when(covers, |row| {
+        .when(self.thumb, |row| {
             row.child(
                 Cover::new(self.artwork.as_ref())
                     .size(ROW_THUMB)

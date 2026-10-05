@@ -204,6 +204,7 @@ impl Library {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         TileRow::new(tile.id.clone(), tile.title.clone())
+            .thumb(store::ConfigModel::global(cx).read(cx).row_images())
             .subtitle(tile.subtitle.clone())
             .artwork(tile.artwork.as_ref())
             .round(facet.round_tiles())

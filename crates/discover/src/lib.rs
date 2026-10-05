@@ -269,6 +269,7 @@ impl Discover {
         let shortcut = commands::keystroke_for("app.palette", cx)
             .and_then(|held| Keystroke::parse(&held).ok());
         SearchTrigger::new("discover-search-hint", t("discover_search_hint"))
+            .on_open(|_, cx| Chrome::open_quick_search(cx))
             .size(TriggerSize::Compact)
             .shortcut(shortcut)
     }

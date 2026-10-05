@@ -2,7 +2,7 @@
 
 use components::track_list::{TrackList, TrackListEvent};
 use gpui_kit::{App, Entity};
-use store::{ConfigModel, PlayerModel, Target};
+use store::{ConfigModel, DownloadsModel, PlayerModel, Target};
 
 use crate::ops;
 
@@ -10,13 +10,17 @@ use crate::ops;
 pub fn bind(list: &Entity<TrackList>, cx: &mut App) {
     let player = PlayerModel::global(cx);
     let config = ConfigModel::global(cx);
+    let downloads = DownloadsModel::global(cx);
     let playing = playing_key(&player, cx);
     let row_images = config.read(cx).row_images();
+    let stored = downloads.read(cx).stored().clone();
     list.update(cx, |list, cx| {
         list.set_playing(playing, cx);
         list.set_row_images(row_images, cx);
+        list.set_stored(stored, cx);
     });
     let weak = list.downgrade();
+    let weak_downloads = weak.clone();
     let on_player = cx.observe(&player, {
         let weak = weak.clone();
         move |player, cx| {
@@ -30,8 +34,16 @@ pub fn bind(list: &Entity<TrackList>, cx: &mut App) {
         weak.update(cx, |list, cx| list.set_row_images(row_images, cx))
             .ok();
     });
+    let on_downloads = cx.observe(&downloads, move |downloads, cx| {
+        let stored = downloads.read(cx).stored().clone();
+        weak_downloads
+            .update(cx, |list, cx| list.set_stored(stored, cx))
+            .ok();
+    });
     let on_event = cx.subscribe(list, |_, event: &TrackListEvent, cx| perform(event, cx));
-    list.update(cx, |list, _| list.hold([on_player, on_config, on_event]));
+    list.update(cx, |list, _| {
+        list.hold([on_player, on_config, on_downloads, on_event])
+    });
 }
 
 fn playing_key(player: &Entity<PlayerModel>, cx: &App) -> Option<String> {

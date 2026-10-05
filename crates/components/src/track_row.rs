@@ -12,7 +12,7 @@ use gpui_kit::{
     InteractiveElement as _, IntoElement, Length, ParentElement as _, RenderOnce, SharedString,
     Stateful, StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
-use store::{DownloadsModel, Route};
+use store::Route;
 
 use crate::columns::{self, Layout};
 use crate::cover::Cover;
@@ -39,7 +39,6 @@ pub use crate::menus::Menu as RowMenu;
 #[derive(IntoElement)]
 pub struct TrackRow {
     slot: usize,
-    key: String,
     title: SharedString,
     artist: SharedString,
     album: SharedString,
@@ -53,6 +52,7 @@ pub struct TrackRow {
     height: Length,
     lead: Option<SharedString>,
     cover: bool,
+    stored: bool,
     playing: bool,
     selected: bool,
     picking: bool,
@@ -68,7 +68,6 @@ impl TrackRow {
     pub fn new(track: &TrackInfo, slot: usize) -> Self {
         Self {
             slot,
-            key: track.key.clone(),
             title: track.title.clone().into(),
             artist: track.artist.clone().into(),
             album: track.album.clone().into(),
@@ -86,6 +85,7 @@ impl TrackRow {
             height: style::row_height().into(),
             lead: None,
             cover: true,
+            stored: false,
             playing: false,
             selected: false,
             picking: false,
@@ -110,6 +110,12 @@ impl TrackRow {
     /// The number in the lead cell; none leaves it blank until the row plays.
     pub fn lead(mut self, lead: Option<SharedString>) -> Self {
         self.lead = lead;
+        self
+    }
+
+    /// Whether an offline copy exists, shown as a corner mark on the cover.
+    pub fn stored(mut self, stored: bool) -> Self {
+        self.stored = stored;
         self
     }
 
@@ -176,7 +182,6 @@ impl RenderOnce for TrackRow {
         profile::elements::built();
         let slot = self.slot;
         let accent = cx.theme().primary;
-        let stored = DownloadsModel::global(cx).read(cx).is_stored(&self.key);
         // `transition-colors` on the row: the playing tint and the selection wash tween, hover does not.
         let wash = motion::color(
             motion::row_id("track-row-wash", slot),
@@ -199,7 +204,7 @@ impl RenderOnce for TrackRow {
         );
         let badge = motion::amount(
             motion::row_id("track-row-badge", slot),
-            if stored && !self.playing { 1. } else { 0. },
+            if self.stored && !self.playing { 1. } else { 0. },
             motion::FAST,
             window,
             cx,

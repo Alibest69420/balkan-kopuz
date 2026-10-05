@@ -196,6 +196,7 @@ impl Library {
             .height(height)
             .lead(Some(SharedString::from((index + 1).to_string())))
             .cover(covers)
+            .stored(store::DownloadsModel::global(cx).read(cx).is_stored(&key))
             .plays(self.plays_for(track))
             .playing(self.is_playing(&key))
             .selected(selected)
