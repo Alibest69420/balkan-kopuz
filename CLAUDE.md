@@ -35,7 +35,7 @@ Dependencies point one way: `app` → feature crates → `components` →
   play/queue/share commands; `store::artwork_source` feeds `img()`.
 - `crates/components` — every shared component, each defined once: `Cover`,
   `Tile`/`TileRow`, `TrackList`/`TrackRow`/`TrackHeader`, `PageHeader`,
-  `EmptyState`, `Loading`, `SchemaForm`, menus, dialogs, the playlist picker.
+  `EmptyState`, `Loading`, `SchemaForm`, `MenuButton`, `PickList`, menus, dialogs.
   It re-exports `primitives`, so a feature crate depends on `components` alone.
   Before drawing something a second page also draws, put it here instead.
 - `crates/primitives` — what components are drawn with: `style` tokens,

@@ -234,7 +234,7 @@ static COMMANDS: &[Command] = &[
         run: |target, window, cx| {
             if let Some(key) = ops::first_key(&target) {
                 let editable = ops::caps(cx).edit_tags;
-                components::dialogs::open_track_metadata(key, editable, window, cx);
+                store::TRACK_METADATA.open((key, editable), window, cx);
             }
         },
         action: None,
@@ -251,7 +251,7 @@ static COMMANDS: &[Command] = &[
         applies: TRACKS,
         available: many_tracks,
         run: |target, window, cx| {
-            components::dialogs::open_batch_metadata(ops::track_keys(&target), window, cx);
+            store::BATCH_METADATA.open(ops::track_keys(&target), window, cx);
         },
         action: None,
     },
@@ -561,7 +561,7 @@ static COMMANDS: &[Command] = &[
         available: |_, cx| ops::caps(cx).folders,
         run: |target, window, cx| {
             if let Some(id) = ops::playlist_id(&target) {
-                components::dialogs::open_folder_picker(id, window, cx);
+                store::FOLDER_PICKER.open(id, window, cx);
             }
         },
         action: None,
@@ -1057,7 +1057,7 @@ static COMMANDS: &[Command] = &[
         danger: false,
         applies: NOTHING,
         available: yes,
-        run: |_, window, cx| components::dialogs::open_url_download(window, cx),
+        run: |_, window, cx| store::URL_DOWNLOAD.open((), window, cx),
         action: None,
     },
     Command {
@@ -1074,7 +1074,7 @@ static COMMANDS: &[Command] = &[
         danger: false,
         applies: NOTHING,
         available: yes,
-        run: |_, window, cx| components::dialogs::open_shortcuts(window, cx),
+        run: |_, window, cx| store::SHORTCUTS.open((), window, cx),
         action: Some(|| Box::new(crate::keys::ShowShortcuts)),
     },
     Command {

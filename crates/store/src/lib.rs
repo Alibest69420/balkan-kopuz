@@ -13,6 +13,7 @@ mod jobs;
 pub mod layout;
 mod nav;
 mod notices;
+mod opener;
 pub mod paging;
 pub mod palette;
 mod player;
@@ -39,6 +40,9 @@ pub use layout::{Layout, LayoutModel};
 pub use link::{Link, api};
 pub use nav::{Navigator, Route};
 pub use notices::{Notice, Notices, Record, Undo};
+pub use opener::{
+    BATCH_METADATA, FOLDER_PICKER, Opener, RENAME, Rename, SHORTCUTS, TRACK_METADATA, URL_DOWNLOAD,
+};
 pub use paging::Pager;
 pub use palette::Swatches;
 pub use player::{PlayerModel, Playhead};

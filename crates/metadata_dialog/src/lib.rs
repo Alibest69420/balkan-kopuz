@@ -34,8 +34,11 @@ mod batch;
 
 /// Register the dialog so a track row's "View metadata" can open it.
 pub fn register(cx: &mut App) {
-    components::dialogs::register_track_metadata(open, cx);
-    components::dialogs::register_batch_metadata(batch::open, cx);
+    store::TRACK_METADATA.register(
+        |(key, editable), window, cx| open(key, editable, window, cx),
+        cx,
+    );
+    store::BATCH_METADATA.register(batch::open, cx);
 }
 
 fn open(key: String, editable: bool, window: &mut Window, cx: &mut App) {

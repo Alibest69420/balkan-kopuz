@@ -282,11 +282,18 @@ pub(crate) fn open_folder_picker(playlist_id: String, window: &mut Window, cx: &
 
 /// Hand the shared rows the two dialogs only this page knows how to open.
 pub fn register(cx: &mut App) {
-    components::dialogs::register_rename(
-        |title, value, save, window, cx| {
-            open_rename(title, value, move |name, cx| save(name, cx), window, cx)
+    store::RENAME.register(
+        |rename, window, cx| {
+            let save = rename.save;
+            open_rename(
+                rename.title,
+                rename.value,
+                move |name, cx| save(name, cx),
+                window,
+                cx,
+            )
         },
         cx,
     );
-    components::dialogs::register_folder_picker(open_folder_picker, cx);
+    store::FOLDER_PICKER.register(open_folder_picker, cx);
 }

@@ -58,7 +58,7 @@ pub(crate) fn title() -> SharedString {
 
 /// Wire the sheet `?` opens and contribute the editor to Settings → Interface.
 pub fn init(cx: &mut App) {
-    components::dialogs::register_shortcuts(sheet::open, cx);
+    store::SHORTCUTS.register(|(), window, cx| sheet::open(window, cx), cx);
     settings_interface::register(
         "shortcuts",
         "keyboard_shortcuts",

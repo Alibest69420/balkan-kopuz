@@ -21,7 +21,7 @@ const OPTIONS_HEIGHT: Pixels = px(240.);
 
 /// Wire the box the popover's chip and `downloads.add_url` both open.
 pub fn register(cx: &mut App) {
-    components::dialogs::register_url_download(open, cx);
+    store::URL_DOWNLOAD.register(|(), window, cx| open(window, cx), cx);
 }
 
 pub(crate) fn open(window: &mut Window, cx: &mut App) {

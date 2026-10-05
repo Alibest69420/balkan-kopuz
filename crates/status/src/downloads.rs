@@ -98,7 +98,7 @@ impl DownloadsList {
             .tone(ChipTone::Ink(cx.theme().primary))
             .on_click(cx.listener(|_, _, window, cx| {
                 cx.emit(Dismiss);
-                components::dialogs::open_url_download(window, cx);
+                store::URL_DOWNLOAD.open((), window, cx);
             }))
             .into_any_element()
     }
