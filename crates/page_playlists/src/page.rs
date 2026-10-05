@@ -196,6 +196,7 @@ impl Playlists {
                 DownloadToggle::new(format!("download-{}", playlist.id), keys.clone())
                     .size(ToggleSize::Corner)
                     .offline(*offline)
+                    .on_toggle(commands::set_offline)
             });
         playlist_card(playlist)
             .subtitle(format!(

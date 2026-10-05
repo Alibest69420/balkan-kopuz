@@ -6,9 +6,9 @@ use gpui_kit::{
     AnyElement, App, ClickEvent, IntoElement, ParentElement as _, Pixels, RenderOnce, SharedString,
     Styled as _, Window, px,
 };
-use store::{Navigator, Offline, PlayerModel, Route, SourcesModel, actions};
+use store::{Navigator, Offline, PlayerModel, Route, SourcesModel};
 
-use crate::download_toggle::DownloadToggle;
+use crate::download_toggle::{DownloadToggle, ToggleAct};
 use crate::icon_button::{IconButton, IconTone};
 use crate::{format::t, icons};
 
@@ -16,6 +16,8 @@ use crate::{format::t, icons};
 const CATALOG_RING: (f32, f32) = (0.15, 0.30);
 
 type Act = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
+type KeysAct = Rc<dyn Fn(&[String], &mut App)>;
+type ShuffleAct = Rc<dyn Fn(bool, &mut App)>;
 
 /// Which page the bar sits on, which sets how big its buttons are and how they are drawn.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -81,19 +83,24 @@ impl Look {
 
 /// What a shuffle press does.
 enum Shuffle {
-    /// Flip the player's shuffle, lit while it is on.
-    Toggle,
-    /// Switch shuffle on and play the keys, for a page with no queue of its own to shuffle.
-    Play,
+    /// Ask for shuffle flipped, lit while it is on.
+    Toggle(ShuffleAct),
+    /// Ask for shuffle on and the keys played, for a page with no queue of its own to shuffle.
+    Play(KeysAct),
     /// A source's own shuffle, such as a catalog artist's radio.
     With(Act),
 }
 
+enum Play {
+    Keys(KeysAct),
+    Custom(Act),
+}
+
 enum Item {
-    Play(Option<Act>),
+    Play(Play),
     Shuffle(Shuffle),
     Radio(Act),
-    Download,
+    Download(ToggleAct),
     Delete(Act),
     Share(Act),
     Artist(Option<String>),
@@ -133,8 +140,8 @@ impl DetailActions {
     }
 
     /// Play the keys from the top; disabled while there are none.
-    pub fn play(mut self) -> Self {
-        self.items.push(Item::Play(None));
+    pub fn play(mut self, play: impl Fn(&[String], &mut App) + 'static) -> Self {
+        self.items.push(Item::Play(Play::Keys(Rc::new(play))));
         self
     }
 
@@ -143,19 +150,20 @@ impl DetailActions {
         mut self,
         play: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     ) -> Self {
-        self.items.push(Item::Play(Some(Rc::new(play))));
+        self.items.push(Item::Play(Play::Custom(Rc::new(play))));
         self
     }
 
-    /// The shuffle toggle: lit while on.
-    pub fn shuffle(mut self) -> Self {
-        self.items.push(Item::Shuffle(Shuffle::Toggle));
+    /// The shuffle toggle: lit while on, handed the state a press asks for.
+    pub fn shuffle(mut self, set: impl Fn(bool, &mut App) + 'static) -> Self {
+        self.items
+            .push(Item::Shuffle(Shuffle::Toggle(Rc::new(set))));
         self
     }
 
-    /// Shuffle on, then play the keys.
-    pub fn shuffle_play(mut self) -> Self {
-        self.items.push(Item::Shuffle(Shuffle::Play));
+    /// Shuffle on, then play the keys; the caller does both.
+    pub fn shuffle_play(mut self, play: impl Fn(&[String], &mut App) + 'static) -> Self {
+        self.items.push(Item::Shuffle(Shuffle::Play(Rc::new(play))));
         self
     }
 
@@ -175,8 +183,8 @@ impl DetailActions {
     }
 
     /// Download all or remove all; shown only where the source downloads.
-    pub fn download(mut self) -> Self {
-        self.items.push(Item::Download);
+    pub fn download(mut self, toggle: impl Fn(&[String], bool, &mut App) + 'static) -> Self {
+        self.items.push(Item::Download(Rc::new(toggle)));
         self
     }
 
@@ -225,17 +233,17 @@ impl RenderOnce for DetailActions {
         let mut elements: Vec<AnyElement> = Vec::with_capacity(self.items.len());
         for item in self.items {
             let element = match item {
-                Item::Play(custom) => {
-                    let playable = custom.is_some() || !keys.is_empty();
+                Item::Play(play) => {
+                    let playable = matches!(play, Play::Custom(_)) || !keys.is_empty();
                     let keys = keys.clone();
                     IconButton::new(format!("{id}-play"), icons::PLAY)
                         .size(metrics.play)
                         .tone(IconTone::Accent)
                         .tooltip(t("play"))
                         .disabled(!playable)
-                        .on_click(move |event, window, cx| match &custom {
-                            Some(play) => play(event, window, cx),
-                            None => actions::play_all(keys.to_vec(), cx),
+                        .on_click(move |event, window, cx| match &play {
+                            Play::Custom(play) => play(event, window, cx),
+                            Play::Keys(play) => play(&keys, cx),
                         })
                         .into_any_element()
                 }
@@ -245,24 +253,17 @@ impl RenderOnce for DetailActions {
                         .tone(metrics.round_tone);
                     let keys = keys.clone();
                     ring(match mode {
-                        Shuffle::Toggle => button
+                        Shuffle::Toggle(set) => button
                             .lit(shuffled)
                             .tooltip(match shuffled {
                                 true => t("shuffle_on"),
                                 false => t("shuffle_off"),
                             })
-                            .on_click(move |_, _, cx| {
-                                PlayerModel::global(cx)
-                                    .update(cx, |player, cx| player.set_shuffle(!shuffled, cx))
-                            }),
-                        Shuffle::Play => button
+                            .on_click(move |_, _, cx| set(!shuffled, cx)),
+                        Shuffle::Play(play) => button
                             .tooltip(t("shuffle"))
                             .disabled(keys.is_empty())
-                            .on_click(move |_, _, cx| {
-                                PlayerModel::global(cx)
-                                    .update(cx, |player, cx| player.set_shuffle(true, cx));
-                                actions::play_all(keys.to_vec(), cx);
-                            }),
+                            .on_click(move |_, _, cx| play(&keys, cx)),
                         Shuffle::With(shuffle) => button
                             .tooltip(t("shuffle"))
                             .on_click(move |event, window, cx| shuffle(event, window, cx)),
@@ -280,11 +281,12 @@ impl RenderOnce for DetailActions {
                     .into_any_element(),
                     false => continue,
                 },
-                Item::Download => match capabilities.downloads {
+                Item::Download(on_toggle) => match capabilities.downloads {
                     true => {
                         let toggle = DownloadToggle::new(format!("{id}-download"), keys.clone())
                             .diameter(metrics.small)
-                            .tone(metrics.small_tone);
+                            .tone(metrics.small_tone)
+                            .on_toggle(move |keys, offline, cx| on_toggle(keys, offline, cx));
                         let toggle = match metrics.ring {
                             Some((rest, hot)) => toggle.ring(rest, hot),
                             None => toggle,

@@ -129,8 +129,8 @@ impl Render for CatalogPlaylist {
                         header.action(
                             DetailActions::new("catalog-playlist", self.keys.clone())
                                 .look(Look::Compact)
-                                .play()
-                                .shuffle(),
+                                .play(commands::play_all)
+                                .shuffle(commands::set_shuffle),
                         )
                     }),
             )

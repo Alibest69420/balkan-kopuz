@@ -188,8 +188,8 @@ impl Render for Genre {
                         header.action(
                             DetailActions::new("genre", self.keys.clone())
                                 .look(Look::Compact)
-                                .play()
-                                .shuffle_play(),
+                                .play(commands::play_all)
+                                .shuffle_play(commands::shuffle_play),
                         )
                     }),
             )

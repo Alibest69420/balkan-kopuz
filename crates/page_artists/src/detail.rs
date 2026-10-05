@@ -324,9 +324,9 @@ impl ArtistDetail {
             .action(
                 DetailActions::new("artist", self.keys.clone())
                     .offline(self.offline)
-                    .shuffle()
-                    .play()
-                    .download(),
+                    .shuffle(commands::set_shuffle)
+                    .play(commands::play_all)
+                    .download(commands::set_offline),
             )
             .into_any_element()
     }

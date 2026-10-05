@@ -396,10 +396,10 @@ impl AlbumDetail {
             .action(
                 DetailActions::new("album", self.keys.clone())
                     .offline(self.offline)
-                    .shuffle()
-                    .play()
+                    .shuffle(commands::set_shuffle)
+                    .play(commands::play_all)
                     .extra(select_all)
-                    .download(),
+                    .download(commands::set_offline),
             );
         if album.year > 0 {
             header = header.meta(album.year.to_string());
@@ -452,10 +452,10 @@ impl AlbumDetail {
                 DetailActions::new("album-remote", self.keys.clone())
                     .look(Look::Catalog)
                     .offline(self.offline)
-                    .download()
+                    .download(commands::set_offline)
                     .artist(view.artist_key.clone())
-                    .play()
-                    .shuffle()
+                    .play(commands::play_all)
+                    .shuffle(commands::set_shuffle)
                     .share(move |_, _, cx| {
                         ops::share_album(browse_id.clone(), first_key.clone(), cx)
                     }),

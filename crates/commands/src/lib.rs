@@ -1,5 +1,6 @@
 //! Every verb in the app, once. Menus, the palette, the keymap and the shortcuts sheet project this list.
 
+mod bar;
 mod keys;
 mod ops;
 mod playlist_picker;
@@ -10,6 +11,7 @@ use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
 use gpui_kit::{Action, App, Context, SharedString, Window};
 use store::{Kind, Target};
 
+pub use bar::{play_all, set_offline, set_shuffle, shuffle_play};
 pub use keys::{conflict, context_for, default_keystroke, keymap, keystroke_for, rebind, written};
 pub use registry::{all, get};
 pub use track_list::bind as bind_track_list;
