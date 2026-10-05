@@ -115,9 +115,8 @@ impl Render for CatalogPlaylist {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("catalog-playlist");
         let empty = !self.loading && self.error.is_none() && self.list.read(cx).rows().is_empty();
-        v_flex()
-            .size_full()
-            .p_8()
+        components::page()
+            .pb_8()
             .child(PageHeader::new(self.title.clone()).back(Route::Discover))
             .map(|page| {
                 if self.loading {

@@ -7,7 +7,7 @@ use components::{
     icons,
 };
 use config::{AlbumSortField, AlbumViewMode, SortCriterion};
-use gpui_kit::component::{h_flex, v_flex};
+use gpui_kit::component::h_flex;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled,
@@ -155,10 +155,7 @@ impl Render for Albums {
                 .build(window, cx)
         });
 
-        v_flex()
-            .size_full()
-            .px_8()
-            .pt_8()
+        components::page()
             .child(PageHeader::new(t("all_albums")))
             .child(
                 h_flex()

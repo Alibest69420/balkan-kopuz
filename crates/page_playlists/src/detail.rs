@@ -268,7 +268,7 @@ impl Render for PlaylistDetail {
         let playlist = playlists.read(cx).playlist(&self.id).cloned();
         let Some(playlist) = playlist else {
             // The page used to draw nothing at all while the catalog was still being read.
-            return v_flex().size_full().px_8().pt_8().child(if loaded {
+            return components::page().child(if loaded {
                 EmptyState::new(t("playlist_not_found"))
                     .icon(icons::LIST)
                     .into_any_element()
@@ -292,7 +292,7 @@ impl Render for PlaylistDetail {
         let mut header = DetailHeader::new(name.clone())
             .artwork(playlist.artwork.as_ref())
             .placeholder(icons::LIST)
-            .on_cover("playlist-cover", move |_, cx| {
+            .on_cover("playlist-cover", None, move |_, cx| {
                 page.update(cx, |this, cx| this.upload_cover(cx)).ok();
             })
             .meta(t_with(
@@ -367,10 +367,7 @@ impl Render for PlaylistDetail {
         }
 
         let body = self.body(keys.len(), window, cx);
-        v_flex()
-            .size_full()
-            .px_8()
-            .pt_8()
+        components::page()
             .gap_8()
             .child(components::back_button("playlist-back", cx))
             .child(header)

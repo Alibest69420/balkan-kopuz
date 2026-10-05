@@ -35,8 +35,6 @@ const OFFLINE_SCRIM: f32 = 0.45;
 
 /// Drawn over the routed page, so it paints nothing until it has something to say.
 pub struct Overlays {
-    // Which chip the pointer is over, so its colours can tween the way the original's do.
-    hovered: Option<&'static str>,
     // The error the user closed, so the banner stays gone until the daemon reports a different one.
     dismissed_error: Option<String>,
     banner: Entity<ConnectionBanner>,
@@ -56,7 +54,6 @@ impl Overlays {
             cx.observe(&banner, |_, _, cx| cx.notify()),
         ];
         Self {
-            hovered: None,
             dismissed_error: None,
             banner,
             _toasts: cx.new(|cx| Toasts::new(window, cx)),
@@ -80,24 +77,6 @@ impl Overlays {
         let message = &player.error()?.message;
         let track = player.track().map(|track| track.key.as_str()).unwrap_or("");
         Some(format!("{track}\u{1}{message}"))
-    }
-
-    /// A tween needs the hover state a `.hover()` refinement keeps to itself.
-    fn hover(
-        chip: &'static str,
-        cx: &mut Context<Self>,
-    ) -> impl Fn(&bool, &mut Window, &mut App) + 'static {
-        cx.listener(move |this: &mut Self, over: &bool, _, cx| {
-            if *over {
-                if this.hovered != Some(chip) {
-                    this.hovered = Some(chip);
-                    cx.notify();
-                }
-            } else if this.hovered == Some(chip) {
-                this.hovered = None;
-                cx.notify();
-            }
-        })
     }
 
     fn scan_banner(
@@ -156,13 +135,10 @@ impl Overlays {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let danger = cx.theme().danger;
+        let (over, pointer) = motion::hovered("dismiss-error-hover", window, cx);
         let dismiss = motion::amount(
             "dismiss-error-alpha",
-            if self.hovered == Some("dismiss") {
-                1.
-            } else {
-                0.5
-            },
+            if over { 1. } else { 0.5 },
             motion::FAST,
             window,
             cx,
@@ -200,7 +176,7 @@ impl Overlays {
                     .cursor_pointer()
                     .opacity(dismiss)
                     .text_color(style::white(DISMISS_TEXT, cx))
-                    .on_hover(Self::hover("dismiss", cx))
+                    .on_hover(motion::track(pointer))
                     .tooltip(|window, cx| Tooltip::new(t("close")).build(window, cx))
                     .child(icons::icon(icons::CLOSE).size(SMALL_ICON))
                     .on_click(cx.listener(move |this, _, _, cx| {

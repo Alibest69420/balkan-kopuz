@@ -4,12 +4,12 @@ use api::ArtworkRef;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Pixels,
-    RenderOnce, SharedString, StatefulInteractiveElement as _, Styled, Window, div, px, rems,
+    AnyElement, App, FontWeight, IntoElement, ParentElement as _, Pixels, RenderOnce, SharedString,
+    Styled, Window, div, px, rems,
 };
 use store::Route;
 
-use crate::cover::Cover;
+use crate::cover::{Cover, EditableCover};
 use crate::{icons, style};
 
 /// How big a page's title is drawn.
@@ -140,9 +140,6 @@ pub const HERO: Pixels = px(256.);
 type CoverAction = Rc<dyn Fn(&mut Window, &mut App)>;
 
 /// The block every detail page opens with: the cover, what it is, and what you can do to it.
-///
-/// Album, artist and playlist detail all drew their own; the only differences that mattered were
-/// the shape of the cover, the line above the title, and which buttons sat beside it.
 #[derive(IntoElement)]
 pub struct DetailHeader {
     title: SharedString,
@@ -154,6 +151,7 @@ pub struct DetailHeader {
     meta: Vec<SharedString>,
     actions: Vec<AnyElement>,
     cover_id: Option<SharedString>,
+    cover_tooltip: Option<SharedString>,
     on_cover: Option<CoverAction>,
     // A page whose cover carries its own overlay hands the whole thing over instead.
     custom_cover: Option<AnyElement>,
@@ -171,6 +169,7 @@ impl DetailHeader {
             meta: Vec::new(),
             actions: Vec::new(),
             cover_id: None,
+            cover_tooltip: None,
             on_cover: None,
             custom_cover: None,
         }
@@ -220,13 +219,15 @@ impl DetailHeader {
         self
     }
 
-    /// Make the cover a target for a new picture; the page decides what that means.
+    /// Make the cover a target for a new picture, named by `tooltip`; the page decides what that means.
     pub fn on_cover(
         mut self,
         id: impl Into<SharedString>,
+        tooltip: Option<SharedString>,
         act: impl Fn(&mut Window, &mut App) + 'static,
     ) -> Self {
         self.cover_id = Some(id.into());
+        self.cover_tooltip = tooltip;
         self.on_cover = Some(Rc::new(act));
         self
     }
@@ -238,30 +239,28 @@ impl RenderOnce for DetailHeader {
             true => self.size / 2.,
             false => px(12.),
         };
-        let cover = Cover::new(self.artwork.as_ref())
-            .size(self.size)
-            .hq(true)
-            .rounded(radius)
-            .placeholder(self.placeholder);
+        let cover = match (self.custom_cover, self.cover_id, self.on_cover) {
+            (Some(custom), _, _) => custom,
+            (None, Some(id), Some(act)) => EditableCover::new(id, self.artwork.as_ref())
+                .size(self.size)
+                .rounded(radius)
+                .placeholder(self.placeholder)
+                .when_some(self.cover_tooltip, |cover, tip| cover.tooltip(tip))
+                .on_pick(move |window, cx| act(window, cx))
+                .into_any_element(),
+            (None, _, _) => Cover::new(self.artwork.as_ref())
+                .size(self.size)
+                .hq(true)
+                .rounded(radius)
+                .placeholder(self.placeholder)
+                .into_any_element(),
+        };
         let meta = self.meta.clone();
         h_flex()
             .w_full()
             .gap_8()
             .items_end()
-            .child(div().flex_shrink_0().map(|frame| {
-                match self.custom_cover {
-                    Some(custom) => frame.child(custom).into_any_element(),
-                    None => match (self.cover_id, self.on_cover) {
-                        (Some(id), Some(act)) => frame
-                            .id(id)
-                            .cursor_pointer()
-                            .on_click(move |_, window, cx| act(window, cx))
-                            .child(cover)
-                            .into_any_element(),
-                        _ => frame.child(cover).into_any_element(),
-                    },
-                }
-            }))
+            .child(div().flex_shrink_0().child(cover))
             .child(
                 v_flex()
                     .flex_1()

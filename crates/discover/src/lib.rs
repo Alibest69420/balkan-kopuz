@@ -311,10 +311,7 @@ impl Discover {
 
         // A library read that failed is not an empty library, so it says so and offers the retry.
         if let Some(message) = read_failed.filter(|_| !genres) {
-            return v_flex()
-                .size_full()
-                .px_8()
-                .pt_8()
+            return components::page()
                 .child(PageHeader::new(t("discover")).action(self.search_hint(cx)))
                 .child(
                     div()
@@ -333,10 +330,7 @@ impl Discover {
 
         // Nothing to browse at all: the one place to go next is the box the hint points at.
         if loaded && settled && !supported && !genres && self.catalog_error.is_none() {
-            return v_flex()
-                .size_full()
-                .px_8()
-                .pt_8()
+            return components::page()
                 .child(PageHeader::new(t("discover")).action(self.search_hint(cx)))
                 .child(
                     div().flex_1().min_h_0().child(
@@ -393,10 +387,7 @@ impl Discover {
                 },
             )
             .build(window, cx);
-        v_flex()
-            .size_full()
-            .px_8()
-            .pt_8()
+        components::page()
             .child(
                 PageHeader::new(t("browse_genres"))
                     .subtitle(t_with(
@@ -480,10 +471,7 @@ impl Discover {
                 .into_any_element()
         };
 
-        v_flex()
-            .size_full()
-            .px_8()
-            .pt_8()
+        components::page()
             .child(
                 PageHeader::new(t_with(
                     "discover_results_for",

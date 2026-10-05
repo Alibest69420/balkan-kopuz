@@ -974,11 +974,8 @@ impl Render for Library {
         let chrome = self.chrome(window, cx);
         let body = self.body(window, cx);
         let bar = self.selection_bar(cx);
-        v_flex()
-            .size_full()
+        components::page()
             .relative()
-            .px_8()
-            .pt_8()
             .track_focus(&self.focus)
             .key_context("Library")
             .tab_index(0)

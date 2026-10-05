@@ -40,7 +40,7 @@ impl Render for PlaylistFolder {
             .cloned();
         let playlists = model.read(cx).playlists().to_vec();
         let Some(folder) = folder else {
-            return v_flex().size_full().px_8().pt_8().child(if loaded {
+            return components::page().child(if loaded {
                 EmptyState::new(t("no_playlists_yet"))
                     .icon(icons::FOLDER)
                     .into_any_element()
@@ -55,10 +55,7 @@ impl Render for PlaylistFolder {
             .cloned()
             .collect();
 
-        v_flex()
-            .size_full()
-            .px_8()
-            .pt_8()
+        components::page()
             .child(breadcrumb(folder.name.clone(), cx))
             .child(
                 v_flex()

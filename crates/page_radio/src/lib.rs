@@ -28,6 +28,8 @@ const DEBOUNCE: Duration = Duration::from_millis(300);
 const RESULTS: u32 = 60;
 // `w-11 h-11` station art, and `rounded-md` on it; `Cover` only takes pixels.
 const ART: Pixels = px(44.);
+const CARD_HOVER: u64 = 0;
+const CARD_WASH: u64 = 1;
 
 // The width the streams column reserves on the right of a selected row.
 fn streams_width() -> gpui_kit::Rems {
@@ -83,8 +85,6 @@ pub struct Radio {
     directory: Entity<Query<Vec<RadioStationInfo>>>,
     pinned: HashSet<String>,
     expanded: HashSet<String>,
-    // The card under the pointer, which its wash tweens toward.
-    hovered_card: Option<SharedString>,
     list: ListState,
     keys: Vec<SharedString>,
     lines: Vec<Line>,
@@ -127,7 +127,6 @@ impl Radio {
             directory,
             pinned: HashSet::new(),
             expanded: HashSet::new(),
-            hovered_card: None,
             list: ListState::new(0, ListAlignment::Top, px(400.)),
             keys: Vec::new(),
             lines: Vec::new(),
@@ -305,15 +304,6 @@ impl Radio {
             .collect()
     }
 
-    fn set_card_hover(&mut self, id: SharedString, hovered: bool, cx: &mut Context<Self>) {
-        if hovered {
-            self.hovered_card = Some(id);
-        } else if self.hovered_card.as_ref() == Some(&id) {
-            self.hovered_card = None;
-        }
-        cx.notify();
-    }
-
     /// `p-4 rounded-xl border border-white/8 transition-colors hover:bg-white/10`.
     fn card(
         &self,
@@ -321,19 +311,15 @@ impl Radio {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> gpui_kit::Stateful<gpui_kit::Div> {
-        let hovered = self.hovered_card.as_ref() == Some(&id);
+        let (hovered, pointer) = motion::hovered(motion::channel(&id, CARD_HOVER), window, cx);
         let wash = motion::color(
-            SharedString::from(format!("{id}-wash")),
-            if hovered {
-                style::white(style::HOVER, cx)
-            } else {
-                style::white(0., cx)
-            },
+            motion::channel(&id, CARD_WASH),
+            style::white(if hovered { style::HOVER } else { 0. }, cx),
             window,
             cx,
         );
         div()
-            .id(id.clone())
+            .id(id)
             .w_full()
             .p_4()
             .rounded(style::radius_xl())
@@ -341,9 +327,7 @@ impl Radio {
             .border_color(style::white(0.08, cx))
             .cursor_pointer()
             .bg(wash)
-            .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
-                this.set_card_hover(id.clone(), *hovered, cx)
-            }))
+            .on_hover(motion::track(pointer))
     }
 
     /// A row of the selected table: the whole row plays, the buttons pick a stream.
@@ -656,10 +640,7 @@ enum Line {
 
 impl Render for Radio {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
-            .size_full()
-            .px_8()
-            .pt_8()
+        components::page()
             .child(
                 div().w_full().mb_8().child(
                     PageHeader::new(t("radio"))

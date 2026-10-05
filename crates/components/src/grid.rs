@@ -13,7 +13,7 @@ use gpui_kit::{
     UniformListScrollHandle, Window, div, px, uniform_list,
 };
 
-use crate::{scroll, style};
+use crate::{motion, scroll, style};
 
 /// Until the list has been laid out once there is no measured width to divide.
 const COLUMNS_FALLBACK: usize = 4;
@@ -228,19 +228,25 @@ impl JumpRail {
 }
 
 impl RenderOnce for JumpRail {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        v_flex()
-            .w(RAIL)
-            .flex_shrink_0()
-            .items_center()
-            .justify_between()
-            .py_2()
-            .children(LETTERS.chars().map(|letter| {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let hover = SharedString::from(format!("{}-hover", self.id));
+        let tint = SharedString::from(format!("{}-ink", self.id));
+        let letters: Vec<_> = LETTERS
+            .chars()
+            .map(|letter| {
                 let known = self.present.contains(&letter);
-                let ink = match known {
-                    true => style::white(style::TEXT_SECONDARY, cx),
-                    false => style::white(style::TEXT_FAINT, cx),
-                };
+                let (over, pointer) =
+                    motion::hovered(motion::channel(&hover, letter as u64), window, cx);
+                let ink = motion::color(
+                    motion::channel(&tint, letter as u64),
+                    match (known, over) {
+                        (true, true) => cx.theme().foreground,
+                        (true, false) => style::white(style::TEXT_SECONDARY, cx),
+                        (false, _) => style::white(style::TEXT_FAINT, cx),
+                    },
+                    window,
+                    cx,
+                );
                 let jump = self.jump.clone();
                 div()
                     .id(ElementId::NamedInteger(self.id.clone(), letter as u64))
@@ -251,11 +257,19 @@ impl RenderOnce for JumpRail {
                     .when(known, |entry| {
                         entry
                             .cursor_pointer()
-                            .hover(|entry| entry.text_color(cx.theme().foreground))
+                            .on_hover(motion::track(pointer))
                             .on_click(move |_, window, cx| jump(letter, window, cx))
                     })
                     .child(letter.to_string())
-            }))
+            })
+            .collect();
+        v_flex()
+            .w(RAIL)
+            .flex_shrink_0()
+            .items_center()
+            .justify_between()
+            .py_2()
+            .children(letters)
     }
 }
 

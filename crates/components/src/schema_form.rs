@@ -35,7 +35,6 @@ pub struct SchemaForm {
     locked: Vec<String>,
     // Secret keys the daemon already holds a value for, since a secret never comes back to prefill.
     saved: Vec<String>,
-    hovered: Option<String>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -55,7 +54,6 @@ impl SchemaForm {
             problems: Vec::new(),
             locked: Vec::new(),
             saved: Vec::new(),
-            hovered: None,
             _subscriptions: Vec::new(),
         };
         form.set_specs(specs, window, cx);
@@ -370,17 +368,11 @@ impl SchemaForm {
             }
         };
 
-        // `.settings-row` washes to white/5 over 120ms; a form holds few enough rows to track hover.
+        // `.settings-row` washes to white/5 under the pointer.
+        let (over, pointer) = motion::hovered(motion::id("field-hover", &key), window, cx);
         let wash = motion::color(
             motion::id("field-wash", &key),
-            style::white(
-                if self.hovered.as_deref() == Some(key.as_str()) {
-                    style::RAISED
-                } else {
-                    0.
-                },
-                cx,
-            ),
+            style::white(if over { style::RAISED } else { 0. }, cx),
             window,
             cx,
         );
@@ -397,18 +389,7 @@ impl SchemaForm {
             .px_5()
             .py_2p5()
             .bg(wash)
-            .on_hover(cx.listener({
-                let key = key.clone();
-                move |this, over: &bool, _, cx| {
-                    // Only the row being left clears the mark, so entering the next one wins the race.
-                    if *over {
-                        this.hovered = Some(key.clone());
-                    } else if this.hovered.as_deref() == Some(key.as_str()) {
-                        this.hovered = None;
-                    }
-                    cx.notify();
-                }
-            }))
+            .on_hover(motion::track(pointer))
             .when(note, |field| {
                 field.child(
                     div()

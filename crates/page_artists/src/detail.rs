@@ -10,11 +10,11 @@ use api::{
 };
 use components::format::{t, t_with, total_duration};
 use components::{
-    Cover, DetailHeader, EmptyState, IconButton, IconTone, Loading, TrackActions, TrackHeader,
-    TrackList, TrackListEvent, TrackListOptions, icons, motion, style,
+    DetailHeader, EmptyState, IconButton, IconTone, Loading, TrackActions, TrackHeader, TrackList,
+    TrackListEvent, TrackListOptions, icons,
 };
 use config::{AlbumSortField, AlbumViewMode, ArtistViewOrder, SortCriterion, SortDirection};
-use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
+use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
@@ -279,10 +279,7 @@ impl Render for ArtistDetail {
         } else {
             self.tracks_view(window, cx)
         };
-        v_flex()
-            .size_full()
-            .px_8()
-            .pt_8()
+        components::page()
             .gap_6()
             .child(
                 h_flex()
@@ -339,7 +336,7 @@ impl ArtistDetail {
         &mut self,
         keys: Vec<String>,
         total: u64,
-        window: &mut Window,
+        _: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let capabilities = capabilities(cx);
@@ -353,56 +350,16 @@ impl ArtistDetail {
         let busy = JobsModel::global(cx).read(cx).is_running(JobKind::Download);
         let playable = !keys.is_empty();
         let downloadable = playable && !busy;
-        let (photo_hot, photo_hover) = motion::hovered("artist-photo-hover", window, cx);
-        let scrim = motion::amount(
-            "artist-photo-scrim",
-            if photo_hot { 1. } else { 0. },
-            motion::FAST,
-            window,
-            cx,
-        );
-
-        let photo = div()
-            .id("artist-photo")
-            .relative()
-            .flex_shrink_0()
-            .child(
-                Cover::new(artwork.as_ref())
-                    .size(px(PHOTO))
-                    .hq(true)
-                    .rounded(px(12.))
-                    .placeholder(icons::MIC),
-            )
-            .when(capabilities.edit_tags, |photo| {
-                photo
-                    .cursor_pointer()
-                    // `opacity-0 hover:opacity-100 transition-opacity` over the whole photo.
-                    .child(
-                        div()
-                            .absolute()
-                            .inset_0()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded(px(12.))
-                            .bg(style::black(0.5, cx))
-                            .opacity(scrim)
-                            .child(
-                                icons::icon(icons::EDIT)
-                                    .size(px(30.))
-                                    .text_color(cx.theme().foreground),
-                            ),
-                    )
-                    .tooltip(|window, cx| {
-                        gpui_kit::component::tooltip::Tooltip::new(t("change_photo"))
-                            .build(window, cx)
-                    })
-                    .on_hover(motion::track(photo_hover))
-                    .on_click(cx.listener(|this, _, _, cx| this.pick_photo(cx)))
-            });
-
+        let page = cx.entity().downgrade();
         let mut header = DetailHeader::new(self.name(cx))
-            .cover(photo)
+            .artwork(artwork.as_ref())
+            .placeholder(icons::MIC)
+            .size(px(PHOTO))
+            .when(capabilities.edit_tags, |header| {
+                header.on_cover("artist-photo", Some(t("change_photo")), move |_, cx| {
+                    page.update(cx, |this, cx| this.pick_photo(cx)).ok();
+                })
+            })
             .meta(t_with(
                 "showcase_song_count",
                 &[("count", keys.len().to_string())],

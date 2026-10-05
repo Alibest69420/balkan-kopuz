@@ -5,11 +5,12 @@ mod settings;
 
 use components::focus::{Axis, Roving, Step};
 use components::format::t;
-use components::{Edge, EdgeResizer, EmptyState, TrackDrag, icons, menus, motion, style};
+use components::{
+    Edge, EdgeResizer, EmptyState, IconButton, TrackDrag, icons, menus, motion, style,
+};
 use gpui_kit::base::StyledExt as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::ContextMenuExt as _;
-use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Icon, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Div, ElementId, InteractiveElement as _,
@@ -89,7 +90,6 @@ pub struct PlaylistsPanel {
     rows: Vec<Row>,
     width: Pixels,
     roving: Roving,
-    hovered: Option<SharedString>,
     // The window was too narrow to spare a column at launch; asking for the panel clears it.
     suppressed: bool,
     shown: bool,
@@ -123,7 +123,6 @@ impl PlaylistsPanel {
             rows: Vec::new(),
             width: px(store::layout(cx).panel.width),
             roving: Roving::new(Axis::Column, cx),
-            hovered: None,
             suppressed: shown && window.viewport_size().width < NARROW_WINDOW,
             shown,
             scroll: UniformListScrollHandle::new(),
@@ -221,7 +220,11 @@ impl PlaylistsPanel {
         };
         let current = Navigator::global(cx).read(cx).current().clone();
         let active = current == row.route();
-        let hovered = self.hovered.as_ref() == Some(&row.id);
+        let (hovered, pointer) = motion::hovered(
+            ElementId::from((ElementId::from("panel-row-hover"), row.id.clone())),
+            window,
+            cx,
+        );
         let focused = self.roving.is_active(index, window);
         let wash = motion::color(
             ElementId::from((ElementId::from("panel-row"), row.id.clone())),
@@ -237,7 +240,6 @@ impl PlaylistsPanel {
             true => cx.theme().foreground,
             false => style::slate_400(cx),
         };
-        let mark = row.id.clone();
         let id = row.id.to_string();
         let label = row.name.clone();
         let target = row.target();
@@ -256,13 +258,7 @@ impl PlaylistsPanel {
             .cursor_pointer()
             .bg(wash)
             .text_color(ink)
-            .on_hover(cx.listener(move |this, over: &bool, _, cx| {
-                let held = over.then(|| mark.clone());
-                if this.hovered != held && (*over || this.hovered.as_ref() == Some(&mark)) {
-                    this.hovered = held;
-                    cx.notify();
-                }
-            }))
+            .on_hover(motion::track(pointer))
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.roving.set_cursor(index);
                 Navigator::navigate(route.clone(), cx);
@@ -355,12 +351,9 @@ impl PlaylistsPanel {
                     .child(t("playlists")),
             )
             .child(
-                Button::new("panel-playlists-close")
-                    .custom(style::quiet_button(style::white(0.4, cx), cx))
-                    .with_size(CLOSE_GLYPH * (4. / 3.))
+                IconButton::new("panel-playlists-close", icons::CLOSE)
                     .size(CLOSE_BUTTON)
-                    .rounded(CLOSE_BUTTON / 2.)
-                    .icon(icons::icon(icons::CLOSE))
+                    .glyph(CLOSE_GLYPH)
                     .tooltip(t("close"))
                     .on_click(|_, _, cx| toggle(cx)),
             )

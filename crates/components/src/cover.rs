@@ -1,13 +1,17 @@
+use std::rc::Rc;
 use std::time::Duration;
 
 use api::ArtworkRef;
-use gpui_kit::component::Icon;
+use gpui_kit::component::tooltip::Tooltip;
+use gpui_kit::component::{ActiveTheme as _, Icon};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, ElementId, IntoElement, ObjectFit, ParentElement as _, Pixels, RenderOnce,
-    Styled, StyledImage as _, Window, div, img, linear_color_stop, linear_gradient, px, relative,
+    AnyElement, App, ElementId, InteractiveElement as _, IntoElement, ObjectFit,
+    ParentElement as _, Pixels, RenderOnce, SharedString, StatefulInteractiveElement as _, Styled,
+    StyledImage as _, Window, div, img, linear_color_stop, linear_gradient, px, relative,
 };
 
+use crate::icon_button::{IconButton, IconTone};
 use crate::icons;
 use crate::motion;
 use crate::style;
@@ -193,8 +197,7 @@ impl RenderOnce for Cover {
                         // The frame's mask is a rect, so the picture rounds its own corners.
                         .rounded(radius)
                         .object_fit(ObjectFit::Cover)
-                        // A cover that will not load is otherwise a blank square, which reads as
-                        // one that is merely slow.
+                        // A cover that will not load is otherwise a blank square, which reads as slow.
                         .with_fallback(move || {
                             Icon::default()
                                 .path(placeholder)
@@ -211,5 +214,149 @@ impl RenderOnce for Cover {
                 ),
             })
             .into_any_element()
+    }
+}
+
+type Act = Rc<dyn Fn(&mut Window, &mut App)>;
+
+/// `opacity-0 hover:opacity-100`: the scrim and pencil an editable cover shows under the pointer.
+const EDIT_SCRIM: f32 = 0.5;
+const EDIT_GLYPH: Pixels = px(30.);
+const REMOVE_BUTTON: Pixels = px(28.);
+const EDIT_FRAME: u64 = 0;
+const EDIT_HOVER: u64 = 1;
+const EDIT_VEIL: u64 = 2;
+
+/// A hero cover that takes a new picture on a click, and can give its current one back.
+#[derive(IntoElement)]
+pub struct EditableCover {
+    id: SharedString,
+    artwork: Option<ArtworkRef>,
+    size: Pixels,
+    radius: Pixels,
+    placeholder: &'static str,
+    tooltip: Option<SharedString>,
+    pick: Option<Act>,
+    remove: Option<(SharedString, Act)>,
+}
+
+impl EditableCover {
+    pub fn new(id: impl Into<SharedString>, artwork: Option<&ArtworkRef>) -> Self {
+        Self {
+            id: id.into(),
+            artwork: artwork.cloned(),
+            size: px(256.),
+            radius: px(12.),
+            placeholder: icons::DISC,
+            tooltip: None,
+            pick: None,
+            remove: None,
+        }
+    }
+
+    pub fn size(mut self, size: Pixels) -> Self {
+        self.size = size;
+        self
+    }
+
+    pub fn rounded(mut self, radius: Pixels) -> Self {
+        self.radius = radius;
+        self
+    }
+
+    pub fn placeholder(mut self, icon: &'static str) -> Self {
+        self.placeholder = icon;
+        self
+    }
+
+    pub fn tooltip(mut self, tooltip: impl Into<SharedString>) -> Self {
+        self.tooltip = Some(tooltip.into());
+        self
+    }
+
+    /// What a click does; without one the cover is only a picture.
+    pub fn on_pick(mut self, pick: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.pick = Some(Rc::new(pick));
+        self
+    }
+
+    /// A trash button over the corner that takes the picture away, named by `tooltip`.
+    pub fn on_remove(
+        mut self,
+        tooltip: impl Into<SharedString>,
+        remove: impl Fn(&mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.remove = Some((tooltip.into(), Rc::new(remove)));
+        self
+    }
+}
+
+impl RenderOnce for EditableCover {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let id = self.id;
+        let (over, pointer) = motion::hovered(motion::channel(&id, EDIT_HOVER), window, cx);
+        let veil = motion::amount(
+            motion::channel(&id, EDIT_VEIL),
+            if over { 1. } else { 0. },
+            motion::FAST,
+            window,
+            cx,
+        );
+        let radius = self.radius;
+        let has_artwork = self.artwork.is_some();
+        div()
+            .id(motion::channel(&id, EDIT_FRAME))
+            .relative()
+            .flex_shrink_0()
+            .on_hover(motion::track(pointer))
+            .child(
+                Cover::new(self.artwork.as_ref())
+                    .size(self.size)
+                    .hq(true)
+                    .rounded(radius)
+                    .placeholder(self.placeholder),
+            )
+            .when_some(self.pick, |frame, pick| {
+                frame
+                    .cursor_pointer()
+                    .when_some(self.tooltip, |frame, tip| {
+                        frame.tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+                    })
+                    .on_click(move |_, window, cx| pick(window, cx))
+                    .child(
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(radius)
+                            .bg(style::black(EDIT_SCRIM, cx))
+                            .opacity(veil)
+                            .child(
+                                icons::icon(icons::EDIT)
+                                    .size(EDIT_GLYPH)
+                                    .text_color(cx.theme().foreground),
+                            ),
+                    )
+            })
+            .when_some(
+                self.remove.filter(|_| has_artwork),
+                |frame, (tip, remove)| {
+                    frame.child(
+                        div().absolute().bottom_1().right_1().child(
+                            IconButton::new(
+                                SharedString::from(format!("{id}-remove")),
+                                icons::TRASH,
+                            )
+                            .size(REMOVE_BUTTON)
+                            .tone(IconTone::Scrim)
+                            .tooltip(tip)
+                            .stop_propagation(true)
+                            .on_click(move |_, window, cx| remove(window, cx)),
+                        ),
+                    )
+                },
+            )
     }
 }

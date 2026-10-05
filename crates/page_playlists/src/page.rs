@@ -267,7 +267,7 @@ impl Render for Playlists {
         } else {
             self.flat_layout(capabilities, cx)
         };
-        v_flex().size_full().px_8().pt_8().child(header).child(
+        components::page().child(header).child(
             v_flex()
                 .id("playlists-body")
                 .flex_1()

@@ -8,7 +8,6 @@ use api::{AlbumPage, ArtistInfo, ArtistPage, Table};
 use components::format::t;
 use components::{EmptyState, GridMode, Loading, PageHeader, TileGrid, icons};
 use config::{AlbumViewMode, ArtistSortField};
-use gpui_kit::component::v_flex;
 use gpui_kit::{
     App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
     Subscription, Task, Window, div, px,
@@ -174,10 +173,7 @@ impl Render for Artists {
                 .into_any_element(),
         };
 
-        v_flex()
-            .size_full()
-            .px_8()
-            .pt_8()
+        components::page()
             .child(
                 PageHeader::new(t("artists"))
                     .action(controls::view_mode_toggle(ViewModeKey::Artists, cx))

@@ -9,7 +9,6 @@ use components::{
     TrackListOptions, icons, motion, style,
 };
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
@@ -271,9 +270,8 @@ impl Render for Genre {
                 .into_any_element()
         };
 
-        v_flex()
-            .size_full()
-            .p_8()
+        components::page()
+            .pb_8()
             .child(
                 PageHeader::new(self.name.clone())
                     .subtitle(track_count(count))

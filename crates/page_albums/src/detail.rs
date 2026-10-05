@@ -6,10 +6,9 @@ use api::{
 };
 use components::format::{t, t_with};
 use components::{
-    Cover, DetailHeader, EmptyState, Heading, IconButton, IconTone, Link, Loading, SectionHeading,
-    Tone, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons, motion, style,
+    DetailHeader, EditableCover, EmptyState, Heading, IconButton, IconTone, Link, Loading,
+    SectionHeading, Tone, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons, style,
 };
-use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -324,67 +323,19 @@ impl AlbumDetail {
         )
     }
 
-    fn cover(
-        &self,
-        album: &AlbumInfo,
-        size: Pixels,
-        radius: Pixels,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let editable = self.capabilities.edit_tags;
-        let id = album.id.clone();
-        let remove_id = album.id.clone();
-        let scrim = style::black(0.5, cx);
-        let (over, pointer) = motion::hovered(motion::id(COVER, "hover"), window, cx);
-        let veil = motion::amount(
-            motion::id(COVER, "scrim"),
-            if over { 1. } else { 0. },
-            motion::FAST,
-            window,
-            cx,
-        );
-        div()
-            .id(COVER)
-            .relative()
-            .flex_shrink_0()
-            .on_hover(motion::track(pointer))
-            .child(
-                Cover::new(album.artwork.as_ref())
-                    .size(size)
-                    .hq(true)
-                    .rounded(radius)
-                    .placeholder(icons::DISC),
-            )
-            .when(editable, |block| {
-                block.child(
-                    div()
-                        .id("album-cover-pick")
-                        .absolute()
-                        .inset_0()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .rounded(radius)
-                        .bg(scrim)
-                        .opacity(veil)
-                        .cursor_pointer()
-                        .on_click(move |_, _, cx| ops::pick_album_cover(id.clone(), cx))
-                        .child(icons::icon(icons::EDIT).size(px(30.))),
-                )
-            })
-            .when(editable && album.artwork.is_some(), |block| {
-                block.child(
-                    div().absolute().bottom_1().right_1().child(
-                        Button::new("album-cover-remove")
-                            .ghost()
-                            .icon(icons::icon(icons::TRASH))
-                            .tooltip(t("remove_cover"))
-                            .on_click(move |_, _, cx| {
-                                ops::remove_album_cover(remove_id.clone(), cx)
-                            }),
-                    ),
-                )
+    fn cover(&self, album: &AlbumInfo, size: Pixels, radius: Pixels) -> EditableCover {
+        let cover = EditableCover::new(COVER, album.artwork.as_ref())
+            .size(size)
+            .rounded(radius)
+            .placeholder(icons::DISC);
+        if !self.capabilities.edit_tags {
+            return cover;
+        }
+        let (id, remove_id) = (album.id.clone(), album.id.clone());
+        cover
+            .on_pick(move |_, cx| ops::pick_album_cover(id.clone(), cx))
+            .on_remove(t("remove_cover"), move |_, cx| {
+                ops::remove_album_cover(remove_id.clone(), cx)
             })
     }
 
@@ -481,7 +432,7 @@ impl AlbumDetail {
     fn standard_detail(
         &self,
         album: AlbumInfo,
-        window: &mut Window,
+        _: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let count = t_with(
@@ -490,7 +441,7 @@ impl AlbumDetail {
         );
         let radius = cx.theme().radius * 3.;
         let mut header = DetailHeader::new(SharedString::from(album.title.clone()))
-            .cover(self.cover(&album, HERO_COVER, radius, window, cx))
+            .cover(self.cover(&album, HERO_COVER, radius))
             .eyebrow(Self::artist_link(
                 &album.artist,
                 album.artist_key.clone(),
@@ -514,10 +465,9 @@ impl AlbumDetail {
         if let Some(download) = self.download_all_button(HERO_SECONDARY, cx) {
             header = header.action(download);
         }
-        v_flex()
-            .size_full()
+        components::page()
             .relative()
-            .p_8()
+            .pb_8()
             .overflow_hidden()
             .child(
                 h_flex()
@@ -535,7 +485,7 @@ impl AlbumDetail {
     fn remote_detail(
         &self,
         view: RemoteView,
-        window: &mut Window,
+        _: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let minutes = self.total_ms() / 60_000;
@@ -563,10 +513,9 @@ impl AlbumDetail {
                 .ring(REMOTE_RING.0, REMOTE_RING.1)
         };
 
-        v_flex()
-            .size_full()
+        components::page()
             .relative()
-            .p_8()
+            .pb_8()
             .overflow_hidden()
             .child(
                 h_flex()
@@ -590,7 +539,7 @@ impl AlbumDetail {
                             .pt_2()
                             .child(div().shadow_2xl().child({
                                 let radius = cx.theme().radius * 2.;
-                                self.cover(&cover, REMOTE_COVER, radius, window, cx)
+                                self.cover(&cover, REMOTE_COVER, radius)
                             }))
                             .child(
                                 v_flex()
