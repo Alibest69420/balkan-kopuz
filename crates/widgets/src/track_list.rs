@@ -16,7 +16,7 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled, UniformListScrollHandle, WeakEntity, Window, actions,
     div, px, uniform_list,
 };
-use store::{DownloadsModel, FavoritesModel, Navigator, PlayerModel, Route, Target};
+use store::{ConfigModel, DownloadsModel, FavoritesModel, Navigator, PlayerModel, Route, Target};
 
 use crate::cover::Cover;
 use crate::format::{duration, t};
@@ -202,6 +202,7 @@ pub struct TrackList {
     scroll: UniformListScrollHandle,
     // A hidden trigger would take its own open menu down with it, so the row it belongs to shows it.
     menu_open: Option<String>,
+    _config: gpui_kit::Subscription,
 }
 
 actions!(
@@ -240,6 +241,7 @@ impl TrackList {
             focus: cx.focus_handle(),
             scroll: UniformListScrollHandle::new(),
             menu_open: None,
+            _config: cx.observe(&ConfigModel::global(cx), |_, _, cx| cx.notify()),
         }
     }
 
@@ -631,35 +633,39 @@ impl TrackList {
             )
             .child(
                 columns::flexible(columns::TITLE_MIN, 2.)
-                    .when(self.options.show_cover, |cell| {
-                        cell.child(
-                            div()
-                                .relative()
-                                .flex_shrink_0()
-                                .mr_4()
-                                .child(Cover::new(track.artwork.as_ref()).size(cover))
-                                .when(badge > 0., |thumb| {
-                                    thumb.child(
-                                        div()
-                                            .absolute()
-                                            .bottom_0()
-                                            .right_0()
-                                            .size_3()
-                                            .opacity(badge)
-                                            .flex()
-                                            .items_center()
-                                            .justify_center()
-                                            .rounded_tl(style::radius(cx))
-                                            .bg(accent)
-                                            .child(
-                                                icons::icon(icons::CHECK)
-                                                    .size(px(6.))
-                                                    .text_color(cx.theme().foreground),
-                                            ),
-                                    )
-                                }),
-                        )
-                    })
+                    .when(
+                        self.options.show_cover
+                            && ConfigModel::global(cx).read(cx).config().show_row_images,
+                        |cell| {
+                            cell.child(
+                                div()
+                                    .relative()
+                                    .flex_shrink_0()
+                                    .mr_4()
+                                    .child(Cover::new(track.artwork.as_ref()).size(cover))
+                                    .when(badge > 0., |thumb| {
+                                        thumb.child(
+                                            div()
+                                                .absolute()
+                                                .bottom_0()
+                                                .right_0()
+                                                .size_3()
+                                                .opacity(badge)
+                                                .flex()
+                                                .items_center()
+                                                .justify_center()
+                                                .rounded_tl(style::radius(cx))
+                                                .bg(accent)
+                                                .child(
+                                                    icons::icon(icons::CHECK)
+                                                        .size(px(6.))
+                                                        .text_color(cx.theme().foreground),
+                                                ),
+                                        )
+                                    }),
+                            )
+                        },
+                    )
                     .child(
                         div()
                             .id(("title", index))

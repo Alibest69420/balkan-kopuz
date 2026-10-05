@@ -93,6 +93,9 @@ impl NowPlaying {
         let entered = motion::enter("sheet-enter", motion::SLOW, window, cx);
         let owner = cx.entity().downgrade();
         let showing = self.tab;
+        let config = ConfigModel::global(cx).read(cx).config();
+        let use_bar = config.fullscreen_use_player_bar;
+        let bar_at_top = config.player_bar_position == config::PlayerBarPosition::Top;
 
         let stage = self.stage(window, cx);
         let panel = v_flex()
@@ -146,12 +149,21 @@ impl NowPlaying {
             })
             .children(self.backdrop(layout.backdrop, artwork.as_ref(), window, cx))
             .child(
-                h_flex()
+                v_flex()
                     .size_full()
-                    .items_stretch()
-                    .map(|row| match layout.side {
-                        Side::Left => row.child(panel).child(stage),
-                        Side::Right => row.child(stage).child(panel),
+                    .when(use_bar && bar_at_top, |body| {
+                        body.children(self.sheet_bar.clone())
+                    })
+                    .child(
+                        h_flex().flex_1().min_h_0().w_full().items_stretch().map(
+                            |row| match layout.side {
+                                Side::Left => row.child(panel).child(stage),
+                                Side::Right => row.child(stage).child(panel),
+                            },
+                        ),
+                    )
+                    .when(use_bar && !bar_at_top, |body| {
+                        body.children(self.sheet_bar.clone())
                     }),
             )
             .children(self.flying_cover(window, cx))
@@ -161,6 +173,10 @@ impl NowPlaying {
 
     /// The left half: the cover's landing place, the title, the transport and the clocks.
     fn stage(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let use_bar = ConfigModel::global(cx)
+            .read(cx)
+            .config()
+            .fullscreen_use_player_bar;
         let track = self.track(cx);
         let owner = cx.entity().downgrade();
         let close = self.control_glyph(
@@ -224,27 +240,25 @@ impl NowPlaying {
                     }),
             )
             .children(track.map(|track| self.title_block(&track, window, cx)))
-            .child(
-                v_flex()
-                    .w_full()
-                    .max_w(rems(COLUMN))
-                    .items_center()
-                    .gap_4()
-                    .child(self.seek_row(window, cx))
-                    .child(
-                        h_flex()
-                            .items_center()
-                            .gap_4()
-                            .child(self.transport(Metrics::HERO, true, window, cx))
-                            .child(self.transport_overflow(ACTION, ACTION_GLYPH, cx)),
-                    )
-                    .child(
-                        h_flex()
-                            .w_full()
-                            .max_w(rems(COLUMN / 2.))
-                            .child(self.volume_control(true, window, cx)),
-                    ),
-            )
+            .when(!use_bar, |stage| {
+                stage.child(
+                    v_flex()
+                        .w_full()
+                        .max_w(rems(COLUMN))
+                        .items_center()
+                        .gap_4()
+                        .child(self.seek_row(window, cx))
+                        .child(
+                            h_flex()
+                                .items_center()
+                                .gap_4()
+                                .child(div().w(ACTION).flex_shrink_0())
+                                .child(self.transport(Metrics::HERO, true, window, cx))
+                                .child(self.transport_overflow(ACTION, ACTION_GLYPH, cx)),
+                        )
+                        .child(self.volume_control(true, window, cx)),
+                )
+            })
             .into_any_element()
     }
 

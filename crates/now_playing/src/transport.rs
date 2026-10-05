@@ -80,6 +80,7 @@ impl NowPlaying {
             )
         };
         let wanted = store::layout(cx).player.clone();
+        let balanced = full && self.presentation == crate::Presentation::Sheet;
         let accent = motion::accent(theme::Surface::Chrome, cx.theme().primary, window, cx);
         let idle = style::slate_400(cx);
         let repeating = loop_mode != LoopMode::None;
@@ -105,6 +106,9 @@ impl NowPlaying {
         h_flex()
             .gap(metrics.gap)
             .items_center()
+            .when(balanced && !wanted.shuffle && wanted.repeat, |row| {
+                row.child(div().w(metrics.side).flex_shrink_0())
+            })
             .when(full && wanted.shuffle, |row| {
                 row.child(
                     self.control_slot("shuffle", metrics.side, window, cx)
@@ -222,6 +226,9 @@ impl NowPlaying {
                             )
                         }),
                 )
+            })
+            .when(balanced && !wanted.repeat && wanted.shuffle, |row| {
+                row.child(div().w(metrics.side).flex_shrink_0())
             })
     }
 

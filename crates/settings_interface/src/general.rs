@@ -27,7 +27,7 @@ pub fn register(cx: &mut App) {
 
 struct General {
     font: Entity<InputState>,
-    _subscription: Subscription,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl General {
@@ -45,9 +45,21 @@ impl General {
                 LayoutModel::edit(cx, |layout| layout.interface.font = family);
             }
         });
+        let layout_subscription = cx.observe_in(
+            &LayoutModel::global(cx),
+            window,
+            |this: &mut Self, _, window, cx| {
+                let family = store::layout(cx).interface.font.clone().unwrap_or_default();
+                if this.font.read(cx).value().as_str() != family {
+                    this.font
+                        .update(cx, |font, cx| font.set_value(family, window, cx));
+                }
+                cx.notify();
+            },
+        );
         Self {
             font,
-            _subscription: subscription,
+            _subscriptions: vec![subscription, layout_subscription],
         }
     }
 }

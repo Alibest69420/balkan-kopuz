@@ -4636,6 +4636,7 @@ version = "0.1.0"
 dependencies = [
  "gpui-kit",
  "kopuz-api",
+ "kopuz-config",
  "kopuz-i18n",
  "link",
  "profile",
@@ -6917,6 +6918,8 @@ dependencies = [
 name = "settings_interface"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "fontdb",
  "gpui-kit",
  "kopuz-i18n",
  "store",

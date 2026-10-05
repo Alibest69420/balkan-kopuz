@@ -238,6 +238,7 @@ impl Library {
             // The playing mark sits on every row and tile, so it is derived here, not in render.
             cx.observe(&player, |this, _, cx| this.adopt_playing(cx)),
             cx.observe(&layout, |this, _, cx| this.adopt_layout(cx)),
+            cx.observe(&store::ConfigModel::global(cx), |_, _, cx| cx.notify()),
             cx.observe(&sources, |_, _, cx| cx.notify()),
             cx.observe_in(&navigator, window, |this, _, window, cx| {
                 this.adopt_route(window, cx)

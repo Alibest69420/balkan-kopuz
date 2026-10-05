@@ -17,7 +17,7 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled, Subscription, Window, div, px, rems,
 };
 use store::layout::NavPosition;
-use store::{Chrome, LayoutModel, Navigator, Route, SourcesModel};
+use store::{Chrome, ConfigModel, LayoutModel, Navigator, Route, SourcesModel};
 use widgets::focus::{Axis, Roving, Step};
 use widgets::format::t;
 use widgets::{icons, motion, style};
@@ -96,6 +96,7 @@ impl TopBar {
                 cx.notify();
             }),
             cx.observe(&Navigator::global(cx), |_, _, cx| cx.notify()),
+            cx.observe(&ConfigModel::global(cx), |_, _, cx| cx.notify()),
             cx.observe(&SourcesModel::global(cx), |_, _, cx| cx.notify()),
             cx.observe(&probe, |_, _, cx| cx.notify()),
             cx.observe_window_bounds(window, |this, window, cx| {
@@ -443,12 +444,17 @@ impl TopBar {
             .flex_shrink_0()
             .items_center()
             .children(self.activity.clone())
-            .child(
-                div().when(!compact, |slot| slot.w(px(180.))).child(
-                    SourceSwitcher::new(sources, status)
-                        .collapsed(compact)
-                        .bare(true),
-                ),
+            .when(
+                ConfigModel::global(cx).read(cx).config().show_source_toggle,
+                |cluster| {
+                    cluster.child(
+                        div().when(!compact, |slot| slot.w(px(180.))).child(
+                            SourceSwitcher::new(sources, status)
+                                .collapsed(compact)
+                                .bare(true),
+                        ),
+                    )
+                },
             )
             .child(
                 chrome_button("nav-settings", icons::SETTINGS, cx)

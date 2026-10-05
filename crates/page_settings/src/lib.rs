@@ -305,7 +305,7 @@ impl Settings {
             .restrict_scroll_to_axis()
             .border_b_1()
             .border_color(style::white(FAN_BORDER, cx))
-            .bg(style::black(FAN_BG, cx))
+            .bg(widgets::settings::panel_background(FAN_BG, cx))
             .child(
                 v_flex()
                     .flex_none()

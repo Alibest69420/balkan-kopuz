@@ -19,6 +19,7 @@ impl Global for Applied {}
 /// Follow `layout.interface` from here on, re-applying it over whatever a theme change installs.
 pub fn watch(cx: &mut App) {
     cx.set_global(Applied::default());
+    super::font::watch(cx);
     resolve(cx);
     cx.observe(&LayoutModel::global(cx), |_, cx| resolve(cx))
         .detach();
@@ -26,7 +27,7 @@ pub fn watch(cx: &mut App) {
     cx.observe_global::<Theme>(resolve).detach();
 }
 
-fn resolve(cx: &mut App) {
+pub(super) fn resolve(cx: &mut App) {
     skin(cx);
     apply(cx);
 }
@@ -70,7 +71,9 @@ fn apply(cx: &mut App) {
         .unwrap_or_else(|| current.clone());
     let wanted = (
         base_size * scale,
-        font.map(SharedString::from).unwrap_or(base_family),
+        font.map(SharedString::from)
+            .or_else(|| super::font::family(cx))
+            .unwrap_or(base_family),
     );
     *applied.wrote.borrow_mut() = Some(wanted.clone());
     if wanted == current {

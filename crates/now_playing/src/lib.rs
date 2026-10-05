@@ -39,6 +39,7 @@ const VOLUME_STEP: f32 = 0.001;
 pub enum Presentation {
     /// The bar across the bottom, always there.
     Bar,
+    SheetBar,
     /// The sheet the bar grows into, over the page.
     Sheet,
     /// The same queue and lyrics, docked beside the content instead.
@@ -90,6 +91,7 @@ pub struct NowPlaying {
     devices: Vec<api::ExternalDevice>,
     queue: Option<Entity<QueueView>>,
     lyrics: Option<Entity<LyricsView>>,
+    sheet_bar: Option<Entity<NowPlaying>>,
     _devices_fetch: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
@@ -170,6 +172,8 @@ impl NowPlaying {
             devices: Vec::new(),
             queue: holds_tabs.then(|| cx.new(|cx| QueueView::new(window, cx))),
             lyrics: holds_tabs.then(|| cx.new(|cx| LyricsView::new(window, cx))),
+            sheet_bar: (presentation == Presentation::Sheet)
+                .then(|| cx.new(|cx| Self::new(Presentation::SheetBar, window, cx))),
             _devices_fetch: None,
             _subscriptions: subscriptions,
         }
@@ -248,7 +252,7 @@ impl Render for NowPlaying {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("now_playing");
         match self.presentation {
-            Presentation::Bar => self.render_bar(window, cx),
+            Presentation::Bar | Presentation::SheetBar => self.render_bar(window, cx),
             Presentation::Sheet => self.render_sheet(window, cx),
             Presentation::Panel => self.render_panel(window, cx),
             Presentation::Mini => self.render_mini(window, cx),

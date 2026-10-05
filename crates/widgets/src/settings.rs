@@ -9,9 +9,9 @@ use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, ElementId, Entity, FontWeight, Global, InteractiveElement as _, IntoElement,
-    ParentElement, Rems, RenderOnce, SharedString, StatefulInteractiveElement as _, Styled, Window,
-    div, px, rems,
+    AnyElement, App, ElementId, Entity, FontWeight, Global, Hsla, InteractiveElement as _,
+    IntoElement, ParentElement, Rems, RenderOnce, SharedString, StatefulInteractiveElement as _,
+    Styled, Window, div, px, rems,
 };
 
 use crate::format::t;
@@ -170,6 +170,15 @@ const LOCKED_OPACITY: f32 = 0.50;
 /// The accent wash the palette leaves on the row it sent someone to.
 const MARKED: f32 = 0.14;
 
+/// Settings cards and the category rail share a translucent theme surface over ambient light.
+pub fn panel_background(opacity: f32, cx: &App) -> Hsla {
+    if theme::ambient(cx).is_some() {
+        cx.theme().popover.opacity(opacity * 0.6)
+    } else {
+        style::black(opacity, cx)
+    }
+}
+
 /// `min-h-[3.25rem]`, the height a settings row never goes under.
 pub fn row_height() -> Rems {
     rems(3.25)
@@ -250,6 +259,8 @@ impl RenderOnce for Section {
         let hovered = hover_state(scoped("section-hover", &self.title), window, cx);
         let header_target = if *hovered.read(cx) {
             style::white(HEADER_HOVER, cx)
+        } else if theme::ambient(cx).is_some() {
+            style::white(STRIPE, cx)
         } else {
             style::black(HEADER_BG, cx)
         };
@@ -265,7 +276,7 @@ impl RenderOnce for Section {
             .rounded(style::radius_xl())
             .border_1()
             .border_color(style::white(CARD_BORDER, cx))
-            .bg(style::black(CARD_BG, cx))
+            .bg(panel_background(CARD_BG, cx))
             .shadow_lg()
             .child(
                 h_flex()

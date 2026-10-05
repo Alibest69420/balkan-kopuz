@@ -1,6 +1,7 @@
 //! Settings → Interface: every knob that changes how the app looks, contributed by the crate that owns it.
 
 mod apply;
+mod font;
 mod general;
 mod skin;
 

@@ -57,6 +57,7 @@ impl NowPlaying {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
+        let fullscreen = self.presentation == crate::Presentation::Sheet;
         let level = PlayerModel::global(cx).read(cx).volume();
         let tint = self.control_glyph("mute", style::slate_400(cx), false, window, cx);
         let fill = motion::accent(theme::Surface::Chrome, cx.theme().foreground, window, cx);
@@ -75,6 +76,7 @@ impl NowPlaying {
 
         h_flex()
             .id("volume")
+            .when(fullscreen, |control| control.w_full().max_w(rems(18.)))
             .gap_2()
             .items_center()
             .on_hover(motion::track(pointer))
@@ -100,7 +102,16 @@ impl NowPlaying {
             )
             // The wheel still works over the glyph when the track it drew is what the title needed.
             .when(slider, |control| {
-                control.child(div().w(TRACK_WIDTH).child(self.volume_bar(fill, knob, cx)))
+                control.child(
+                    div()
+                        .when(fullscreen, |track| track.flex_1().min_w_0())
+                        .when(!fullscreen, |track| track.w(TRACK_WIDTH))
+                        .child(self.volume_bar(fill, knob, cx)),
+                )
+            })
+            // Balances the mute glyph, so the track sits centred under the transport.
+            .when(fullscreen, |control| {
+                control.child(div().w(style::chrome().round_button).flex_shrink_0())
             })
     }
 

@@ -14,3 +14,5 @@ i18n = { workspace = true }
 store = { workspace = true }
 widgets = { workspace = true }
 gpui-kit = { workspace = true }
+fontdb = { version = "0.23", default-features = false }
+anyhow = { workspace = true }

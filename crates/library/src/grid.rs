@@ -392,14 +392,22 @@ impl Library {
             .bg(wash)
             .on_hover(self.hover_listener(tile.id.clone(), cx))
             .on_click(self.click_listener(tile.clone(), index, cx))
-            .child(
-                Cover::new(tile.artwork.as_ref())
-                    .size(px(48.))
-                    .rounded(match facet.round_tiles() {
-                        true => px(24.),
-                        false => px(6.),
-                    })
-                    .placeholder(facet.placeholder()),
+            .when(
+                store::ConfigModel::global(cx)
+                    .read(cx)
+                    .config()
+                    .show_row_images,
+                |row| {
+                    row.child(
+                        Cover::new(tile.artwork.as_ref())
+                            .size(px(48.))
+                            .rounded(match facet.round_tiles() {
+                                true => px(24.),
+                                false => px(6.),
+                            })
+                            .placeholder(facet.placeholder()),
+                    )
+                },
             )
             .child(
                 v_flex()

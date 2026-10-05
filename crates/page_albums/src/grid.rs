@@ -518,12 +518,17 @@ fn row(
             }
         }))
         .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
-        .child(
-            Cover::new(album.artwork.as_ref())
-                .size(ROW_COVER)
-                .rounded(cx.theme().radius * 1.5)
-                .zoom(motion::row_id("album-row-cover", slot), hovered)
-                .placeholder(icons::DISC),
+        .when(
+            ConfigModel::global(cx).read(cx).config().show_row_images,
+            |row| {
+                row.child(
+                    Cover::new(album.artwork.as_ref())
+                        .size(ROW_COVER)
+                        .rounded(cx.theme().radius * 1.5)
+                        .zoom(motion::row_id("album-row-cover", slot), hovered)
+                        .placeholder(icons::DISC),
+                )
+            },
         )
         .child(
             v_flex()

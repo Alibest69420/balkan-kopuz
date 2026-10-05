@@ -188,6 +188,11 @@ impl Render for Shell {
         // The docked column is drag-resizable, so it owns the slot's width.
         let panel_width = self.side_panel.read(cx).panel_width();
         let show_player_bar = connected && !compact;
+        let player_at_top = ConfigModel::global(cx)
+            .read(cx)
+            .config()
+            .player_bar_position
+            == config::PlayerBarPosition::Top;
         let route = Navigator::global(cx).read(cx).current().clone();
         let page = self.router.page(&route, window, cx);
 
@@ -201,6 +206,9 @@ impl Render for Shell {
             v_flex()
                 .size_full()
                 .children(bar.clone().filter(|_| !nav_left))
+                .when(show_player_bar && player_at_top, |body| {
+                    body.child(self.player_bar.clone())
+                })
                 .child(
                     h_flex()
                         .flex_1()
@@ -235,7 +243,7 @@ impl Render for Shell {
                             body.child(div().w(panel_width).child(self.side_panel.clone()))
                         }),
                 )
-                .when(show_player_bar, |window_body| {
+                .when(show_player_bar && !player_at_top, |window_body| {
                     window_body.child(self.player_bar.clone())
                 })
                 .into_any_element()

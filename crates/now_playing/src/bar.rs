@@ -96,7 +96,15 @@ impl NowPlaying {
 
     /// The right end of the bar: level, the two panels, where else it can play, and the two sizes.
     fn utilities(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let panel = Chrome::global(cx).read(cx).panel();
+        let panel = if self.presentation == crate::Presentation::SheetBar {
+            match self.tab {
+                store::layout::SheetTab::Lyrics => Some(SidePanel::Lyrics),
+                store::layout::SheetTab::Queue => Some(SidePanel::Queue),
+                _ => None,
+            }
+        } else {
+            Chrome::global(cx).read(cx).panel()
+        };
         let wanted = store::layout(cx).player.clone();
         let room = affords(window.viewport_size().width);
         let muted = style::slate_400(cx);
@@ -135,6 +143,10 @@ impl NowPlaying {
                             .tooltip(t("up_next"))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.devices_open = false;
+                                if this.presentation == crate::Presentation::SheetBar {
+                                    this.set_tab(store::layout::SheetTab::Queue, cx);
+                                    return;
+                                }
                                 Chrome::global(cx).update(cx, |chrome, cx| {
                                     chrome.toggle_panel(SidePanel::Queue, cx)
                                 });
@@ -152,6 +164,10 @@ impl NowPlaying {
                             .tooltip(t("lyrics"))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.devices_open = false;
+                                if this.presentation == crate::Presentation::SheetBar {
+                                    this.set_tab(store::layout::SheetTab::Lyrics, cx);
+                                    return;
+                                }
                                 Chrome::global(cx).update(cx, |chrome, cx| {
                                     chrome.toggle_panel(SidePanel::Lyrics, cx)
                                 });
