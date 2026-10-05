@@ -1,7 +1,8 @@
 use std::time::Duration;
 
-use api::{ApiEvent, ConfigField, ConfigView, DAEMON_OWNED_CONFIG_KEYS};
+use api::{ApiEvent, ConfigField, ConfigView};
 use config::AppConfig;
+use config::DAEMON_OWNED_KEYS;
 use gpui_kit::{App, Context, Entity, Subscription, Task};
 use link::Link;
 use serde_json::{Map, Value};
@@ -250,7 +251,7 @@ fn unsent(baseline: &Map<String, Value>, local: &AppConfig) -> Map<String, Value
     fields_of(local)
         .into_iter()
         .filter(|(key, value)| {
-            !DAEMON_OWNED_CONFIG_KEYS.contains(&key.as_str()) && baseline.get(key) != Some(value)
+            !DAEMON_OWNED_KEYS.contains(&key.as_str()) && baseline.get(key) != Some(value)
         })
         .collect()
 }

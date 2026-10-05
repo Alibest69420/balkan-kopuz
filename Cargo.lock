@@ -653,7 +653,7 @@ dependencies = [
  "bitflags 2.13.2",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.11.0",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -1566,7 +1566,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.3",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1809,7 +1809,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3815,7 +3815,7 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 [[package]]
 name = "kopuz-api"
 version = "0.19.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=49362e3ae2020c7bd6e438df4e7d51de699b79bb#49362e3ae2020c7bd6e438df4e7d51de699b79bb"
+source = "git+https://github.com/Kopuz-org/kopuz?rev=1508dce7db3e183c9c3280ec098b2e44ab310d87#1508dce7db3e183c9c3280ec098b2e44ab310d87"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -3827,7 +3827,7 @@ dependencies = [
 [[package]]
 name = "kopuz-client"
 version = "0.19.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=49362e3ae2020c7bd6e438df4e7d51de699b79bb#49362e3ae2020c7bd6e438df4e7d51de699b79bb"
+source = "git+https://github.com/Kopuz-org/kopuz?rev=1508dce7db3e183c9c3280ec098b2e44ab310d87#1508dce7db3e183c9c3280ec098b2e44ab310d87"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -3845,7 +3845,7 @@ dependencies = [
 [[package]]
 name = "kopuz-config"
 version = "0.19.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=49362e3ae2020c7bd6e438df4e7d51de699b79bb#49362e3ae2020c7bd6e438df4e7d51de699b79bb"
+source = "git+https://github.com/Kopuz-org/kopuz?rev=1508dce7db3e183c9c3280ec098b2e44ab310d87#1508dce7db3e183c9c3280ec098b2e44ab310d87"
 dependencies = [
  "directories",
  "serde",
@@ -3899,7 +3899,7 @@ dependencies = [
 [[package]]
 name = "kopuz-i18n"
 version = "0.19.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=49362e3ae2020c7bd6e438df4e7d51de699b79bb#49362e3ae2020c7bd6e438df4e7d51de699b79bb"
+source = "git+https://github.com/Kopuz-org/kopuz?rev=1508dce7db3e183c9c3280ec098b2e44ab310d87#1508dce7db3e183c9c3280ec098b2e44ab310d87"
 dependencies = [
  "fluent-bundle",
  "unic-langid",
@@ -3908,7 +3908,7 @@ dependencies = [
 [[package]]
 name = "kopuz-proto"
 version = "0.19.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=49362e3ae2020c7bd6e438df4e7d51de699b79bb#49362e3ae2020c7bd6e438df4e7d51de699b79bb"
+source = "git+https://github.com/Kopuz-org/kopuz?rev=1508dce7db3e183c9c3280ec098b2e44ab310d87#1508dce7db3e183c9c3280ec098b2e44ab310d87"
 dependencies = [
  "futures-util",
  "kopuz-api",
@@ -4685,7 +4685,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5851,8 +5851,8 @@ version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be769465445e8c1474e9c5dac2018218498557af32d9ed057325ec9a41ae81bf"
 dependencies = [
- "heck 0.5.0",
- "itertools 0.13.0",
+ "heck 0.4.1",
+ "itertools 0.11.0",
  "log",
  "multimap",
  "once_cell",
@@ -5872,7 +5872,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d"
 dependencies = [
  "anyhow",
- "itertools 0.13.0",
+ "itertools 0.11.0",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -6039,7 +6039,7 @@ dependencies = [
  "once_cell",
  "socket2 0.6.5",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6581,7 +6581,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -7585,10 +7585,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
