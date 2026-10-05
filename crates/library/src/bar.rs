@@ -4,16 +4,16 @@ use api::TrackFilter;
 use commands::Command;
 use components::format::{t, t_with};
 use components::{
-    ChipSize, ChipTone, PageHeader, SearchField, Segment, Segmented, SortControl, icons, style,
+    FilterBar, FilterChip, FilterEntry, PageHeader, Segment, Segmented, SortControl, icons, style,
 };
 use config::{SortCriterion, SortDirection};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
-use gpui_kit::component::{Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, Context, IntoElement, ParentElement as _, SharedString, Styled as _, Window,
-    div, rems,
+    div,
 };
 use store::layout::{Density, TileSize, ViewMode};
 use store::{Link, Target};
@@ -79,45 +79,26 @@ impl Library {
     /// Type to filter, then the chips that compose on top of what was typed.
     fn filter_bar(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let filters = self.filters().clone();
-        let chips: Vec<AnyElement> = Chip::ALL
+        let mut bar = FilterBar::new(&self.search)
+            .narrowed(filters.is_narrowed())
+            .on_clear(cx.listener(|this, _, window, cx| {
+                let cleared = this.filters().cleared();
+                this.search
+                    .update(cx, |state, cx| state.set_value("", window, cx));
+                this.set_filters(cleared, true, cx);
+            }));
+        for chip in Chip::ALL
             .iter()
             .copied()
             .filter(|chip| filters.applies(*chip))
-            .map(|chip| self.chip(chip, &filters, cx))
-            .collect();
-        h_flex()
-            .w_full()
-            .gap_2()
-            .items_center()
-            .flex_wrap()
-            .child(
-                // `max-w-2xl`: the filter never runs the width of the page.
-                div()
-                    .w_full()
-                    .max_w(rems(26.))
-                    .child(SearchField::new(&self.search).cleanable(true)),
-            )
-            .children(chips)
-            .when(filters.is_narrowed(), |bar| {
-                bar.child(
-                    Button::new("library-clear-filters")
-                        .ghost()
-                        .small()
-                        .icon(icons::icon(icons::CLOSE))
-                        .label(t("clear"))
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            let cleared = this.filters().cleared();
-                            this.search
-                                .update(cx, |state, cx| state.set_value("", window, cx));
-                            this.set_filters(cleared, true, cx);
-                        })),
-                )
-            })
-            .into_any_element()
+        {
+            bar = bar.chip(self.chip(chip, &filters, cx));
+        }
+        bar.into_any_element()
     }
 
     /// One chip: lit when it is narrowing, and carrying its own menu when it picks a value.
-    fn chip(&self, chip: Chip, filters: &Filters, cx: &mut Context<Self>) -> AnyElement {
+    fn chip(&self, chip: Chip, filters: &Filters, cx: &mut Context<Self>) -> FilterChip {
         let (lit, label) = match chip {
             Chip::Favorites => (filters.favorites, t(chip.label_key())),
             Chip::Downloaded => (filters.downloaded, t(chip.label_key())),
@@ -134,16 +115,10 @@ impl Library {
                 None => (false, t(chip.label_key())),
             },
         };
-        let button = components::Chip::new(chip.id())
-            .tone(ChipTone::Filter)
-            .size(ChipSize::Medium)
-            .pill(true)
-            .selected(lit)
-            .icon(chip.icon())
-            .label(label);
+        let page = cx.entity().downgrade();
         if !chip.has_menu() {
-            return button
-                .on_click(cx.listener(move |this, _, _, cx| {
+            return FilterChip::toggle(chip.id(), chip.icon(), label, lit, move |_, cx| {
+                page.update(cx, |this, cx| {
                     let mut filters = this.filters().clone();
                     match chip {
                         Chip::Favorites => filters.favorites = !filters.favorites,
@@ -151,49 +126,57 @@ impl Library {
                         _ => {}
                     }
                     this.set_filters(filters, true, cx);
-                }))
-                .into_any_element();
+                })
+                .ok();
+            });
         }
         let entries = self.chip_entries(chip, cx);
-        let page = cx.entity().downgrade();
-        button
-            .dropdown(move |mut menu, _, _| {
-                let page = page.clone();
-                for (value, label, checked) in entries.clone() {
-                    let page = page.clone();
-                    menu = menu.item(PopupMenuItem::new(label).checked(checked).on_click(
-                        move |_, _, cx| {
-                            page.update(cx, |this, cx| {
-                                let mut filters = this.filters().clone();
-                                apply_chip(&mut filters, chip, value.clone());
-                                this.set_filters(filters, true, cx);
-                            })
-                            .ok();
-                        },
-                    ));
-                }
-                menu
-            })
-            .into_any_element()
+        FilterChip::menu(
+            chip.id(),
+            chip.icon(),
+            label,
+            lit,
+            entries,
+            move |value, _, cx| {
+                page.update(cx, |this, cx| {
+                    let mut filters = this.filters().clone();
+                    apply_chip(&mut filters, chip, value);
+                    this.set_filters(filters, true, cx);
+                })
+                .ok();
+            },
+        )
     }
 
     /// What a menu chip offers: the value it would set, what to call it, and whether it is on.
-    fn chip_entries(&self, chip: Chip, cx: &App) -> Vec<(Option<String>, SharedString, bool)> {
+    fn chip_entries(&self, chip: Chip, cx: &App) -> Vec<FilterEntry> {
         let filters = self.filters();
-        let mut entries = vec![(None, t("library_chip_any"), chip_is_off(filters, chip))];
+        let entry = |value: Option<String>, label: SharedString, checked: bool| FilterEntry {
+            value,
+            label,
+            checked,
+        };
+        let mut entries = vec![entry(
+            None,
+            t("library_chip_any"),
+            chip_is_off(filters, chip),
+        )];
         match chip {
             Chip::Genre => {
                 for genre in self.known_genres(cx) {
                     let checked = filters.genre.as_deref() == Some(genre.as_str());
-                    entries.push((Some(genre.clone()), SharedString::from(genre), checked));
+                    entries.push(entry(
+                        Some(genre.clone()),
+                        SharedString::from(genre),
+                        checked,
+                    ));
                 }
             }
             Chip::Years => {
                 for (from, to) in decades(self.year_span()) {
-                    let value = format!("{from}-{to}");
                     let checked = filters.years == Some((from, to));
-                    entries.push((
-                        Some(value),
+                    entries.push(entry(
+                        Some(format!("{from}-{to}")),
                         SharedString::from(format!("{from}–{to}")),
                         checked,
                     ));
@@ -202,7 +185,7 @@ impl Library {
             Chip::Folder => {
                 for root in scan_roots(cx) {
                     let checked = filters.folder.as_deref() == Some(root.as_str());
-                    entries.push((
+                    entries.push(entry(
                         Some(root.clone()),
                         SharedString::from(leaf_of(&root)),
                         checked,

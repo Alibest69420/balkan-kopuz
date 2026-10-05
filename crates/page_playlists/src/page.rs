@@ -7,15 +7,13 @@ use api::{AlbumPresentation, JobKind, PlaylistInfo, SourceCapabilities};
 use components::format::t;
 use components::{
     DownloadToggle, EmptyState, Heading, IconButton, Loading, PageHeader, SectionHeading,
-    ToggleSize, icons, style,
+    SyncStatus, ToggleSize, icons,
 };
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::spinner::Spinner;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Context, InteractiveElement as _, IntoElement, ParentElement as _,
-    Render, SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Window, px,
+    Render, StatefulInteractiveElement as _, Styled as _, Subscription, Window,
 };
 use store::{DownloadsModel, JobsModel, Offline, PlaylistsModel, SourcesModel, actions};
 
@@ -167,7 +165,7 @@ impl Playlists {
         v_flex()
             .gap_3()
             .when(remote, |column| {
-                column.child(self.sync_row(playlists.len(), cx))
+                column.child(self.sync_row(playlists.len()))
             })
             .child(if playlists.is_empty() {
                 if anonymous {
@@ -211,57 +209,12 @@ impl Playlists {
             .corner(corner)
     }
 
-    fn sync_row(&self, total: usize, cx: &mut Context<Self>) -> impl IntoElement {
-        let progress = JobsModel::global(cx)
-            .read(cx)
-            .progress(JobKind::PlaylistSync)
-            .cloned();
-        let syncing = progress.is_some();
-        let done = progress.and_then(|job| job.current).unwrap_or(0) as usize;
-        let remaining = total.saturating_sub(done);
-        h_flex()
-            .w_full()
-            .justify_between()
-            .items_center()
-            .gap_3()
-            .px_2()
-            .text_xs()
-            .text_color(style::slate_400(cx))
-            .child(
-                h_flex()
-                    .gap_2()
-                    .items_center()
-                    .when(syncing, |row| {
-                        row.child(Spinner::new().xsmall().color(cx.theme().primary_hover))
-                            .child(
-                                // TODO(i18n): the Dioxus status line is English-only too.
-                                SharedString::from(format!(
-                                    "Loading tracks — {done} / {total} playlists ({remaining} left)"
-                                )),
-                            )
-                    })
-                    .when(!syncing && total > 0, |row| {
-                        row.child(icons::icon(icons::CHECK).text_color(cx.theme().success))
-                            // TODO(i18n): the Dioxus status line is English-only too.
-                            .child(SharedString::from(format!("{total} playlists synced")))
-                    }),
-            )
-            .child(
-                Button::new("refresh-playlists")
-                    .custom(style::soft_button(style::white(0.80, cx), cx))
-                    .xsmall()
-                    .px_3()
-                    .py_1()
-                    // `Button::rounded` is in pixels, so the Rems helper cannot travel here.
-                    .rounded(px(8.))
-                    .icon(icons::icon(icons::REFRESH))
-                    .label(t("refresh"))
-                    .disabled(syncing)
-                    .on_click(|_, _, cx| {
-                        JobsModel::global(cx)
-                            .update(cx, |jobs, cx| jobs.start(JobKind::PlaylistSync, cx));
-                    }),
-            )
+    fn sync_row(&self, total: usize) -> impl IntoElement {
+        SyncStatus::new(JobKind::PlaylistSync)
+            .total(total)
+            .on_refresh(|_, _, cx| {
+                JobsModel::global(cx).update(cx, |jobs, cx| jobs.start(JobKind::PlaylistSync, cx));
+            })
     }
 }
 
