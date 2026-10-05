@@ -52,6 +52,7 @@ mod tests {
             key: String::from(key),
             name: name.into(),
             track_count,
+            album_count: 0,
             artwork: None,
         }
     }

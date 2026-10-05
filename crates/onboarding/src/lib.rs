@@ -55,10 +55,13 @@ impl FirstRun {
             Query::new(
                 &[Table::Albums, Table::Tracks],
                 |api| async move {
-                    api.albums(Page {
-                        offset: 0,
-                        limit: 1,
-                    })
+                    api.albums(
+                        Default::default(),
+                        Page {
+                            offset: 0,
+                            limit: 1,
+                        },
+                    )
                     .await
                 },
                 cx,

@@ -277,6 +277,7 @@ mod tests {
             current,
             total,
             message: None,
+            automatic: false,
         }
     }
 

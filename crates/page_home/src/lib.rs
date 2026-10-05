@@ -50,7 +50,7 @@ impl Home {
         let albums = cx.new(|cx| {
             Query::new(
                 &[Table::Albums],
-                |client| async move { client.albums(store::all()).await },
+                |client| async move { client.albums(Default::default(), store::all()).await },
                 cx,
             )
         });
@@ -68,7 +68,7 @@ impl Home {
         let artists = cx.new(|cx| {
             Query::new(
                 &[Table::Tracks],
-                |client| async move { client.artists(store::all()).await },
+                |client| async move { client.artists(Default::default(), store::all()).await },
                 cx,
             )
         });

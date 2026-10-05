@@ -41,14 +41,14 @@ impl Artists {
         let albums = cx.new(|cx| {
             Query::new(
                 &[Table::Albums],
-                |api| async move { api.albums(store::all()).await },
+                |api| async move { api.albums(Default::default(), store::all()).await },
                 cx,
             )
         });
         let artists = cx.new(|cx| {
             Query::new(
                 &[Table::Tracks],
-                |api| async move { api.artists(store::all()).await },
+                |api| async move { api.artists(Default::default(), store::all()).await },
                 cx,
             )
         });

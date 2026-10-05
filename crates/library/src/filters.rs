@@ -61,6 +61,7 @@ impl Filters {
             genre: self.genre.clone(),
             favorite: self.favorites.then_some(true),
             sort: sort.to_track_sort(),
+            ..TrackFilter::default()
         }
     }
 

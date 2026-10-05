@@ -83,6 +83,7 @@ impl JobsModel {
                 kind,
                 ok,
                 error,
+                ..
             } => {
                 this.running.retain(|running| &running.id != id);
                 this.stopping.remove(id);
@@ -173,6 +174,7 @@ impl JobsModel {
                         current: job.current,
                         total: job.total,
                         message: job.message,
+                        automatic: job.automatic,
                     })
                     .collect();
                 this.stopping

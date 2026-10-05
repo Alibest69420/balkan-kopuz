@@ -96,7 +96,7 @@ impl Discover {
         let albums = cx.new(|cx| {
             Query::new(
                 &[Table::Albums],
-                |api| async move { api.albums(all()).await },
+                |api| async move { api.albums(Default::default(), all()).await },
                 cx,
             )
         });

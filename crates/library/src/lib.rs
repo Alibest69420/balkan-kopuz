@@ -202,7 +202,7 @@ impl Library {
                 move |api| async move {
                     Ok(CatalogWindow {
                         offset: 0,
-                        page: api.albums(first).await?,
+                        page: api.albums(Default::default(), first).await?,
                     })
                 },
                 cx,
@@ -214,7 +214,7 @@ impl Library {
                 move |api| async move {
                     Ok(CatalogWindow {
                         offset: 0,
-                        page: api.artists(first).await?,
+                        page: api.artists(Default::default(), first).await?,
                     })
                 },
                 cx,
@@ -540,7 +540,7 @@ impl Library {
         let fetch = move |api: Arc<dyn KopuzApi>| async move {
             Ok(CatalogWindow {
                 offset: page.offset as usize,
-                page: api.albums(page).await?,
+                page: api.albums(Default::default(), page).await?,
             })
         };
         self.albums.update(cx, |query, cx| match paging {
@@ -553,7 +553,7 @@ impl Library {
         let fetch = move |api: Arc<dyn KopuzApi>| async move {
             Ok(CatalogWindow {
                 offset: page.offset as usize,
-                page: api.artists(page).await?,
+                page: api.artists(Default::default(), page).await?,
             })
         };
         self.artists.update(cx, |query, cx| match paging {
