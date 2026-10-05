@@ -163,10 +163,13 @@ pub fn apply(name: &str, colors: &Colors, window: Option<&mut Window>, cx: &mut 
         theme.light_theme = config;
     }
     Theme::change(mode, window, cx);
-    // Upstream toasts rise bottom-centre, just clear of the 96px player bar, not over the top bar.
+}
+
+/// Upstream toasts rise bottom-centre, clear of whatever the window keeps along its bottom edge.
+pub fn place_toasts(clearance: gpui_kit::Pixels, cx: &mut App) {
     let notification = &mut Theme::global_mut(cx).notification;
     notification.placement = gpui_kit::Anchor::BottomCenter;
-    notification.margins.bottom = gpui_kit::px(112.);
+    notification.margins.bottom = clearance;
 }
 
 /// Apply a built-in theme by name, falling back to the default.
@@ -287,8 +290,8 @@ fn config_value(name: &str, colors: &Colors, mode: ThemeMode) -> serde_json::Val
     set("drag.border", &colors.accent);
     set("drop_target.background", &colors.accent_deep);
     set("caret", &colors.accent);
-    // `bg-black/80` behind every modal; an opaque token hid the app the dialog belongs to.
-    set("overlay", &alpha("#000000", 0.8));
+    // `bg-black/80` behind every modal, black being the theme's background; an opaque token hid the app.
+    set("overlay", &alpha(&colors.bg, 0.8));
     set("button.background", &raised);
     set("button.foreground", &colors.text);
     set("button.hover.background", &hover);

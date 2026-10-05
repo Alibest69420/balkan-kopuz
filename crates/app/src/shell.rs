@@ -12,6 +12,23 @@ use store::{Chrome, ConfigModel, Navigator, PlayerModel, SourcesModel};
 
 use crate::router::Router;
 
+/// The gap a toast keeps above whatever runs along the window's bottom edge.
+const TOAST_GAP: gpui_kit::Pixels = gpui_kit::px(16.);
+
+/// Toasts rise from the bottom edge, so they clear the player bar only while it sits there.
+fn place_toasts(cx: &mut gpui_kit::App) {
+    let at_top = ConfigModel::global(cx)
+        .read(cx)
+        .config()
+        .player_bar_position
+        == config::PlayerBarPosition::Top;
+    let clearance = match at_top {
+        true => TOAST_GAP,
+        false => now_playing::bar_height() + TOAST_GAP,
+    };
+    theme::place_toasts(clearance, cx);
+}
+
 actions!(
     kopuz,
     [
@@ -95,8 +112,11 @@ impl Shell {
                     let settings = settings.clone();
                     theme::apply_config(&settings, Some(window), cx);
                 }
+                place_toasts(cx);
                 cx.notify();
             }),
+            // The skin sizes the player bar, which the toasts have to clear.
+            cx.observe(&store::LayoutModel::global(cx), |_, _, cx| place_toasts(cx)),
             // A source switch makes every page's contents wrong, so none are kept.
             cx.observe(&sources, |this, _, cx| {
                 this.router.clear();
@@ -104,6 +124,7 @@ impl Shell {
             }),
         ];
 
+        place_toasts(cx);
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
         // Overlays owns the notices channel now, so the bar only has to hold the cluster.
