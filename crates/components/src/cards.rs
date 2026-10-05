@@ -1,4 +1,4 @@
-//! The one cover card every grid draws, its list-row form, and the play button that rides on a cover.
+//! The one cover card every grid draws, and its list-row form.
 
 use std::rc::Rc;
 use std::time::Duration;
@@ -14,7 +14,8 @@ use gpui_kit::{
 use store::{Navigator, Route, Target};
 
 use crate::cover::Cover;
-use crate::icon_button::{IconButton, IconTone};
+pub use crate::cover_overlay::PlayState;
+use crate::cover_overlay::{CoverOverlay, TilePlayButton};
 use crate::icons;
 use crate::menu_button::{MenuButton, MenuVariant};
 use crate::menus::{self, WithContextMenu as _};
@@ -27,10 +28,6 @@ const HOVER: u64 = 1;
 const WASH: u64 = 2;
 const COVER: u64 = 3;
 const TITLE: u64 = 4;
-const CORNER: u64 = 10;
-
-/// `w-10 h-10`: the play button over a cover's corner.
-const PLAY_SIZE: Pixels = px(40.);
 
 /// What a click on a card or row does.
 pub type OnClick = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
@@ -229,55 +226,27 @@ impl RenderOnce for Tile {
             .play
             .filter(|_| hovered || focused)
             .map(|(state, click)| {
-                let glyph = match state {
-                    PlayState::Playing => icons::PAUSE,
-                    _ => icons::PLAY,
-                };
-                IconButton::new(SharedString::from(format!("{id}-play")), glyph)
-                    .size(PLAY_SIZE)
-                    .glyph(px(14.))
-                    .tone(IconTone::Accent)
-                    .shadow(true)
-                    .loading(state == PlayState::Loading)
-                    // The button sits on the card, whose own click opens what it names.
-                    .stop_propagation(true)
-                    .on_click(move |event, window, cx| click(event, window, cx))
+                TilePlayButton::new(format!("{id}-play"), state, move |event, window, cx| {
+                    click(event, window, cx)
+                })
             });
         let click = self.click.clone();
         let opens = self.click;
 
-        let cover = div()
-            .relative()
-            .child(
-                Cover::new(self.artwork.as_ref())
-                    .size(self.size)
-                    .rounded(radius)
-                    .placeholder(self.placeholder)
-                    .zoom(motion::channel(&id, COVER), hovered)
-                    .zoom_speed(self.zoom_speed),
-            )
-            .when(!framed, |cover| {
-                cover.child(div().absolute().inset_0().rounded(radius).bg(wash))
-            })
-            .when(self.playing, |cover| cover.child(playing_badge(cx)))
-            .when_some(play, |cover, play| {
-                cover.child(div().absolute().right_2().bottom_2().child(play))
-            })
-            .when_some(
-                self.corner.filter(|_| hovered || focused),
-                |cover, corner| {
-                    cover.child(
-                        div()
-                            .id(motion::channel(&id, CORNER))
-                            .absolute()
-                            .top_2()
-                            .right_2()
-                            // The corner sits on the card, whose own click opens what it names.
-                            .on_click(|_, _, cx| cx.stop_propagation())
-                            .child(corner),
-                    )
-                },
-            );
+        let cover = CoverOverlay::new(
+            id.clone(),
+            Cover::new(self.artwork.as_ref())
+                .size(self.size)
+                .rounded(radius)
+                .placeholder(self.placeholder)
+                .zoom(motion::channel(&id, COVER), hovered)
+                .zoom_speed(self.zoom_speed),
+        )
+        .radius(radius)
+        .wash((!framed).then_some(wash))
+        .playing(self.playing)
+        .play(play)
+        .corner(self.corner.filter(|_| hovered || focused));
 
         let lines = v_flex()
             .w(self.size)
@@ -566,37 +535,6 @@ impl RenderOnce for TileRow {
         });
         row.with_context_menu(self.menu.map(menus::menu_for))
     }
-}
-
-/// `bg-primary` circle on a playing cover's corner.
-fn playing_badge(cx: &App) -> AnyElement {
-    div()
-        .absolute()
-        .bottom_2()
-        .left_2()
-        .size_6()
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded_full()
-        .bg(cx.theme().primary)
-        .child(
-            icons::icon(icons::VOLUME)
-                .size(px(12.))
-                .text_color(cx.theme().primary_foreground),
-        )
-        .into_any_element()
-}
-
-/// What a cover's play button shows.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum PlayState {
-    #[default]
-    Idle,
-    /// What it names is the thing playing, so a press pauses.
-    Playing,
-    /// The press is on its way; the queue is not built yet.
-    Loading,
 }
 
 /// The album tile: click opens the album, its menu is the album's.
