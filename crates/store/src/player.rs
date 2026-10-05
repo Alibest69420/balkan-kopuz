@@ -16,8 +16,6 @@ pub struct PlayerModel {
     // This process's instant at which the daemon clock read `state.now_ms`.
     observed_at: Instant,
     optimistic_playing: Option<bool>,
-    // The level to come back to when unmuting, so it is never a jump to full volume.
-    muted_from: f32,
     revision: Option<u64>,
     // The unknown token already resynced for, so a stream of stale positions cannot spin on refetch.
     resynced_for: Option<u64>,
@@ -47,11 +45,6 @@ fn landed(seek: &Seek, position_ms: u64, at_ms: u64, waited: Duration) -> bool {
         || (at_ms >= seek.at_ms && position_ms.abs_diff(seek.to_ms) <= SEEK_LANDED_MS)
 }
 
-/// Anything at or below this is silence; f32 comparison needs a floor.
-const SILENT: f32 = f32::EPSILON;
-/// Where unmuting lands when nothing was remembered, rather than 100%.
-const DEFAULT_UNMUTE: f32 = 0.5;
-
 impl PlayerModel {
     pub fn global(cx: &App) -> Entity<Self> {
         crate::handle(cx)
@@ -66,7 +59,6 @@ impl PlayerModel {
             state: PlayerState::default(),
             observed_at: Instant::now(),
             optimistic_playing: None,
-            muted_from: DEFAULT_UNMUTE,
             revision: None,
             resynced_for: None,
             seeking: None,
@@ -232,6 +224,11 @@ impl PlayerModel {
         self.state.queue.loop_mode
     }
 
+    /// The container the daemon says the queue was built from, for "playing from".
+    pub fn queue_context(&self) -> Option<&api::QueueContext> {
+        self.state.queue.context.as_ref()
+    }
+
     pub fn error(&self) -> Option<&api::ErrorBody> {
         self.state.error.as_ref()
     }
@@ -306,9 +303,10 @@ impl PlayerModel {
         send(PlayerCommand::Seek { position_ms }, cx);
     }
 
-    /// `volume` is 0.0..=1.0.
+    /// `volume` is 0.0..=1.0; the daemon persists it, and setting a level unmutes.
     pub fn set_volume(&mut self, volume: f32, cx: &mut Context<Self>) {
         self.state.volume = volume.clamp(0.0, 1.0);
+        self.state.muted = false;
         crate::notify(cx);
         send(
             PlayerCommand::SetVolume {
@@ -318,28 +316,21 @@ impl PlayerModel {
         );
     }
 
-    /// The same; the daemon owns the volume key and persists the level itself.
-    pub fn set_volume_saved(&mut self, volume: f32, cx: &mut Context<Self>) {
-        self.set_volume(volume, cx);
+    /// Silenced while the level is kept, so unmuting returns to it.
+    pub fn is_muted(&self) -> bool {
+        self.state.muted
     }
 
-    /// Mute, or come back to the level muting left. Unmuting must never be a jump to full
-    /// volume: someone wearing headphones pays for that.
     pub fn toggle_mute(&mut self, cx: &mut Context<Self>) {
-        let level = self.volume();
-        if level > SILENT {
-            self.muted_from = level;
-            self.set_volume_saved(0., cx);
-        } else if self.muted_from > SILENT {
-            self.set_volume_saved(self.muted_from, cx);
-        } else {
-            self.set_volume_saved(DEFAULT_UNMUTE, cx);
-        }
+        let muted = !self.state.muted;
+        self.state.muted = muted;
+        crate::notify(cx);
+        send(PlayerCommand::SetMuted { muted }, cx);
     }
 
     /// Nudge by `step`, for a wheel over a volume control.
     pub fn nudge_volume(&mut self, step: f32, cx: &mut Context<Self>) {
-        self.set_volume_saved(self.volume() + step, cx);
+        self.set_volume(self.volume() + step, cx);
     }
 
     pub fn set_shuffle(&mut self, shuffle: bool, cx: &mut Context<Self>) {

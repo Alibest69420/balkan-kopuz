@@ -32,7 +32,6 @@ fn set_queue(request: SetQueueRequest, cx: &mut App) {
 
 /// Replace the queue with `keys` and start at `start`.
 pub fn play_tracks(keys: Vec<String>, start: Option<u32>, cx: &mut App) {
-    crate::Chrome::global(cx).update(cx, |chrome, cx| chrome.set_origin(None, cx));
     set_queue(
         SetQueueRequest {
             mode: QueueMode::Replace,
@@ -81,7 +80,6 @@ pub fn play_next(keys: Vec<String>, cx: &mut App) {
 
 /// Play something the daemon materializes itself: an album, an artist, a playlist, a station.
 pub fn play_context(context: QueueContext, start: Option<u32>, cx: &mut App) {
-    remember_origin(&context, cx);
     set_queue(
         SetQueueRequest {
             mode: QueueMode::Replace,
@@ -91,20 +89,6 @@ pub fn play_context(context: QueueContext, start: Option<u32>, cx: &mut App) {
         },
         cx,
     );
-}
-
-/// Where a replaced queue came from, so the player can offer a way back to it.
-fn remember_origin(context: &QueueContext, cx: &mut App) {
-    let route = match context {
-        QueueContext::Album { id } => Some(crate::Route::Album(id.clone().into())),
-        QueueContext::Artist { artist } => Some(crate::Route::Artist(artist.clone())),
-        QueueContext::Genre { name } => Some(crate::Route::Genre(name.clone().into())),
-        QueueContext::Playlist { id } | QueueContext::PlaylistRadio { id } => {
-            Some(crate::Route::Playlist(id.clone().into()))
-        }
-        _ => None,
-    };
-    crate::Chrome::global(cx).update(cx, |chrome, cx| chrome.set_origin(route, cx));
 }
 
 /// Start the source's mix from a track; gated by `capabilities().track_radio`.

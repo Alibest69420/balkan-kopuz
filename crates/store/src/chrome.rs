@@ -1,7 +1,5 @@
 use gpui_kit::{App, Context, Entity, SharedString};
 
-use crate::nav::Route;
-
 /// What the docked panel beside the content shows, when it is open.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SidePanel {
@@ -16,7 +14,6 @@ pub struct Chrome {
     sheet: bool,
     mini: bool,
     quick_search: bool,
-    origin: Option<Route>,
     search: SharedString,
 }
 
@@ -31,7 +28,6 @@ impl Chrome {
             sheet: false,
             mini: false,
             quick_search: false,
-            origin: None,
             search: SharedString::default(),
         }
     }
@@ -66,11 +62,6 @@ impl Chrome {
 
     pub fn is_quick_search_open(&self) -> bool {
         self.quick_search
-    }
-
-    /// Where the queue came from, for the "playing from" link under the title.
-    pub fn origin(&self) -> Option<&Route> {
-        self.origin.as_ref()
     }
 
     /// Open `panel`, or close it when it is already the one showing.
@@ -110,15 +101,6 @@ impl Chrome {
 
     pub fn set_quick_search(&mut self, open: bool, cx: &mut Context<Self>) {
         self.quick_search = open;
-        crate::notify(cx);
-    }
-
-    /// Remember what a queue was built from; `None` when nothing names it.
-    pub fn set_origin(&mut self, origin: Option<Route>, cx: &mut Context<Self>) {
-        if self.origin == origin {
-            return;
-        }
-        self.origin = origin;
         crate::notify(cx);
     }
 

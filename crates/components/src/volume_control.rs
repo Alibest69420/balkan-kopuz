@@ -43,8 +43,8 @@ pub fn to_ui(level: f32) -> f32 {
     level.clamp(0., 1.).cbrt()
 }
 
-fn glyph_for(level: f32) -> &'static str {
-    if level <= SILENT {
+fn glyph_for(level: f32, muted: bool) -> &'static str {
+    if muted || level <= SILENT {
         icons::VOLUME_MUTED
     } else if to_ui(level) < 0.5 {
         icons::VOLUME_LOW
@@ -62,6 +62,7 @@ pub struct VolumeControl {
     id: SharedString,
     state: Entity<SliderState>,
     level: f32,
+    muted: bool,
     slider: bool,
     wide: bool,
     held: bool,
@@ -76,6 +77,7 @@ impl VolumeControl {
             id: id.into(),
             state: state.clone(),
             level: 1.,
+            muted: false,
             slider: true,
             wide: false,
             held: false,
@@ -88,6 +90,12 @@ impl VolumeControl {
     /// The wire level, which picks the glyph.
     pub fn level(mut self, level: f32) -> Self {
         self.level = level;
+        self
+    }
+
+    /// Output is silenced while the level is kept, which picks the muted glyph.
+    pub fn muted(mut self, muted: bool) -> Self {
+        self.muted = muted;
         self
     }
 
@@ -166,11 +174,11 @@ impl RenderOnce for VolumeControl {
             .child(
                 IconButton::new(
                     SharedString::from(format!("{}-mute", self.id)),
-                    glyph_for(self.level),
+                    glyph_for(self.level, self.muted),
                 )
                 .size(style::chrome().round_button)
                 .glyph(GLYPH)
-                .tooltip(t("volume"))
+                .tooltip(t("toggle_mute"))
                 .on_click(move |_, window, cx| {
                     if let Some(mute) = &mute {
                         mute(window, cx);

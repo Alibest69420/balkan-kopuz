@@ -9,7 +9,8 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
 use store::{
-    Chrome, FavoritesModel, PlaylistsModel, QueueModel, Route, SourcesModel, Target, actions,
+    Chrome, FavoritesModel, PlayerModel, PlaylistsModel, QueueModel, Route, SourcesModel, Target,
+    actions,
 };
 
 use crate::NowPlaying;
@@ -25,9 +26,12 @@ pub(crate) fn cover_size(cx: &App) -> Pixels {
     }
 }
 
-/// Where the queue came from, and what to call it.
+/// Where the daemon says the queue came from, and what to call it.
 pub(crate) fn playing_from(cx: &App) -> Option<(SharedString, Route)> {
-    let route = Chrome::global(cx).read(cx).origin()?.clone();
+    let route = PlayerModel::global(cx)
+        .read(cx)
+        .queue_context()
+        .and_then(Route::playing_from)?;
     let label = match &route {
         Route::Album(id) => QueueModel::global(cx)
             .read(cx)

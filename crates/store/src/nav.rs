@@ -38,6 +38,19 @@ impl Route {
         Some(Route::Artist(key))
     }
 
+    /// The page a queue's origin opens, for the "playing from" link; a context with no page has none.
+    pub fn playing_from(context: &api::QueueContext) -> Option<Route> {
+        match context {
+            api::QueueContext::Album { id } => Some(Route::Album(id.clone().into())),
+            api::QueueContext::Artist { artist } => Some(Route::Artist(artist.clone())),
+            api::QueueContext::Genre { name } => Some(Route::Genre(name.clone().into())),
+            api::QueueContext::Playlist { id } | api::QueueContext::PlaylistRadio { id } => {
+                Some(Route::Playlist(id.clone().into()))
+            }
+            _ => None,
+        }
+    }
+
     /// The sidebar item this route lights up.
     pub fn root(&self) -> Route {
         match self {

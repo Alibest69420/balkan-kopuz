@@ -10,7 +10,8 @@ use crate::NowPlaying;
 impl NowPlaying {
     /// The mute glyph and the level beside it, sharing one wheel.
     pub(crate) fn volume_control(&self, slider: bool, cx: &Context<Self>) -> VolumeControl {
-        let level = PlayerModel::global(cx).read(cx).volume();
+        let player = PlayerModel::global(cx).read(cx);
+        let (level, muted) = (player.volume(), player.is_muted());
         let step = ConfigModel::global(cx)
             .read(cx)
             .config()
@@ -19,6 +20,7 @@ impl NowPlaying {
         let state = self.volume.clone();
         VolumeControl::new("volume", &self.volume)
             .level(level)
+            .muted(muted)
             .slider(slider)
             .wide(self.presentation == crate::Presentation::Sheet)
             .held(self.volume_held)
@@ -29,7 +31,7 @@ impl NowPlaying {
             .on_step(move |next, window, cx| {
                 state.update(cx, |state, cx| state.set_value(next, window, cx));
                 PlayerModel::global(cx)
-                    .update(cx, |player, cx| player.set_volume_saved(to_wire(next), cx));
+                    .update(cx, |player, cx| player.set_volume(to_wire(next), cx));
             })
     }
 }

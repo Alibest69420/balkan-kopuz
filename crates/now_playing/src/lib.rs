@@ -229,24 +229,18 @@ impl NowPlaying {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let (shown, save) = match event {
+        let shown = match event {
             SliderEvent::Change(value) => {
                 self.volume_held = true;
-                (value.end(), false)
+                value.end()
             }
             SliderEvent::Release(value) => {
                 self.volume_held = false;
-                (value.end(), true)
+                value.end()
             }
         };
         let level = components::volume_control::to_wire(shown);
-        PlayerModel::global(cx).update(cx, |player, cx| {
-            if save {
-                player.set_volume_saved(level, cx)
-            } else {
-                player.set_volume(level, cx)
-            }
-        });
+        PlayerModel::global(cx).update(cx, |player, cx| player.set_volume(level, cx));
     }
 }
 
