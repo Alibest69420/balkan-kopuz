@@ -105,6 +105,7 @@ app profile="debug" *args:
 # Everything CI checks, in the order that fails fastest.
 check:
     ./scripts/check_hover.sh
+    ./scripts/check_source_agnostic.sh
     {{ nix }} cargo fmt --all -- --check
     {{ nix }} cargo clippy --workspace --all-targets -j 4 -- -D warnings
     {{ nix }} cargo test --workspace -j 4

@@ -13,7 +13,7 @@ const PLAYHEAD_TICK: Duration = Duration::from_millis(250);
 /// The daemon's player, mirrored from `PlayerState` events with the position interpolated locally.
 pub struct PlayerModel {
     state: PlayerState,
-    // Local instant at which the daemon clock read `state.now_ms`.
+    // This process's instant at which the daemon clock read `state.now_ms`.
     observed_at: Instant,
     optimistic_playing: Option<bool>,
     // The level to come back to when unmuting, so it is never a jump to full volume.
