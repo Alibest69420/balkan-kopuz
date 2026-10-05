@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use api::{ArtworkRef, ArtworkRequest, ArtworkTarget};
@@ -95,15 +96,29 @@ fn probe_size(bytes: &[u8]) -> Option<(u32, u32)> {
 pub fn artwork_source(artwork: &ArtworkRef, hq: bool) -> ImageSource {
     let key = ArtworkKey::new(artwork, hq);
     ImageSource::Custom(Arc::new(move |window: &mut Window, cx: &mut App| {
-        match window.use_asset::<ArtworkBytes>(&key, cx) {
+        let result = match window.use_asset::<ArtworkBytes>(&key, cx) {
             Some(Ok(image)) => {
-                // Touched on every frame it is drawn, which is what keeps it out of the sweep.
-                Residents::touch(&key, &image, cx);
-                image.use_render_image(window, cx).map(Ok)
+                cx.default_global::<Residents>().failed.remove(&key);
+                if let Some(rendered) = image.clone().use_render_image(window, cx) {
+                    Residents::touch(&key, &image, cx);
+                    return Some(Ok(rendered));
+                }
+                None
             }
-            Some(Err(error)) => Some(Err(error)),
+            Some(Err(error)) => {
+                cx.default_global::<Residents>().failed.insert(key.clone());
+                Some(Err(error))
+            }
             None => None,
+        };
+        // Keep the last decoded cover until its replacement has both fetched and decoded.
+        if let Some((previous, image)) = cx.default_global::<Residents>().previous(&key) {
+            Residents::touch(&previous, &image, cx);
+            if let Some(rendered) = image.use_render_image(window, cx) {
+                return Some(Ok(rendered));
+            }
         }
+        result
     }))
 }
 
@@ -125,7 +140,8 @@ fn budget() -> usize {
 /// sprite atlas. Dropping the element does not drop any of them.
 #[derive(Default)]
 pub struct Residents {
-    live: std::collections::HashMap<ArtworkKey, Resident>,
+    live: HashMap<ArtworkKey, Resident>,
+    failed: HashSet<ArtworkKey>,
     clock: u64,
 }
 
@@ -137,6 +153,24 @@ struct Resident {
 impl gpui_kit::Global for Residents {}
 
 impl Residents {
+    fn previous(&self, key: &ArtworkKey) -> Option<(ArtworkKey, Arc<Image>)> {
+        self.live
+            .iter()
+            .filter(|(old, _)| old.target == key.target && old.hq == key.hq && *old != key)
+            .max_by_key(|(_, resident)| resident.used)
+            .map(|(old, resident)| (old.clone(), resident.image.clone()))
+    }
+
+    pub(crate) fn retry_failed(cx: &mut App) {
+        let failed = std::mem::take(&mut cx.default_global::<Self>().failed);
+        for key in &failed {
+            cx.remove_asset::<ArtworkBytes>(key);
+        }
+        if !failed.is_empty() {
+            cx.refresh_windows();
+        }
+    }
+
     /// Records that `key` was drawn this frame.
     fn touch(key: &ArtworkKey, image: &Arc<Image>, cx: &mut App) {
         let residents = cx.default_global::<Self>();
@@ -198,5 +232,61 @@ fn image_format(content_type: &str) -> ImageFormat {
         "image/bmp" => ImageFormat::Bmp,
         "image/svg+xml" => ImageFormat::Svg,
         _ => ImageFormat::Jpeg,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key(id: &str, version: u64, hq: bool) -> ArtworkKey {
+        ArtworkKey::new(
+            &ArtworkRef::new(ArtworkTarget::Album(id.into()), version),
+            hq,
+        )
+    }
+
+    #[test]
+    fn a_new_version_can_keep_the_previous_cover_while_loading() {
+        let old = key("album", 1, false);
+        let image = Arc::new(Image::from_bytes(ImageFormat::Png, vec![1]));
+        let residents = Residents {
+            live: HashMap::from([(
+                old.clone(),
+                Resident {
+                    image: image.clone(),
+                    used: 1,
+                },
+            )]),
+            ..Default::default()
+        };
+        let (previous, fallback) = residents.previous(&key("album", 2, false)).unwrap();
+        assert_eq!(previous, old);
+        assert!(Arc::ptr_eq(&fallback, &image));
+        assert!(residents.previous(&old).is_none());
+        assert!(
+            residents
+                .previous(&key("another-album", 2, false))
+                .is_none()
+        );
+        assert!(residents.previous(&key("album", 2, true)).is_none());
+    }
+
+    #[test]
+    fn replacement_uses_the_most_recently_displayed_cover() {
+        let mut residents = Residents::default();
+        for version in 1..=3 {
+            residents.live.insert(
+                key("album", version, false),
+                Resident {
+                    image: Arc::new(Image::from_bytes(ImageFormat::Png, vec![version as u8])),
+                    used: version,
+                },
+            );
+        }
+        assert_eq!(
+            residents.previous(&key("album", 4, false)).unwrap().0,
+            key("album", 3, false)
+        );
     }
 }

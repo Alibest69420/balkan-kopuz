@@ -75,6 +75,8 @@ impl Invalidation {
     }
 
     pub fn invalidate_all(&mut self, cx: &mut Context<Self>) {
+        // Only here, not per flush: a scan flushes every second and would refetch every failed cover each time.
+        crate::artwork::Residents::retry_failed(cx);
         self.dirty.clear();
         self.flush = None;
         self.flushed_at = Instant::now();
