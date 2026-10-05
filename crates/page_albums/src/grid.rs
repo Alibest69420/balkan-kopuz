@@ -1,6 +1,4 @@
-//! The albums grid: every album the library holds, deduped by title.
-
-use std::collections::HashSet;
+//! The albums grid: every album the library holds; two albums sharing a title are two tiles.
 
 use api::{AlbumInfo, AlbumPage, JobKind, Table};
 use components::format::t;
@@ -37,8 +35,7 @@ const SORT_CONTROL: &str = "albums-sort-frame";
 /// Every album, as tiles or as rows.
 pub struct Albums {
     albums: Entity<Query<AlbumPage>>,
-    // Deduped and sorted once per change. Render used to rebuild all of this every frame, and a
-    // card hover notifies, so moving the pointer across the grid re-sorted the whole library.
+    // Sorted once per change, since a card hover notifies and render would re-sort the library.
     visible: Vec<AlbumInfo>,
     sort_fields: Vec<AlbumSortField>,
     scroll: UniformListScrollHandle,
@@ -82,15 +79,10 @@ impl Albums {
         }
     }
 
-    /// Dedupe by title, sort, and note which fields are worth offering — on change, not per frame.
+    /// Sort, and note which fields are worth offering — on change, not per frame.
     fn rebuild(&mut self, cx: &mut Context<Self>) {
         let all = self.all_albums(cx);
-        let mut seen = HashSet::with_capacity(all.len());
-        self.visible = all
-            .iter()
-            .filter(|album| seen.insert(title_key(album)))
-            .cloned()
-            .collect();
+        self.visible = all.clone();
         sort::sort(&mut self.visible, &criteria(cx));
         self.sort_fields = sort::available_fields(&all);
         cx.notify();
@@ -357,10 +349,6 @@ impl Render for Albums {
                 }
             }))
     }
-}
-
-fn title_key(album: &AlbumInfo) -> String {
-    album.title.trim().to_lowercase()
 }
 
 fn view_mode(cx: &App) -> AlbumViewMode {

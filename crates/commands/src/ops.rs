@@ -288,40 +288,10 @@ pub fn remove_from_folder(target: &Target, cx: &mut App) {
 /// `delete_from_disk` erases files; without it only the cached rows go and a re-sync restores them.
 pub fn delete_album(target: &Target, cx: &mut App) {
     let Some(id) = album_id(target) else { return };
-    if caps(cx).delete_from_disk {
-        actions::run(
-            cx,
-            move |api| async move { api.delete_album(id, true).await },
-        );
-        return;
-    }
-    // A server splits one release across same-titled rows; dropping one leaves the title on screen.
-    let title = title_key(&target.label());
-    let call = Link::global(cx).call(|api| async move { api.albums(store::all()).await });
-    cx.spawn(async move |cx| {
-        let ids = match call.await {
-            Ok(page) => page
-                .albums
-                .iter()
-                .filter(|album| title_key(&album.title) == title)
-                .map(|album| album.id.clone())
-                .collect(),
-            Err(_) => vec![id],
-        };
-        cx.update(|cx| {
-            for id in ids {
-                actions::run(
-                    cx,
-                    move |api| async move { api.delete_album(id, false).await },
-                );
-            }
-        });
-    })
-    .detach();
-}
-
-fn title_key(title: &str) -> String {
-    title.trim().to_lowercase()
+    let from_disk = caps(cx).delete_from_disk;
+    actions::run(cx, move |api| async move {
+        api.delete_album(id, from_disk).await
+    });
 }
 
 pub fn delete_tracks(target: &Target, cx: &mut App) {

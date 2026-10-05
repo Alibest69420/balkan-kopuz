@@ -1,8 +1,8 @@
 //! One album: the standard detail, and the catalog-styled one a remote source presents.
 
 use api::{
-    AlbumInfo, AlbumPage, AlbumPresentation, ArtworkRef, CatalogDetail, CatalogDetailRequest,
-    CatalogItemKind, PlaylistCapability, SourceCapabilities, Table, TrackInfo,
+    AlbumInfo, AlbumPresentation, ArtworkRef, CatalogDetail, CatalogDetailRequest, CatalogItemKind,
+    PlaylistCapability, SourceCapabilities, Table, TrackInfo,
 };
 use components::format::{t, t_with};
 use components::{
@@ -55,7 +55,6 @@ struct DiscGroup {
 pub struct AlbumDetail {
     id: SharedString,
     album: Entity<Query<Option<AlbumInfo>>>,
-    albums: Entity<Query<AlbumPage>>,
     tracks: Entity<Query<Vec<TrackInfo>>>,
     remote: Entity<Query<Option<CatalogDetail>>>,
     rows: Vec<TrackInfo>,
@@ -85,13 +84,6 @@ impl AlbumDetail {
                 cx,
             )
         });
-        let albums = cx.new(|cx| {
-            Query::new(
-                &[Table::Albums],
-                |api| async move { api.albums(store::all()).await },
-                cx,
-            )
-        });
         let tracks = cx.new(|cx| {
             let ids = vec![album_id.clone()];
             Query::new(
@@ -116,7 +108,6 @@ impl AlbumDetail {
         let player = PlayerModel::global(cx);
         let subscriptions = vec![
             cx.observe(&album, |this, _, cx| this.sync(cx)),
-            cx.observe(&albums, |this, _, cx| this.sync(cx)),
             cx.observe(&sources, |this, _, cx| this.sync(cx)),
             cx.observe(&tracks, |this, _, cx| this.refresh_rows(cx)),
             cx.observe(&remote, |this, _, cx| this.refresh_rows(cx)),
@@ -127,7 +118,6 @@ impl AlbumDetail {
         Self {
             id,
             album,
-            albums,
             tracks,
             remote,
             rows: Vec::new(),
@@ -149,29 +139,10 @@ impl AlbumDetail {
         let album = self.album.read(cx).value().cloned().flatten();
         let settled = self.album.read(cx).is_settled();
 
-        // The grid dedupes by title, so the detail aggregates every same-titled album's tracks.
-        let ids = match &album {
-            Some(album) => {
-                let title = album.title.trim().to_lowercase();
-                let mut ids: Vec<String> = self
-                    .albums
-                    .read(cx)
-                    .value()
-                    .map(|page| {
-                        page.albums
-                            .iter()
-                            .filter(|other| other.title.trim().to_lowercase() == title)
-                            .map(|other| other.id.clone())
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                if !ids.contains(&album.id) {
-                    ids.push(album.id.clone());
-                }
-                ids
-            }
-            None => vec![self.id.to_string()],
-        };
+        let ids = vec![match &album {
+            Some(album) => album.id.clone(),
+            None => self.id.to_string(),
+        }];
         if ids != self.aggregated {
             self.aggregated = ids.clone();
             point_tracks(&self.tracks, ids, cx);

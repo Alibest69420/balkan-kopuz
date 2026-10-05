@@ -8,7 +8,7 @@ use components::icons;
 use gpui_kit::SharedString;
 use store::{Route, Target};
 
-/// Recently Added shows a shelf, but untitled and same-titled albums drop out afterwards.
+/// Recently Added shows a shelf, but untitled albums drop out afterwards.
 pub(crate) const RECENTLY_ADDED_WINDOW: u32 = 64;
 pub(crate) const RECENT_TRACKS_WINDOW: u32 = 50;
 
@@ -94,24 +94,9 @@ fn named(album: &AlbumInfo) -> bool {
     !is_unknown_album(&album.title) && !is_unknown_artist(&album.artist)
 }
 
-fn title_key(album: &AlbumInfo) -> String {
-    album.title.trim().to_lowercase()
-}
-
-/// Up to `limit` named albums in the order given, one per title.
-fn take_unique(albums: impl Iterator<Item = AlbumInfo>, limit: usize) -> Vec<AlbumInfo> {
-    let mut seen = HashSet::new();
-    let mut out = Vec::new();
-    for album in albums {
-        if !named(&album) || !seen.insert(title_key(&album)) {
-            continue;
-        }
-        out.push(album);
-        if out.len() >= limit {
-            break;
-        }
-    }
-    out
+/// Up to `limit` named albums in the order given.
+fn take_named(albums: impl Iterator<Item = AlbumInfo>, limit: usize) -> Vec<AlbumInfo> {
+    albums.filter(named).take(limit).collect()
 }
 
 pub(crate) fn build(inputs: Inputs<'_>) -> Vec<Shelf> {
@@ -128,7 +113,7 @@ pub(crate) fn build(inputs: Inputs<'_>) -> Vec<Shelf> {
         .map(|page| page.items.as_slice())
         .unwrap_or(&[]);
 
-    let recently_added = take_unique(
+    let recently_added = take_named(
         inputs
             .recently_added
             .map(|page| page.albums.clone())
