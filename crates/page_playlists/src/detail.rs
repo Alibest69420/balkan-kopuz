@@ -56,6 +56,7 @@ impl PlaylistDetail {
             )
         });
         let list = cx.new(TrackList::new);
+        commands::bind_track_list(&list, cx);
         let sources = SourcesModel::global(cx);
         let subscriptions = vec![
             cx.observe(&tracks, |this, _, cx| this.adopt_rows(cx)),
@@ -202,6 +203,10 @@ impl PlaylistDetail {
                 });
             }
             TrackListEvent::SelectionChanged => cx.notify(),
+            // Queueing and favoriting are answered by commands::bind_track_list.
+            TrackListEvent::PlayNext(_)
+            | TrackListEvent::Queue(_)
+            | TrackListEvent::ToggleFavorite(_) => {}
         }
     }
 

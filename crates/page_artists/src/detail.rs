@@ -102,6 +102,7 @@ impl ArtistDetail {
             )
         });
         let list = cx.new(TrackList::new);
+        commands::bind_track_list(&list, cx);
         let subscriptions = vec![
             cx.observe(&tracks, |this, _, cx| this.sync_rows(cx)),
             cx.observe(&detail, |_, _, cx| cx.notify()),

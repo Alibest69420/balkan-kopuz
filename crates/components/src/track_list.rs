@@ -9,7 +9,7 @@ use gpui_kit::{
     IntoElement, ParentElement as _, Render, SharedString, Styled, UniformListScrollHandle,
     WeakEntity, Window, actions, div, uniform_list,
 };
-use store::{ConfigModel, FavoritesModel, PlayerModel, RowEdit, RowScope, Target};
+use store::{RowEdit, RowScope, Target};
 
 use crate::columns::{self, Layout};
 use crate::format::t;
@@ -42,13 +42,16 @@ impl Default for TrackListOptions {
 
 pub use store::TrackActions;
 
-/// What the page has to answer for; everything else the list does itself.
+/// What the page has to answer for; the list owns selection and the cursor, nothing else.
 #[derive(Debug, Clone)]
 pub enum TrackListEvent {
     /// A row was activated; the page decides what queue that starts.
     Play(usize),
     RemoveFromPlaylist(usize),
     Delete(Vec<String>),
+    PlayNext(Vec<String>),
+    Queue(Vec<String>),
+    ToggleFavorite(Vec<String>),
     Reorder {
         from: usize,
         to: usize,
@@ -78,9 +81,9 @@ pub struct TrackList {
     selection: Selection,
     focus: FocusHandle,
     scroll: UniformListScrollHandle,
-    // The one setting a row reads, held so another config change does not redraw every list.
+    playing: Option<String>,
     row_images: bool,
-    _config: gpui_kit::Subscription,
+    bound: Vec<gpui_kit::Subscription>,
 }
 
 actions!(
@@ -116,15 +119,31 @@ impl TrackList {
             selection: Selection::new(),
             focus: cx.focus_handle(),
             scroll: UniformListScrollHandle::new(),
-            row_images: ConfigModel::global(cx).read(cx).row_images(),
-            _config: cx.observe(&ConfigModel::global(cx), |this, config, cx| {
-                let row_images = config.read(cx).row_images();
-                if this.row_images != row_images {
-                    this.row_images = row_images;
-                    cx.notify();
-                }
-            }),
+            playing: None,
+            row_images: true,
+            bound: Vec::new(),
         }
+    }
+
+    /// The key of the track now playing, which its row draws as such.
+    pub fn set_playing(&mut self, playing: Option<String>, cx: &mut Context<Self>) {
+        if self.playing != playing {
+            self.playing = playing;
+            cx.notify();
+        }
+    }
+
+    /// Whether rows draw a cover thumbnail, subject to the list's own options.
+    pub fn set_row_images(&mut self, row_images: bool, cx: &mut Context<Self>) {
+        if self.row_images != row_images {
+            self.row_images = row_images;
+            cx.notify();
+        }
+    }
+
+    /// Tie subscriptions to this list's lifetime, so an owner's wiring goes when the list does.
+    pub fn hold(&mut self, subscriptions: impl IntoIterator<Item = gpui_kit::Subscription>) {
+        self.bound.extend(subscriptions);
     }
 
     pub fn with_options(mut self, options: TrackListOptions) -> Self {
@@ -225,6 +244,13 @@ impl TrackList {
                 .and_then(|index| self.rows.get(index))
                 .map(|row| vec![row.key.clone()])
                 .unwrap_or_default(),
+        }
+    }
+
+    fn emit_keys(&self, event: fn(Vec<String>) -> TrackListEvent, cx: &mut Context<Self>) {
+        let keys = self.action_keys();
+        if !keys.is_empty() {
+            cx.emit(event(keys));
         }
     }
 
@@ -352,10 +378,7 @@ impl TrackList {
             return div().into_any_element();
         };
         let key = track.key.clone();
-        let playing = PlayerModel::global(cx)
-            .read(cx)
-            .track()
-            .is_some_and(|now| now.key == key);
+        let playing = self.playing.as_deref() == Some(key.as_str());
         let selected = self.selection.contains(&key);
         let lead = self.options.show_index.then(|| {
             let number = match self.options.track_numbers {
@@ -422,16 +445,13 @@ impl Render for TrackList {
             .on_action(cx.listener(|this, _: &ActivateRow, _, cx| this.activate_cursor(cx)))
             .on_action(cx.listener(|this, _: &SelectAll, _, cx| this.select_all(cx)))
             .on_action(cx.listener(|this, _: &PlayNextSelection, _, cx| {
-                store::actions::play_next(this.action_keys(), cx)
+                this.emit_keys(TrackListEvent::PlayNext, cx)
             }))
             .on_action(cx.listener(|this, _: &QueueSelection, _, cx| {
-                store::actions::append(this.action_keys(), cx)
+                this.emit_keys(TrackListEvent::Queue, cx)
             }))
             .on_action(cx.listener(|this, _: &FavoriteSelection, _, cx| {
-                let keys = this.action_keys();
-                let favorites = FavoritesModel::global(cx);
-                let all = keys.iter().all(|key| favorites.read(cx).is_favorite(key));
-                store::actions::set_favorites(keys, !all, cx);
+                this.emit_keys(TrackListEvent::ToggleFavorite, cx)
             }))
             .on_action(cx.listener(|this, _: &RemoveSelection, window, cx| {
                 this.remove_selection(window, cx)

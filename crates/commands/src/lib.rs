@@ -3,6 +3,7 @@
 mod keys;
 mod ops;
 mod registry;
+mod track_list;
 
 use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
 use gpui_kit::component::{ActiveTheme as _, h_flex};
@@ -13,6 +14,7 @@ use store::{Kind, Target};
 
 pub use keys::{conflict, context_for, default_keystroke, keymap, keystroke_for, rebind, written};
 pub use registry::{all, get};
+pub use track_list::bind as bind_track_list;
 
 /// Where a command sits in the palette.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

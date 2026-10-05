@@ -92,6 +92,7 @@ impl Shelves {
             list.set_rows(rows, cx);
             list
         });
+        commands::bind_track_list(&list, cx);
         self._subscriptions.push(
             cx.subscribe(&list, |this, list, event: &TrackListEvent, cx| {
                 if let TrackListEvent::Play(index) = event {

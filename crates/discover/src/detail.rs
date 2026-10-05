@@ -52,6 +52,7 @@ impl CatalogPlaylist {
                 })
                 .with_actions(TrackActions::default())
         });
+        commands::bind_track_list(&list, cx);
         let subscription = cx.subscribe(&list, |_, list, event: &TrackListEvent, cx| {
             if let TrackListEvent::Play(index) = event {
                 let keys = list.read(cx).keys();

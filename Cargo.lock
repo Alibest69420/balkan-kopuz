@@ -5308,6 +5308,7 @@ dependencies = [
 name = "page_playlists"
 version = "0.1.0"
 dependencies = [
+ "commands",
  "components",
  "gpui-kit",
  "kopuz-api",

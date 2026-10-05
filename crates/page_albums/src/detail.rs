@@ -196,6 +196,7 @@ impl AlbumDetail {
                     .with_options(options)
                     .with_actions(row_actions)
             });
+            commands::bind_track_list(&list, cx);
             let count = chunk.len();
             list.update(cx, |list, cx| list.set_rows(chunk, cx));
             subscriptions.push(

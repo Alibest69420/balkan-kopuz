@@ -186,6 +186,7 @@ impl Genre {
                 .with_options(TrackListOptions::default())
                 .with_actions(row_actions(cx))
         });
+        commands::bind_track_list(&list, cx);
         let sources = SourcesModel::global(cx);
 
         let subscriptions = vec![

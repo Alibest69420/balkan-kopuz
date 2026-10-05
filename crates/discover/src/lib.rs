@@ -105,6 +105,7 @@ impl Discover {
                 .with_options(components::TrackListOptions::default())
                 .with_actions(genres::row_actions(cx))
         });
+        commands::bind_track_list(&tracks, cx);
         let chrome = Chrome::global(cx);
         let sources = SourcesModel::global(cx);
         let player = PlayerModel::global(cx);
