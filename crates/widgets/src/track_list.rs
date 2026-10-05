@@ -613,28 +613,12 @@ impl TrackList {
                         } else if playing {
                             cell.child(icons::icon(icons::VOLUME).size(mark).text_color(accent))
                         } else if self.options.show_index {
-                            cell.child(
-                                div()
-                                    .text_xs()
-                                    .text_color(style::white(style::TEXT_SECONDARY, cx))
-                                    .group_hover(ROW_GROUP, |number| number.invisible())
-                                    .child(lead),
-                            )
-                            .child(
-                                div()
-                                    .absolute()
-                                    .inset_0()
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .invisible()
-                                    .group_hover(ROW_GROUP, |play| play.visible())
-                                    .child(
-                                        icons::icon(icons::PLAY)
-                                            .size(mark)
-                                            .text_color(style::white(style::TEXT_SECONDARY, cx)),
-                                    ),
-                            )
+                            cell.children(crate::lead::number_or_play(
+                                ROW_GROUP,
+                                lead,
+                                mark,
+                                style::white(style::TEXT_SECONDARY, cx),
+                            ))
                         } else {
                             cell
                         }

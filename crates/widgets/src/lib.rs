@@ -10,6 +10,7 @@ pub mod header;
 pub mod hover;
 pub mod icons;
 pub mod karaoke;
+pub mod lead;
 pub mod marker;
 pub mod menus;
 pub mod motion;

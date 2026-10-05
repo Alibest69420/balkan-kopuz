@@ -311,28 +311,12 @@ impl Library {
                         } else if playing {
                             cell.child(icons::icon(icons::VOLUME).size(mark).text_color(accent))
                         } else {
-                            cell.child(
-                                div()
-                                    .text_xs()
-                                    .text_color(style::white(style::TEXT_SECONDARY, cx))
-                                    .group_hover(ROW_GROUP, |number| number.invisible())
-                                    .child((index + 1).to_string()),
-                            )
-                            .child(
-                                div()
-                                    .absolute()
-                                    .inset_0()
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .invisible()
-                                    .group_hover(ROW_GROUP, |play| play.visible())
-                                    .child(
-                                        icons::icon(icons::PLAY)
-                                            .size(mark)
-                                            .text_color(style::white(style::TEXT_SECONDARY, cx)),
-                                    ),
-                            )
+                            cell.children(widgets::lead::number_or_play(
+                                ROW_GROUP,
+                                (index + 1).to_string(),
+                                mark,
+                                style::white(style::TEXT_SECONDARY, cx),
+                            ))
                         }
                     }),
             );

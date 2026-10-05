@@ -365,23 +365,12 @@ impl QueueView {
                         if active {
                             slot.child(icons::icon(icons::VOLUME).size(LEAD_GLYPH))
                         } else {
-                            // Upstream the number steps aside for a play glyph under the pointer.
-                            slot.child(
-                                div()
-                                    .group_hover(ROW_GROUP, |number| number.invisible())
-                                    .child((index + 1).to_string()),
-                            )
-                            .child(
-                                div()
-                                    .absolute()
-                                    .inset_0()
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .invisible()
-                                    .group_hover(ROW_GROUP, |play| play.visible())
-                                    .child(icons::icon(icons::PLAY).size(LEAD_GLYPH)),
-                            )
+                            slot.children(widgets::lead::number_or_play(
+                                ROW_GROUP,
+                                (index + 1).to_string(),
+                                LEAD_GLYPH,
+                                lead,
+                            ))
                         }
                     }),
             )
