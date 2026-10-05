@@ -67,6 +67,7 @@ pub struct VolumeControl {
     wide: bool,
     held: bool,
     scroll_step: f32,
+    scale: f32,
     mute: Option<Mute>,
     step: Option<Step>,
 }
@@ -82,6 +83,7 @@ impl VolumeControl {
             wide: false,
             held: false,
             scroll_step: 0.,
+            scale: 1.,
             mute: None,
             step: None,
         }
@@ -123,6 +125,12 @@ impl VolumeControl {
         self
     }
 
+    /// Every measure multiplied by `scale`, for a bar the person has made larger or smaller.
+    pub fn scale(mut self, scale: f32) -> Self {
+        self.scale = scale;
+        self
+    }
+
     pub fn on_mute(mut self, mute: impl Fn(&mut Window, &mut App) + 'static) -> Self {
         self.mute = Some(Rc::new(mute));
         self
@@ -143,6 +151,8 @@ impl RenderOnce for VolumeControl {
         let state = self.state.clone();
         let (step, notch, mute) = (self.step, self.scroll_step.max(0.), self.mute);
         let wide = self.wide;
+        let scale = self.scale;
+        let button = style::chrome().round_button * scale;
 
         h_flex()
             .id(self.id.clone())
@@ -176,8 +186,8 @@ impl RenderOnce for VolumeControl {
                     SharedString::from(format!("{}-mute", self.id)),
                     glyph_for(self.level, self.muted),
                 )
-                .size(style::chrome().round_button)
-                .glyph(GLYPH)
+                .size(button)
+                .glyph(GLYPH * scale)
                 .tooltip(t("toggle_mute"))
                 .on_click(move |_, window, cx| {
                     if let Some(mute) = &mute {
@@ -189,17 +199,17 @@ impl RenderOnce for VolumeControl {
                 control.child(
                     div()
                         .when(wide, |track| track.flex_1().min_w_0())
-                        .when(!wide, |track| track.w(TRACK_WIDTH))
+                        .when(!wide, |track| track.w(TRACK_WIDTH * scale))
                         .child(
                             ThinSlider::new(self.id.clone(), &self.state)
                                 .filled(filled)
-                                .metrics(TRACK_HIT, TRACK_BAR, KNOB)
+                                .metrics(TRACK_HIT * scale, TRACK_BAR * scale, KNOB * scale)
                                 .knob(over || self.held),
                         ),
                 )
             })
             .when(wide, |control| {
-                control.child(div().w(style::chrome().round_button).flex_shrink_0())
+                control.child(div().w(button).flex_shrink_0())
             })
     }
 }

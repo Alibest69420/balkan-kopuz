@@ -5,7 +5,8 @@ use components::{IconButton, TransportMetrics, icons, lit_accent, style};
 use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, Context, IntoElement, ParentElement as _, Pixels, Styled, Window, px, relative,
+    AnyElement, App, Context, IntoElement, ParentElement as _, Pixels, Styled, Window, px,
+    relative, rems,
 };
 use store::{Chrome, ConfigModel, SidePanel};
 
@@ -32,7 +33,9 @@ const MINI_NEEDS: Pixels = px(980.);
 const WIDE_TRANSPORT: f32 = 0.4;
 const TIGHT_TRANSPORT: f32 = 0.32;
 
-fn affords(width: Pixels) -> Affords {
+/// What `width` affords a bar drawn at `scale`: a larger bar runs out of room sooner.
+fn affords(width: Pixels, scale: f32) -> Affords {
+    let width = width / scale;
     Affords {
         level: width >= LEVEL_NEEDS,
         share: width >= SHARE_NEEDS,
@@ -50,6 +53,7 @@ const SCRIM_PLAIN: f32 = 0.6;
 
 impl NowPlaying {
     pub(crate) fn render_bar(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let scale = self.scale(cx);
         // Anything behind the window is worth seeing through the bar, including the cover's own light.
         let over_art = theme::ambient(cx).is_some() || {
             let config = ConfigModel::global(cx);
@@ -65,10 +69,11 @@ impl NowPlaying {
 
         h_flex()
             .w_full()
-            .h(style::chrome().player_height)
+            .h(style::chrome().player_height * scale)
             .flex_shrink_0()
-            .px_4()
-            .gap_4()
+            // `px-4` and `gap-4`, at the bar's scale.
+            .px(rems(scale))
+            .gap(rems(scale))
             .justify_between()
             .border_t_1()
             .border_color(style::white(style::BORDER_SOFT, cx))
@@ -76,14 +81,16 @@ impl NowPlaying {
             .child(self.track_meta(window, cx))
             .child(
                 v_flex()
-                    .w(relative(affords(window.viewport_size().width).transport))
+                    .w(relative(
+                        affords(window.viewport_size().width, scale).transport,
+                    ))
                     // Past this the seek bar sprawls and the title beside it starves.
-                    .max_w(TRANSPORT_WIDTH)
+                    .max_w(TRANSPORT_WIDTH * scale)
                     .flex_shrink_0()
                     .items_center()
                     .justify_center()
-                    .gap_2()
-                    .child(self.transport(TransportMetrics::COMPACT, true, cx))
+                    .gap(rems(0.5 * scale))
+                    .child(self.transport(TransportMetrics::COMPACT.scaled(scale), true, cx))
                     .children(self.seek.clone()),
             )
             .child(self.utilities(window, cx))
@@ -103,7 +110,8 @@ impl NowPlaying {
             Chrome::global(cx).read(cx).panel()
         };
         let wanted = store::layout(cx).player.clone();
-        let room = affords(window.viewport_size().width);
+        let scale = self.scale(cx);
+        let room = affords(window.viewport_size().width, scale);
         let accent = lit_accent(window, cx);
         let queued = panel == Some(SidePanel::Queue);
         let lyrical = panel == Some(SidePanel::Lyrics);
@@ -112,14 +120,14 @@ impl NowPlaying {
             // The same weight the meta block carries, so the transport between them is centred.
             .flex_1()
             .min_w_0()
-            .gap_4()
+            .gap(rems(scale))
             .justify_end()
             .when(wanted.volume, |row| {
                 row.child(self.volume_control(room.level, cx))
             })
             .when(wanted.queue, |row| {
                 row.child(
-                    utility("bar-queue", icons::LIST)
+                    utility("bar-queue", icons::LIST, scale)
                         .lit(queued)
                         .accent(accent)
                         .tooltip(t("up_next"))
@@ -136,7 +144,7 @@ impl NowPlaying {
             })
             .when(wanted.lyrics, |row| {
                 row.child(
-                    utility("bar-lyrics", icons::LYRICS)
+                    utility("bar-lyrics", icons::LYRICS, scale)
                         .lit(lyrical)
                         .accent(accent)
                         .tooltip(t("lyrics"))
@@ -156,18 +164,18 @@ impl NowPlaying {
             .when(room.share, |row| {
                 row.child(
                     self.share_mark("bar-share", cx)
-                        .size(style::chrome().round_button, UTILITY_GLYPH),
+                        .size(style::chrome().round_button * scale, UTILITY_GLYPH * scale),
                 )
             })
             .when(room.mini, |row| {
                 row.child(
-                    utility("bar-mini", icons::COLLAPSE)
+                    utility("bar-mini", icons::COLLAPSE, scale)
                         .tooltip(t("mini_player"))
                         .on_click(|_, _, cx| crate::open_mini(cx)),
                 )
             })
             .child(
-                utility("bar-sheet", icons::EXPAND)
+                utility("bar-sheet", icons::EXPAND, scale)
                     .tooltip(t("now_playing"))
                     .on_click(|_, _, cx| {
                         Chrome::global(cx).update(cx, |chrome, cx| chrome.toggle_sheet(cx))
@@ -177,25 +185,26 @@ impl NowPlaying {
 }
 
 /// The shape every button at the right end of the bar takes.
-pub(crate) fn utility(id: &'static str, glyph: &'static str) -> IconButton {
+pub(crate) fn utility(id: &'static str, glyph: &'static str, scale: f32) -> IconButton {
     IconButton::new(id, glyph)
-        .size(style::chrome().round_button)
-        .glyph(UTILITY_GLYPH)
+        .size(style::chrome().round_button * scale)
+        .glyph(UTILITY_GLYPH * scale)
 }
 
 /// Whether the title's own dots button still fits, which the meta block has to ask.
-pub(crate) fn menu_fits(window: &Window) -> bool {
-    affords(window.viewport_size().width).menu
+pub(crate) fn menu_fits(window: &Window, scale: f32) -> bool {
+    affords(window.viewport_size().width, scale).menu
 }
 
 /// The shape and glyph size of one bar-slot button, for a package contributing another.
-pub fn utility_metrics() -> (Pixels, Pixels) {
-    (style::chrome().round_button, UTILITY_GLYPH)
+pub fn utility_metrics(cx: &App) -> (Pixels, Pixels) {
+    let scale = store::layout(cx).player.size.scale();
+    (style::chrome().round_button * scale, UTILITY_GLYPH * scale)
 }
 
 /// The bar owns its height; the shell does not have to guess it.
-pub fn bar_height() -> Pixels {
-    style::chrome().player_height
+pub fn bar_height(cx: &App) -> Pixels {
+    style::chrome().player_height * store::layout(cx).player.size.scale()
 }
 
 #[cfg(test)]
@@ -204,14 +213,14 @@ mod tests {
 
     #[test]
     fn a_wide_window_keeps_the_whole_bar() {
-        let room = affords(px(1400.));
+        let room = affords(px(1400.), 1.);
         assert!(room.level && room.share && room.mini && room.menu);
         assert_eq!(room.transport, WIDE_TRANSPORT);
     }
 
     #[test]
     fn the_level_is_the_first_thing_the_title_takes_back() {
-        let room = affords(px(1100.));
+        let room = affords(px(1100.), 1.);
         assert!(!room.level);
         assert!(room.share && room.mini && room.menu);
         assert_eq!(room.transport, TIGHT_TRANSPORT);
@@ -219,12 +228,21 @@ mod tests {
 
     #[test]
     fn a_narrow_window_keeps_only_what_the_bar_cannot_do_without() {
-        let room = affords(px(924.));
+        let room = affords(px(924.), 1.);
         assert!(!room.level && !room.share && !room.mini && !room.menu);
     }
 
     #[test]
     fn the_transport_never_takes_more_of_a_narrow_window_than_a_wide_one() {
-        assert!(affords(px(924.)).transport < affords(px(1400.)).transport);
+        assert!(affords(px(924.), 1.).transport < affords(px(1400.), 1.).transport);
+    }
+
+    #[test]
+    fn a_larger_bar_gives_up_its_extras_before_crowding_the_title() {
+        let large = store::layout::PlayerSize::Large.scale();
+        assert!(affords(px(1200.), 1.).level);
+        let room = affords(px(1200.), large);
+        assert!(!room.level && !room.share && !room.mini && !room.menu);
+        assert_eq!(room.transport, TIGHT_TRANSPORT);
     }
 }

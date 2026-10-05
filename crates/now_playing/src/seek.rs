@@ -5,7 +5,7 @@ use gpui_kit::base::slider::{SliderEvent, SliderState};
 use gpui_kit::component::h_flex;
 use gpui_kit::{
     AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
-    Subscription, Window, div,
+    Subscription, Window, div, rems,
 };
 use store::{PlayerModel, Playhead};
 
@@ -27,13 +27,20 @@ pub(crate) enum Layout {
 pub(crate) struct SeekRow {
     state: Entity<SliderState>,
     layout: Layout,
+    /// Drawn in the bar, so it follows the bar's size preset.
+    scaled: bool,
     /// The fraction under the pointer while a drag runs; the release commits it.
     scrubbing: Option<f32>,
     _subscriptions: Vec<Subscription>,
 }
 
 impl SeekRow {
-    pub(crate) fn new(layout: Layout, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub(crate) fn new(
+        layout: Layout,
+        scaled: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let start = played_fraction(PlayerModel::global(cx).read(cx));
         let state = cx.new(|_| fraction_state(SEEK_STEP, start));
         let subscriptions = vec![
@@ -45,6 +52,7 @@ impl SeekRow {
         Self {
             state,
             layout,
+            scaled,
             scrubbing: None,
             _subscriptions: subscriptions,
         }
@@ -106,6 +114,10 @@ impl Render for SeekRow {
             )
         };
         let shown_ms = self.shown_ms(position_ms, total_ms);
+        let scale = match self.scaled {
+            true => store::layout(cx).player.size.scale(),
+            false => 1.,
+        };
         let bar = SeekBar::new("seek", &self.state)
             .played(self.scrubbing.unwrap_or(played))
             .total(total_ms)
@@ -113,21 +125,23 @@ impl Render for SeekRow {
             .loading(loading)
             .seekable(seekable)
             .scrubbing(self.scrubbing.is_some())
-            .preview(true);
+            .preview(true)
+            .scale(scale);
 
         match self.layout {
             Layout::BarOnly => div().w_full().child(bar).into_any_element(),
             Layout::Clocked => h_flex()
                 .w_full()
-                .gap_2()
+                .gap(rems(0.5 * scale))
                 .items_center()
-                .child(TrackClock::new(shown_ms, total_ms))
+                .child(TrackClock::new(shown_ms, total_ms).scale(scale))
                 .child(div().flex_1().min_w_0().child(bar))
                 .child(
                     TrackClock::new(shown_ms, total_ms)
                         .id("seek-trailing")
                         .trailing()
-                        .remaining_toggle(true),
+                        .remaining_toggle(true)
+                        .scale(scale),
                 )
                 .into_any_element(),
         }

@@ -90,6 +90,14 @@ pub struct NowPlaying {
 }
 
 impl NowPlaying {
+    /// The bar's size preset; every other surface keeps its own measures.
+    fn scale(&self, cx: &App) -> f32 {
+        match self.presentation {
+            Presentation::Bar => store::layout(cx).player.size.scale(),
+            _ => 1.,
+        }
+    }
+
     /// The bar across the bottom of the window.
     pub fn bar(window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self::new(Presentation::Bar, window, cx)
@@ -121,7 +129,8 @@ impl NowPlaying {
             } else {
                 Layout::Clocked
             };
-            cx.new(|cx| SeekRow::new(layout, window, cx))
+            let scaled = presentation == Presentation::Bar;
+            cx.new(|cx| SeekRow::new(layout, scaled, window, cx))
         });
         let clock = seek
             .as_ref()

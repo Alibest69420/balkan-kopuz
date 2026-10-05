@@ -6,7 +6,7 @@ use gpui_kit::component::h_flex;
 use gpui_kit::component::menu::ContextMenuExt as _;
 use gpui_kit::{
     App, Context, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, SharedString,
-    StatefulInteractiveElement as _, Styled as _, Window, div, px,
+    StatefulInteractiveElement as _, Styled as _, Window, div, px, rems,
 };
 use store::{
     Chrome, FavoritesModel, PlayerModel, PlaylistsModel, QueueModel, Route, SourcesModel, Target,
@@ -17,13 +17,14 @@ use crate::NowPlaying;
 
 const MARK_GLYPH: Pixels = px(16.);
 
-/// The bar's cover, at whatever size the preference asks for.
-pub(crate) fn cover_size(cx: &App) -> Pixels {
-    match store::layout(cx).player.cover {
+/// The bar's cover, at whatever size the preference asks for, drawn at the bar's `scale`.
+pub(crate) fn cover_size(scale: f32, cx: &App) -> Pixels {
+    let size = match store::layout(cx).player.cover {
         store::layout::TileSize::Small => px(40.),
         store::layout::TileSize::Medium => px(56.),
         store::layout::TileSize::Large => px(72.),
-    }
+    };
+    size * scale
 }
 
 /// Where the daemon says the queue came from, and what to call it.
@@ -70,12 +71,18 @@ impl NowPlaying {
     ) -> impl IntoElement + use<> {
         let track = self.track(cx);
         let target = track.as_ref().map(track_target);
-        let size = cover_size(cx);
+        let scale = self.scale(cx);
+        let size = cover_size(scale, cx);
         let origin = playing_from(cx);
         let marks = self
-            .marks("meta", crate::bar::menu_fits(window), track.as_ref(), cx)
-            .size(style::chrome().round_button, MARK_GLYPH)
-            .gap(px(16.));
+            .marks(
+                "meta",
+                crate::bar::menu_fits(window, scale),
+                track.as_ref(),
+                cx,
+            )
+            .size(style::chrome().round_button * scale, MARK_GLYPH * scale)
+            .gap(px(16.) * scale);
         // The heart is the preferences' to keep on the bar; the sheet always has it.
         let marks = match store::layout(cx).player.favorite {
             true => marks,
@@ -86,7 +93,7 @@ impl NowPlaying {
             .id("track-meta")
             .flex_1()
             .min_w_0()
-            .gap_4()
+            .gap(rems(scale))
             .child(
                 div()
                     .flex_shrink_0()
@@ -105,6 +112,7 @@ impl NowPlaying {
             .children(track.as_ref().map(|track| {
                 NowPlayingMeta::new("bar", track)
                     .layout(MetaLayout::Bar)
+                    .scale(scale)
                     .origin(origin)
             }))
             .child(marks);

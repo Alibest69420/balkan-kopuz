@@ -24,7 +24,7 @@ fn place_toasts(cx: &mut gpui_kit::App) {
         == config::PlayerBarPosition::Top;
     let clearance = match at_top {
         true => TOAST_GAP,
-        false => now_playing::bar_height() + TOAST_GAP,
+        false => now_playing::bar_height(cx) + TOAST_GAP,
     };
     theme::place_toasts(clearance, cx);
 }

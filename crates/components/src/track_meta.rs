@@ -29,8 +29,8 @@ const TITLE_REMS: f32 = 0.875;
 type Press = Rc<dyn Fn(&mut Window, &mut App)>;
 
 /// What the title measures as drawn, so overflow is a fact rather than a guess at a character count.
-fn title_width(title: &SharedString, window: &Window, cx: &App) -> Pixels {
-    let size = rems(TITLE_REMS).to_pixels(window.rem_size());
+fn title_width(title: &SharedString, scale: f32, window: &Window, cx: &App) -> Pixels {
+    let size = rems(TITLE_REMS * scale).to_pixels(window.rem_size());
     let run = gpui_kit::TextRun {
         len: title.len(),
         font: gpui_kit::Font {
@@ -54,6 +54,7 @@ pub struct MarqueeText {
     id: SharedString,
     text: SharedString,
     route: Option<Route>,
+    scale: f32,
 }
 
 impl MarqueeText {
@@ -62,7 +63,14 @@ impl MarqueeText {
             id: id.into(),
             text: text.into(),
             route: None,
+            scale: 1.,
         }
+    }
+
+    /// The title drawn and measured at `scale` times its size.
+    pub fn scale(mut self, scale: f32) -> Self {
+        self.scale = scale;
+        self
     }
 
     /// Where a click on the title goes; none leaves it inert.
@@ -77,7 +85,7 @@ impl RenderOnce for MarqueeText {
         let id = self.id;
         let text = self.text;
         let room = window.use_keyed_state(motion::channel(&id, ROOM), cx, |_, _| Pixels::ZERO);
-        let natural = title_width(&text, window, cx);
+        let natural = title_width(&text, self.scale, window, cx);
         // How far past its column the title runs, which is exactly how far it has to walk.
         let overflow = (natural - *room.read(cx)).max(px(0.));
         let long = overflow > px(0.);
@@ -109,7 +117,7 @@ impl RenderOnce for MarqueeText {
                     .overflow_hidden()
                     .child(
                         div()
-                            .text_sm()
+                            .text_size(rems(TITLE_REMS * self.scale))
                             .font_weight(FontWeight::BOLD)
                             .text_color(style::white(style::TEXT_STRONG, cx))
                             .map(|label| {
@@ -144,6 +152,7 @@ pub struct PlayingFromLink {
     label: SharedString,
     route: Route,
     hero: bool,
+    scale: f32,
     before: Option<Press>,
 }
 
@@ -154,6 +163,7 @@ impl PlayingFromLink {
             label: label.into(),
             route,
             hero: false,
+            scale: 1.,
             before: None,
         }
     }
@@ -161,6 +171,12 @@ impl PlayingFromLink {
     /// Drawn for the sheet, at `text-xs` and underlined, rather than the bar's 10px line.
     pub fn hero(mut self, hero: bool) -> Self {
         self.hero = hero;
+        self
+    }
+
+    /// The bar line drawn at `scale` times its size.
+    pub fn scale(mut self, scale: f32) -> Self {
+        self.scale = scale;
         self
     }
 
@@ -173,6 +189,7 @@ impl PlayingFromLink {
 impl RenderOnce for PlayingFromLink {
     fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
         let hero = self.hero;
+        let scale = self.scale;
         let before = self.before;
         Link::new(self.id)
             .route(Some(self.route))
@@ -187,7 +204,7 @@ impl RenderOnce for PlayingFromLink {
             .gap_1()
             .map(|link| match hero {
                 true => link.max_w_full().text_xs(),
-                false => link.min_w_0().text_size(style::text_10()),
+                false => link.min_w_0().text_size(style::text_10() * scale),
             })
             .child(div().flex_shrink_0().child(t("playing_from")))
             .child(div().truncate().child(self.label))
@@ -218,6 +235,7 @@ pub struct NowPlayingMeta {
     note: Option<SharedString>,
     footer: Option<AnyElement>,
     before: Option<Press>,
+    scale: f32,
 }
 
 impl NowPlayingMeta {
@@ -231,11 +249,18 @@ impl NowPlayingMeta {
             note: None,
             footer: None,
             before: None,
+            scale: 1.,
         }
     }
 
     pub fn layout(mut self, layout: MetaLayout) -> Self {
         self.layout = layout;
+        self
+    }
+
+    /// The bar's text drawn at `scale` times its size; the other layouts keep theirs.
+    pub fn scale(mut self, scale: f32) -> Self {
+        self.scale = scale;
         self
     }
 
@@ -289,9 +314,14 @@ impl RenderOnce for NowPlayingMeta {
         let id = self.id;
         let key = |name: &str| SharedString::from(format!("{id}-{name}"));
         let before = self.before;
+        let scale = match self.layout {
+            MetaLayout::Bar => self.scale,
+            _ => 1.,
+        };
         let origin = self.origin.map(|(label, route)| {
             PlayingFromLink::new(key("playing-from"), label, route)
                 .hero(self.layout == MetaLayout::Hero)
+                .scale(scale)
                 .on_before_navigate(before.clone())
         });
 
@@ -300,15 +330,20 @@ impl RenderOnce for NowPlayingMeta {
                 // Sized by its text, not by the room going spare: the marks belong beside it.
                 .min_w_0()
                 .justify_center()
-                .gap_0p5()
-                .child(MarqueeText::new(key("title"), title).route(album_route))
+                // `gap-0.5` and `text-xs`, at the bar's scale.
+                .gap(rems(0.125 * scale))
+                .child(
+                    MarqueeText::new(key("title"), title)
+                        .route(album_route)
+                        .scale(scale),
+                )
                 .child(
                     Link::new(key("artist"))
                         .label(artist)
                         .route(artist_route)
                         .tone(Tone::Muted)
                         .underline(true)
-                        .text_xs(),
+                        .text_size(rems(0.75 * scale)),
                 )
                 .children(origin)
                 .into_any_element(),

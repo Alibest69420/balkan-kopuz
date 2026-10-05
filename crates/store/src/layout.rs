@@ -334,10 +334,32 @@ impl Default for Panel {
     }
 }
 
-/// Which of the player bar's optional controls are drawn.
+/// How large the whole player bar is drawn: its height, cover, text and controls together.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlayerSize {
+    Small,
+    #[default]
+    Normal,
+    Large,
+}
+
+impl PlayerSize {
+    /// The factor every measure of the bar is multiplied by.
+    pub fn scale(self) -> f32 {
+        match self {
+            Self::Small => 0.875,
+            Self::Normal => 1.,
+            Self::Large => 1.25,
+        }
+    }
+}
+
+/// The player bar's size, and which of its optional controls are drawn.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Player {
+    pub size: PlayerSize,
     pub shuffle: bool,
     pub repeat: bool,
     pub volume: bool,
@@ -350,6 +372,7 @@ pub struct Player {
 impl Default for Player {
     fn default() -> Self {
         Self {
+            size: PlayerSize::Normal,
             shuffle: true,
             repeat: true,
             volume: true,
@@ -1047,6 +1070,32 @@ mod tests {
             .shortcuts
             .insert("play.toggle".into(), "ctrl-space".into());
         assert_eq!(overlay(&Layout::default(), &fields(&layout)), layout);
+    }
+
+    #[test]
+    fn a_stored_player_without_a_size_keeps_the_normal_bar() {
+        let stored = Fields::from([(
+            "player".to_string(),
+            "{\"cover\": \"large\", \"shuffle\": false}".to_string(),
+        )]);
+        let layout = overlay(&Layout::default(), &stored);
+        assert_eq!(layout.player.size, PlayerSize::Normal);
+        assert_eq!(layout.player.cover, TileSize::Large);
+        assert!(!layout.player.shuffle);
+    }
+
+    #[test]
+    fn each_player_size_is_stored_and_resets_with_the_player() {
+        for size in [PlayerSize::Small, PlayerSize::Normal, PlayerSize::Large] {
+            let mut layout = Layout::default();
+            layout.player.size = size;
+            layout.interface.scale = 1.25;
+            let mut stored = overlay(&Layout::default(), &fields(&layout));
+            assert_eq!(stored.player.size, size);
+            Section::Player.reset(&mut stored);
+            assert_eq!(stored.player.size, PlayerSize::Normal);
+            assert_eq!(stored.interface.scale, 1.25);
+        }
     }
 
     #[test]

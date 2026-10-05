@@ -297,7 +297,9 @@ impl NowPlaying {
         let top = motion::length("sheet-cover-y", local.y, motion::SLOW, window, cx);
         let side = motion::length("sheet-cover-size", size, motion::SLOW, window, cx);
         let radius = style::to_px(style::radius_xl(), window)
-            * (f32::from(side) / f32::from(cover_size(cx)).max(1.)).clamp(0.4, 1.);
+            * (f32::from(side)
+                / f32::from(cover_size(store::layout(cx).player.size.scale(), cx)).max(1.))
+            .clamp(0.4, 1.);
 
         Some(
             div()

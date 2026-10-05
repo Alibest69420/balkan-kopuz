@@ -24,6 +24,7 @@ impl NowPlaying {
             .slider(slider)
             .wide(self.presentation == crate::Presentation::Sheet)
             .held(self.volume_held)
+            .scale(self.scale(cx))
             .scroll_step(step)
             .on_mute(|_, cx| {
                 PlayerModel::global(cx).update(cx, |player, cx| player.toggle_mute(cx))

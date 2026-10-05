@@ -104,6 +104,7 @@ pub struct SeekBar {
     seekable: bool,
     scrubbing: bool,
     preview: bool,
+    scale: f32,
 }
 
 impl SeekBar {
@@ -118,6 +119,7 @@ impl SeekBar {
             seekable: true,
             scrubbing: false,
             preview: false,
+            scale: 1.,
         }
     }
 
@@ -155,6 +157,12 @@ impl SeekBar {
         self
     }
 
+    /// Every measure multiplied by `scale`, for a bar the person has made larger or smaller.
+    pub fn scale(mut self, scale: f32) -> Self {
+        self.scale = scale;
+        self
+    }
+
     /// Float the time under the pointer while it hovers the bar.
     pub fn preview(mut self, preview: bool) -> Self {
         self.preview = preview;
@@ -165,6 +173,7 @@ impl SeekBar {
 impl RenderOnce for SeekBar {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let live = self.total_ms.is_some() && !self.loading && self.seekable;
+        let scale = self.scale;
         let bars = visual_ranges(&self.ranges, self.played * 100.);
         let scanning = self.loading && bars.is_empty();
         let pointer = window.use_keyed_state(motion::channel(&self.id, PREVIEW), cx, |_, _| {
@@ -183,7 +192,7 @@ impl RenderOnce for SeekBar {
             .id(self.id.clone())
             .relative()
             .w_full()
-            .h(HIT)
+            .h(HIT * scale)
             .when(live && self.preview, |hit| {
                 hit.on_mouse_move(move |event: &MouseMoveEvent, _, cx| {
                     let bounds = state.read(cx).bounds();
@@ -212,27 +221,32 @@ impl RenderOnce for SeekBar {
             .child(
                 ThinSlider::new(self.id.clone(), &self.state)
                     .filled(self.played)
-                    .metrics(HIT, BAR, KNOB)
+                    .metrics(HIT * scale, BAR * scale, KNOB * scale)
                     .knob(held && live)
                     .disabled(!live)
                     .buffered(bars)
                     .scanning(scanning),
             )
             .children(hovering.zip(self.total_ms).map(|((fraction, x), total)| {
-                preview_label(duration((f64::from(fraction) * total as f64) as u64), x, cx)
+                preview_label(
+                    duration((f64::from(fraction) * total as f64) as u64),
+                    x,
+                    scale,
+                    cx,
+                )
             }))
     }
 }
 
-fn preview_label(at: SharedString, x: Pixels, cx: &App) -> impl IntoElement {
+fn preview_label(at: SharedString, x: Pixels, scale: f32, cx: &App) -> impl IntoElement {
     div()
         .absolute()
-        .bottom(PREVIEW_LIFT)
+        .bottom(PREVIEW_LIFT * scale)
         .left(x)
-        .ml(-PREVIEW_WIDTH / 2.)
-        .w(PREVIEW_WIDTH)
+        .ml(-PREVIEW_WIDTH * scale / 2.)
+        .w(PREVIEW_WIDTH * scale)
         .text_center()
-        .text_size(style::text_10())
+        .text_size(style::text_10() * scale)
         .font_features(tabular())
         .px_1()
         .py_0p5()
@@ -259,6 +273,7 @@ pub struct TrackClock {
     side: Side,
     toggle: bool,
     tint: Option<Hsla>,
+    scale: f32,
 }
 
 impl TrackClock {
@@ -271,6 +286,7 @@ impl TrackClock {
             side: Side::Elapsed,
             toggle: false,
             tint: None,
+            scale: 1.,
         }
     }
 
@@ -298,6 +314,12 @@ impl TrackClock {
         self
     }
 
+    /// The reading and its box multiplied by `scale`, beside a bar drawn the same way.
+    pub fn scale(mut self, scale: f32) -> Self {
+        self.scale = scale;
+        self
+    }
+
     pub fn tint(mut self, tint: Hsla) -> Self {
         self.tint = Some(tint);
         self
@@ -317,6 +339,7 @@ impl RenderOnce for TrackClock {
             }
         };
         let summary = self.side == Side::Summary;
+        let scale = self.scale;
         let tint = self.tint.unwrap_or(match summary {
             true => style::white(0.35, cx),
             false => style::slate_500(cx),
@@ -324,14 +347,14 @@ impl RenderOnce for TrackClock {
         let clock = div()
             .id(motion::channel(&self.id, REMAINING))
             .text_size(if summary {
-                style::text_9()
+                style::text_9() * scale
             } else {
-                style::text_10()
+                style::text_10() * scale
             })
             .font_features(tabular())
             .text_color(tint)
             .when(!summary, |clock| {
-                clock.w(clock_width(total)).flex_shrink_0()
+                clock.w(rems(clock_width(total).0 * scale)).flex_shrink_0()
             })
             .when(self.side == Side::Elapsed, |clock| clock.text_right())
             .when(self.side == Side::Trailing && self.toggle, |clock| {

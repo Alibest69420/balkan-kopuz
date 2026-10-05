@@ -64,6 +64,19 @@ impl TransportMetrics {
         play_glyph: px(28.),
         gap: px(16.),
     };
+
+    /// Every measure multiplied by `scale`, for a surface the person has made larger or smaller.
+    pub fn scaled(self, scale: f32) -> Self {
+        Self {
+            side: self.side * scale,
+            step: self.step * scale,
+            play: self.play * scale,
+            side_glyph: self.side_glyph * scale,
+            step_glyph: self.step_glyph * scale,
+            play_glyph: self.play_glyph * scale,
+            gap: self.gap * scale,
+        }
+    }
 }
 
 /// Play or pause: a round glyph in a transport, or a labelled pill on a card.

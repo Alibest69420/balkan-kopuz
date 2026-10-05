@@ -7,7 +7,7 @@ use gpui_kit::{
     App, AppContext as _, Context, IntoElement, ParentElement as _, Render, Styled, Window,
 };
 use store::LayoutModel;
-use store::layout::{Backdrop, Section as Group, SheetTab, Side, TileSize};
+use store::layout::{Backdrop, PlayerSize, Section as Group, SheetTab, Side, TileSize};
 
 /// Contribute both sections; call once at startup, after `settings_interface::init`.
 pub fn register(cx: &mut App) {
@@ -44,6 +44,23 @@ impl Render for PlayerSettings {
             .w_full()
             .child(
                 section(t("interface_player"))
+                    .children(
+                        // TODO(i18n): no "player bar size" key yet; the section's own "Player bar" names it.
+                        SettingRow::new(t("interface_player"))
+                            .control(choice(
+                                "player-size",
+                                &player.size,
+                                vec![
+                                    (PlayerSize::Small, t("interface_player_cover_small")),
+                                    (PlayerSize::Normal, t("ui_normal")),
+                                    (PlayerSize::Large, t("interface_player_cover_large")),
+                                ],
+                                |value, cx| {
+                                    LayoutModel::edit(cx, |layout| layout.player.size = value)
+                                },
+                            ))
+                            .shown(cx),
+                    )
                     .children(
                         SettingRow::new(t("interface_player_cover"))
                             .description(t("interface_player_cover_description"))

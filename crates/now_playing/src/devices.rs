@@ -41,7 +41,7 @@ impl NowPlaying {
 
         // The popover wants a `Selectable` trigger, so the button is handed to it inside its frame.
         Some(
-            utility("devices", icons::SPEAKER)
+            utility("devices", icons::SPEAKER, self.scale(cx))
                 .lit(elsewhere)
                 .accent(accent)
                 .tooltip(t("external_play_on"))
