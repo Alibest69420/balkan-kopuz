@@ -10,7 +10,6 @@ use api::{
 };
 use config::{AlbumSortField, AlbumViewMode, ArtistViewOrder, SortCriterion, SortDirection};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::{
     ActiveTheme as _, Disableable as _, Selectable as _, Sizable as _, Size, h_flex, v_flex,
 };
@@ -25,8 +24,8 @@ use store::{
 };
 use widgets::format::{t, t_with, total_duration};
 use widgets::{
-    Cover, DetailHeader, EmptyState, Loading, TrackActions, TrackList, TrackListEvent,
-    TrackListOptions, columns, icons, motion, playlist_picker, style,
+    Cover, DetailHeader, EmptyState, Loading, TrackActions, TrackHeader, TrackList, TrackListEvent,
+    TrackListOptions, icons, motion, playlist_picker, style,
 };
 
 use crate::controls::{self, ViewModeKey};
@@ -50,13 +49,20 @@ enum Column {
 }
 
 impl Column {
-    fn label_key(self) -> &'static str {
+    /// The table column it sorts, by the id the shared header names it with.
+    fn id(self) -> &'static str {
         match self {
-            Self::Title => "sort_field_title",
-            Self::Artist => "sort_field_artist",
-            Self::Album => "sort_field_album",
-            Self::Duration => "sort_field_duration",
+            Self::Title => "title",
+            Self::Artist => "artist",
+            Self::Album => "album",
+            Self::Duration => "duration",
         }
+    }
+
+    fn parse(id: &str) -> Option<Self> {
+        [Self::Title, Self::Artist, Self::Album, Self::Duration]
+            .into_iter()
+            .find(|column| column.id() == id)
     }
 }
 
@@ -547,64 +553,33 @@ impl ArtistDetail {
     }
 
     fn column_header(&mut self, count: usize, cx: &mut Context<Self>) -> AnyElement {
-        let all_selected = count > 0 && count == self.list.read(cx).selected_count();
-        // Built from the row's own cells, so each sort label sits over its column.
-        columns::frame()
-            .text_xs()
-            .text_color(cx.theme().muted_foreground)
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .child(
-                columns::fixed(columns::INDEX).child(
-                    Checkbox::new("artist-select-all")
-                        .checked(all_selected)
-                        .accessibility_label(t("select_all"))
-                        .on_click(cx.listener(move |this, checked: &bool, _, cx| {
-                            this.list.update(cx, |list, cx| {
-                                if *checked {
-                                    list.select_all(cx);
-                                } else {
-                                    list.clear_selection(cx);
-                                }
-                            });
-                        })),
-                ),
+        let list = self.list.read(cx);
+        let all_selected = count > 0 && count == list.selected_count();
+        let active = self
+            .column
+            .map(|(column, direction)| (column.id(), direction == SortDirection::Desc));
+        TrackHeader::new("artist-header", list.layout())
+            .sort(
+                active,
+                |id| Column::parse(id).is_some(),
+                cx.listener(|this, id: &str, _, cx| {
+                    if let Some(column) = Column::parse(id) {
+                        this.toggle_column(column, cx);
+                    }
+                }),
             )
-            .child(
-                columns::flexible(columns::TITLE_MIN, 2.)
-                    .child(self.column_label(Column::Title, cx)),
+            .select_all(
+                all_selected,
+                cx.listener(move |this, checked: &bool, _, cx| {
+                    this.list.update(cx, |list, cx| {
+                        if *checked {
+                            list.select_all(cx);
+                        } else {
+                            list.clear_selection(cx);
+                        }
+                    });
+                }),
             )
-            .child(
-                columns::flexible(columns::TEXT_MIN, 1.)
-                    .child(self.column_label(Column::Artist, cx)),
-            )
-            .child(
-                columns::flexible(columns::TEXT_MIN, 1.)
-                    .child(self.column_label(Column::Album, cx)),
-            )
-            .child(
-                columns::fixed(columns::DURATION)
-                    .justify_end()
-                    .child(self.column_label(Column::Duration, cx)),
-            )
-            .child(columns::fixed(columns::MENU))
-            .into_any_element()
-    }
-
-    fn column_label(&self, column: Column, cx: &mut Context<Self>) -> AnyElement {
-        let marker = match self.column {
-            Some((current, SortDirection::Asc)) if current == column => Some(icons::CHEVRON_UP),
-            Some((current, SortDirection::Desc)) if current == column => Some(icons::CHEVRON_DOWN),
-            _ => None,
-        };
-        h_flex()
-            .id(SharedString::from(format!("column-{column:?}")))
-            .gap_1()
-            .items_center()
-            .hover(|label| label.text_color(cx.theme().foreground))
-            .child(t(column.label_key()))
-            .children(marker.map(icons::icon))
-            .on_click(cx.listener(move |this, _, _, cx| this.toggle_column(column, cx)))
             .into_any_element()
     }
 

@@ -10,7 +10,6 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-library = { path = "../library" }
 api = { workspace = true }
 config = { workspace = true }
 i18n = { workspace = true }

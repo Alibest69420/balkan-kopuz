@@ -5294,7 +5294,6 @@ dependencies = [
  "kopuz-api",
  "kopuz-config",
  "kopuz-i18n",
- "library",
  "link",
  "store",
  "theme",

@@ -5,7 +5,7 @@ use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{App, Hsla, IntoElement, ParentElement as _, Pixels, Styled as _, div, px};
 
-use widgets::style;
+use crate::style;
 
 /// The wash a placeholder shape is painted in; the theme names it for exactly this.
 fn ink(cx: &App) -> Hsla {
@@ -41,9 +41,9 @@ pub fn row(
         .when(covers, |row| {
             row.child(
                 div()
-                    .size(px(40.))
+                    .size(style::row_cover())
                     .flex_shrink_0()
-                    .rounded(style::radius(cx))
+                    .rounded(style::thumb_radius())
                     .bg(ink(cx)),
             )
         })

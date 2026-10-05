@@ -2,73 +2,20 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 use api::TrackInfo;
-use gpui_kit::component::Sizable as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::checkbox::Checkbox;
-use gpui_kit::component::menu::ContextMenuExt as _;
-use gpui_kit::component::menu::DropdownMenu as _;
 use gpui_kit::component::menu::PopupMenu;
 use gpui_kit::component::{ActiveTheme as _, v_flex};
-use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, AppContext as _, ClickEvent, Context, EventEmitter, FocusHandle, Focusable, FontWeight,
-    Global, InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString,
-    StatefulInteractiveElement as _, Styled, UniformListScrollHandle, WeakEntity, Window, actions,
-    div, px, uniform_list,
+    AnyElement, App, ClickEvent, Context, EventEmitter, FocusHandle, Focusable, Global,
+    InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled,
+    UniformListScrollHandle, WeakEntity, Window, actions, div, uniform_list,
 };
-use store::{ConfigModel, DownloadsModel, FavoritesModel, Navigator, PlayerModel, Route, Target};
+use store::{ConfigModel, FavoritesModel, PlayerModel, Target};
 
-use crate::cover::Cover;
-use crate::format::{duration, t};
-use crate::icons;
+use crate::columns::{self, Layout};
+use crate::format::t;
 use crate::menus;
-use crate::motion;
 use crate::style;
-
-// The row is the hover group, so the number can step aside for the play glyph.
-const ROW_GROUP: &str = "track-row";
-
-/// The desktop row's column template, so a page's own column header lines up with the rows.
-///
-/// `20px | minmax(200px, 2fr) | minmax(150px, 1fr) | minmax(150px, 1fr) | 64px | 40px`,
-/// laid out on flex because GPUI has no grid.
-pub mod columns {
-    use gpui_kit::{Div, Pixels, Styled as _, div, px};
-
-    /// The index column: the number, the play glyph, or the selection box.
-    pub const INDEX: Pixels = px(20.);
-    /// `w-10 h-10`: the cover inside the title column, not a column of its own.
-    pub const COVER: Pixels = px(40.);
-    /// The duration column.
-    pub const DURATION: Pixels = px(64.);
-    /// The row-menu column, which the rows keep clear for a page's own control.
-    pub const MENU: Pixels = px(40.);
-    /// `minmax(200px, 2fr)`: what the title column never goes below.
-    pub const TITLE_MIN: Pixels = px(200.);
-    /// `minmax(150px, 1fr)`: what the artist and album columns never go below.
-    pub const TEXT_MIN: Pixels = px(150.);
-
-    /// The frame a row and a header share: `items-center p-2` with the `1.5rem` column gap.
-    pub fn frame() -> Div {
-        div().flex().w_full().items_center().p_2().gap_6()
-    }
-
-    /// A fixed column: the index, the duration, the menu.
-    pub fn fixed(width: Pixels) -> Div {
-        div().flex().items_center().w(width).flex_shrink_0()
-    }
-
-    /// A `minmax(min, Nfr)` column, sharing the free space `grow` ways.
-    pub fn flexible(min: Pixels, grow: f32) -> Div {
-        div()
-            .flex()
-            .items_center()
-            .flex_grow(grow)
-            .flex_shrink(1.)
-            .flex_basis(px(0.))
-            .min_w(min)
-    }
-}
+use crate::track_row::TrackRow;
 
 /// Which columns a list draws; an album view numbers its rows and hides the album column.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -200,8 +147,6 @@ pub struct TrackList {
     cursor: Option<usize>,
     focus: FocusHandle,
     scroll: UniformListScrollHandle,
-    // A hidden trigger would take its own open menu down with it, so the row it belongs to shows it.
-    menu_open: Option<String>,
     // The one setting a row reads, held so another config change does not redraw every list.
     row_images: bool,
     _config: gpui_kit::Subscription,
@@ -242,7 +187,6 @@ impl TrackList {
             cursor: None,
             focus: cx.focus_handle(),
             scroll: UniformListScrollHandle::new(),
-            menu_open: None,
             row_images: ConfigModel::global(cx).read(cx).row_images(),
             _config: cx.observe(&ConfigModel::global(cx), |this, config, cx| {
                 let row_images = config.read(cx).row_images();
@@ -461,12 +405,12 @@ impl TrackList {
         cx.emit(TrackListEvent::SelectionChanged);
     }
 
-    fn row(
-        &self,
-        index: usize,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> gpui_kit::AnyElement {
+    /// The columns the rows draw, for a page's header to sit over them.
+    pub fn layout(&self) -> Layout {
+        columns::standard(self.options.show_album)
+    }
+
+    fn row(&self, index: usize, columns: &Layout, cx: &mut Context<Self>) -> AnyElement {
         let Some(track) = self.rows.get(index) else {
             return div().into_any_element();
         };
@@ -476,58 +420,23 @@ impl TrackList {
             .track()
             .is_some_and(|now| now.key == key);
         let selected = self.selected.contains(&key);
-        let stored = DownloadsModel::global(cx).read(cx).is_stored(&key);
-        let lead = if self.options.track_numbers {
-            track.track_number.unwrap_or(index as u32 + 1).to_string()
-        } else {
-            (index + 1).to_string()
+        let lead = self.options.show_index.then(|| {
+            let number = match self.options.track_numbers {
+                true => track.track_number.unwrap_or(index as u32 + 1),
+                false => index as u32 + 1,
+            };
+            SharedString::from(number.to_string())
+        });
+        // A row inside a selection drags the selection; the queue is where it lands.
+        let keys = match selected {
+            true => self.selected_keys(),
+            false => vec![key.clone()],
         };
-        let artist = SharedString::from(track.artist.clone());
-        let artist_route = Route::artist_of(track);
-        let album = SharedString::from(track.album.clone());
-        let album_id = track.album_id.clone();
-        let title = SharedString::from(track.title.clone());
-        let length = track
-            .duration_secs()
-            .map(|secs| duration(secs * 1000))
-            .unwrap_or_else(|| "--:--".into());
-
-        let accent = cx.theme().primary;
-        let mark = px(12.);
-        let cover = style::to_px(style::row_cover(), window);
-        let menu_open = self.menu_open.as_deref() == Some(key.as_str());
-        // `transition-colors` on the row: the playing tint and the selection wash tween, hover does not.
-        profile::elements::built();
-        let wash = motion::color(
-            motion::row_id("row-wash", index),
-            if playing {
-                style::accent(style::PLAYING, cx)
-            } else if selected {
-                style::white(style::SELECTED, cx)
-            } else {
-                style::white(0., cx)
-            },
-            window,
-            cx,
-        );
-        let title_color = motion::color(
-            motion::row_id("row-title", index),
-            if playing {
-                accent
-            } else {
-                style::white(style::TEXT_STRONG, cx)
-            },
-            window,
-            cx,
-        );
-        let badge = motion::amount(
-            motion::row_id("row-badge", index),
-            if stored && !playing { 1. } else { 0. },
-            motion::FAST,
-            window,
-            cx,
-        );
-        // One builder, so the dots button and the right-click menu cannot drift apart.
+        // "Title +3" rather than a count, which would need a plural form per locale.
+        let label = match keys.len() {
+            0 | 1 => SharedString::from(track.title.clone()),
+            many => SharedString::from(format!("{} +{}", track.title, many - 1)),
+        };
         let menu = {
             let target = self.row_target(index);
             let scope = RowScope {
@@ -543,49 +452,22 @@ impl TrackList {
                 },
             )
         };
-
-        columns::frame()
-            .id(("track-row", index))
-            .group(ROW_GROUP)
-            .h(style::row_height())
-            .rounded(style::radius_lg())
-            .bg(wash)
-            // The queue registers a drop target for this and nothing ever produced one, so the
-            // whole affordance was unreachable. A row inside a selection drags the selection.
-            .on_drag(
-                {
-                    let selected_keys = match selected {
-                        true => self.selected_keys(),
-                        false => vec![key.clone()],
-                    };
-                    // "Title +3" rather than a count, which would need a plural form per locale.
-                    let label = match selected_keys.len() {
-                        0 | 1 => SharedString::from(track.title.clone()),
-                        many => SharedString::from(format!("{} +{}", track.title, many - 1)),
-                    };
-                    TrackDrag {
-                        keys: selected_keys,
-                        label,
-                    }
-                },
-                |drag, _, _, cx| cx.new(|_| drag.clone()),
-            )
-            // Upstream the wash is an inline style, which outranks `hover:bg-white/5`; a refinement does not.
-            .when(!playing && !selected, |row| {
-                row.hover(|row| row.bg(style::white(style::RAISED, cx)))
-            })
-            // The keyboard cursor, drawn so it can be followed.
-            .when(self.cursor == Some(index), |row| {
-                row.border_1().border_color(cx.theme().ring)
-            })
+        TrackRow::new(track, index)
+            .columns(columns.clone())
+            .height(style::row_height())
+            .lead(lead)
+            .cover(self.options.show_cover && self.row_images)
+            .playing(playing)
+            .selected(selected)
+            .picking(self.options.selectable && self.selecting)
+            .cursor(self.cursor == Some(index))
+            .drag(TrackDrag { keys, label })
             .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                 // A click is also where the arrows should carry on from.
                 this.cursor = Some(index);
                 window.focus(&this.focus, cx);
                 let modifiers = event.modifiers();
-                // Ctrl/cmd picks one, shift extends from the last pick. Without these the only way
-                // into selection was a page-owned select-all, which three pages do not have, and a
-                // range had to be ticked a checkbox at a time.
+                // Ctrl/cmd picks one, shift extends from the last pick.
                 if modifiers.secondary() {
                     this.toggle_selected(key.clone(), cx);
                 } else if modifiers.shift && this.selecting {
@@ -596,175 +478,11 @@ impl TrackList {
                     cx.emit(TrackListEvent::Play(index));
                 }
             }))
-            .child(
-                columns::fixed(columns::INDEX)
-                    .relative()
-                    .justify_center()
-                    .map(|cell| {
-                        if self.options.selectable && self.selecting {
-                            cell.child(Checkbox::new(("select", index)).checked(selected).on_click(
-                                cx.listener({
-                                    let key = track.key.clone();
-                                    move |this, _: &bool, _, cx| {
-                                        this.toggle_selected(key.clone(), cx)
-                                    }
-                                }),
-                            ))
-                        } else if playing {
-                            cell.child(icons::icon(icons::VOLUME).size(mark).text_color(accent))
-                        } else if self.options.show_index {
-                            cell.children(crate::lead::number_or_play(
-                                ROW_GROUP,
-                                lead,
-                                mark,
-                                style::white(style::TEXT_SECONDARY, cx),
-                            ))
-                        } else {
-                            cell
-                        }
-                    }),
-            )
-            .child(
-                columns::flexible(columns::TITLE_MIN, 2.)
-                    .when(self.options.show_cover && self.row_images, |cell| {
-                        cell.child(
-                            div()
-                                .relative()
-                                .flex_shrink_0()
-                                .mr_4()
-                                .child(Cover::new(track.artwork.as_ref()).size(cover))
-                                .when(badge > 0., |thumb| {
-                                    thumb.child(
-                                        div()
-                                            .absolute()
-                                            .bottom_0()
-                                            .right_0()
-                                            .size_3()
-                                            .opacity(badge)
-                                            .flex()
-                                            .items_center()
-                                            .justify_center()
-                                            .rounded_tl(style::radius(cx))
-                                            .bg(accent)
-                                            .child(
-                                                icons::icon(icons::CHECK)
-                                                    .size(px(6.))
-                                                    .text_color(cx.theme().foreground),
-                                            ),
-                                    )
-                                }),
-                        )
-                    })
-                    .child(
-                        div()
-                            .id(("title", index))
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .text_sm()
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(title_color)
-                            // Truncated text is otherwise unrecoverable: narrow the window or meet
-                            // a long "Artist feat. Artist" credit and the rest is simply gone.
-                            .tooltip({
-                                let title = title.clone();
-                                move |window, cx| {
-                                    gpui_kit::component::tooltip::Tooltip::new(title.clone())
-                                        .build(window, cx)
-                                }
-                            })
-                            .child(title.clone()),
-                    ),
-            )
-            .child(
-                columns::flexible(columns::TEXT_MIN, 1.)
-                    .id(("artist", index))
-                    .text_sm()
-                    .text_color(style::slate_500(cx))
-                    .when_some(artist_route.clone(), |cell, route| {
-                        cell.hover(|cell| cell.text_color(style::slate_400(cx)))
-                            .on_click(move |_, _, cx| {
-                                // Without this the row's own click would play the track too.
-                                cx.stop_propagation();
-                                Navigator::navigate(route.clone(), cx)
-                            })
-                    })
-                    .tooltip({
-                        let artist = artist.clone();
-                        move |window, cx| {
-                            gpui_kit::component::tooltip::Tooltip::new(artist.clone())
-                                .build(window, cx)
-                        }
-                    })
-                    .child(div().flex_1().min_w_0().truncate().child(artist.clone())),
-            )
-            .when(self.options.show_album, |row| {
-                row.child(
-                    columns::flexible(columns::TEXT_MIN, 1.)
-                        .id(("album", index))
-                        .text_sm()
-                        .text_color(style::slate_500(cx))
-                        .hover(|cell| cell.text_color(style::slate_400(cx)))
-                        .on_click({
-                            let album_id = album_id.clone();
-                            move |_, _, cx| {
-                                if !album_id.is_empty() {
-                                    cx.stop_propagation();
-                                    Navigator::navigate(Route::Album(album_id.clone().into()), cx);
-                                }
-                            }
-                        })
-                        .tooltip({
-                            let album = album.clone();
-                            move |window, cx| {
-                                gpui_kit::component::tooltip::Tooltip::new(album.clone())
-                                    .build(window, cx)
-                            }
-                        })
-                        .child(div().flex_1().min_w_0().truncate().child(album.clone())),
-                )
-            })
-            .child(
-                columns::fixed(columns::DURATION)
-                    .justify_end()
-                    .text_xs()
-                    .text_color(style::white(style::TEXT_DIM, cx))
-                    .child(length),
-            )
-            .child(
-                columns::fixed(columns::MENU)
-                    .id(("row-menu", index))
-                    .justify_end()
-                    // The popover stops the press; this stops the rest of the cell playing the row.
-                    .on_click(|_, _, cx| cx.stop_propagation())
-                    .when(!menu_open, |cell| {
-                        cell.invisible()
-                            .group_hover(ROW_GROUP, |dots| dots.visible())
-                    })
-                    .child(
-                        Button::new(("row-menu-button", index))
-                            .ghost()
-                            .xsmall()
-                            .icon(icons::icon(icons::MORE))
-                            .dropdown_menu({
-                                let menu = menu.clone();
-                                move |popup, window, cx| menu(popup, window, cx)
-                            })
-                            .on_open_change({
-                                let list = cx.entity().downgrade();
-                                let key = track.key.clone();
-                                move |open, _, cx| {
-                                    let key = open.then(|| key.clone());
-                                    list.update(cx, |this, cx| {
-                                        this.menu_open = key;
-                                        cx.notify();
-                                    })
-                                    .ok();
-                                }
-                            }),
-                    ),
-            )
-            .context_menu(move |popup, window, cx| menu(popup, window, cx))
+            .on_pick(cx.listener({
+                let key = track.key.clone();
+                move |this, _: &bool, _, cx| this.toggle_selected(key.clone(), cx)
+            }))
+            .menu(menu)
             .into_any_element()
     }
 }
@@ -809,10 +527,9 @@ impl Render for TrackList {
                 uniform_list(
                     "track-list",
                     count,
-                    cx.processor(move |this, range: std::ops::Range<usize>, window, cx| {
-                        range
-                            .map(|index| this.row(index, window, cx).into_any_element())
-                            .collect()
+                    cx.processor(move |this, range: std::ops::Range<usize>, _, cx| {
+                        let columns = this.layout();
+                        range.map(|index| this.row(index, &columns, cx)).collect()
                     }),
                 )
                 .track_scroll(&self.scroll)

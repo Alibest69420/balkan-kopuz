@@ -6,7 +6,7 @@ use api::{ArtworkTarget, ArtworkUpload, PlaylistCapability, PlaylistReorder, Tab
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, Size, v_flex};
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, FontWeight, IntoElement, ParentElement as _,
+    AnyElement, AppContext as _, Context, Entity, IntoElement, ParentElement as _,
     PathPromptOptions, Pixels, Rems, Render, SharedString, Styled as _, Subscription, Window, div,
     px, rems,
 };
@@ -15,8 +15,10 @@ use store::{
     DownloadsModel, Navigator, Notices, PlaylistsModel, Query, Route, SourcesModel, actions,
 };
 use widgets::format::{t, t_with};
-use widgets::track_list::{TrackActions, TrackList, TrackListEvent, columns};
-use widgets::{DetailHeader, EmptyState, detail_header_skeleton, icons, motion, style};
+use widgets::track_list::{TrackActions, TrackList, TrackListEvent};
+use widgets::{
+    DetailHeader, EmptyState, TrackHeader, detail_header_skeleton, icons, motion, style,
+};
 
 use crate::cards::tweened;
 
@@ -488,7 +490,7 @@ impl PlaylistDetail {
                     .flex_1()
                     .min_h_0()
                     .pb_20()
-                    .child(library::skeleton::rows(10, px(56.), true, 3, cx))
+                    .child(widgets::skeleton::rows(10, px(56.), true, 3, cx))
                     .into_any_element();
             }
             return v_flex()
@@ -507,30 +509,13 @@ impl PlaylistDetail {
             .min_h_0()
             .pb_20()
             .gap_2()
-            .child(column_header(cx))
+            .child(TrackHeader::new(
+                "playlist-header",
+                self.list.read(cx).layout(),
+            ))
             .child(div().flex_1().min_h_0().child(self.list.clone()))
             .into_any_element()
     }
-}
-
-/// The labels over the rows, on the row's own columns; the page had none at all.
-fn column_header(cx: &App) -> impl IntoElement {
-    columns::frame()
-        .border_b_1()
-        .border_color(style::white(style::BORDER, cx))
-        .text_sm()
-        .font_weight(FontWeight::MEDIUM)
-        .text_color(style::white(style::TEXT_MUTED, cx))
-        .child(columns::fixed(columns::INDEX).child("#"))
-        .child(columns::flexible(columns::TITLE_MIN, 2.).child(t("title")))
-        .child(columns::flexible(columns::TEXT_MIN, 1.).child(t("artist")))
-        .child(columns::flexible(columns::TEXT_MIN, 1.).child(t("album")))
-        .child(
-            columns::fixed(columns::DURATION)
-                .justify_end()
-                .child(icons::icon(icons::CLOCK)),
-        )
-        .child(columns::fixed(columns::MENU))
 }
 
 /// `w-14 h-14 rounded-full` with a `text-xl` glyph: the showcase's play and radio.

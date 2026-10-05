@@ -2,6 +2,7 @@
 
 pub mod backdrop;
 pub mod cards;
+pub mod columns;
 pub mod cover;
 pub mod dialogs;
 pub mod focus;
@@ -18,10 +19,13 @@ pub mod playlist_picker;
 pub mod schema_form;
 pub mod scroll;
 pub mod settings;
+pub mod skeleton;
 pub mod skin;
 pub mod states;
 pub mod style;
+pub mod track_header;
 pub mod track_list;
+pub mod track_row;
 
 pub use cards::{
     Frame, PlayState, Tile, TileRow, album_row, album_tile, artist_row, artist_tile, playlist_tile,
@@ -35,6 +39,6 @@ pub use karaoke::KaraokeText;
 pub use schema_form::{FieldChanged, SchemaForm};
 pub use settings::{Section, SettingRow, Toggle, section};
 pub use states::{EmptyState, Loading};
-pub use track_list::{
-    TrackActions, TrackDrag, TrackList, TrackListEvent, TrackListOptions, columns,
-};
+pub use track_header::TrackHeader;
+pub use track_list::{TrackActions, TrackDrag, TrackList, TrackListEvent, TrackListOptions};
+pub use track_row::TrackRow;

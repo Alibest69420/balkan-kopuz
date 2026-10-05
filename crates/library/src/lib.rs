@@ -7,7 +7,6 @@ mod filters;
 mod grid;
 mod selection;
 mod settings;
-pub mod skeleton;
 mod states;
 mod tracks;
 
@@ -25,9 +24,9 @@ use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, FocusHandle, Focusable,
-    InteractiveElement as _, IntoElement, KeyBinding, KeyDownEvent, ParentElement as _, Pixels,
-    Render, ScrollStrategy, SharedString, Styled as _, Subscription, Task, UniformListScrollHandle,
-    Window, actions, div, px,
+    InteractiveElement as _, IntoElement, KeyBinding, KeyDownEvent, ParentElement as _, Render,
+    ScrollStrategy, SharedString, Styled as _, Subscription, Task, UniformListScrollHandle, Window,
+    actions, div, px,
 };
 use store::layout::{Column, Density, TileSize, ViewMode};
 use store::{
@@ -35,7 +34,7 @@ use store::{
     SourcesModel, Target,
 };
 use widgets::format::t;
-use widgets::style;
+use widgets::{skeleton, style};
 
 pub use facet::Facet;
 pub use filters::{Chip, Filters, Sort};
@@ -163,9 +162,6 @@ pub struct Library {
     visible_from: usize,
 
     selection: selection::Selection,
-    menu_open: Option<SharedString>,
-    header_hover: Option<String>,
-    resizing: Option<(String, Pixels, f32)>,
     type_ahead: String,
     type_ahead_at: Option<Instant>,
     band_columns: usize,
@@ -300,9 +296,6 @@ impl Library {
             whole: false,
             visible_from: 0,
             selection: selection::Selection::new(),
-            menu_open: None,
-            header_hover: None,
-            resizing: None,
             type_ahead: String::new(),
             type_ahead_at: None,
             band_columns: 4,
@@ -1063,7 +1056,7 @@ impl Library {
     fn skeleton_body(&self, cx: &mut Context<Self>) -> AnyElement {
         match self.filters.facet {
             Facet::Tracks => {
-                let shown = columns::visible(&self.columns).len();
+                let shown = widgets::columns::visible(&self.columns).len();
                 let height = style::density_row(self.density);
                 let covers = self.density == Density::Comfortable;
                 skeleton::rows(14, height, covers, shown, cx).into_any_element()

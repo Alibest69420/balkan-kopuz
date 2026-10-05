@@ -13,13 +13,11 @@ use gpui_kit::{
 };
 use store::{ConfigModel, PlaylistsModel, QueueModel, Target};
 use widgets::format::{duration, t};
-use widgets::{Cover, EmptyState, TrackDrag, dialogs, icons, menus, motion, style};
+use widgets::{EmptyState, TrackDrag, dialogs, icons, menus, motion, style, track_row};
 
 // Above this point in a row a drop lands before it, below it after.
 const DROP_SPLIT: Pixels = px(23.);
 const LEAD_WIDTH: Pixels = px(16.);
-const ROW_COVER: Pixels = px(40.);
-const LEAD_GLYPH: Pixels = px(12.);
 const REORDER_BUTTON: Pixels = px(14.);
 const REORDER_GLYPH: Pixels = px(9.);
 const ROW_SUBTITLE: f32 = 0.65;
@@ -280,7 +278,7 @@ impl QueueView {
             }))
             .child(
                 icons::icon(glyph)
-                    .size(LEAD_GLYPH)
+                    .size(widgets::lead::GLYPH)
                     .text_color(style::slate_500(cx)),
             )
             .into_any_element()
@@ -361,25 +359,15 @@ impl QueueView {
                     .items_end()
                     .text_xs()
                     .text_color(lead)
-                    .map(|slot| {
-                        if active {
-                            slot.child(icons::icon(icons::VOLUME).size(LEAD_GLYPH))
-                        } else {
-                            slot.children(widgets::lead::number_or_play(
-                                ROW_GROUP,
-                                (index + 1).to_string(),
-                                LEAD_GLYPH,
-                                lead,
-                            ))
-                        }
-                    }),
+                    .children(widgets::lead::lead(
+                        ROW_GROUP,
+                        active,
+                        Some((index + 1).to_string().into()),
+                        lead,
+                    )),
             )
             .when(covers, |row| {
-                row.child(
-                    Cover::new(artwork.as_ref())
-                        .size(ROW_COVER)
-                        .rounded(style::thumb_radius()),
-                )
+                row.child(track_row::thumb(artwork.as_ref(), 0., window, cx))
             })
             .child(
                 v_flex()
@@ -387,7 +375,7 @@ impl QueueView {
                     .min_w_0()
                     .justify_center()
                     .gap_0p5()
-                    .child(div().truncate().text_sm().text_color(lit).child(title))
+                    .child(track_row::title(("queue-title", index), title, lit))
                     .child(
                         div()
                             .truncate()

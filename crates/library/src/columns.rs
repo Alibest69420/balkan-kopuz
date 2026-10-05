@@ -1,82 +1,12 @@
-//! The tracks table's columns: which exist, which are shown, how wide, and in what order.
+//! The tracks table's saved layout: which columns are shown, how wide, and in what order.
 
 use store::layout::Column;
-
-/// One column the table can draw.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Spec {
-    pub id: &'static str,
-    pub label_key: &'static str,
-    /// A column with no natural width shares the leftover space this many ways.
-    pub grow: f32,
-    /// What a flexible column never goes below, or what a fixed one is.
-    pub base: f32,
-    pub align_end: bool,
-    /// The title column carries the cover and can never be hidden; without it there is no row.
-    pub required: bool,
-}
-
-/// Every column, in the order the table ships with.
-pub const SPECS: &[Spec] = &[
-    Spec {
-        id: "title",
-        label_key: "title",
-        grow: 2.,
-        base: 200.,
-        align_end: false,
-        required: true,
-    },
-    Spec {
-        id: "artist",
-        label_key: "artist",
-        grow: 1.,
-        base: 150.,
-        align_end: false,
-        required: false,
-    },
-    Spec {
-        id: "album",
-        label_key: "album",
-        grow: 1.,
-        base: 150.,
-        align_end: false,
-        required: false,
-    },
-    Spec {
-        id: "plays",
-        label_key: "library_column_plays",
-        grow: 0.,
-        base: 64.,
-        align_end: true,
-        required: false,
-    },
-    Spec {
-        id: "format",
-        label_key: "library_column_format",
-        grow: 0.,
-        base: 72.,
-        align_end: false,
-        required: false,
-    },
-    Spec {
-        id: "duration",
-        label_key: "duration",
-        grow: 0.,
-        base: 64.,
-        align_end: true,
-        required: false,
-    },
-];
+use widgets::columns::{SPECS, spec};
 
 /// The columns that are drawn when nobody has changed anything.
 pub const SHIPPED: &[&str] = &["title", "artist", "album", "duration"];
 
-pub fn spec(id: &str) -> Option<&'static Spec> {
-    SPECS.iter().find(|spec| spec.id == id)
-}
-
-/// The saved layout reconciled with the columns this build has: unknown ids dropped, new ones
-/// appended hidden, and the title column forced back on if a file ever says otherwise.
+/// The saved layout reconciled with this build's columns: unknown ids dropped, new ones hidden, title forced on.
 pub fn resolve(saved: &[Column]) -> Vec<Column> {
     if saved.is_empty() {
         return SPECS
@@ -110,15 +40,6 @@ pub fn resolve(saved: &[Column]) -> Vec<Column> {
     columns
 }
 
-/// The shown columns, paired with what they are, in draw order.
-pub fn visible(columns: &[Column]) -> Vec<(&Column, &'static Spec)> {
-    columns
-        .iter()
-        .filter(|column| column.visible)
-        .filter_map(|column| spec(&column.id).map(|spec| (column, spec)))
-        .collect()
-}
-
 /// Put `moved` where `before` sits; dropping a column on itself changes nothing.
 pub fn reorder(columns: &mut Vec<Column>, moved: &str, before: &str) {
     if moved == before {
@@ -142,13 +63,14 @@ pub const MAX_WIDTH: f32 = 600.;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use widgets::columns::visible;
 
     #[test]
     fn an_empty_layout_ships_the_designed_columns() {
         let columns = resolve(&[]);
         let shown: Vec<&str> = visible(&columns)
             .iter()
-            .map(|(column, _)| column.id.as_str())
+            .map(|shown| shown.spec.id)
             .collect();
         assert_eq!(shown, SHIPPED);
     }
