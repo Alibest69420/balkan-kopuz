@@ -1,18 +1,20 @@
 //! The lyrics tab: plain words, or the synced view that follows the playhead line by line.
 
+use std::collections::HashMap;
 use std::ops::Range;
 use std::time::Instant;
 
 use api::{LyricLineView, LyricsView as LyricsSource};
 use components::format::t;
-use components::{KaraokeText, icons, style};
+use components::lyric_line::sung_ink;
+use components::{LyricLine, style};
 use gpui_kit::base::StyledExt as _;
-use gpui_kit::component::{ActiveTheme as _, v_flex};
+use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, Context, Entity, Hsla, InteractiveElement as _, IntoElement, ParentElement as _,
-    Pixels, Render, ScrollHandle, SharedString, StatefulInteractiveElement as _, Styled,
-    Subscription, Task, Window, div, point, px, relative, rems,
+    App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
+    ParentElement as _, Pixels, Render, ScrollHandle, SharedString,
+    StatefulInteractiveElement as _, Styled, Subscription, Task, Window, div, point, px, relative,
 };
 use store::{ConfigModel, PlayerModel, Playhead};
 
@@ -29,22 +31,12 @@ const LINE_ASSUMED_MAX: f64 = 7.0;
 const MAX_WIPE: f64 = 1.2;
 const BACKGROUND_ALPHA: f32 = 0.7;
 const SLIDE_MS: f64 = 720.0;
-// Past this the list has moved under us — a remount or a resize — so re-park rather than wait.
+// Past this the list has moved under us (a remount or a resize), so re-park rather than wait.
 const REPARK_DRIFT: Pixels = px(24.);
 // Depth of field as opacity, per line of distance and clamped: GPUI paints no blur over text.
 const DEPTH_STEP: f32 = 0.09;
 const DEPTH_MAX: f32 = 0.55;
-const INTERLUDE_BAR: Pixels = px(72.);
-// `text-white/40` unsung, `text-white/60` under the pointer: a line the voice has left.
-const DIM: f32 = 0.4;
-const DIM_HOVER: f32 = 0.6;
-// A background line is quieter still: `text-white/25`, lit at `text-white/70`.
-const BACKGROUND_DIM: f32 = 0.25;
-// `min(100%, 20rem)`, and `min(90%, 18rem)` once a duet pushes the lines to the edges.
-const LINE_WIDTH: f32 = 20.;
-const TURN_WIDTH: f32 = 18.;
-// `leading-snug` on the small print of a background line, `leading-relaxed` on unsynced words.
-const SNUG: f32 = 1.375;
+// `leading-relaxed` on unsynced words.
 const RELAXED: f32 = 1.625;
 
 /// A word or syllable of a line, with the byte range it occupies in the line's text.
@@ -289,6 +281,10 @@ pub struct LyricsView {
     scroll: ScrollHandle,
     auto_sync: bool,
     active: Option<usize>,
+    /// The lines lit alongside the active one, as last drawn.
+    lit: Vec<usize>,
+    /// The lit lines that move with the playhead, each redrawing itself on a tick or a frame.
+    clocks: HashMap<usize, Entity<LineClock>>,
     slide: Option<Slide>,
     _fetch: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
@@ -301,7 +297,7 @@ impl LyricsView {
         let config = ConfigModel::global(cx);
         let subscriptions = vec![
             cx.observe(&player, |this, player, cx| this.track_changed(&player, cx)),
-            cx.observe(&playhead, |_, _, cx| cx.notify()),
+            cx.observe(&playhead, |this, _, cx| this.on_playhead(cx)),
             cx.observe(&config, |_, _, cx| cx.notify()),
         ];
         Self {
@@ -311,9 +307,29 @@ impl LyricsView {
             scroll: ScrollHandle::new(),
             auto_sync: true,
             active: None,
+            lit: Vec::new(),
+            clocks: HashMap::new(),
             slide: None,
             _fetch: None,
             _subscriptions: subscriptions,
+        }
+    }
+
+    /// A tick only matters here once the sung line changes, or the list has drifted off its parking spot.
+    fn on_playhead(&mut self, cx: &mut Context<Self>) {
+        let Lyrics::Synced { lines, main } = &self.lyrics else {
+            return;
+        };
+        let time = lyric_time(cx);
+        let active = active_main_index(lines, main, time);
+        let lit = active_secondary(lines, main, time, active);
+        let drifted = self.auto_sync
+            && self.slide.is_none()
+            && active
+                .and_then(|index| self.comfort_offset(index))
+                .is_some_and(|target| (target - self.scroll.offset().y).abs() > REPARK_DRIFT);
+        if active != self.active || lit != self.lit || drifted {
+            cx.notify();
         }
     }
 
@@ -321,13 +337,15 @@ impl LyricsView {
         let player = player.read(cx);
         let radio = player.is_radio();
         let key = player.track().map(|track| track.key.clone());
+        // The playhead observer reads the same change, so a track that is still the same needs nothing here.
         if key == self.key {
-            cx.notify();
             return;
         }
         self.key = key.clone();
         self.auto_sync = true;
         self.active = None;
+        self.lit.clear();
+        self.clocks.clear();
         self.slide = None;
         self.scroll.set_offset(point(px(0.), px(0.)));
         self.generation += 1;
@@ -354,6 +372,7 @@ impl LyricsView {
                 if this.generation != generation {
                     return;
                 }
+                this.clocks.clear();
                 this.lyrics = match answer {
                     Ok(view) => adopt(view),
                     Err(error) => {
@@ -395,14 +414,6 @@ impl LyricsView {
             to: target,
             started: Instant::now(),
         });
-    }
-
-    /// Whether the line being sung carries per-word timing, and so has a fill that wants frames.
-    fn has_karaoke(&self, active: Option<usize>) -> bool {
-        let (Lyrics::Synced { lines, .. }, Some(active)) = (&self.lyrics, active) else {
-            return false;
-        };
-        lines.get(active).is_some_and(|line| line.chunks.len() > 1)
     }
 
     /// Advance the glide, answering whether another frame is owed.
@@ -474,109 +485,94 @@ fn adopt(view: LyricsSource) -> Lyrics {
     Lyrics::Synced { lines, main }
 }
 
-/// One rendered line: its own colouring, its karaoke fill, and the seek its click asks for.
-#[allow(clippy::too_many_arguments)]
-fn line_element(
-    index: usize,
-    line: &Line,
-    lit: bool,
+/// The time into the lyrics: the clock runs ahead of the speakers, so hold it back by what the output costs.
+fn lyric_time(cx: &App) -> f64 {
+    let player = PlayerModel::global(cx).read(cx);
+    let config = ConfigModel::global(cx).read(cx);
+    let config = config.config();
+    let offset = if config.lyrics_offset_auto {
+        seconds(player.output_latency_ms().unwrap_or_default())
+    } else {
+        f64::from(config.lyrics_offset_ms) / 1000.0
+    };
+    player.position_ms() as f64 / 1000.0 - offset
+}
+
+fn start_ms(line: &Line) -> u64 {
+    (line.start.max(0.0) * 1000.0) as u64
+}
+
+fn seek_to(ms: u64, _: &mut Window, cx: &mut App) {
+    PlayerModel::global(cx).update(cx, |player, cx| player.seek(ms, cx));
+}
+
+/// How a lit line sits among the others, which only the list can know.
+#[derive(Clone, Copy, PartialEq)]
+struct Look {
     opacity: f32,
-    time: f64,
-    has_opposite: bool,
-    sung: Hsla,
-    cx: &mut Context<LyricsView>,
-) -> AnyElement {
-    let start_ms = (line.start.max(0.0) * 1000.0) as u64;
-    let tint = if line.background {
-        BACKGROUND_ALPHA
-    } else {
-        1.0
-    };
-    let base = if lit {
-        sung.alpha(tint)
-    } else if line.background {
-        sung.alpha(BACKGROUND_DIM)
-    } else {
-        sung.alpha(DIM)
-    };
-    let turned = line.opposite || has_opposite;
+    paired: bool,
+}
 
-    let body = div()
-        .id(("lyric", index))
-        .w(if turned { relative(0.9) } else { relative(1.) })
-        .max_w(rems(if turned { TURN_WIDTH } else { LINE_WIDTH }))
-        .py_0p5()
-        .opacity(opacity)
-        .text_color(base)
-        .when(line.background, |row| {
-            row.pl_4()
-                .text_sm()
-                .font_medium()
-                .line_height(relative(SNUG))
-        })
-        .when(!line.background, |row| row.font_semibold())
-        // The `scale(1.12)` the lit Dioxus line grows by is a transform GPUI has not; a size step stands in.
-        .when(!line.background && lit, |row| row.text_xl())
-        .when(!line.background && !lit, |row| row.text_lg())
-        .when(line.opposite, |row| row.text_right().italic().ml_auto())
-        .when(!line.opposite && has_opposite, |row| row.text_left())
-        .when(!line.opposite && !has_opposite, |row| {
-            row.text_center().mx_auto()
-        })
-        .when(!lit, |row| {
-            row.hover(move |row| row.text_color(sung.alpha(DIM_HOVER * tint)))
-        })
-        .on_click(move |_, _, cx| {
-            PlayerModel::global(cx).update(cx, |player, cx| player.seek(start_ms, cx));
-        });
+/// A lit line that moves with the playhead: it alone redraws on a tick or an animation frame.
+struct LineClock {
+    index: usize,
+    line: Line,
+    look: Look,
+    _playhead: Subscription,
+}
 
-    if line.interlude {
-        let span = line.end.unwrap_or(line.start) - line.start;
-        let progress = if span > 0.0 {
-            ((time - line.start) / span).clamp(0.0, 1.0) as f32
+impl LineClock {
+    fn new(index: usize, line: Line, look: Look, cx: &mut Context<Self>) -> Self {
+        Self {
+            index,
+            line,
+            look,
+            _playhead: cx.observe(&Playhead::global(cx), |_, _, cx| cx.notify()),
+        }
+    }
+
+    fn set_look(&mut self, look: Look, cx: &mut Context<Self>) {
+        if self.look != look {
+            self.look = look;
+            cx.notify();
+        }
+    }
+}
+
+impl Render for LineClock {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let time = lyric_time(cx);
+        let line = &self.line;
+        let mut row = LyricLine::new(self.index, start_ms(line), line.text.clone())
+            .ink(sung_ink(window, cx))
+            .lit(true)
+            .background(line.background)
+            .opposite(line.opposite)
+            .paired(self.look.paired)
+            .opacity(self.look.opacity)
+            .on_seek(seek_to);
+        if line.interlude {
+            let span = line.end.unwrap_or(line.start) - line.start;
+            let progress = if span > 0.0 {
+                ((time - line.start) / span).clamp(0.0, 1.0) as f32
+            } else {
+                0.0
+            };
+            row = row.interlude(progress);
         } else {
-            0.0
-        };
-        return body
-            .flex()
-            .py_2()
-            .items_center()
-            .gap_2()
-            .when(!has_opposite, |row| row.justify_center())
-            .child(icons::icon(icons::MUSIC).size(px(16.)))
-            .child(
-                div()
-                    .w(INTERLUDE_BAR)
-                    .h(px(3.))
-                    .rounded_full()
-                    .bg(cx.theme().muted)
-                    .child(
-                        div()
-                            .h(px(3.))
-                            .w(INTERLUDE_BAR * progress)
-                            .rounded_full()
-                            .bg(sung.alpha(tint)),
-                    ),
-            )
-            .into_any_element();
+            let fills = line
+                .chunks
+                .iter()
+                .map(|chunk| (chunk.range.clone(), chunk_fill(chunk, time)))
+                .collect();
+            row = row.karaoke(fills);
+            // A frame request re-renders only this line, and only while a syllable is filling.
+            if line.chunks.len() > 1 && PlayerModel::global(cx).read(cx).is_playing() {
+                window.request_animation_frame();
+            }
+        }
+        row
     }
-
-    if line.chunks.is_empty() || !lit {
-        return body.child(line.text.clone()).into_any_element();
-    }
-
-    let fills = line
-        .chunks
-        .iter()
-        .map(|chunk| (chunk.range.clone(), chunk_fill(chunk, time)))
-        .collect();
-    body.child(KaraokeText::new(
-        line.text.clone(),
-        sung.alpha(tint),
-        sung.alpha(DIM * tint),
-        fills,
-    ))
-    .into_any_element()
 }
 
 /// Every line but the lit ones recedes with distance from the anchor.
@@ -590,25 +586,14 @@ fn depth_opacity(index: usize, anchor: Option<usize>, lit: bool, strength: f32) 
 
 impl Render for LyricsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let player = PlayerModel::global(cx).read(cx);
-        let playing = player.is_playing();
-        let position = player.position_ms();
-        let latency = player.output_latency_ms().unwrap_or_default();
-
         let config = ConfigModel::global(cx).read(cx);
         let config = config.config();
-        // The clock runs ahead of the speakers; hold the lyrics back by whatever the output costs.
-        let offset = if config.lyrics_offset_auto {
-            seconds(latency)
-        } else {
-            f64::from(config.lyrics_offset_ms) / 1000.0
-        };
         let strength = if config.lyrics_depth_blur {
             f32::from(config.lyrics_depth_blur_strength) / 100.0
         } else {
             0.0
         };
-        let time = position as f64 / 1000.0 - offset;
+        let time = lyric_time(cx);
 
         let (mut active, mut lit) = (None, Vec::new());
         if let Lyrics::Synced { lines, main } = &self.lyrics {
@@ -619,12 +604,7 @@ impl Render for LyricsView {
         // Nothing lit anchors the depth on the last line still ringing out.
         let anchor = active.or_else(|| lit.iter().copied().max());
         // The sung words wear the cover's colour, clamped until it is legible on the background.
-        let base = cx.theme().foreground;
-        let background = cx.theme().background;
-        let sung = theme::readable_on(
-            components::motion::accent(theme::Surface::Sheet, base, window, cx),
-            background,
-        );
+        let sung = sung_ink(window, cx);
 
         let body = match &self.lyrics {
             Lyrics::Idle => div().into_any_element(),
@@ -649,17 +629,35 @@ impl Render for LyricsView {
                 .child(text.clone())
                 .into_any_element(),
             Lyrics::Synced { lines, .. } => {
-                let has_opposite = lines.iter().any(|line| line.opposite);
+                let paired = lines.iter().any(|line| line.opposite);
                 let height = self.scroll.bounds().size.height;
-                let children = lines
-                    .iter()
-                    .enumerate()
-                    .map(|(index, line)| {
-                        let is_lit = Some(index) == active || lit.contains(&index);
-                        let opacity = depth_opacity(index, anchor, is_lit, strength);
-                        line_element(index, line, is_lit, opacity, time, has_opposite, sung, cx)
-                    })
-                    .collect::<Vec<_>>();
+                let mut children = Vec::with_capacity(lines.len());
+                for (index, line) in lines.iter().enumerate() {
+                    let is_lit = Some(index) == active || lit.contains(&index);
+                    let opacity = depth_opacity(index, anchor, is_lit, strength);
+                    if is_lit && (line.interlude || !line.chunks.is_empty()) {
+                        let look = Look { opacity, paired };
+                        let clock = self.clocks.entry(index).or_insert_with(|| {
+                            cx.new(|cx| LineClock::new(index, line.clone(), look, cx))
+                        });
+                        clock.update(cx, |clock, cx| clock.set_look(look, cx));
+                        children.push(clock.clone().into_any_element());
+                        continue;
+                    }
+                    children.push(
+                        LyricLine::new(index, start_ms(line), line.text.clone())
+                            .ink(sung)
+                            .lit(is_lit)
+                            .background(line.background)
+                            .opposite(line.opposite)
+                            .paired(paired)
+                            .opacity(opacity)
+                            .on_seek(seek_to)
+                            .into_any_element(),
+                    );
+                }
+                self.clocks
+                    .retain(|index, _| Some(*index) == active || lit.contains(index));
                 self.scroller(cx)
                     .child(div().h(height * COMFORT_OFFSET))
                     .children(children)
@@ -667,24 +665,22 @@ impl Render for LyricsView {
                     .into_any_element()
             }
         };
+        self.lit = lit;
 
-        let synced = matches!(self.lyrics, Lyrics::Synced { .. });
-        // A frame request re-renders the whole window: ask only while the glide or a fill moves.
-        let filling = playing && self.has_karaoke(active);
-        if synced && (filling || settling) {
+        // The glide is the only thing here that moves between lines; a fill redraws its own line.
+        if matches!(self.lyrics, Lyrics::Synced { .. }) && settling {
             window.request_animation_frame();
         }
 
-        v_flex()
-            .relative()
-            .size_full()
-            .child(body)
-            .when(synced && !self.auto_sync, |panel| {
+        v_flex().relative().size_full().child(body).when(
+            matches!(self.lyrics, Lyrics::Synced { .. }) && !self.auto_sync,
+            |panel| {
                 panel.child(
                     components::FollowButton::new("lyrics-sync")
                         .on_click(cx.listener(|this, _, _, cx| this.rearm(cx))),
                 )
-            })
+            },
+        )
     }
 }
 
@@ -793,5 +789,34 @@ mod tests {
         assert_eq!(depth_opacity(9, Some(4), false, 0.0), 1.0);
         assert!(depth_opacity(5, Some(4), false, 1.0) > depth_opacity(9, Some(4), false, 1.0));
         assert_eq!(depth_opacity(99, Some(4), false, 1.0), 1.0 - DEPTH_MAX);
+    }
+
+    #[gpui_kit::test]
+    fn a_tick_only_redraws_the_lyrics_when_the_sung_line_changes(
+        cx: &mut gpui_kit::TestAppContext,
+    ) {
+        use crate::playhead_tests::{boot, counted};
+        boot(cx);
+        let (view, cx) = cx.add_window_view(LyricsView::new);
+        let lines = vec![line(0.0, Some(5.0)), line(6.0, Some(9.0))];
+        let main = main_indices(&lines);
+        view.update(cx, |view, _| view.lyrics = Lyrics::Synced { lines, main });
+        cx.run_until_parked();
+        let draws = counted(&view, cx);
+
+        let tick = |cx: &mut gpui_kit::VisualTestContext| {
+            cx.update(|_, cx| Playhead::global(cx).update(cx, |_, cx| cx.notify()));
+            cx.run_until_parked();
+        };
+        tick(cx);
+        assert_eq!(draws.get(), 1, "the first line began to be sung");
+        for _ in 0..3 {
+            tick(cx);
+        }
+        assert_eq!(
+            draws.get(),
+            1,
+            "a tick inside the same line leaves the list alone"
+        );
     }
 }

@@ -6,7 +6,7 @@ use store::Playhead;
 
 use super::*;
 
-fn boot(cx: &mut TestAppContext) {
+pub(crate) fn boot(cx: &mut TestAppContext) {
     // The link talks to its tokio runtime from another thread, which the test scheduler refuses by default.
     cx.executor().allow_parking();
     cx.update(|cx| {
@@ -19,7 +19,7 @@ fn boot(cx: &mut TestAppContext) {
     });
 }
 
-fn counted<T: 'static>(
+pub(crate) fn counted<T: 'static>(
     entity: &Entity<T>,
     cx: &mut gpui_kit::VisualTestContext,
 ) -> Rc<Cell<usize>> {
