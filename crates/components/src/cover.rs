@@ -4,13 +4,24 @@ use api::ArtworkRef;
 use gpui_kit::component::Icon;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, ElementId, IntoElement, ObjectFit, ParentElement as _, Pixels, RenderOnce, Styled,
-    StyledImage as _, Window, div, img, px,
+    AnyElement, App, ElementId, IntoElement, ObjectFit, ParentElement as _, Pixels, RenderOnce,
+    Styled, StyledImage as _, Window, div, img, linear_color_stop, linear_gradient, px, relative,
 };
 
 use crate::icons;
 use crate::motion;
 use crate::style;
+
+/// A black wash rising from a cover's foot, so the text laid over it stays legible.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Scrim {
+    /// The wash's opacity at the foot.
+    pub foot: f32,
+    /// Its opacity from `reach` up.
+    pub top: f32,
+    /// How far up the cover the wash fades, as a fraction of its height.
+    pub reach: f32,
+}
 
 /// A row, tile or hero cover. A row without artwork renders the placeholder and asks for nothing.
 #[derive(IntoElement)]
@@ -23,6 +34,8 @@ pub struct Cover {
     zoom: Option<(ElementId, bool)>,
     zoom_speed: Duration,
     zoom_factor: f32,
+    fill: bool,
+    scrim: Option<Scrim>,
 }
 
 impl Cover {
@@ -36,6 +49,8 @@ impl Cover {
             zoom: None,
             zoom_speed: motion::SLOW,
             zoom_factor: motion::ZOOM_SM,
+            fill: false,
+            scrim: None,
         }
     }
 
@@ -80,10 +95,67 @@ impl Cover {
         self.zoom_speed = duration;
         self
     }
+
+    /// Cover the positioned parent edge to edge, as a banner or a card's backdrop; no placeholder.
+    pub fn fill(mut self) -> Self {
+        self.fill = true;
+        self
+    }
+
+    /// A wash over the picture; a filled cover without artwork still draws it.
+    pub fn scrim(mut self, scrim: Scrim) -> Self {
+        self.scrim = Some(scrim);
+        self
+    }
+
+    fn filled(self, window: &mut Window, cx: &mut App) -> AnyElement {
+        // A fraction of the frame per side, so the bleed is a true scale whatever the frame's shape.
+        let bleed = match self.zoom.clone() {
+            Some((id, hovered)) => {
+                let grown = motion::amount(
+                    id,
+                    if hovered { 1. } else { 0. },
+                    self.zoom_speed,
+                    window,
+                    cx,
+                );
+                -(self.zoom_factor - 1.) / 2. * grown
+            }
+            None => 0.,
+        };
+        let hq = self.hq;
+        div()
+            .absolute()
+            .inset_0()
+            .overflow_hidden()
+            .when_some(self.rounded, |frame, radius| frame.rounded(radius))
+            .when_some(self.artwork, |frame, artwork| {
+                frame.child(
+                    img(store::artwork_source(&artwork, hq))
+                        .absolute()
+                        .top(relative(bleed))
+                        .left(relative(bleed))
+                        .right(relative(bleed))
+                        .bottom(relative(bleed))
+                        .object_fit(ObjectFit::Cover),
+                )
+            })
+            .when_some(self.scrim, |frame, scrim| {
+                frame.child(div().absolute().inset_0().bg(linear_gradient(
+                    0.,
+                    linear_color_stop(style::black(scrim.foot, cx), 0.),
+                    linear_color_stop(style::black(scrim.top, cx), scrim.reach),
+                )))
+            })
+            .into_any_element()
+    }
 }
 
 impl RenderOnce for Cover {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        if self.fill {
+            return self.filled(window, cx);
+        }
         // `rounded` on the thumb; a caller that wants a card or an avatar says so.
         let radius = self
             .rounded
@@ -138,5 +210,6 @@ impl RenderOnce for Cover {
                         .text_color(style::white(style::TEXT_FAINT, cx)),
                 ),
             })
+            .into_any_element()
     }
 }

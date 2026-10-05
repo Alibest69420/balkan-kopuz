@@ -5,17 +5,16 @@ use std::collections::HashMap;
 use api::{AlbumInfo, ArtworkRef, Table, TrackPage};
 use components::format::{t, t_with};
 use components::{
-    EmptyState, Loading, PageHeader, TrackActions, TrackList, TrackListEvent, TrackListOptions,
-    icons, motion, style,
+    Cover, EmptyState, Loading, PageHeader, Scrim, TrackActions, TrackList, TrackListEvent,
+    TrackListOptions, icons, motion, style,
 };
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
-    ObjectFit, ParentElement as _, Pixels, Render, RenderOnce, SharedString,
-    StatefulInteractiveElement as _, Styled, StyledImage as _, Subscription, Window, div, img,
-    linear_color_stop, linear_gradient, px,
+    ParentElement as _, Pixels, Render, RenderOnce, SharedString, StatefulInteractiveElement as _,
+    Styled, Subscription, Window, div, px,
 };
 use store::{Navigator, PlayerModel, Query, Route, SourcesModel, actions, all};
 
@@ -27,8 +26,7 @@ pub const TILE_GAP: Pixels = px(16.);
 // `aspect-video`, stated rather than derived: a virtualized band has to know its height up front.
 const TILE_HEIGHT: Pixels = px(135.);
 
-/// `group-hover:scale-110` on a tile: the picture bleeds past its frame instead.
-const BLEED: f32 = -12.;
+/// The card's channels, keyed off its name.
 const HOVER: u64 = 1;
 const WASH: u64 = 2;
 const COVER: u64 = 3;
@@ -86,25 +84,15 @@ impl RenderOnce for GenreCard {
         let key = SharedString::from(format!("genre-{}", self.name));
         let route = Route::Genre(self.name.clone());
         profile::elements::built();
-        // A tile is low-cardinality, so its own hover is worth tracking: the wash and the bleed need it.
-        let pointer = window.use_keyed_state(motion::channel(&key, HOVER), cx, |_, _| false);
-        let hovered = *pointer.read(cx);
-        let scrim = style::black(0.8, cx);
+        let (hovered, pointer) = motion::hovered(motion::channel(&key, HOVER), window, cx);
         let wash = motion::color(
             motion::channel(&key, WASH),
             style::white(if hovered { style::HOVER } else { style::RAISED }, cx),
             window,
             cx,
         );
-        let bleed = motion::length(
-            motion::channel(&key, COVER),
-            px(if hovered { BLEED } else { 0. }),
-            motion::SLOW,
-            window,
-            cx,
-        );
         div()
-            .id(key)
+            .id(key.clone())
             .relative()
             .overflow_hidden()
             .flex()
@@ -118,28 +106,20 @@ impl RenderOnce for GenreCard {
             .border_color(style::white(style::BORDER, cx))
             .bg(wash)
             .cursor_pointer()
-            .on_hover(move |over, _, cx| {
-                pointer.update(cx, |pointer, cx| {
-                    *pointer = *over;
-                    cx.notify();
-                })
-            })
+            .on_hover(motion::track(pointer))
             .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
             .when_some(self.artwork, |tile, artwork| {
                 tile.child(
-                    img(store::artwork_source(&artwork, false))
-                        .absolute()
-                        .top(bleed)
-                        .left(bleed)
-                        .right(bleed)
-                        .bottom(bleed)
-                        .object_fit(ObjectFit::Cover),
+                    Cover::new(Some(&artwork))
+                        .fill()
+                        .zoom(motion::channel(&key, COVER), hovered)
+                        .zoom_factor(motion::ZOOM_LG)
+                        .scrim(Scrim {
+                            foot: 0.8,
+                            top: 0.,
+                            reach: 0.5,
+                        }),
                 )
-                .child(div().absolute().inset_0().size_full().bg(linear_gradient(
-                    0.,
-                    linear_color_stop(scrim, 0.),
-                    linear_color_stop(scrim.opacity(0.), 0.5),
-                )))
             })
             .child(
                 div()

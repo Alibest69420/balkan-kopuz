@@ -3,18 +3,17 @@
 use api::{CatalogDetail, CatalogDetailRequest, CatalogItemKind};
 use components::format::t;
 use components::{
-    EmptyState, PageHeader, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons,
-    motion, style,
+    Cover, EmptyState, PageHeader, Scrim, TrackActions, TrackList, TrackListEvent,
+    TrackListOptions, icons, motion, style,
 };
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement, ObjectFit,
+    AnyElement, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
     ParentElement as _, Render, ScrollHandle, SharedString, StatefulInteractiveElement as _,
-    Styled, StyledImage as _, Subscription, Task, Window, div, img, linear_color_stop,
-    linear_gradient, px, rems,
+    Styled, Subscription, Task, Window, div, px, rems,
 };
 use store::{Link, Route, actions};
 
@@ -227,19 +226,16 @@ impl CatalogArtist {
             .h(banner_height())
             .overflow_hidden()
             .bg(cx.theme().secondary)
-            .when_some(detail.artwork.as_ref(), |frame, artwork| {
-                frame.child(
-                    img(store::artwork_source(artwork, true))
-                        .absolute()
-                        .size_full()
-                        .object_fit(ObjectFit::Cover),
-                )
-            })
-            .child(div().absolute().size_full().bg(linear_gradient(
-                180.,
-                linear_color_stop(style::black(0.2, cx), 0.),
-                linear_color_stop(style::black(0.95, cx), 1.),
-            )))
+            .child(
+                Cover::new(detail.artwork.as_ref())
+                    .fill()
+                    .hq(true)
+                    .scrim(Scrim {
+                        foot: 0.95,
+                        top: 0.2,
+                        reach: 1.,
+                    }),
+            )
             .child(
                 v_flex()
                     .absolute()

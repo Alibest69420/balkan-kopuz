@@ -29,7 +29,7 @@ pub use cards::{
     tile_grid,
 };
 pub use carousel::{Arrows, Carousel, Heading, ShelfHeading, heading_link};
-pub use cover::Cover;
+pub use cover::{Cover, Scrim};
 pub use grid::{GridMode, JumpRail, TileGrid, rail_letter};
 pub use header::{DetailHeader, PageHeader, detail_header_skeleton};
 pub use karaoke::KaraokeText;
