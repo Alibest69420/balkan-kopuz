@@ -147,7 +147,7 @@ impl ArtistDetail {
     fn sync_rows(&mut self, cx: &mut Context<Self>) {
         let options = TrackListOptions {
             show_index: true,
-            show_cover: controls::config(cx).show_row_images,
+            show_cover: true,
             show_album: true,
             track_numbers: false,
             selectable: true,

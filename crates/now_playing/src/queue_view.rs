@@ -300,7 +300,7 @@ impl QueueView {
         let artist = SharedString::from(track.artist.clone());
         let artwork = track.artwork.clone();
         let uid = SharedString::from(track.uid.clone());
-        let covers = ConfigModel::global(cx).read(cx).config().show_row_images;
+        let covers = ConfigModel::global(cx).read(cx).row_images();
         let at = index as u32;
         let raised = style::white(style::RAISED, cx);
         let accent = motion::accent(theme::Surface::Sheet, cx.theme().primary, window, cx);

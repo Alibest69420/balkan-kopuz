@@ -214,10 +214,7 @@ impl Library {
                         crate::skeleton::tile(width, facet.round_tiles(), cx).into_any_element()
                     } else {
                         crate::skeleton::catalog_row(
-                            store::ConfigModel::global(cx)
-                                .read(cx)
-                                .config()
-                                .show_row_images,
+                            store::ConfigModel::global(cx).read(cx).row_images(),
                             cx,
                         )
                         .into_any_element()
@@ -411,10 +408,7 @@ impl Library {
             .on_hover(self.hover_listener(tile.id.clone(), cx))
             .on_click(self.click_listener(tile.clone(), index, cx))
             .when(
-                store::ConfigModel::global(cx)
-                    .read(cx)
-                    .config()
-                    .show_row_images,
+                store::ConfigModel::global(cx).read(cx).row_images(),
                 |row| {
                     row.child(
                         Cover::new(tile.artwork.as_ref())

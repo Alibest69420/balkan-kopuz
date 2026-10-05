@@ -57,6 +57,11 @@ impl ConfigModel {
         &self.view.config
     }
 
+    /// Whether track rows carry their cover, which every list of tracks asks.
+    pub fn row_images(&self) -> bool {
+        self.view.config.show_row_images
+    }
+
     /// Nothing is saved until the daemon's config has been read, so a default is never persisted.
     pub fn is_loaded(&self) -> bool {
         self.loaded

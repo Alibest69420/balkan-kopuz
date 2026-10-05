@@ -209,10 +209,7 @@ impl Library {
         let Some(track) = self.track_at(index).cloned() else {
             let shown = columns::visible(&self.columns).len();
             let covers = self.density == Density::Comfortable
-                && store::ConfigModel::global(cx)
-                    .read(cx)
-                    .config()
-                    .show_row_images;
+                && store::ConfigModel::global(cx).read(cx).row_images();
             return crate::skeleton::row(slot, height, covers, shown, cx).into_any_element();
         };
         profile::elements::built();
@@ -224,10 +221,7 @@ impl Library {
         let accent = cx.theme().primary;
         let mark = px(12.);
         let covers = self.density == Density::Comfortable
-            && store::ConfigModel::global(cx)
-                .read(cx)
-                .config()
-                .show_row_images;
+            && store::ConfigModel::global(cx).read(cx).row_images();
         let cover = px(40.);
         let menu_open = self.menu_open.as_deref() == Some(key.as_str());
         let wash = motion::color(
