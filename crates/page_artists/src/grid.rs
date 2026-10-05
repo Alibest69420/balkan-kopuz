@@ -1,17 +1,17 @@
 //! The artists grid: every credited name in the library, with the photo the daemon found for it.
 
 use std::collections::HashSet;
+use std::ops::Range;
 use std::time::Duration;
 
 use api::{AlbumPage, ArtistInfo, ArtistPage, Table};
 use components::format::t;
-use components::{EmptyState, Loading, PageHeader, icons};
+use components::{EmptyState, GridMode, Loading, PageHeader, TileGrid, icons};
 use config::{AlbumViewMode, ArtistSortField};
 use gpui_kit::component::v_flex;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Pixels,
-    Render, Styled as _, Subscription, Task, UniformListScrollHandle, Window, div, px,
-    uniform_list,
+    App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
+    Subscription, Task, Window, div, px,
 };
 use store::{ConfigModel, Link, Query};
 
@@ -19,10 +19,6 @@ use crate::controls::{self, ViewModeKey};
 use crate::names;
 
 const TILE: f32 = 160.;
-// `gap-8` between tiles, so a column costs this much width.
-const TILE_GAP: gpui_kit::Pixels = px(32.);
-// Until the list has been laid out once there is no measured width to divide.
-const TILE_COLUMNS_FALLBACK: usize = 5;
 // Bands land one after another while a list scrolls; their missing photos travel as one request.
 const PHOTO_BATCH: Duration = Duration::from_millis(150);
 
@@ -30,7 +26,7 @@ const PHOTO_BATCH: Duration = Duration::from_millis(150);
 pub struct Artists {
     albums: Entity<Query<AlbumPage>>,
     artists: Entity<Query<ArtistPage>>,
-    scroll: UniformListScrollHandle,
+    grid: TileGrid,
     // Built on change, not per frame: render runs on every playhead tick.
     entries: Vec<ArtistInfo>,
     // Every artist a photo was asked for, so the Tracks refresh its answer causes asks nothing again.
@@ -66,7 +62,8 @@ impl Artists {
         Self {
             albums,
             artists,
-            scroll: UniformListScrollHandle::new(),
+            // `gap-8` between round tiles.
+            grid: TileGrid::new("artists-scroll").gap(px(32.)).fallback(5),
             entries: Vec::new(),
             asked: HashSet::new(),
             pending: Vec::new(),
@@ -80,13 +77,17 @@ impl Artists {
         cx.notify();
     }
 
-    /// Queue the photos a band on screen lacks; only what is seen is ever looked up, and once.
-    fn want_photos(&mut self, entries: &[ArtistInfo], cx: &mut Context<Self>) {
-        let missing = entries
+    /// Queue the photos the bands on screen lack; only what is seen is ever looked up, and once.
+    fn want_photos(&mut self, shown: Range<usize>, cx: &mut Context<Self>) {
+        let Some(entries) = self.entries.get(shown) else {
+            return;
+        };
+        let missing: Vec<String> = entries
             .iter()
             .filter(|artist| artist.artwork.is_none())
             .filter(|artist| self.asked.insert(artist.key.clone()))
-            .map(|artist| artist.key.clone());
+            .map(|artist| artist.key.clone())
+            .collect();
         let before = self.pending.len();
         self.pending.extend(missing);
         if before == 0 && !self.pending.is_empty() {
@@ -111,48 +112,6 @@ impl Artists {
         self.albums.read(cx).is_settled() && self.artists.read(cx).is_settled()
     }
 
-    /// How many tiles fit across, from the width the list reported at its last layout.
-    fn tile_columns(&self) -> usize {
-        let width: Pixels = self.scroll.0.borrow().base_handle.bounds().size.width;
-        if width <= px(0.) {
-            return TILE_COLUMNS_FALLBACK;
-        }
-        let pitch = px(TILE) + TILE_GAP;
-        (((width + TILE_GAP) / pitch) as usize).max(1)
-    }
-
-    /// One virtualized band: a row of tiles in grid mode, a single artist in list mode.
-    fn band(
-        &mut self,
-        index: usize,
-        columns: usize,
-        mode: AlbumViewMode,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let first = index * columns;
-        let last = (first + columns).min(self.entries.len());
-        let entries = self.entries[first..last].to_vec();
-        self.want_photos(&entries, cx);
-        match mode {
-            AlbumViewMode::Grid => div()
-                .flex()
-                .w_full()
-                .items_start()
-                .gap_8()
-                .pb_8()
-                .children(
-                    entries
-                        .iter()
-                        .map(|entry| components::artist_tile(entry).size(px(TILE))),
-                )
-                .into_any_element(),
-            AlbumViewMode::List => div()
-                .w_full()
-                .children(entries.iter().map(components::artist_row))
-                .into_any_element(),
-        }
-    }
-
     fn build_entries(&self, cx: &App) -> Vec<ArtistInfo> {
         let albums = self
             .albums
@@ -174,16 +133,46 @@ impl Artists {
 impl Render for Artists {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("artists");
-        components::scroll::smooth_list("artists-scroll", &self.scroll, window, cx);
         let settled = self.is_settled(cx);
-        let mode = controls::config(cx).artists_view_mode;
-        let empty = self.entries.is_empty();
-        // A band of tiles is the virtualized unit, so the grid builds a screenful of the library.
-        let columns = match mode {
-            AlbumViewMode::Grid => self.tile_columns(),
-            AlbumViewMode::List => 1,
+        let mode = match controls::config(cx).artists_view_mode {
+            AlbumViewMode::Grid => GridMode::Tiles,
+            AlbumViewMode::List => GridMode::Rows,
         };
-        let rows = self.entries.len().div_ceil(columns.max(1));
+        let empty = self.entries.is_empty();
+
+        let body = match (settled, empty) {
+            (false, true) => Loading.into_any_element(),
+            (true, true) => EmptyState::new(t("artists"))
+                .icon(icons::MIC)
+                .detail(t("no_tracks_found"))
+                .into_any_element(),
+            _ => div()
+                .flex_1()
+                .min_h_0()
+                .pb_20()
+                .child(
+                    self.grid
+                        .bands(
+                            self.entries.len(),
+                            px(TILE),
+                            mode,
+                            move |this: &mut Artists, index, _, _| {
+                                let artist = &this.entries[index];
+                                match mode {
+                                    GridMode::Tiles => components::artist_tile(artist)
+                                        .size(px(TILE))
+                                        .into_any_element(),
+                                    GridMode::Rows => {
+                                        components::artist_row(artist).into_any_element()
+                                    }
+                                }
+                            },
+                        )
+                        .visit(|this: &mut Artists, shown, _, cx| this.want_photos(shown, cx))
+                        .build(window, cx),
+                )
+                .into_any_element(),
+        };
 
         v_flex()
             .size_full()
@@ -202,30 +191,6 @@ impl Render for Artists {
                         cx,
                     )),
             )
-            .child(match (settled, empty) {
-                (false, true) => Loading.into_any_element(),
-                (true, true) => EmptyState::new(t("artists"))
-                    .icon(icons::MIC)
-                    .detail(t("no_tracks_found"))
-                    .into_any_element(),
-                _ => div()
-                    .flex_1()
-                    .min_h_0()
-                    .pb_20()
-                    .child(
-                        uniform_list(
-                            "artists-scroll",
-                            rows,
-                            cx.processor(move |this, range: std::ops::Range<usize>, _, cx| {
-                                range
-                                    .map(|index| this.band(index, columns, mode, cx))
-                                    .collect()
-                            }),
-                        )
-                        .track_scroll(&self.scroll)
-                        .size_full(),
-                    )
-                    .into_any_element(),
-            })
+            .child(body)
     }
 }

@@ -2,16 +2,18 @@
 
 use api::{AlbumInfo, AlbumPage, JobKind, Table};
 use components::format::t;
-use components::{Frame, Loading, PageHeader, album_row, album_tile, icons, motion, style};
+use components::{
+    Frame, GridMode, Loading, PageHeader, TileGrid, album_row, album_tile, icons, motion, style,
+};
 use config::{AlbumSortField, AlbumViewMode, SortCriterion, SortDirection};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _, Styled,
-    Subscription, UniformListScrollHandle, Window, div, px, uniform_list,
+    App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
+    ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled,
+    Subscription, Window, div, px,
 };
 use store::{ConfigModel, JobsModel, Query, SourcesModel};
 
@@ -24,10 +26,6 @@ use crate::sort;
 const TILE: gpui_kit::Pixels = px(180.);
 // The tile's cover fills it inside `p-4`.
 const TILE_COVER: gpui_kit::Pixels = px(148.);
-// `gap-6` between tiles, so a column costs this much width.
-const TILE_GAP: gpui_kit::Pixels = px(24.);
-// Until the list has been laid out once there is no measured width to divide.
-const TILE_COLUMNS_FALLBACK: usize = 4;
 
 // The two chrome controls track their own hover, since a Button cannot carry a tween.
 const SORT_CONTROL: &str = "albums-sort-frame";
@@ -38,7 +36,7 @@ pub struct Albums {
     // Sorted once per change, since a card hover notifies and render would re-sort the library.
     visible: Vec<AlbumInfo>,
     sort_fields: Vec<AlbumSortField>,
-    scroll: UniformListScrollHandle,
+    grid: TileGrid,
     control: Option<&'static str>,
     // A library sync is offered once per visit, not once per refetch.
     synced: bool,
@@ -72,7 +70,7 @@ impl Albums {
             albums,
             visible: Vec::new(),
             sort_fields: Vec::new(),
-            scroll: UniformListScrollHandle::new(),
+            grid: TileGrid::new("albums-scroll"),
             control: None,
             synced: false,
             _subscriptions: subscriptions,
@@ -259,57 +257,34 @@ impl Albums {
     }
 }
 
-impl Albums {
-    /// How many tiles fit across, from the width the list reported at its last layout.
-    fn tile_columns(&self) -> usize {
-        let width: Pixels = self.scroll.0.borrow().base_handle.bounds().size.width;
-        if width <= px(0.) {
-            return TILE_COLUMNS_FALLBACK;
-        }
-        // The last tile in a band needs no gap after it.
-        (((width + TILE_GAP) / (TILE + TILE_GAP)) as usize).max(1)
-    }
-
-    /// One virtualized band: a row of tiles in grid mode, a single album in list mode.
-    fn band(&self, index: usize, columns: usize, grid: bool) -> AnyElement {
-        let first = index * columns;
-        let last = (first + columns).min(self.visible.len());
-        let mut cards: Vec<AnyElement> = Vec::with_capacity(last.saturating_sub(first));
-        for album in &self.visible[first..last] {
-            cards.push(match grid {
-                true => album_tile(album)
-                    .size(TILE_COVER)
-                    .frame(Frame::Card)
-                    .into_any_element(),
-                false => album_row(album).into_any_element(),
-            });
-        }
-        match grid {
-            true => h_flex()
-                .w_full()
-                .items_start()
-                .gap_6()
-                .pb_6()
-                .children(cards)
-                .into_any_element(),
-            false => v_flex().w_full().pb_2().children(cards).into_any_element(),
-        }
-    }
-}
-
 impl Render for Albums {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("albums");
         let settled = self.albums.read(cx).is_settled();
-        let grid = view_mode(cx) == AlbumViewMode::Grid;
-        components::scroll::smooth_list("albums-scroll", &self.scroll, window, cx);
-        let empty = self.visible.is_empty();
-        // A tile row is the virtualized unit, so the grid builds a screenful instead of the library.
-        let columns = match grid {
-            true => self.tile_columns(),
-            false => 1,
+        let mode = match view_mode(cx) {
+            AlbumViewMode::Grid => GridMode::Tiles,
+            AlbumViewMode::List => GridMode::Rows,
         };
-        let rows = self.visible.len().div_ceil(columns.max(1));
+        let empty = self.visible.is_empty();
+        let bands = (!empty).then(|| {
+            self.grid
+                .bands(
+                    self.visible.len(),
+                    TILE,
+                    mode,
+                    move |this: &mut Albums, index, _, _| {
+                        let album = &this.visible[index];
+                        match mode {
+                            GridMode::Tiles => album_tile(album)
+                                .size(TILE_COVER)
+                                .frame(Frame::Card)
+                                .into_any_element(),
+                            GridMode::Rows => album_row(album).into_any_element(),
+                        }
+                    },
+                )
+                .build(window, cx)
+        });
 
         v_flex()
             .size_full()
@@ -328,23 +303,13 @@ impl Render for Albums {
                     .child(self.sort_control(window, cx)),
             )
             .child(div().flex_1().min_h_0().pb_8().map(|body| {
-                match (empty, settled) {
-                    (true, false) => body.child(Loading),
-                    (true, true) => body.child(
+                match (bands, settled) {
+                    (Some(bands), _) => body.child(bands),
+                    (None, false) => body.child(Loading),
+                    (None, true) => body.child(
                         div()
                             .text_color(style::slate_500(cx))
                             .child(t("no_albums_found")),
-                    ),
-                    (false, _) => body.child(
-                        uniform_list(
-                            "albums-scroll",
-                            rows,
-                            cx.processor(move |this, range: std::ops::Range<usize>, _, _| {
-                                range.map(|index| this.band(index, columns, grid)).collect()
-                            }),
-                        )
-                        .track_scroll(&self.scroll)
-                        .size_full(),
                     ),
                 }
             }))

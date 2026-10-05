@@ -138,6 +138,8 @@ pub struct Library {
     search: Entity<InputState>,
     focus: FocusHandle,
     scroll: UniformListScrollHandle,
+    // The tiles share the table's scroller, so a jump lands the same index in either.
+    grid: components::TileGrid,
 
     tracks: Entity<Query<TrackPage>>,
     albums: Entity<Query<CatalogWindow<AlbumPage>>>,
@@ -164,7 +166,6 @@ pub struct Library {
     selection: selection::Selection,
     type_ahead: String,
     type_ahead_at: Option<Instant>,
-    band_columns: usize,
 
     _filter_delay: Option<Task<()>>,
     _resolve: Option<Task<()>>,
@@ -266,6 +267,7 @@ impl Library {
             }),
         ];
 
+        let scroll = UniformListScrollHandle::new();
         let mut page = Self {
             filters,
             encoded: opening,
@@ -277,7 +279,8 @@ impl Library {
             tile: TileSize::default(),
             search,
             focus: components::focus::stop_handle(cx),
-            scroll: UniformListScrollHandle::new(),
+            grid: components::TileGrid::new("library-grid").sharing(scroll.clone()),
+            scroll,
             tracks,
             albums,
             artists,
@@ -298,7 +301,6 @@ impl Library {
             selection: selection::Selection::new(),
             type_ahead: String::new(),
             type_ahead_at: None,
-            band_columns: 4,
             _filter_delay: None,
             _resolve: None,
             _photos: None,
@@ -900,7 +902,7 @@ impl Library {
     /// Put `index` on screen, in whichever unit the facet virtualizes by.
     pub(crate) fn jump_to(&self, index: usize) {
         let band = match self.filters.facet.is_grid() && self.mode == ViewMode::Grid {
-            true => index / self.band_columns.max(1),
+            true => index / self.grid.columns(),
             false => index,
         };
         self.scroll.scroll_to_item(band, ScrollStrategy::Top);
@@ -1066,7 +1068,7 @@ impl Library {
                 .gap_6()
                 .children((0..3).map(|_| {
                     skeleton::band(
-                        self.band_columns,
+                        self.grid.columns(),
                         px(self.tile.width()),
                         facet.round_tiles(),
                         cx,

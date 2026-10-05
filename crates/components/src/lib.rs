@@ -4,6 +4,7 @@ pub mod cards;
 pub mod columns;
 pub mod cover;
 pub mod dialogs;
+pub mod grid;
 pub mod header;
 pub mod karaoke;
 pub mod lead;
@@ -27,6 +28,7 @@ pub use cards::{
     tile_grid,
 };
 pub use cover::Cover;
+pub use grid::{GridMode, JumpRail, TileGrid, rail_letter};
 pub use header::{DetailHeader, PageHeader, detail_header_skeleton};
 pub use karaoke::KaraokeText;
 pub use schema_form::{FieldChanged, SchemaForm};

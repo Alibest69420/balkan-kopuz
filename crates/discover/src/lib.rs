@@ -12,7 +12,9 @@ use std::sync::Arc;
 
 use api::{AlbumInfo, AlbumPage, ApiError, KopuzApi, SearchResults, Table};
 use components::format::{t, t_with};
-use components::{EmptyState, Loading, PageHeader, TrackList, TrackListEvent, icons, style};
+use components::{
+    EmptyState, GridMode, Loading, PageHeader, TileGrid, TrackList, TrackListEvent, icons, style,
+};
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
@@ -20,8 +22,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Div, Entity, FontWeight, InteractiveElement as _,
     IntoElement, Keystroke, ParentElement as _, Pixels, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement as _, Styled, Subscription, Task, UniformListScrollHandle, Window,
-    div, px, uniform_list,
+    StatefulInteractiveElement as _, Styled, Subscription, Task, Window, div, px,
 };
 use store::{Chrome, Link, PlayerModel, Query, SourcesModel, actions, all};
 
@@ -39,8 +40,6 @@ const PAGE_MARGIN: Pixels = px(600.);
 const LANDING_GENRES: usize = 12;
 /// Results that answer the previous query stay up at this opacity rather than blanking.
 const FADED: f32 = 0.55;
-/// Until the grid has been laid out once there is no measured width to divide.
-const COLUMNS_FALLBACK: usize = 4;
 
 type Answer = Pin<Box<dyn Future<Output = Result<SearchResults, ApiError>> + Send>>;
 
@@ -95,7 +94,7 @@ pub struct Discover {
     albums: Entity<Query<AlbumPage>>,
     genres: Vec<GenreTile>,
     all_genres: bool,
-    genre_scroll: UniformListScrollHandle,
+    genre_bands: TileGrid,
 
     // What the palette put in the box, and what came back for it.
     query: SharedString,
@@ -203,7 +202,7 @@ impl Discover {
             albums,
             genres: Vec::new(),
             all_genres: false,
-            genre_scroll: UniformListScrollHandle::new(),
+            genre_bands: TileGrid::new("discover-genre-grid").gap(genres::TILE_GAP),
             query,
             results,
             tracks,
@@ -446,38 +445,19 @@ impl Discover {
             .into_any_element()
     }
 
-    /// How many genre tiles fit across, from the width the grid reported at its last layout.
-    fn genre_columns(&self) -> usize {
-        let width: Pixels = self.genre_scroll.0.borrow().base_handle.bounds().size.width;
-        if width <= px(0.) {
-            return COLUMNS_FALLBACK;
-        }
-        // The last tile in a band needs no gap after it.
-        (((width + genres::TILE_GAP) / (genres::TILE + genres::TILE_GAP)) as usize).max(1)
-    }
-
-    /// One virtualized band of the all-genres grid.
-    fn genre_row(&self, index: usize, columns: usize) -> AnyElement {
-        let first = index * columns;
-        let last = (first + columns).min(self.genres.len());
-        let cards: Vec<AnyElement> = self.genres[first..last]
-            .iter()
-            .map(|tile| GenreCard::new(tile).into_any_element())
-            .collect();
-        h_flex()
-            .w_full()
-            .items_start()
-            .gap_4()
-            .pb_4()
-            .children(cards)
-            .into_any_element()
-    }
-
     /// Every genre, as a grid that builds a screenful rather than the library.
     fn genre_grid(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        components::scroll::smooth_list("discover-genre-grid", &self.genre_scroll, window, cx);
-        let columns = self.genre_columns();
-        let rows = self.genres.len().div_ceil(columns.max(1));
+        let bands = self
+            .genre_bands
+            .bands(
+                self.genres.len(),
+                genres::TILE,
+                GridMode::Tiles,
+                |this: &mut Discover, index, _, _| {
+                    GenreCard::new(&this.genres[index]).into_any_element()
+                },
+            )
+            .build(window, cx);
         v_flex()
             .size_full()
             .px_8()
@@ -494,19 +474,7 @@ impl Discover {
                         ),
                     ),
             )
-            .child(
-                div().flex_1().min_h_0().pb_8().child(
-                    uniform_list(
-                        "discover-genre-grid",
-                        rows,
-                        cx.processor(move |this, range: std::ops::Range<usize>, _, _| {
-                            range.map(|index| this.genre_row(index, columns)).collect()
-                        }),
-                    )
-                    .track_scroll(&self.genre_scroll)
-                    .size_full(),
-                ),
-            )
+            .child(div().flex_1().min_h_0().pb_8().child(bands))
             .into_any_element()
     }
 

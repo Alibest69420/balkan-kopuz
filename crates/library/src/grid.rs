@@ -2,13 +2,9 @@
 
 use api::{AlbumInfo, ArtistInfo, PlaylistInfo};
 use components::format::t_with;
-use components::{Frame, TileRow, style};
-use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
-use gpui_kit::prelude::FluentBuilder as _;
+use components::{Frame, GridMode, JumpRail, TileRow, rail_letter};
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Context, InteractiveElement as _, IntoElement, ParentElement as _,
-    Pixels, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, px,
-    uniform_list,
+    AnyElement, App, ClickEvent, Context, IntoElement, Pixels, SharedString, Window, px,
 };
 use store::layout::ViewMode;
 use store::{Navigator, PlaylistsModel, Route, Target};
@@ -16,16 +12,8 @@ use store::{Navigator, PlaylistsModel, Route, Target};
 use crate::facet::Facet;
 use crate::{Library, Tile};
 
-/// `gap-6` between tiles, so a column costs this much width.
-const TILE_GAP: Pixels = px(24.);
-/// Until the list has been laid out once there is no measured width to divide.
-const COLUMNS_FALLBACK: usize = 4;
-/// The jump rail's width, which the band grid does not get to use.
-const RAIL: Pixels = px(20.);
 /// Below this, every tile is on screen already and a rail would be decoration.
 const RAIL_FROM: usize = 40;
-/// The letters the rail offers, with everything else gathered under the first.
-const LETTERS: &str = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 impl Library {
     /// The tiles this facet draws, built once per change rather than once per frame.
@@ -50,9 +38,12 @@ impl Library {
                 }
             });
         }
-        self.rail_letters = self
-            .whole
-            .then(|| tiles.iter().map(|tile| bucket(&tile.sort_key)).collect());
+        self.rail_letters = self.whole.then(|| {
+            tiles
+                .iter()
+                .map(|tile| rail_letter(&tile.sort_key))
+                .collect()
+        });
         self.tiles = tiles;
     }
 
@@ -136,96 +127,49 @@ impl Library {
 
     /// The grid itself: bands of tiles, or one row per entry, beside the jump rail.
     pub(crate) fn grid(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        components::scroll::smooth_list("library-grid", &self.scroll, window, cx);
         let facet = self.filters().facet;
-        let tiles = self.mode == ViewMode::Grid;
-        let width = px(self.tile.width());
-        let columns = match tiles {
-            true => self.fit_columns(width),
-            false => 1,
+        let mode = match self.mode {
+            ViewMode::Grid => GridMode::Tiles,
+            ViewMode::Table => GridMode::Rows,
         };
-        self.band_columns = columns;
-        let bands = self.total().div_ceil(columns.max(1));
         let rail = self.jump_rail(cx);
-        h_flex()
-            .size_full()
-            .items_stretch()
-            .child(
-                div().flex_1().min_w_0().child(
-                    uniform_list(
-                        "library-grid",
-                        bands,
-                        cx.processor(move |this, range: std::ops::Range<usize>, window, cx| {
-                            let rows = (range.start * columns)..(range.end * columns);
-                            this.ensure_window(&rows, window, cx);
-                            range
-                                .map(|band| this.band(band, columns, tiles, facet, cx))
-                                .collect()
-                        }),
-                    )
-                    .track_scroll(&self.scroll)
-                    .size_full(),
-                ),
+        self.grid
+            .bands(
+                self.total(),
+                px(self.tile.width()),
+                mode,
+                move |this: &mut Library, index, _, cx| this.cell(index, mode, facet, cx),
             )
-            .children(rail)
-            .into_any_element()
+            .visit(|this: &mut Library, shown, window, cx| this.ensure_window(&shown, window, cx))
+            .rail(rail)
+            .build(window, cx)
     }
 
-    /// How many tiles fit across, from the width the list reported at its last layout.
-    fn fit_columns(&self, width: Pixels) -> usize {
-        let measured: Pixels = self.scroll.0.borrow().base_handle.bounds().size.width;
-        if measured <= px(0.) {
-            return COLUMNS_FALLBACK;
-        }
-        // The last tile in a band needs no gap after it.
-        (((measured + TILE_GAP) / (width + TILE_GAP)) as usize).max(1)
-    }
-
-    /// One virtualized band: a row of tiles, or a single entry in list mode.
-    fn band(
+    /// One entry of the grid, or the shape that stands in for it until its page arrives.
+    fn cell(
         &mut self,
-        band: usize,
-        columns: usize,
-        tiles: bool,
+        index: usize,
+        mode: GridMode,
         facet: Facet,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let first = band * columns;
-        let last = (first + columns).min(self.total());
+        profile::elements::built();
         let width = px(self.tile.width());
-        let held: Vec<(usize, Option<Tile>)> = (first..last)
-            .map(|index| (index, self.tile_at(index).cloned()))
-            .collect();
-        let cards: Vec<AnyElement> = held
-            .into_iter()
-            .map(|(index, tile)| {
-                profile::elements::built();
-                let Some(tile) = tile else {
-                    return if tiles {
-                        crate::skeleton::tile(width, facet.round_tiles(), cx).into_any_element()
-                    } else {
-                        crate::skeleton::catalog_row(
-                            store::ConfigModel::global(cx).read(cx).row_images(),
-                            cx,
-                        )
-                        .into_any_element()
-                    };
-                };
-                match tiles {
-                    true => self.card(&tile, index, width, facet, cx),
-                    false => self.line_of(&tile, index, facet, cx),
+        let Some(tile) = self.tile_at(index).cloned() else {
+            return match mode {
+                GridMode::Tiles => {
+                    crate::skeleton::tile(width, facet.round_tiles(), cx).into_any_element()
                 }
-            })
-            .collect();
-        match tiles {
-            true => h_flex()
-                .w_full()
-                .items_start()
-                .gap_6()
-                .pb_6()
-                .children(cards)
+                GridMode::Rows => crate::skeleton::catalog_row(
+                    store::ConfigModel::global(cx).read(cx).row_images(),
+                    cx,
+                )
                 .into_any_element(),
-            false => v_flex().w_full().pb_1().children(cards).into_any_element(),
+            };
+        };
+        match mode {
+            GridMode::Tiles => self.card(&tile, index, width, facet, cx),
+            GridMode::Rows => self.line_of(&tile, index, facet, cx),
         }
     }
 
@@ -301,50 +245,28 @@ impl Library {
         })
     }
 
-    /// The letters down the right edge: a long grid is reachable without dragging a scrollbar.
-    fn jump_rail(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    /// The letters down the right edge, while every tile is held and they are in title order.
+    fn jump_rail(&self, cx: &mut Context<Self>) -> Option<JumpRail> {
         if self.total() < RAIL_FROM || self.sort().field != "title" {
             return None;
         }
-        let present = self.rail_letters.as_ref()?;
-        Some(
-            v_flex()
-                .w(RAIL)
-                .flex_shrink_0()
-                .items_center()
-                .justify_between()
-                .py_2()
-                .children(LETTERS.chars().map(|letter| {
-                    let known = present.contains(&letter);
-                    let ink = match known {
-                        true => style::white(style::TEXT_SECONDARY, cx),
-                        false => style::white(style::TEXT_FAINT, cx),
-                    };
-                    div()
-                        .id(SharedString::from(format!("library-rail-{letter}")))
-                        .w_full()
-                        .text_center()
-                        .text_size(style::text_10())
-                        .text_color(ink)
-                        .when(known, |entry| {
-                            entry
-                                .cursor_pointer()
-                                .hover(|entry| entry.text_color(cx.theme().foreground))
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.jump_to_letter(letter, cx)
-                                }))
-                        })
-                        .child(letter.to_string())
-                }))
-                .into_any_element(),
-        )
+        let present = self.rail_letters.clone()?;
+        let page = cx.entity().downgrade();
+        Some(JumpRail::new(
+            "library-rail",
+            present,
+            move |letter, _, cx| {
+                page.update(cx, |this, cx| this.jump_to_letter(letter, cx))
+                    .ok();
+            },
+        ))
     }
 
     fn jump_to_letter(&mut self, letter: char, cx: &mut Context<Self>) {
         let Some(index) = self
             .tiles
             .iter()
-            .position(|tile| bucket(&tile.sort_key) == letter)
+            .position(|tile| rail_letter(&tile.sort_key) == letter)
         else {
             return;
         };
@@ -395,24 +317,4 @@ fn matches_album(
     query.is_empty()
         || album.title.to_lowercase().contains(query)
         || album.artist.to_lowercase().contains(query)
-}
-
-/// Which letter of the rail a title falls under; everything non-alphabetic gathers under `#`.
-fn bucket(sort_key: &str) -> char {
-    match sort_key.chars().next() {
-        Some(first) if first.is_ascii_alphabetic() => first.to_ascii_uppercase(),
-        _ => '#',
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::bucket;
-
-    #[test]
-    fn a_title_that_starts_with_anything_but_a_letter_gathers_under_the_hash() {
-        assert_eq!(bucket("abbey road"), 'A');
-        assert_eq!(bucket("1989"), '#');
-        assert_eq!(bucket(""), '#');
-    }
 }
