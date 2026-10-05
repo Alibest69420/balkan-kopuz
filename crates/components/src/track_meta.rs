@@ -15,6 +15,7 @@ use store::{Route, Target};
 use crate::format::t;
 use crate::icon_button::{IconButton, IconTone};
 use crate::link::{Link, Tone};
+use crate::menu_button::{MenuButton, MenuVariant};
 use crate::{icons, menus, motion, style};
 
 const ROOM: u64 = 1;
@@ -573,9 +574,12 @@ impl RenderOnce for TrackMarks {
                         .on_click(run(self.on_share)),
                 )
             })
-            .children(
-                self.menu
-                    .map(|target| mark("menu", icons::MORE).menu(menus::builder(target))),
-            )
+            .children(self.menu.map(|target| {
+                MenuButton::new(key("menu"), menus::menu_for(target)).variant(MenuVariant::Icon {
+                    size: self.size,
+                    glyph: self.glyph,
+                    tone: self.tone,
+                })
+            }))
     }
 }

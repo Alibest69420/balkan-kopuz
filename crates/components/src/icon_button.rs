@@ -3,12 +3,11 @@
 use std::rc::Rc;
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu};
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Context, Hsla, IntoElement, ParentElement as _, Pixels,
-    RenderOnce, SharedString, Styled as _, Window, div, px,
+    AnyElement, App, ClickEvent, Hsla, IntoElement, ParentElement as _, Pixels, RenderOnce,
+    SharedString, Styled as _, Window, div, px,
 };
 
 use crate::{focus, hover, icons, motion, style};
@@ -155,14 +154,6 @@ impl IconButton {
     pub fn accent(mut self, accent: Hsla) -> Self {
         self.accent = Some(accent);
         self
-    }
-
-    /// A dropdown menu on the button, its frame still owning the hover.
-    pub fn menu(
-        self,
-        build: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static,
-    ) -> Self {
-        self.host(move |button| button.dropdown_menu(build).into_any_element())
     }
 
     /// Wrap the inner button in something that needs it as a trigger, such as a popover.

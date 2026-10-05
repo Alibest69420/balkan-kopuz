@@ -5,10 +5,11 @@ use gpui_kit::component::menu::DropdownMenu as _;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, Hsla, InteractiveElement as _, IntoElement, ParentElement as _, RenderOnce, SharedString,
-    StatefulInteractiveElement as _, Styled as _, Window, div,
+    App, Hsla, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, RenderOnce,
+    SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
 };
 
+use crate::icon_button::{IconButton, IconTone};
 use crate::menus::Menu;
 use crate::{focus, icons, motion, style};
 
@@ -27,6 +28,12 @@ pub enum MenuVariant {
     Scrim,
     /// Paints nothing at all and keeps `ink`, for a slab that owns the colour.
     Bare(Hsla),
+    /// An [`IconButton`] of the given look, for dots that sit in a row of round controls.
+    Icon {
+        size: Pixels,
+        glyph: Pixels,
+        tone: IconTone,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
@@ -86,29 +93,47 @@ impl RenderOnce for MenuButton {
         let id = self.id;
         let state = window.use_keyed_state(motion::channel(&id, OPEN), cx, |_, _| false);
         let open = *state.read(cx);
-        let button = Button::new(motion::channel(&id, BUTTON)).icon(icons::icon(icons::MORE));
-        let button = match self.variant {
-            MenuVariant::Ghost => button.ghost().xsmall(),
-            MenuVariant::Scrim => button
-                .custom(style::button(
-                    style::black(0.4, cx),
-                    style::white(style::HOVER, cx),
-                    cx.theme().secondary_foreground,
-                    cx,
-                ))
-                .rounded(cx.theme().radius_full()),
-            MenuVariant::Bare(ink) => button.custom(style::bare_button(ink, cx)),
-        };
         let menu = self.menu;
-        let dots = button
-            .dropdown_menu(move |popup, window, cx| menu(popup, window, cx))
-            .on_open_change(move |shown: &bool, _, cx| {
-                let shown = *shown;
-                state.update(cx, |open, cx| {
-                    *open = shown;
-                    cx.notify();
-                });
+        let on_open = move |shown: &bool, _: &mut Window, cx: &mut App| {
+            let shown = *shown;
+            state.update(cx, |open, cx| {
+                *open = shown;
+                cx.notify();
             });
+        };
+        let trigger = motion::channel(&id, BUTTON);
+        let dots = match self.variant {
+            MenuVariant::Icon { size, glyph, tone } => IconButton::new(id.clone(), icons::MORE)
+                .size(size)
+                .glyph(glyph)
+                .tone(tone)
+                .host(move |button| {
+                    button
+                        .dropdown_menu(move |popup, window, cx| menu(popup, window, cx))
+                        .on_open_change(on_open)
+                        .into_any_element()
+                })
+                .into_any_element(),
+            variant => {
+                let button = Button::new(trigger).icon(icons::icon(icons::MORE));
+                let button = match variant {
+                    MenuVariant::Ghost | MenuVariant::Icon { .. } => button.ghost().xsmall(),
+                    MenuVariant::Scrim => button
+                        .custom(style::button(
+                            style::black(0.4, cx),
+                            style::white(style::HOVER, cx),
+                            cx.theme().secondary_foreground,
+                            cx,
+                        ))
+                        .rounded(cx.theme().radius_full()),
+                    MenuVariant::Bare(ink) => button.custom(style::bare_button(ink, cx)),
+                };
+                button
+                    .dropdown_menu(move |popup, window, cx| menu(popup, window, cx))
+                    .on_open_change(on_open)
+                    .into_any_element()
+            }
+        };
         let slot = div()
             .id(motion::channel(&id, SLOT))
             .on_click(|_, _, cx| cx.stop_propagation());

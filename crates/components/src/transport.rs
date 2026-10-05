@@ -12,8 +12,11 @@ use gpui_kit::{
     SharedString, Styled as _, Window, div, px, relative,
 };
 
+use crate::cover_overlay::PlayState;
 use crate::format::t;
 use crate::icon_button::{IconButton, IconTone};
+use crate::menu_button::{MenuButton, MenuVariant};
+use crate::menus::Menu;
 use crate::{icons, motion, style};
 
 // Lucide names the shared icon set has no constant for yet.
@@ -74,6 +77,8 @@ pub struct PlayPauseButton {
     disabled: bool,
     stop: bool,
     click: Option<Click>,
+    loading: bool,
+    floating: bool,
 }
 
 impl PlayPauseButton {
@@ -87,6 +92,8 @@ impl PlayPauseButton {
             disabled: false,
             stop: false,
             click: None,
+            loading: false,
+            floating: false,
         }
     }
 
@@ -104,6 +111,16 @@ impl PlayPauseButton {
     /// Draw it as the inverted pill with its word beside the glyph.
     pub fn pill(mut self, pill: bool) -> Self {
         self.pill = pill;
+        self
+    }
+
+    /// The accent button over a cover's corner, which shows `state` and is no click on the card under it.
+    pub fn cover(mut self, state: PlayState) -> Self {
+        self.playing = state == PlayState::Playing;
+        self.loading = state == PlayState::Loading;
+        self.floating = true;
+        self.size = px(40.);
+        self.glyph = px(14.);
         self
     }
 
@@ -153,6 +170,19 @@ impl RenderOnce for PlayPauseButton {
                         }
                         click(event, window, cx);
                     })
+                })
+                .into_any_element();
+        }
+        if self.floating {
+            return IconButton::new(self.id, glyph)
+                .size(self.size)
+                .glyph(self.glyph)
+                .tone(IconTone::Accent)
+                .shadow(true)
+                .loading(self.loading)
+                .stop_propagation(true)
+                .when_some(click, |button, click| {
+                    button.on_click(move |event, window, cx| click(event, window, cx))
                 })
                 .into_any_element();
         }
@@ -443,22 +473,24 @@ impl TransportOverflow {
 
 impl RenderOnce for TransportOverflow {
     fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        IconButton::new(self.id, icons::MORE)
-            .size(self.size)
-            .glyph(self.glyph)
-            .menu(|menu, _, _| {
-                menu.label(t("playback_extras"))
-                    .item(
-                        PopupMenuItem::new(t("sleep_timer"))
-                            .icon(icons::icon(TIMER))
-                            .disabled(true),
-                    )
-                    .item(
-                        PopupMenuItem::new(t("playback_speed"))
-                            .icon(icons::icon(GAUGE))
-                            .disabled(true),
-                    )
-            })
+        let menu: Menu = Rc::new(|menu, _, _| {
+            menu.label(t("playback_extras"))
+                .item(
+                    PopupMenuItem::new(t("sleep_timer"))
+                        .icon(icons::icon(TIMER))
+                        .disabled(true),
+                )
+                .item(
+                    PopupMenuItem::new(t("playback_speed"))
+                        .icon(icons::icon(GAUGE))
+                        .disabled(true),
+                )
+        });
+        MenuButton::new(self.id, menu).variant(MenuVariant::Icon {
+            size: self.size,
+            glyph: self.glyph,
+            tone: IconTone::default(),
+        })
     }
 }
 

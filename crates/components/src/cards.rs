@@ -14,13 +14,14 @@ use gpui_kit::{
 use store::{Navigator, Route, Target};
 
 use crate::cover::Cover;
+use crate::cover_overlay::CoverOverlay;
 pub use crate::cover_overlay::PlayState;
-use crate::cover_overlay::{CoverOverlay, TilePlayButton};
 use crate::icons;
 use crate::menu_button::{MenuButton, MenuVariant};
 use crate::menus::{self, WithContextMenu as _};
 use crate::motion;
 use crate::style;
+use crate::transport::PlayPauseButton;
 
 /// The tile's element and its transition channels, keyed off its id rather than formatted.
 const ROOT: u64 = 0;
@@ -226,9 +227,9 @@ impl RenderOnce for Tile {
             .play
             .filter(|_| hovered || focused)
             .map(|(state, click)| {
-                TilePlayButton::new(format!("{id}-play"), state, move |event, window, cx| {
-                    click(event, window, cx)
-                })
+                PlayPauseButton::new(format!("{id}-play"))
+                    .cover(state)
+                    .on_click(move |event, window, cx| click(event, window, cx))
             });
         let click = self.click.clone();
         let opens = self.click;

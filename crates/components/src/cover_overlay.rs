@@ -1,22 +1,16 @@
 //! What rides on a cover: the hover wash, the playing badge, the play button and a corner control.
 
-use std::rc::Rc;
-
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Hsla, InteractiveElement as _, IntoElement, ParentElement as _,
-    Pixels, RenderOnce, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
-    px,
+    AnyElement, App, Hsla, InteractiveElement as _, IntoElement, ParentElement as _, Pixels,
+    RenderOnce, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
 
-use crate::icon_button::{IconButton, IconTone};
+use crate::transport::PlayPauseButton;
 use crate::{icons, motion};
 
 const CORNER: u64 = 10;
-
-/// `w-10 h-10`: the play button over a cover's corner.
-const PLAY_SIZE: Pixels = px(40.);
 
 /// What a cover's play button shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -27,48 +21,6 @@ pub enum PlayState {
     Playing,
     /// The press is on its way; the queue is not built yet.
     Loading,
-}
-
-type OnClick = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
-
-/// The accent play button that rides on a cover's corner; a press is never a click on the card under it.
-#[derive(IntoElement)]
-pub struct TilePlayButton {
-    id: SharedString,
-    state: PlayState,
-    click: OnClick,
-}
-
-impl TilePlayButton {
-    pub fn new(
-        id: impl Into<SharedString>,
-        state: PlayState,
-        click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-    ) -> Self {
-        Self {
-            id: id.into(),
-            state,
-            click: Rc::new(click),
-        }
-    }
-}
-
-impl RenderOnce for TilePlayButton {
-    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        let glyph = match self.state {
-            PlayState::Playing => icons::PAUSE,
-            _ => icons::PLAY,
-        };
-        let click = self.click;
-        IconButton::new(self.id, glyph)
-            .size(PLAY_SIZE)
-            .glyph(px(14.))
-            .tone(IconTone::Accent)
-            .shadow(true)
-            .loading(self.state == PlayState::Loading)
-            .stop_propagation(true)
-            .on_click(move |event, window, cx| click(event, window, cx))
-    }
 }
 
 /// `bg-primary` circle on a playing cover's corner.
@@ -99,7 +51,7 @@ pub struct CoverOverlay {
     radius: Pixels,
     wash: Option<Hsla>,
     playing: bool,
-    play: Option<TilePlayButton>,
+    play: Option<PlayPauseButton>,
     corner: Option<AnyElement>,
 }
 
@@ -134,7 +86,7 @@ impl CoverOverlay {
         self
     }
 
-    pub fn play(mut self, play: Option<TilePlayButton>) -> Self {
+    pub fn play(mut self, play: Option<PlayPauseButton>) -> Self {
         self.play = play;
         self
     }

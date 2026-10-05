@@ -86,7 +86,7 @@ pub use check_row::{CheckRow, Disclosure};
 pub use chip::{Badge, BadgeTone, Chip, ChipSize, ChipTone};
 pub use color_field::{ColorChanged, ColorField};
 pub use cover::{Cover, EditableCover, Scrim};
-pub use cover_overlay::{CoverOverlay, TilePlayButton, playing_badge};
+pub use cover_overlay::{CoverOverlay, playing_badge};
 pub use detail_actions::{DetailActions, Look};
 pub use device_row::DeviceRow;
 pub use dock_panel::{DockPanel, DockSize};
