@@ -248,7 +248,8 @@ impl PlaylistDetail {
 
     fn delete(&mut self, window: &mut Window, cx: &mut Context<Self>, name: SharedString) {
         let id = self.id.to_string();
-        components::dialogs::confirm_delete(
+        components::dialogs::confirm(
+            components::dialogs::ConfirmKind::Delete,
             t("delete_playlist"),
             name,
             move |_, cx| {

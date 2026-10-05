@@ -83,7 +83,8 @@ impl Command {
         let title = self.label(&target, cx);
         let description = target.label();
         let run = self.run;
-        components::dialogs::confirm_delete(
+        components::dialogs::confirm(
+            components::dialogs::ConfirmKind::Delete,
             title,
             description,
             move |window, cx| run(target.clone(), window, cx),

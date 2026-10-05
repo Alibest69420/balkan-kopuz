@@ -86,7 +86,8 @@ pub fn open(keys: Vec<String>, window: &mut Window, cx: &mut App) {
         keys,
         name: cx.new(|cx| InputState::new(window, cx).placeholder(t("new_playlist_name"))),
     });
-    window.open_dialog(cx, move |dialog, _, _| {
-        dialog.title(t("add_to_playlist")).child(picker.clone())
-    });
+    crate::dialogs::FormDialog::new(t("add_to_playlist"))
+        .closable(true)
+        .footer(crate::dialogs::FormFooter::None)
+        .open(picker, window, cx);
 }

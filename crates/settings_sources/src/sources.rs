@@ -4,9 +4,9 @@ use std::collections::HashMap;
 
 use api::schema::{FieldKind, FieldSpec, FieldValue};
 use api::{SignInKind, SourceFolderEntry, SourceInfo, SourceState, Table};
+use components::dialogs::{DialogSize, FormDialog};
 use components::format::{t, t_with, text};
 use components::{Badge, FieldChanged, SchemaForm, icons};
-use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
@@ -20,7 +20,6 @@ use store::{ConfigModel, Notices, Query, SourcesModel};
 
 use crate::add_source::{AddSource, SourceAdded};
 use crate::folders;
-use crate::login::LoginForm;
 use crate::ui;
 
 /// What the active source's row says about the link to it.
@@ -93,7 +92,6 @@ pub struct Sources {
     switching: Option<String>,
     host_access: Entity<Query<bool>>,
     add: Entity<AddSource>,
-    login: Entity<LoginForm>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -109,7 +107,6 @@ impl Sources {
             )
         });
         let add = cx.new(|cx| AddSource::new(window, cx));
-        let login = cx.new(|cx| LoginForm::new(window, cx));
         let subscriptions = vec![
             cx.observe_in(&sources, window, |this, _, window, cx| {
                 this.sync_options(window, cx)
@@ -135,7 +132,6 @@ impl Sources {
             switching: None,
             host_access,
             add,
-            login,
             _subscriptions: subscriptions,
         }
     }
@@ -248,8 +244,7 @@ impl Sources {
         }
     }
 
-    /// Signing in again on a source already active. `sign_in` reads None once a source holds any
-    /// credentials, so asking it here offered a password box for a service that has no password.
+    /// Signing in again reads `reauth`: `sign_in` is None once a source holds credentials.
     fn sign_in_again(&mut self, source: &SourceInfo, window: &mut Window, cx: &mut Context<Self>) {
         match source.reauth {
             SignInKind::Browser => self.authenticate(source.id.clone(), cx),
@@ -263,51 +258,16 @@ impl Sources {
     }
 
     fn open_login(&mut self, source: &SourceInfo, window: &mut Window, cx: &mut Context<Self>) {
-        let service = text(&source.service.name);
-        self.login.update(cx, |form, cx| {
-            form.reset(source.id.clone(), service, window, cx)
-        });
-        let form = self.login.clone();
-        window.open_dialog(cx, move |dialog, _, cx| {
-            dialog
-                .title(form.read(cx).title())
-                .w(ui::dialog_width())
-                // Enter submits instead of discarding. The dialog's default OK closes and saves
-                // nothing, and a filled-in sign-in form is exactly what Enter gets pressed on.
-                .on_ok({
-                    let form = form.clone();
-                    move |_, window, cx| {
-                        form.update(cx, |form, cx| form.submit(window, cx));
-                        false
-                    }
-                })
-                // A stray click outside should not throw away a typed password.
-                .overlay_closable(false)
-                .child(form.clone())
-                .footer(div())
-        });
+        crate::login::open(source.id.clone(), text(&source.service.name), window, cx);
     }
 
     fn open_add(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.add.update(cx, |form, cx| form.reset(window, cx));
         let form = self.add.clone();
-        window.open_dialog(cx, move |dialog, _, _| {
-            dialog
-                .title(t("add_source"))
-                .w(ui::dialog_width())
-                // Enter saves the draft rather than throwing it away.
-                .on_ok({
-                    let form = form.clone();
-                    move |_, window, cx| {
-                        form.update(cx, |form, cx| form.save(window, cx));
-                        false
-                    }
-                })
-                // A click outside should not discard a half-filled source definition.
-                .overlay_closable(false)
-                .child(form.clone())
-                .footer(div())
-        });
+        FormDialog::new(t("add_source"))
+            .size(DialogSize::Wide)
+            .on_submit(move |window, cx| form.update(cx, |form, cx| form.save(window, cx)))
+            .open(self.add.clone(), window, cx);
     }
 
     fn delete(&mut self, id: String, cx: &mut Context<Self>) {
@@ -643,7 +603,8 @@ impl Sources {
                                             move |_: &mut Self, _, window, cx| {
                                                 let id = id.clone();
                                                 let entity = cx.entity();
-                                                components::dialogs::confirm_delete(
+                                                components::dialogs::confirm(
+                                                    components::dialogs::ConfirmKind::Delete,
                                                     t("delete"),
                                                     name.clone(),
                                                     move |_, cx| {

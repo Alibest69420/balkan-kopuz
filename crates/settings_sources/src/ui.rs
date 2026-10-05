@@ -8,7 +8,7 @@ use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_fl
 use gpui_kit::{
     App, ClickEvent, Div, ElementId, Entity, FontWeight, InteractiveElement as _, IntoElement,
     ParentElement as _, SharedString, Stateful, StatefulInteractiveElement as _, Styled, Window,
-    div, px,
+    div,
 };
 
 pub use components::settings::section;
@@ -233,9 +233,4 @@ pub fn host_access_warning(id: impl Into<ElementId>, message: SharedString, cx: 
                         .tooltip(t("copy")),
                 ),
         )
-}
-
-/// `.popup`: `max-width: 500px`; the dialog takes pixels, not a rem length.
-pub fn dialog_width() -> gpui_kit::Pixels {
-    px(500.)
 }

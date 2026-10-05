@@ -1,5 +1,6 @@
 //! Radio registries: the station lists the radio page reads, enabled one by one.
 
+use components::dialogs::{DialogSize, FormDialog};
 use components::format::{t, t_with};
 use components::{icons, style};
 use config::RegistryEntry;
@@ -105,22 +106,10 @@ impl RadioRegistries {
     fn open_add(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.add.update(cx, |form, cx| form.reset(window, cx));
         let form = self.add.clone();
-        window.open_dialog(cx, move |dialog, _, _| {
-            dialog
-                .title(t("add_radio_registry"))
-                .w(ui::dialog_width())
-                // Enter saves rather than discarding what was typed.
-                .on_ok({
-                    let form = form.clone();
-                    move |_, window, cx| {
-                        form.update(cx, |form, cx| form.save(window, cx));
-                        false
-                    }
-                })
-                .overlay_closable(false)
-                .child(form.clone())
-                .footer(div())
-        });
+        FormDialog::new(t("add_radio_registry"))
+            .size(DialogSize::Wide)
+            .on_submit(move |window, cx| form.update(cx, |form, cx| form.save(window, cx)))
+            .open(self.add.clone(), window, cx);
     }
 
     fn entry(

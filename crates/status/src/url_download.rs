@@ -2,6 +2,7 @@
 
 use api::ApiEvent;
 use api::schema::{ChoiceOption, FieldValue};
+use components::dialogs::FormDialog;
 use components::format::{t, text};
 use components::{Chip, ChipSize, FieldChanged, SchemaForm, icons, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -17,7 +18,6 @@ use gpui_kit::{
 };
 use store::{Link, Notices, Query};
 
-const DIALOG_WIDTH: Pixels = px(460.);
 const OPTIONS_HEIGHT: Pixels = px(240.);
 
 /// Wire the box the popover's chip and `downloads.add_url` both open.
@@ -28,15 +28,10 @@ pub fn register(cx: &mut App) {
 pub(crate) fn open(window: &mut Window, cx: &mut App) {
     let dialog = cx.new(|cx| UrlDownload::new(window, cx));
     let field = dialog.read(cx).url.clone();
-    window.open_dialog(cx, move |plate, _, _| {
-        plate
-            .title(t("downloader_url_title"))
-            .w(DIALOG_WIDTH)
-            // The backdrop must never throw away a typed URL; the buttons are the way out.
-            .overlay_closable(false)
-            .child(dialog.clone())
-            .footer(div())
-    });
+    let start = dialog.clone();
+    FormDialog::new(t("downloader_url_title"))
+        .on_submit(move |window, cx| start.update(cx, |this, cx| this.start(window, cx)))
+        .open(dialog, window, cx);
     field.update(cx, |state, cx| state.focus(window, cx));
 }
 
@@ -63,15 +58,11 @@ impl UrlDownload {
         let connection = Link::connection(cx);
 
         let subscriptions = vec![
-            cx.subscribe_in(
-                &url,
-                window,
-                |this, _, event: &InputEvent, window, cx| match event {
-                    InputEvent::PressEnter { .. } => this.start(window, cx),
-                    InputEvent::Change => this.clear_failure(cx),
-                    _ => {}
-                },
-            ),
+            cx.subscribe(&url, |this, _, event: &InputEvent, cx| {
+                if let InputEvent::Change = event {
+                    this.clear_failure(cx)
+                }
+            }),
             cx.observe(&formats, |_, _, cx| cx.notify()),
             cx.subscribe_in(
                 &options,

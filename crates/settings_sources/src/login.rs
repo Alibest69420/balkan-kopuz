@@ -1,6 +1,7 @@
 //! The username/password sign-in a server asks for when its `SignInKind` is `Password`.
 
 use api::SourceLoginRequest;
+use components::dialogs::{DialogSize, FormDialog};
 use components::format::{t, t_with};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -16,30 +17,18 @@ use store::SourcesModel;
 
 use crate::ui;
 
-/// Open the sign-in dialog for `server_id`, whoever asked for it.
-///
-/// The settings page keeps a form of its own; this builds one on the spot, so a source switched
-/// from the sidebar can collect a password without the settings page being open.
+/// Open the sign-in dialog for `server_id` on a fresh form, so it works without the settings page open.
 pub fn open(server_id: String, service: SharedString, window: &mut Window, cx: &mut gpui_kit::App) {
     let form = cx.new(|cx| LoginForm::new(window, cx));
     form.update(cx, |form, cx| {
         form.reset(server_id, service, window, cx);
     });
-    window.open_dialog(cx, move |dialog, _, cx| {
-        dialog
-            .title(form.read(cx).title())
-            .w(ui::dialog_width())
-            .on_ok({
-                let form = form.clone();
-                move |_, window, cx| {
-                    form.update(cx, |form, cx| form.submit(window, cx));
-                    false
-                }
-            })
-            .overlay_closable(false)
-            .child(form.clone())
-            .footer(gpui_kit::div())
-    });
+    let (title, submit) = (form.clone(), form.clone());
+    FormDialog::new(SharedString::default())
+        .title_with(move |cx| title.read(cx).title())
+        .size(DialogSize::Wide)
+        .on_submit(move |window, cx| submit.update(cx, |form, cx| form.submit(window, cx)))
+        .open(form, window, cx);
 }
 
 pub struct LoginForm {
@@ -89,8 +78,7 @@ impl LoginForm {
         t_with("login_to_service", &[("service", self.service.to_string())])
     }
 
-    /// Send the sign-in. This closes the dialog itself on success and keeps it open with the
-    /// reason on failure, so whatever calls it must not close the dialog too.
+    /// Send the sign-in; it closes the dialog itself on success, so a caller must not close it too.
     pub fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.loading {
             return;

@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use api::{ArtworkChange, TrackInfo, TrackMetadataPatch};
+use components::dialogs::{DialogSize, FormDialog, FormFooter};
 use components::format::{duration, t};
 use components::{Cover, Loading, icons, motion, style};
 use gpui_kit::base::StyledExt as _;
@@ -19,8 +20,7 @@ use gpui_kit::{
 };
 use store::{Link, Notices};
 
-// Measured geometry: `max-w-lg`, the `w-24 h-24` cover, its `rounded-lg`, the `max-h-[60vh]` body.
-const DIALOG_WIDTH: Pixels = px(512.);
+// Measured geometry: the `w-24 h-24` cover, its `rounded-lg`, the `max-h-[60vh]` body.
 const COVER_SIZE: Pixels = px(96.);
 const BODY_HEIGHT: Pixels = px(360.);
 const LOADING_HEIGHT: Pixels = px(160.);
@@ -39,19 +39,21 @@ pub fn register(cx: &mut App) {
 
 fn open(key: String, editable: bool, window: &mut Window, cx: &mut App) {
     let view = cx.new(|cx| MetadataDialog::new(key, editable, window, cx));
-    window.open_dialog(cx, move |dialog, _, cx| {
-        let editing = view.read(cx).editing;
-        dialog
-            .title(if editing {
-                t("edit_metadata")
-            } else {
-                t("metadata")
-            })
-            .w(DIALOG_WIDTH)
-            // An edit in progress is typed text; only Cancel or Save may end it.
-            .overlay_closable(!editing)
-            .child(view.clone())
-    });
+    let (title, closable, submit) = (view.clone(), view.clone(), view.clone());
+    FormDialog::new(t("metadata"))
+        .title_with(move |cx| match title.read(cx).editing {
+            true => t("edit_metadata"),
+            false => t("metadata"),
+        })
+        .size(DialogSize::Wide)
+        // An edit in progress is typed text; only Cancel or Save may end it.
+        .closable_with(move |cx| !closable.read(cx).editing)
+        .footer(FormFooter::None)
+        .on_submit(move |window, cx| match submit.read(cx).editing {
+            true => submit.update(cx, |this, cx| this.save(window, cx)),
+            false => window.close_dialog(cx),
+        })
+        .open(view, window, cx);
 }
 
 /// What the editor will do to the embedded cover; a picked file is read when the patch is sent.

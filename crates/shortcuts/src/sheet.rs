@@ -1,24 +1,34 @@
 //! The sheet `?` opens: every key in the app, read straight off the registry.
 
+use components::dialogs::{DialogSize, FormDialog, FormFooter};
 use components::format::t;
 use components::style;
 use gpui_kit::base::StyledExt as _;
-use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
-use gpui_kit::{App, IntoElement, ParentElement as _, Pixels, Styled as _, Window, div, px};
+use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
+use gpui_kit::{
+    App, AppContext as _, Context, IntoElement, ParentElement as _, Pixels, Render, Styled as _,
+    Window, div, px,
+};
 
-const SHEET_WIDTH: Pixels = px(720.);
 const SHEET_HEIGHT: Pixels = px(520.);
 const COLUMNS: usize = 2;
 
 /// Open it, or bring the one that is already open back to the front.
 pub(crate) fn open(window: &mut Window, cx: &mut App) {
-    window.open_dialog(cx, move |plate, _, cx| {
-        plate
-            .title(crate::title())
-            .w(SHEET_WIDTH)
-            .overlay_closable(true)
-            .child(body(cx))
-    });
+    FormDialog::new(crate::title())
+        .size(DialogSize::Sheet)
+        .closable(true)
+        .footer(FormFooter::None)
+        .open(cx.new(|_| Sheet), window, cx);
+}
+
+/// The sheet's body, a view so the shared dialog can hold it; it reads the registry each frame.
+struct Sheet;
+
+impl Render for Sheet {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        body(cx)
+    }
 }
 
 fn body(cx: &App) -> impl IntoElement {

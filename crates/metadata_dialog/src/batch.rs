@@ -1,6 +1,7 @@
 //! One set of tags written across a whole selection: a blank field leaves that tag as it is.
 
 use api::{ArtworkChange, TrackMetadataPatch};
+use components::dialogs::{DialogSize, FormDialog};
 use components::format::{t, t_with};
 use components::style;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -20,13 +21,11 @@ pub(crate) fn open(keys: Vec<String>, window: &mut Window, cx: &mut App) {
         return;
     }
     let view = cx.new(|cx| BatchDialog::new(keys, window, cx));
-    window.open_dialog(cx, move |dialog, _, _| {
-        dialog
-            .title(t("edit_metadata"))
-            .w(crate::DIALOG_WIDTH)
-            .child(view.clone())
-            .footer(div())
-    });
+    let save = view.clone();
+    FormDialog::new(t("edit_metadata"))
+        .size(DialogSize::Wide)
+        .on_submit(move |window, cx| save.update(cx, |this, cx| this.save(window, cx)))
+        .open(view, window, cx);
 }
 
 struct BatchDialog {

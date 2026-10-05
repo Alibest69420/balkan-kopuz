@@ -3,10 +3,10 @@
 use std::rc::Rc;
 
 use api::PlaylistCapability;
+use components::dialogs::{DialogSize, FormDialog, FormFooter};
 use components::format::t;
 use components::{icons, motion, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::dialog::{DialogClose, DialogFooter};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -16,13 +16,6 @@ use gpui_kit::{
     Styled as _, Subscription, Window, div, px,
 };
 use store::{PlaylistsModel, SourcesModel, actions};
-
-// hover state and its listener are shared; see components::motion and components::hover.
-
-/// `.popup`'s `min-width: 400px`.
-const DIALOG_WIDTH: gpui_kit::Pixels = px(400.);
-/// `w-80`: the narrower prompts the Dioxus page opens.
-const PROMPT_WIDTH: gpui_kit::Pixels = px(320.);
 
 /// Ask for a name and create a playlist, or import a directory as one.
 struct AddPlaylist {
@@ -98,7 +91,7 @@ impl Render for AddPlaylist {
         );
         v_flex()
             .gap_4()
-            .w(DIALOG_WIDTH)
+            .w_full()
             .when_some(self.error.clone(), |column, error| {
                 column.child(
                     div()
@@ -135,18 +128,12 @@ pub(crate) fn open_add_playlist(window: &mut Window, cx: &mut App) {
     let dialog = cx.new(|cx| {
         let name =
             cx.new(|cx| InputState::new(window, cx).placeholder(t("playlist_name_placeholder")));
-        let subscription = cx.subscribe_in(
-            &name,
-            window,
-            |this: &mut AddPlaylist, _, event, window, cx| match event {
-                InputEvent::PressEnter { .. } => this.save(window, cx),
-                InputEvent::Change => {
-                    this.error = None;
-                    cx.notify();
-                }
-                _ => {}
-            },
-        );
+        let subscription = cx.subscribe(&name, |this: &mut AddPlaylist, _, event, cx| {
+            if let InputEvent::Change = event {
+                this.error = None;
+                cx.notify();
+            }
+        });
         AddPlaylist {
             name,
             error: None,
@@ -154,25 +141,11 @@ pub(crate) fn open_add_playlist(window: &mut Window, cx: &mut App) {
         }
     });
     let field = dialog.read(cx).name.clone();
-    window.open_dialog(cx, move |plate, _, _| {
-        let dialog = dialog.clone();
-        plate
-            .title(t("add_playlist"))
-            .w(DIALOG_WIDTH)
-            // The backdrop must never throw away a typed name; the buttons are the way out.
-            .overlay_closable(false)
-            .child(dialog.clone())
-            .footer(
-                DialogFooter::new()
-                    .gap_2()
-                    .child(DialogClose::new().child(Button::new("cancel").label(t("cancel"))))
-                    .child(Button::new("save").primary().label(t("save")).on_click(
-                        move |_, window, cx| {
-                            dialog.update(cx, |this, cx| this.save(window, cx));
-                        },
-                    )),
-            )
-    });
+    let save = dialog.clone();
+    FormDialog::new(t("add_playlist"))
+        .footer(FormFooter::CancelSave)
+        .on_submit(move |window, cx| save.update(cx, |this, cx| this.save(window, cx)))
+        .open(dialog, window, cx);
     field.update(cx, |state, cx| state.focus(window, cx));
 }
 
@@ -182,7 +155,6 @@ type Save = Rc<dyn Fn(String, &mut App)>;
 struct TextPrompt {
     value: Entity<InputState>,
     save: Save,
-    _subscriptions: Vec<Subscription>,
 }
 
 impl TextPrompt {
@@ -198,7 +170,7 @@ impl TextPrompt {
 
 impl Render for TextPrompt {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div().w(PROMPT_WIDTH).child(Input::new(&self.value))
+        div().w_full().child(Input::new(&self.value))
     }
 }
 
@@ -211,43 +183,17 @@ pub(crate) fn open_rename(
     cx: &mut App,
 ) {
     let value = value.into();
-    let prompt = cx.new(|cx| {
-        let input = cx.new(|cx| InputState::new(window, cx).default_value(value.clone()));
-        let subscription = cx.subscribe_in(
-            &input,
-            window,
-            |this: &mut TextPrompt, _, event, window, cx| {
-                if let InputEvent::PressEnter { .. } = event {
-                    this.submit(window, cx);
-                }
-            },
-        );
-        TextPrompt {
-            value: input,
-            save: Rc::new(save),
-            _subscriptions: vec![subscription],
-        }
+    let prompt = cx.new(|cx| TextPrompt {
+        value: cx.new(|cx| InputState::new(window, cx).default_value(value.clone())),
+        save: Rc::new(save),
     });
     let field = prompt.read(cx).value.clone();
-    window.open_dialog(cx, move |plate, _, _| {
-        let prompt = prompt.clone();
-        plate
-            .title(title.clone())
-            .w(PROMPT_WIDTH)
-            // The backdrop must never throw away a typed name; the buttons are the way out.
-            .overlay_closable(false)
-            .child(prompt.clone())
-            .footer(
-                DialogFooter::new()
-                    .gap_2()
-                    .child(DialogClose::new().child(Button::new("cancel").label(t("cancel"))))
-                    .child(Button::new("save").primary().label(t("save")).on_click(
-                        move |_, window, cx| {
-                            prompt.update(cx, |this, cx| this.submit(window, cx));
-                        },
-                    )),
-            )
-    });
+    let submit = prompt.clone();
+    FormDialog::new(title)
+        .size(DialogSize::Prompt)
+        .footer(FormFooter::CancelSave)
+        .on_submit(move |window, cx| submit.update(cx, |this, cx| this.submit(window, cx)))
+        .open(prompt, window, cx);
     field.update(cx, |state, cx| state.focus(window, cx));
 }
 
@@ -256,7 +202,6 @@ struct FolderPicker {
     playlist_id: String,
     name: Entity<InputState>,
     creating: bool,
-    _subscriptions: Vec<Subscription>,
 }
 
 impl FolderPicker {
@@ -287,7 +232,7 @@ impl Render for FolderPicker {
         let folders = PlaylistsModel::global(cx).read(cx).folders().to_vec();
         v_flex()
             .gap_3()
-            .w(PROMPT_WIDTH)
+            .w_full()
             .when(folders.is_empty(), |column| {
                 column.child(
                     div()
@@ -367,36 +312,17 @@ impl Render for FolderPicker {
 
 /// Open the folder picker for `playlist_id`.
 pub(crate) fn open_folder_picker(playlist_id: String, window: &mut Window, cx: &mut App) {
-    let picker = cx.new(|cx| {
-        let name = cx.new(|cx| InputState::new(window, cx).placeholder(t("folder_name")));
-        let subscription = cx.subscribe_in(
-            &name,
-            window,
-            |this: &mut FolderPicker, _, event, window, cx| {
-                if let InputEvent::PressEnter { .. } = event {
-                    this.create(window, cx);
-                }
-            },
-        );
-        FolderPicker {
-            playlist_id,
-            name,
-            creating: false,
-            _subscriptions: vec![subscription],
-        }
+    let picker = cx.new(|cx| FolderPicker {
+        playlist_id,
+        name: cx.new(|cx| InputState::new(window, cx).placeholder(t("folder_name"))),
+        creating: false,
     });
-    window.open_dialog(cx, move |plate, _, _| {
-        plate
-            .title(t("move_to_folder"))
-            .w(PROMPT_WIDTH)
-            // The backdrop must never throw away a typed name; the buttons are the way out.
-            .overlay_closable(false)
-            .child(picker.clone())
-            .footer(
-                DialogFooter::new()
-                    .child(DialogClose::new().child(Button::new("cancel").label(t("cancel")))),
-            )
-    });
+    let create = picker.clone();
+    FormDialog::new(t("move_to_folder"))
+        .size(DialogSize::Prompt)
+        .footer(FormFooter::Cancel)
+        .on_submit(move |window, cx| create.update(cx, |this, cx| this.create(window, cx)))
+        .open(picker, window, cx);
 }
 
 /// Hand the shared rows the two dialogs only this page knows how to open.

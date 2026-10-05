@@ -222,8 +222,7 @@ impl TrackList {
         let keys: HashSet<&String> = rows.iter().map(|row| &row.key).collect();
         let was_selecting = self.selecting;
         self.selected.retain(|key| keys.contains(key));
-        // Re-sorting drops every key, and selection mode outliving the selection leaves a
-        // "0 selected" pill over the list while clicks tick checkboxes instead of playing.
+        // Selection mode outliving a re-sort's emptied selection would leave a "0 selected" pill eating clicks.
         self.selecting = !self.selected.is_empty();
         self.rows = rows;
         cx.notify();
@@ -314,7 +313,8 @@ impl TrackList {
         }
         let label = self.focus_target().label();
         let list = cx.entity().downgrade();
-        crate::dialogs::confirm_delete(
+        crate::dialogs::confirm(
+            crate::dialogs::ConfirmKind::Delete,
             t("delete"),
             label,
             move |_, cx| {
@@ -326,8 +326,7 @@ impl TrackList {
         );
     }
 
-    /// How many rows are selected, without cloning every key to count them: `selected_keys` walks
-    /// all rows and allocates a String each, and render paths only ever wanted the number.
+    /// How many rows are selected, without the per-row allocation `selected_keys` pays.
     pub fn selected_count(&self) -> usize {
         self.selected.len()
     }
@@ -493,8 +492,7 @@ impl Render for TrackList {
         crate::scroll::smooth_list("track-list", &self.scroll, window, cx);
         v_flex()
             .size_full()
-            // Nothing outside the shell held a focus handle, so no list could be walked with the
-            // keyboard: no arrows, no Enter, no select-all, and Escape never cleared a selection.
+            // Without a handle here no list took arrows, Enter, select-all or Escape.
             .track_focus(&self.focus)
             .key_context("TrackList")
             .on_action(cx.listener(|this, _: &CursorDown, _, cx| this.move_cursor(1, cx)))

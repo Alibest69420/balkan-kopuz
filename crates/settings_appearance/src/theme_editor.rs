@@ -196,7 +196,8 @@ impl ThemeEditor {
             return;
         }
         let editor = cx.entity().downgrade();
-        components::dialogs::confirm_discard(
+        components::dialogs::confirm(
+            components::dialogs::ConfirmKind::Discard,
             t("theme_unsaved_title"),
             t("theme_unsaved_body"),
             move |window, cx| {
@@ -596,7 +597,8 @@ impl Render for ThemeEditor {
                                         .on_click(cx.listener(|this, _, window, cx| {
                                             let name = this.editing_name(cx);
                                             let entity = cx.entity();
-                                            components::dialogs::confirm_delete(
+                                            components::dialogs::confirm(
+                                                components::dialogs::ConfirmKind::Delete,
                                                 t("delete"),
                                                 name,
                                                 move |window, cx| {

@@ -1,14 +1,14 @@
 //! Step one: every service the daemon offers, each opening the shared "add source" form on itself.
 
 use api::ServiceInfo;
+use components::dialogs::{DialogSize, FormDialog};
 use components::format::{t, text};
 use components::{Heading, SectionHeading, icons};
-use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, Context, Hsla, IntoElement, ParentElement as _, Rgba, SharedString,
-    StatefulInteractiveElement as _, Styled, Window, div,
+    StatefulInteractiveElement as _, Styled, Window,
 };
 use settings_sources::ui as forms;
 
@@ -51,22 +51,10 @@ impl FirstRun {
             form.select(service, window, cx);
         });
         let form = self.add.clone();
-        window.open_dialog(cx, move |dialog, _, _| {
-            dialog
-                .title(t("add_source"))
-                .w(forms::dialog_width())
-                // Enter saves the draft rather than throwing it away.
-                .on_ok({
-                    let form = form.clone();
-                    move |_, window, cx| {
-                        form.update(cx, |form, cx| form.save(window, cx));
-                        false
-                    }
-                })
-                .overlay_closable(false)
-                .child(form.clone())
-                .footer(div())
-        });
+        FormDialog::new(t("add_source"))
+            .size(DialogSize::Wide)
+            .on_submit(move |window, cx| form.update(cx, |form, cx| form.save(window, cx)))
+            .open(self.add.clone(), window, cx);
     }
 }
 
