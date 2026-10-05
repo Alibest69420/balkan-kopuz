@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 use std::time::Duration;
 
-use api::{QueueContext, RadioStationInfo};
+use api::{QueueContext, RadioStationInfo, Table};
 use gpui_kit::component::button::{
     Button, ButtonCustomVariant, ButtonRounded, ButtonVariants as _,
 };
@@ -95,8 +95,13 @@ impl Radio {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let filter =
             cx.new(|cx| InputState::new(window, cx).placeholder(t("radio_search_stations")));
-        let stations =
-            cx.new(|cx| Query::new(&[], |api| async move { api.radio_stations().await }, cx));
+        let stations = cx.new(|cx| {
+            Query::new(
+                &[Table::Stations],
+                |api| async move { api.radio_stations().await },
+                cx,
+            )
+        });
         let directory = cx.new(|cx| {
             Query::new(
                 &[],
@@ -112,7 +117,7 @@ impl Radio {
                 }
             }),
             cx.observe(&stations, |this, _, cx| this.adopt_pins(cx)),
-            cx.observe(&directory, |_, _, cx| cx.notify()),
+            cx.observe(&directory, |this, _, cx| this.relist(cx)),
         ];
         Self {
             filter,
@@ -153,7 +158,7 @@ impl Radio {
                 cx,
             )
         });
-        cx.notify();
+        self.relist(cx);
     }
 
     fn adopt_pins(&mut self, cx: &mut Context<Self>) {
@@ -164,7 +169,7 @@ impl Radio {
                 .map(|station| station.id.clone())
                 .collect();
         }
-        cx.notify();
+        self.relist(cx);
     }
 
     /// Move the local set first: the answer is a round trip away and a check mark that waits reads as a dead button.
@@ -175,7 +180,7 @@ impl Radio {
         } else {
             self.pinned.insert(id.clone());
         }
-        cx.notify();
+        self.relist(cx);
         let call = Link::global(cx).call({
             let id = id.clone();
             move |api| async move { api.pin_radio_station(id, !pinned).await }
@@ -183,7 +188,8 @@ impl Radio {
         cx.spawn(async move |this, cx| {
             let result = call.await;
             this.update(cx, |this, cx| match result {
-                Ok(()) => this.stations.update(cx, |query, cx| query.refresh(cx)),
+                // The daemon announces the new list on the Stations table, which refetches it.
+                Ok(()) => {}
                 Err(error) => {
                     tracing::warn!(%error, "pinning a station failed");
                     if pinned {
@@ -192,7 +198,7 @@ impl Radio {
                         this.pinned.remove(&id);
                     }
                     Notices::error(store::human(&error), cx);
-                    cx.notify();
+                    this.relist(cx);
                 }
             })
             .ok();
@@ -570,6 +576,13 @@ impl Radio {
         (keys, lines)
     }
 
+    /// Rebuild the lines from what changed, not per frame: render only reads them.
+    fn relist(&mut self, cx: &mut Context<Self>) {
+        let (keys, lines) = self.lines(cx);
+        self.adopt_lines(keys, lines);
+        cx.notify();
+    }
+
     /// Point the list at new lines, keeping whichever line was at the top where it was.
     fn adopt_lines(&mut self, keys: Vec<SharedString>, lines: Vec<Line>) {
         self.lines = lines;
@@ -674,8 +687,6 @@ enum Line {
 
 impl Render for Radio {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let (keys, lines) = self.lines(cx);
-        self.adopt_lines(keys, lines);
         v_flex()
             .size_full()
             .px_8()
