@@ -3,18 +3,18 @@
 use std::path::PathBuf;
 
 use api::{ArtworkChange, TrackInfo, TrackMetadataPatch};
-use components::ErrorBanner;
 use components::dialogs::{DialogSize, FormDialog, FormFooter};
 use components::format::{duration, t};
-use components::{EditableCover, Loading, icons, motion, style};
-use gpui_kit::base::StyledExt as _;
+use components::{
+    EditableCover, FactList, LabeledInput, Loading, TagFieldGrid, icons, motion, style,
+};
 use gpui_kit::base::motion::{Easing, Presence, Transition};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, WindowExt as _, h_flex, v_flex};
+use gpui_kit::component::input::{InputEvent, InputState};
+use gpui_kit::component::{Disableable as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Div, Entity, InteractiveElement as _, IntoElement,
+    AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
     ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _, Styled,
     Subscription, Task, Window, div, px,
 };
@@ -24,10 +24,6 @@ use store::{Link, Notices};
 const COVER_SIZE: Pixels = px(96.);
 const BODY_HEIGHT: Pixels = px(360.);
 const LOADING_HEIGHT: Pixels = px(160.);
-
-// `text-white/35` on a field label, `text-white/30` on the edit warning.
-const LABEL_TEXT: f32 = 0.35;
-const WARNING_TEXT: f32 = 0.30;
 
 mod batch;
 
@@ -310,103 +306,43 @@ impl MetadataDialog {
             })
     }
 
-    fn field(&self, label: SharedString, input: &Entity<InputState>, cx: &Context<Self>) -> Div {
-        self.checked_field(label, input, false, cx)
-    }
-
-    /// The same field, with the reason it is holding something that cannot be written.
-    fn checked_field(
-        &self,
-        label: SharedString,
-        input: &Entity<InputState>,
-        problem: bool,
-        cx: &Context<Self>,
-    ) -> Div {
-        let danger = cx.theme().danger;
-        v_flex()
-            .gap_1()
-            .child(caption(label, cx))
-            .child(
-                Input::new(input)
-                    .bg(style::white(style::HOVER, cx))
-                    .border_color(if problem {
-                        danger
-                    } else {
-                        style::white(style::BORDER, cx)
-                    })
-                    .rounded(style::radius_lg())
-                    .px_3()
-                    .py_2()
-                    .text_sm(),
-            )
-            .when(problem, |field| {
-                field.child(
-                    div()
-                        .text_xs()
-                        .text_color(danger)
-                        .child(t("metadata_number_invalid")),
-                )
-            })
-    }
-
     fn editor(&self, cx: &Context<Self>) -> AnyElement {
         let (bad_track, bad_disc) = self.unreadable(cx);
-        v_flex()
-            .gap_3()
-            .child(self.field(t("title"), &self.title, cx))
-            .child(self.field(t("artist"), &self.artist, cx))
-            .child(self.field(t("album"), &self.album, cx))
-            .child(
-                h_flex()
-                    .gap_3()
-                    .items_start()
-                    .child(div().flex_1().child(self.checked_field(
-                        t("track_number"),
-                        &self.track_number,
-                        bad_track,
-                        cx,
-                    )))
-                    .child(div().flex_1().child(self.checked_field(
-                        t("disc_number"),
-                        &self.disc_number,
-                        bad_disc,
-                        cx,
-                    ))),
+        let invalid = |bad: bool| bad.then(|| t("metadata_number_invalid"));
+        TagFieldGrid::new()
+            .field(LabeledInput::new(t("title"), &self.title))
+            .field(LabeledInput::new(t("artist"), &self.artist))
+            .field(LabeledInput::new(t("album"), &self.album))
+            .pair(
+                LabeledInput::new(t("track_number"), &self.track_number)
+                    .problem(invalid(bad_track)),
+                LabeledInput::new(t("disc_number"), &self.disc_number).problem(invalid(bad_disc)),
             )
-            .when_some(self.failure.clone(), |body, reason| {
-                body.child(ErrorBanner::new(reason))
-            })
-            .child(
-                div()
-                    .text_xs()
-                    .italic()
-                    .text_color(style::white(WARNING_TEXT, cx))
-                    .child(t("metadata_edit_warning")),
-            )
+            .failure(self.failure.clone())
+            .note(t("metadata_edit_warning"))
             .into_any_element()
     }
 
     /// The read view, without the "path" row the Dioxus app filled with a `uid`.
     fn details(&self, track: &TrackInfo, cx: &Context<Self>) -> AnyElement {
-        let mut rows: Vec<(SharedString, String)> = vec![
-            (t("title"), self.value(&self.title, cx)),
-            (t("artist"), self.value(&self.artist, cx)),
-            (t("album"), self.value(&self.album, cx)),
-            (t("track_number"), self.value(&self.track_number, cx)),
-            (t("disc_number"), self.value(&self.disc_number, cx)),
-        ];
+        let mut facts = FactList::new()
+            .row(t("title"), self.value(&self.title, cx))
+            .row(t("artist"), self.value(&self.artist, cx))
+            .row(t("album"), self.value(&self.album, cx))
+            .row(t("track_number"), self.value(&self.track_number, cx))
+            .row(t("disc_number"), self.value(&self.disc_number, cx));
         if let Some(secs) = track.duration_secs().filter(|secs| *secs > 0) {
-            rows.push((t("duration"), duration(secs * 1000).to_string()));
+            facts = facts.row(t("duration"), duration(secs * 1000).to_string());
         }
         // TODO(i18n): the units are the literals the Dioxus app printed.
         if track.khz > 0 {
-            rows.push((
+            facts = facts.row(
                 t("sample_rate"),
                 format!("{:.1} kHz", f64::from(track.khz) / 1000.0),
-            ));
+            );
         }
         if track.bitrate > 0 {
-            rows.push((t("bitrate"), format!("{} kbps", track.bitrate)));
+            facts = facts.row(t("bitrate"), format!("{} kbps", track.bitrate));
         }
         let ids = [
             (t("musicbrainz_release"), &track.musicbrainz_release_id),
@@ -414,33 +350,10 @@ impl MetadataDialog {
             (t("musicbrainz_track"), &track.musicbrainz_track_id),
         ];
         for (label, id) in ids {
-            rows.push((label, id.clone().unwrap_or_default()));
+            facts = facts.row(label, id.clone().unwrap_or_default());
         }
-        v_flex()
-            .gap_3()
-            .children(
-                rows.into_iter()
-                    .filter(|(_, value)| !value.trim().is_empty())
-                    .map(|(label, value)| {
-                        v_flex().gap_0p5().child(caption(label, cx)).child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().foreground)
-                                .child(value),
-                        )
-                    }),
-            )
-            .into_any_element()
+        facts.into_any_element()
     }
-}
-
-/// `text-[10px] font-bold text-white/35`: the label over a value or an edit field.
-fn caption(label: SharedString, cx: &App) -> Div {
-    div()
-        .text_size(style::text_10())
-        .font_bold()
-        .text_color(style::white(LABEL_TEXT, cx))
-        .child(label)
 }
 
 fn number(value: Option<u32>) -> String {

@@ -1,21 +1,17 @@
 //! One set of tags written across a whole selection: a blank field leaves that tag as it is.
 
 use api::{ArtworkChange, TrackMetadataPatch};
-use components::ErrorBanner;
 use components::dialogs::{DialogSize, FormDialog};
 use components::format::{t, t_with};
-use components::style;
+use components::{LabeledInput, TagFieldGrid, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::input::InputState;
 use gpui_kit::component::{Disableable as _, WindowExt as _, h_flex, v_flex};
-use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
     Styled, Task, Window, div,
 };
 use store::{Link, Notices};
-
-use crate::caption;
 
 pub(crate) fn open(keys: Vec<String>, window: &mut Window, cx: &mut App) {
     if keys.is_empty() {
@@ -125,17 +121,12 @@ impl Render for BatchDialog {
                         &[("count", self.keys.len().to_string())],
                     )),
             )
-            .child(self.field(t("artist"), &self.artist, cx))
-            .child(self.field(t("album"), &self.album, cx))
-            .when_some(self.failure.clone(), |body, reason| {
-                body.child(ErrorBanner::new(reason))
-            })
             .child(
-                div()
-                    .text_xs()
-                    .italic()
-                    .text_color(style::white(style::TEXT_DIM, cx))
-                    .child(t("metadata_edit_warning")),
+                TagFieldGrid::new()
+                    .field(LabeledInput::new(t("artist"), &self.artist))
+                    .field(LabeledInput::new(t("album"), &self.album))
+                    .failure(self.failure.clone())
+                    .note(t("metadata_edit_warning")),
             )
             .child(
                 h_flex()
@@ -157,24 +148,5 @@ impl Render for BatchDialog {
                             .on_click(cx.listener(|this, _, window, cx| this.save(window, cx))),
                     ),
             )
-    }
-}
-
-impl BatchDialog {
-    fn field(
-        &self,
-        label: SharedString,
-        input: &Entity<InputState>,
-        cx: &Context<Self>,
-    ) -> impl IntoElement + use<> {
-        v_flex().gap_1().child(caption(label, cx)).child(
-            Input::new(input)
-                .bg(style::white(style::HOVER, cx))
-                .border_color(style::white(style::BORDER, cx))
-                .rounded(style::radius_lg())
-                .px_3()
-                .py_2()
-                .text_sm(),
-        )
     }
 }

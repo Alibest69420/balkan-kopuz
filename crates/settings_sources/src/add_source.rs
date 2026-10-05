@@ -3,11 +3,11 @@
 use api::schema::{FieldKind, FieldValue};
 use api::{DraftCheck, ServiceInfo, SignInKind, SourceDraft, Table};
 use components::format::{t, text};
-use components::{ErrorBanner, FieldProblem};
+use components::{ErrorBanner, LabeledInput};
 use components::{FieldChanged, SchemaForm};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{Disableable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -297,13 +297,12 @@ impl Render for AddSource {
                 ))
             })
             .child(
-                v_flex()
-                    .w_full()
-                    .gap_1()
-                    .child(Input::new(&self.name).disabled(saving))
-                    .when_some(self.name_problem.clone(), |field, problem| {
-                        field.child(FieldProblem::new(problem))
-                    }),
+                v_flex().w_full().gap_1().child(
+                    LabeledInput::new("", &self.name)
+                        .framed(false)
+                        .disabled(saving)
+                        .problem(self.name_problem.clone()),
+                ),
             )
             .child(
                 Button::new("add-source-service")
