@@ -10,23 +10,19 @@ use api::{
 };
 use components::format::{t, t_with, total_duration};
 use components::{
-    Cover, DetailHeader, EmptyState, Loading, TrackActions, TrackHeader, TrackList, TrackListEvent,
-    TrackListOptions, icons, motion, style,
+    Cover, DetailHeader, EmptyState, IconButton, IconTone, Loading, TrackActions, TrackHeader,
+    TrackList, TrackListEvent, TrackListOptions, icons, motion, style,
 };
 use config::{AlbumSortField, AlbumViewMode, ArtistViewOrder, SortCriterion, SortDirection};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, Selectable as _, Sizable as _, Size, h_flex, v_flex,
-};
+use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
-    ParentElement as _, PathPromptOptions, Pixels, Rems, Render, ScrollHandle, SharedString,
+    ParentElement as _, PathPromptOptions, Pixels, Render, ScrollHandle, SharedString,
     StatefulInteractiveElement as _, Styled as _, Subscription, Task, Window, div, px, rems,
 };
 use store::{
-    ConfigModel, DownloadsModel, JobsModel, Navigator, PlayerModel, Query, SourcesModel, Target,
-    actions,
+    ConfigModel, DownloadsModel, JobsModel, PlayerModel, Query, SourcesModel, Target, actions,
 };
 
 use crate::controls::{self, ViewModeKey};
@@ -36,9 +32,11 @@ const PHOTO: f32 = 256.;
 /// `minmax(180px, 1fr)`: one album card.
 const CARD: f32 = 180.;
 /// `w-14 h-14`: the round shuffle and play buttons.
-const HERO_BUTTON: Rems = rems(3.5);
-/// A `Button` sizes its glyph at 0.75× itself, and the showcase's is `text-xl`.
-const HERO_GLYPH: Pixels = px(20. / 0.75);
+const HERO_BUTTON: Pixels = px(56.);
+/// `w-12 h-12`: the outlined download beside them.
+const HERO_SECONDARY: Pixels = px(48.);
+/// `text-xl`, the showcase's glyph.
+const HERO_GLYPH: Pixels = px(20.);
 
 /// A sortable column of the tracks view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -291,14 +289,7 @@ impl Render for ArtistDetail {
                     .w_full()
                     .justify_between()
                     .items_center()
-                    .child(
-                        Button::new("artist-back")
-                            .ghost()
-                            .icon(icons::icon(icons::CHEVRON_LEFT))
-                            .on_click(|_, _, cx| {
-                                Navigator::global(cx).update(cx, |nav, cx| nav.go_back(cx))
-                            }),
-                    )
+                    .child(components::back_button("artist-back", cx))
                     .child(controls::view_order_toggle(&config.artist_view_order)),
             )
             .child(body)
@@ -370,59 +361,6 @@ impl ArtistDetail {
             window,
             cx,
         );
-        let (shuffle_hot, shuffle_hover) = motion::hovered("artist-shuffle-hover", window, cx);
-        let shuffle_fill = motion::color(
-            "artist-shuffle-fill",
-            style::white(if shuffle_hot { style::HOVER } else { 0. }, cx),
-            window,
-            cx,
-        );
-        let shuffle_text = motion::color(
-            "artist-shuffle-text",
-            match (shuffle, shuffle_hot) {
-                (true, _) => cx.theme().primary,
-                (false, true) => cx.theme().foreground,
-                (false, false) => style::slate_400(cx),
-            },
-            window,
-            cx,
-        );
-        // A disabled Button registers no hover listener, so its flag would stay stuck where it was.
-        let (play_hot, play_hover) = motion::hovered("artist-play-hover", window, cx);
-        let play_hot = play_hot && playable;
-        let play_fill = motion::color(
-            "artist-play-fill",
-            if play_hot {
-                cx.theme().primary_hover
-            } else {
-                cx.theme().primary
-            },
-            window,
-            cx,
-        );
-        let play_text = cx.theme().primary_foreground;
-        // These buttons carry no border; `tweened` still wants a colour for the edge it would paint.
-        let clear = style::white(0., cx);
-        let (download_hot, download_hover) = motion::hovered("artist-download-hover", window, cx);
-        let download_hot = download_hot && downloadable;
-        let download_fill = motion::color(
-            "artist-download-fill",
-            style::white(if download_hot { style::HOVER } else { 0. }, cx),
-            window,
-            cx,
-        );
-        let download_edge = motion::color(
-            "artist-download-edge",
-            style::white(if download_hot { 0.40 } else { style::ACTIVE }, cx),
-            window,
-            cx,
-        );
-        let download_text = motion::color(
-            "artist-download-text",
-            style::white(if download_hot { 1. } else { 0.70 }, cx),
-            window,
-            cx,
-        );
 
         let photo = div()
             .id("artist-photo")
@@ -470,51 +408,45 @@ impl ArtistDetail {
                 &[("count", keys.len().to_string())],
             ))
             .meta(total_duration(total))
-            .action(components::hover::framed(
-                "artist-shuffle",
-                shuffle_hover,
-                controls::tweened(
-                    round_button("artist-shuffle", icons::SHUFFLE)
-                        .selected(shuffle)
-                        .tooltip(if shuffle {
-                            t("shuffle_on")
-                        } else {
-                            t("shuffle_off")
-                        })
-                        .on_click(move |_, _, cx| {
-                            PlayerModel::global(cx)
-                                .update(cx, |player, cx| player.set_shuffle(!shuffle, cx))
-                        }),
-                    shuffle_fill,
-                    shuffle_text,
-                    clear,
-                    cx,
-                ),
-            ))
-            .action({
-                let play = round_button("artist-play", icons::PLAY)
+            .action(
+                IconButton::new("artist-shuffle", icons::SHUFFLE)
+                    .size(HERO_BUTTON)
+                    .glyph(HERO_GLYPH)
+                    .lit(shuffle)
+                    .tooltip(if shuffle {
+                        t("shuffle_on")
+                    } else {
+                        t("shuffle_off")
+                    })
+                    .on_click(move |_, _, cx| {
+                        PlayerModel::global(cx)
+                            .update(cx, |player, cx| player.set_shuffle(!shuffle, cx))
+                    }),
+            )
+            .action(
+                IconButton::new("artist-play", icons::PLAY)
+                    .size(HERO_BUTTON)
+                    .glyph(HERO_GLYPH)
+                    .tone(IconTone::Accent)
                     .tooltip(t("play"))
                     .disabled(!playable)
                     .on_click({
                         let keys = keys.clone();
                         move |_, _, cx| actions::play_all(keys.clone(), cx)
-                    });
-                let play = match playable {
-                    true => controls::tweened(play, play_fill, play_text, clear, cx),
-                    false => play.primary(),
-                };
-                components::hover::framed("artist-play", play_hover, play)
-            });
+                    }),
+            );
         if capabilities.downloads {
-            let download = Button::new("artist-download-all")
-                .size_12()
-                .rounded_full()
-                .border_1()
-                .icon(icons::icon(if stored {
-                    icons::TRASH
-                } else {
-                    icons::DOWNLOAD
-                }))
+            header = header.action(
+                IconButton::new(
+                    "artist-download-all",
+                    if stored {
+                        icons::TRASH
+                    } else {
+                        icons::DOWNLOAD
+                    },
+                )
+                .size(HERO_SECONDARY)
+                .tone(IconTone::Outline)
                 .tooltip(if stored {
                     t("remove_download")
                 } else {
@@ -524,21 +456,8 @@ impl ArtistDetail {
                 .on_click({
                     let keys = keys.clone();
                     move |_, _, cx| set_downloaded(keys.clone(), !stored, cx)
-                });
-            let download = match downloadable {
-                true => {
-                    controls::tweened(download, download_fill, download_text, download_edge, cx)
-                }
-                false => download
-                    .ghost()
-                    .border_color(style::white(style::ACTIVE, cx))
-                    .text_color(style::white(0.70, cx)),
-            };
-            header = header.action(components::hover::framed(
-                "artist-download-all",
-                download_hover,
-                download,
-            ));
+                }),
+            );
         }
         header.into_any_element()
     }
@@ -669,15 +588,6 @@ impl ArtistDetail {
             .child(body)
             .into_any_element()
     }
-}
-
-/// `w-14 h-14 rounded-full` with a `text-xl` glyph: the showcase's shuffle and play.
-fn round_button(id: &'static str, icon: &'static str) -> Button {
-    Button::new(id)
-        .with_size(Size::Size(HERO_GLYPH))
-        .size(HERO_BUTTON)
-        .rounded_full()
-        .icon(icons::icon(icon))
 }
 
 fn set_downloaded(keys: Vec<String>, download: bool, cx: &mut App) {

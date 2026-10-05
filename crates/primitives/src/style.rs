@@ -34,14 +34,12 @@ pub const SELECTED: f32 = 0.07;
 /// `color-mix(… indigo-500 12%, transparent)`: the now-playing row's tint.
 pub const PLAYING: f32 = 0.12;
 
-/// `bg-white/N`: the theme's text color at `alpha`, which is what Tailwind's
-/// `--color-white` resolves to in every Kopuz theme.
+/// `bg-white/N`: the theme's text color at `alpha`, which `--color-white` resolves to in every theme.
 pub fn white(alpha: f32, cx: &App) -> Hsla {
     cx.theme().foreground.opacity(alpha)
 }
 
-/// `bg-black/N`: the theme's background color at `alpha`, for the panels that
-/// darken whatever sits behind them.
+/// `bg-black/N`: the theme's background color at `alpha`, for panels that darken what is behind.
 pub fn black(alpha: f32, cx: &App) -> Hsla {
     cx.theme().background.opacity(alpha)
 }
@@ -170,8 +168,7 @@ pub fn button(fill: Hsla, hover: Hsla, ink: Hsla, cx: &App) -> ButtonCustomVaria
         .foreground(ink)
 }
 
-/// A button with no fill of its own that washes on hover, keeping `ink` throughout: what
-/// `.ghost()` looks like when its foreground is not thrown away.
+/// No fill until the pointer washes it, keeping `ink`: `.ghost()` without its foreground thrown away.
 pub fn quiet_button(ink: Hsla, cx: &App) -> ButtonCustomVariant {
     button(gpui_kit::transparent_black(), white(HOVER, cx), ink, cx)
 }
@@ -180,6 +177,54 @@ pub fn quiet_button(ink: Hsla, cx: &App) -> ButtonCustomVariant {
 pub fn bare_button(ink: Hsla, cx: &App) -> ButtonCustomVariant {
     let clear = gpui_kit::transparent_black();
     button(clear, clear, ink, cx)
+}
+
+/// `bg-white/10 hover:bg-white/20`: the soft button settings cards and toolbars are built from.
+pub fn soft_button(ink: Hsla, cx: &App) -> ButtonCustomVariant {
+    button(white(HOVER, cx), white(ACTIVE, cx), ink, cx)
+}
+
+/// `bg-white/5 hover:bg-white/10`: a toolbar's dropdown triggers, raised a step off the page.
+pub fn raised_button(ink: Hsla, cx: &App) -> ButtonCustomVariant {
+    button(white(RAISED, cx), white(HOVER, cx), ink, cx)
+}
+
+/// `ink` as a wash and as the text: a delete or a connected state, `bg-red-500/20 hover:bg-red-500/30`.
+pub fn tint_button(ink: Hsla, cx: &App) -> ButtonCustomVariant {
+    button(ink.opacity(ACTIVE), ink.opacity(0.3), ink, cx)
+}
+
+/// `ink` as text over nothing, washing faintly in it: a destructive action written as a link.
+pub fn tint_text_button(ink: Hsla, cx: &App) -> ButtonCustomVariant {
+    button(gpui_kit::transparent_black(), ink.opacity(HOVER), ink, cx)
+}
+
+/// `bg-white/15`, the entry a picker list is on.
+pub const PICKED: f32 = 0.15;
+
+/// One entry of a picker list: quiet and slate until picked, then washed and white.
+pub fn pick_button(picked: bool, cx: &App) -> ButtonCustomVariant {
+    let (fill, ink) = match picked {
+        true => (white(PICKED, cx), cx.theme().foreground),
+        false => (gpui_kit::transparent_black(), slate_400(cx)),
+    };
+    button(fill, white(RAISED, cx), ink, cx)
+}
+
+/// `bg-white text-black`: the one inverted control on a surface, opaque so it goes through [`dress`].
+pub fn inverted(
+    button: gpui_kit::component::button::Button,
+    cx: &App,
+) -> gpui_kit::component::button::Button {
+    let ink = cx.theme().foreground;
+    dress(
+        button,
+        ink,
+        white(TEXT_STRONG, cx),
+        cx.theme().background,
+        ink,
+        cx,
+    )
 }
 
 /// gpui-component rests a custom variant's `color` at a fifth of its alpha; hover and active paint whole.

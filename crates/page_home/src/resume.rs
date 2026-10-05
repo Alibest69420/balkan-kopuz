@@ -40,8 +40,7 @@ pub(crate) fn banner(window: &mut Window, cx: &mut Context<Home>) -> Option<AnyE
     let playing = PlayerModel::global(cx).read(cx).is_playing();
 
     let (over, pointer) = motion::hovered(motion::channel(&key, HOVER), window, cx);
-    // The window carries the playing cover's colour behind this, so the stage is glass over it
-    // rather than a second, blurrier copy of the same cover fighting it through a wash.
+    // The window already carries the cover's colour behind this, so the stage is glass, not a second blur.
     let wash = motion::color(
         motion::channel(&key, WASH),
         style::white(
@@ -54,15 +53,7 @@ pub(crate) fn banner(window: &mut Window, cx: &mut Context<Home>) -> Option<AnyE
         window,
         cx,
     );
-    // `bg-white text-black`: an opaque fill rests on the instance, never on the variant's colour.
-    let resume = style::dress(
-        Button::new("home-resume"),
-        cx.theme().foreground,
-        style::white(style::TEXT_STRONG, cx),
-        cx.theme().background,
-        cx.theme().foreground,
-        cx,
-    );
+    let resume = style::inverted(Button::new("home-resume"), cx);
     Some(
         h_flex()
             .id(key.clone())

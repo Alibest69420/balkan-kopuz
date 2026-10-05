@@ -6,7 +6,7 @@ use api::schema::{FieldSpec, FieldValue};
 use api::{ConnectKind, IntegrationInfo, Table};
 use components::format::{t, t_with, text};
 use components::{FieldChanged, SchemaForm, style};
-use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -169,16 +169,10 @@ impl Integrations {
                             .map(|button| {
                                 if configured {
                                     button
-                                        .custom(
-                                            ButtonCustomVariant::new(cx)
-                                                .color(style::rest(success.opacity(0.2)))
-                                                .hover(success.opacity(0.2))
-                                                .active(success.opacity(0.2))
-                                                .foreground(success),
-                                        )
-                                        .bg(success.opacity(0.2))
+                                        .custom(style::tint_button(success, cx))
+                                        .bg(success.opacity(style::ACTIVE))
                                 } else {
-                                    button.custom(ui::soft(cx))
+                                    button.custom(style::soft_button(cx.theme().foreground, cx))
                                 }
                             })
                             .label(if configured {

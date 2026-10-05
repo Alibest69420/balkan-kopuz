@@ -10,7 +10,7 @@ use components::{
     Badge, BadgeTone, Chip, ChipSize, ChipTone, Cover, EmptyState, Heading, PageHeader,
     SearchField, SectionHeading, icons, motion, style,
 };
-use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -479,12 +479,7 @@ impl Radio {
         )
         .child(
             Button::new(SharedString::from(format!("pin-{}", station.id)))
-                .custom(
-                    ButtonCustomVariant::new(cx)
-                        .foreground(pin_tint)
-                        .hover(style::white(style::HOVER, cx))
-                        .active(style::white(style::ACTIVE, cx)),
-                )
+                .custom(style::quiet_button(pin_tint, cx))
                 .rounded(px(999.))
                 .with_size(px(36.))
                 .icon(icons::icon(if pinned { icons::CHECK } else { icons::PLUS }).xsmall())

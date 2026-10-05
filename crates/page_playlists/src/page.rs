@@ -2,18 +2,21 @@
 
 use api::{AlbumPresentation, JobKind, PlaylistInfo, SourceCapabilities};
 use components::format::t;
-use components::{EmptyState, Heading, Loading, PageHeader, SectionHeading, icons, motion, style};
+use components::{
+    EmptyState, Heading, IconButton, IconTone, Loading, PageHeader, SectionHeading, icons, style,
+};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Context, InteractiveElement as _, IntoElement, ParentElement as _,
-    Render, SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Window, px,
+    AnyElement, ClickEvent, Context, InteractiveElement as _, IntoElement, ParentElement as _,
+    Pixels, Render, SharedString, StatefulInteractiveElement as _, Styled as _, Subscription,
+    Window, px,
 };
 use store::{DownloadsModel, JobsModel, PlaylistsModel, SourcesModel, actions};
 
-use crate::cards::{folder_card, playlist_card, tweened};
+use crate::cards::{folder_card, playlist_card};
 use crate::dialogs;
 use components::{Tile, tile_grid as card_grid};
 
@@ -22,43 +25,8 @@ pub struct Playlists {
     _subscriptions: Vec<Subscription>,
 }
 
-/// One chrome button's `transition-colors`: `fill` and `text` are its resting and hovered `white/N`.
-fn tweened_chrome(
-    id: &'static str,
-    button: Button,
-    fill: (f32, f32),
-    text: (f32, f32),
-    window: &mut Window,
-    cx: &mut App,
-) -> impl IntoElement {
-    let (hot, hover) = motion::hovered(SharedString::from(format!("{id}-hover")), window, cx);
-    let background = motion::color(
-        SharedString::from(format!("{id}-fill")),
-        style::white(if hot { fill.1 } else { fill.0 }, cx),
-        window,
-        cx,
-    );
-    let foreground = motion::color(
-        SharedString::from(format!("{id}-text")),
-        style::white(if hot { text.1 } else { text.0 }, cx),
-        window,
-        cx,
-    );
-    tweened(
-        id,
-        button,
-        hover,
-        background,
-        foreground,
-        style::white(0., cx),
-        cx,
-    )
-}
-
-/// `w-10 h-10 rounded-full text-white/60`: the two buttons beside the page title.
-fn round_action(id: &'static str) -> Button {
-    Button::new(id).size_10().rounded_full()
-}
+/// `w-8 h-8`: the download riding on a remote playlist's cover.
+const CORNER: Pixels = px(32.);
 
 impl Playlists {
     pub fn new(_: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -88,21 +56,14 @@ impl Playlists {
         JobsModel::global(cx).update(cx, |jobs, cx| jobs.start(JobKind::PlaylistSync, cx));
     }
 
-    fn header(
-        &self,
-        capabilities: SourceCapabilities,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> PageHeader {
+    fn header(&self, capabilities: SourceCapabilities, cx: &mut Context<Self>) -> PageHeader {
         let add = cx.listener(|_, _: &ClickEvent, window, cx| {
             dialogs::open_add_playlist(window, cx);
         });
         PageHeader::new(t("playlists"))
             .when(capabilities.folders, |header| {
-                header.action(tweened_chrome(
-                    "new-folder",
-                    round_action("new-folder")
-                        .icon(icons::icon(icons::FOLDER))
+                header.action(
+                    IconButton::new("new-folder", icons::FOLDER)
                         .tooltip(t("new_folder"))
                         .on_click(|_, _, cx| {
                             let name = t("new_folder").to_string();
@@ -110,23 +71,13 @@ impl Playlists {
                                 api.create_playlist_folder(name).await
                             });
                         }),
-                    (0., style::HOVER),
-                    (style::TEXT_SECONDARY, 1.),
-                    window,
-                    cx,
-                ))
+                )
             })
-            .action(tweened_chrome(
-                "add-playlist",
-                round_action("add-playlist")
-                    .icon(icons::icon(icons::PLUS))
+            .action(
+                IconButton::new("add-playlist", icons::PLUS)
                     .tooltip(t("add_playlist"))
                     .on_click(add),
-                (0., style::HOVER),
-                (style::TEXT_SECONDARY, 1.),
-                window,
-                cx,
-            ))
+            )
     }
 
     fn folders_layout(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -170,12 +121,7 @@ impl Playlists {
             .into_any_element()
     }
 
-    fn flat_layout(
-        &self,
-        capabilities: SourceCapabilities,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    fn flat_layout(&self, capabilities: SourceCapabilities, cx: &mut Context<Self>) -> AnyElement {
         let playlists = PlaylistsModel::global(cx).read(cx).playlists().to_vec();
         let anonymous = SourcesModel::global(cx)
             .read(cx)
@@ -186,7 +132,7 @@ impl Playlists {
         v_flex()
             .gap_3()
             .when(remote, |column| {
-                column.child(self.sync_row(playlists.len(), window, cx))
+                column.child(self.sync_row(playlists.len(), cx))
             })
             .child(if playlists.is_empty() {
                 if anonymous {
@@ -219,23 +165,16 @@ impl Playlists {
         let active = keys.iter().any(|key| downloads.read(cx).is_active(key));
         let stored = !keys.is_empty() && keys.iter().all(|key| downloads.read(cx).is_stored(key));
         let corner = capabilities.downloads.then(|| {
-            style::dress(
-                Button::new(SharedString::from(format!("download-{}", playlist.id))),
-                style::black(0.4, cx),
-                style::black(0.4, cx),
-                style::white(style::TEXT_SECONDARY, cx),
-                style::white(style::BORDER, cx),
-                cx,
+            IconButton::new(
+                format!("download-{}", playlist.id),
+                if stored {
+                    icons::TRASH
+                } else {
+                    icons::DOWNLOAD
+                },
             )
-            .xsmall()
-            .size_8()
-            .rounded_full()
-            .border_1()
-            .icon(icons::icon(if stored {
-                icons::TRASH
-            } else {
-                icons::DOWNLOAD
-            }))
+            .size(CORNER)
+            .tone(IconTone::Scrim)
             .loading(active)
             .on_click(move |_, _, cx| {
                 let keys = keys.clone();
@@ -262,12 +201,7 @@ impl Playlists {
             .corner(corner)
     }
 
-    fn sync_row(
-        &self,
-        total: usize,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    fn sync_row(&self, total: usize, cx: &mut Context<Self>) -> impl IntoElement {
         let progress = JobsModel::global(cx)
             .read(cx)
             .progress(JobKind::PlaylistSync)
@@ -302,8 +236,9 @@ impl Playlists {
                             .child(SharedString::from(format!("{total} playlists synced")))
                     }),
             )
-            .child({
-                let refresh = Button::new("refresh-playlists")
+            .child(
+                Button::new("refresh-playlists")
+                    .custom(style::soft_button(style::white(0.80, cx), cx))
                     .xsmall()
                     .px_3()
                     .py_1()
@@ -315,39 +250,22 @@ impl Playlists {
                     .on_click(|_, _, cx| {
                         JobsModel::global(cx)
                             .update(cx, |jobs, cx| jobs.start(JobKind::PlaylistSync, cx));
-                    });
-                if syncing {
-                    refresh
-                        .ghost()
-                        .bg(style::white(style::HOVER, cx))
-                        .text_color(style::white(0.80, cx))
-                        .into_any_element()
-                } else {
-                    tweened_chrome(
-                        "refresh-playlists",
-                        refresh,
-                        (style::HOVER, style::ACTIVE),
-                        (0.80, 0.80),
-                        window,
-                        cx,
-                    )
-                    .into_any_element()
-                }
-            })
+                    }),
+            )
     }
 }
 
 impl Render for Playlists {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let capabilities = SourcesModel::global(cx).read(cx).capabilities();
         let loaded = PlaylistsModel::global(cx).read(cx).is_loaded();
-        let header = self.header(capabilities, window, cx);
+        let header = self.header(capabilities, cx);
         let body = if !loaded {
             Loading::new().into_any_element()
         } else if capabilities.folders {
             self.folders_layout(cx)
         } else {
-            self.flat_layout(capabilities, window, cx)
+            self.flat_layout(capabilities, cx)
         };
         v_flex().size_full().px_8().pt_8().child(header).child(
             v_flex()

@@ -9,7 +9,7 @@ use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::{Disableable as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
@@ -162,7 +162,7 @@ impl RadioRegistries {
             .when(!entry.is_default, |row| {
                 row.child(
                     Button::new(SharedString::from(format!("delete-registry-{url}")))
-                        .custom(ui::danger_text(cx))
+                        .custom(style::tint_text_button(cx.theme().danger, cx))
                         .xsmall()
                         .label(t("delete"))
                         .disabled(locked)
@@ -221,7 +221,7 @@ impl Render for RadioRegistries {
                     )
                     .child(
                         Button::new("add-registry")
-                            .custom(ui::soft(cx))
+                            .custom(style::soft_button(cx.theme().foreground, cx))
                             .small()
                             .icon(icons::icon(icons::PLUS))
                             .label(t("add"))

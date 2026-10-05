@@ -6,17 +6,17 @@ use std::time::Duration;
 use api::{AlbumInfo, ArtistInfo, ArtworkRef, PlaylistInfo};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _};
-use gpui_kit::component::spinner::Spinner;
-use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Div, Entity, FontWeight, InteractiveElement as _, IntoElement,
     ParentElement as _, Pixels, RenderOnce, SharedString, Stateful,
-    StatefulInteractiveElement as _, Styled, Window, div, px, rems,
+    StatefulInteractiveElement as _, Styled, Window, div, px,
 };
 use store::{Navigator, Route, Target};
 
 use crate::cover::Cover;
+use crate::icon_button::{IconButton, IconTone};
 use crate::icons;
 use crate::motion;
 use crate::style;
@@ -29,10 +29,10 @@ const COVER: u64 = 3;
 const TITLE: u64 = 4;
 const DOTS: u64 = 5;
 const MENU: u64 = 6;
-const PLAY_HOVER: u64 = 7;
-const PLAY_TINT: u64 = 8;
-const PLAY: u64 = 9;
 const CORNER: u64 = 10;
+
+/// `w-10 h-10`: the play button over a cover's corner.
+const PLAY_SIZE: Pixels = px(40.);
 
 /// What a click on a card or row does.
 pub type OnClick = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
@@ -232,10 +232,20 @@ impl RenderOnce for Tile {
         let play = self
             .play
             .filter(|_| hovered || focused)
-            .map(|(state, click)| PlayButton {
-                tile: id.clone(),
-                state,
-                click,
+            .map(|(state, click)| {
+                let glyph = match state {
+                    PlayState::Playing => icons::PAUSE,
+                    _ => icons::PLAY,
+                };
+                IconButton::new(SharedString::from(format!("{id}-play")), glyph)
+                    .size(PLAY_SIZE)
+                    .glyph(px(14.))
+                    .tone(IconTone::Accent)
+                    .shadow(true)
+                    .loading(state == PlayState::Loading)
+                    // The button sits on the card, whose own click opens what it names.
+                    .stop_propagation(true)
+                    .on_click(move |event, window, cx| click(event, window, cx))
             });
         let click = self.click.clone();
         let opens = self.click;
@@ -650,59 +660,6 @@ pub enum PlayState {
     Playing,
     /// The press is on its way; the queue is not built yet.
     Loading,
-}
-
-/// The accent button over a cover's corner: play what the card names, or pause it if it is playing.
-#[derive(IntoElement)]
-struct PlayButton {
-    tile: SharedString,
-    state: PlayState,
-    click: OnClick,
-}
-
-impl RenderOnce for PlayButton {
-    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let key = self.tile;
-        let (over, pointer) = motion::hovered(motion::channel(&key, PLAY_HOVER), window, cx);
-        let tint = motion::color(
-            motion::channel(&key, PLAY_TINT),
-            match over {
-                true => cx.theme().primary_hover,
-                false => cx.theme().primary,
-            },
-            window,
-            cx,
-        );
-        let click = self.click;
-        div()
-            .id(motion::channel(&key, PLAY))
-            .flex()
-            .items_center()
-            .justify_center()
-            .size(rems(2.5))
-            .rounded_full()
-            .bg(tint)
-            .text_color(cx.theme().primary_foreground)
-            .shadow_md()
-            .cursor_pointer()
-            .on_hover(motion::track(pointer))
-            .map(|button| match self.state {
-                PlayState::Loading => button.child(Spinner::new().small()),
-                state => button.child(
-                    Icon::default()
-                        .path(match state {
-                            PlayState::Playing => icons::PAUSE,
-                            _ => icons::PLAY,
-                        })
-                        .size(px(14.)),
-                ),
-            })
-            .on_click(move |event, window, cx| {
-                // The button sits on the card, whose own click opens what it names.
-                cx.stop_propagation();
-                click(event, window, cx);
-            })
-    }
 }
 
 /// The album tile: click opens the album, its menu is the album's.

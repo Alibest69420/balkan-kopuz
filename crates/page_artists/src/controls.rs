@@ -5,24 +5,8 @@ use components::{Segment, Segmented, SortControl};
 use config::{
     AlbumSortField, AlbumViewMode, AppConfig, ArtistSortField, ArtistViewOrder, SortCriterion,
 };
-use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
-use gpui_kit::{App, Hsla, IntoElement, Styled as _};
+use gpui_kit::{App, IntoElement};
 use store::ConfigModel;
-
-/// A `Button` paints its own hover style over the instance one, so the variant is handed the tween too.
-pub(crate) fn tweened(button: Button, fill: Hsla, text: Hsla, edge: Hsla, cx: &App) -> Button {
-    button
-        .custom(
-            ButtonCustomVariant::new(cx)
-                .color(edge)
-                .hover(fill)
-                .active(fill)
-                .foreground(text),
-        )
-        .bg(fill)
-        .border_color(edge)
-        .text_color(text)
-}
 
 /// Which config key a view-mode toggle writes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

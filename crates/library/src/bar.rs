@@ -236,12 +236,7 @@ impl Library {
 
     fn quiet(&self, id: &'static str, icon: &'static str, label: SharedString, cx: &App) -> Button {
         Button::new(id)
-            .custom(style::button(
-                style::white(style::RAISED, cx),
-                style::white(style::HOVER, cx),
-                style::white(0.7, cx),
-                cx,
-            ))
+            .custom(style::raised_button(style::white(0.7, cx), cx))
             .icon(icons::icon(icon))
             .label(label)
             .h_7()

@@ -2,7 +2,7 @@
 
 use components::format::t;
 use components::{icons, motion, style};
-use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::clipboard::Clipboard;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::{
@@ -23,25 +23,6 @@ const HINT: f32 = 0.60;
 const COMMAND_BORDER: f32 = 0.30;
 /// `bg-neutral-900/79` behind it.
 const COMMAND_BG: f32 = 0.79;
-
-/// `bg-white/10 hover:bg-white/20`: the quiet button these cards are built from.
-pub fn soft(cx: &App) -> ButtonCustomVariant {
-    ButtonCustomVariant::new(cx)
-        .color(style::rest(style::white(style::HOVER, cx)))
-        .hover(style::white(style::ACTIVE, cx))
-        .active(style::white(style::ACTIVE, cx))
-        .foreground(cx.theme().foreground)
-}
-
-/// `text-red-400 hover:text-red-300`: a destructive action written as text, not a filled button.
-pub fn danger_text(cx: &App) -> ButtonCustomVariant {
-    let transparent = cx.theme().transparent;
-    ButtonCustomVariant::new(cx)
-        .color(transparent)
-        .hover(cx.theme().danger.opacity(0.1))
-        .active(cx.theme().danger.opacity(0.1))
-        .foreground(cx.theme().danger)
-}
 
 /// The inset a settings card gives its contents, the same one a stacked row has.
 pub fn card(_: &App) -> Div {
@@ -139,7 +120,7 @@ pub fn folder_row(
         )
         .child(
             Button::new(id)
-                .custom(danger_text(cx))
+                .custom(style::tint_text_button(cx.theme().danger, cx))
                 .xsmall()
                 .label(t("remove"))
                 .disabled(locked)
@@ -155,7 +136,7 @@ pub fn add_folder_button(
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     Button::new(id)
-        .custom(soft(cx))
+        .custom(style::soft_button(cx.theme().foreground, cx))
         .small()
         .icon(icons::icon(icons::PLUS))
         .label(t("add_folder"))

@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use components::format::t;
 use components::{icons, motion, style};
 use config::CustomTheme;
-use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{
@@ -21,8 +21,6 @@ use store::ConfigModel;
 
 /// `text-white/70`, what a color's name reads in.
 const LABEL: f32 = 0.70;
-/// `bg-white/15`, the saved theme the editor is on.
-const SELECTED: f32 = 0.15;
 
 /// The thirteen palette tokens, in the order the editor lists them.
 pub const VAR_KEYS: &[&str] = &[
@@ -489,8 +487,6 @@ impl Render for ThemeEditor {
         let preview = self.preview(window, cx);
         let saved = self.saved_themes(cx);
         let selected = self.selected.clone();
-        let transparent = cx.theme().transparent;
-        let foreground = cx.theme().foreground;
         let danger = cx.theme().danger;
         // The original laid the thirteen colors out in a two-column grid; GPUI has no grid.
         let columns = |parity: usize| {
@@ -511,7 +507,7 @@ impl Render for ThemeEditor {
                     .gap_2()
                     .child(
                         Button::new("new-theme")
-                            .custom(crate::soft(cx))
+                            .custom(style::soft_button(cx.theme().foreground, cx))
                             .w_full()
                             .justify_start()
                             .icon(icons::icon(icons::PLUS))
@@ -525,21 +521,7 @@ impl Render for ThemeEditor {
                             let chosen = selected.as_deref() == Some(id.as_str());
                             let target = id.clone();
                             Button::new(SharedString::from(format!("theme-{id}")))
-                                .custom(
-                                    ButtonCustomVariant::new(cx)
-                                        .color(if chosen {
-                                            style::white(SELECTED, cx)
-                                        } else {
-                                            transparent
-                                        })
-                                        .hover(style::white(style::RAISED, cx))
-                                        .active(style::white(SELECTED, cx))
-                                        .foreground(if chosen {
-                                            foreground
-                                        } else {
-                                            style::slate_400(cx)
-                                        }),
-                                )
+                                .custom(style::pick_button(chosen, cx))
                                 .w_full()
                                 .justify_start()
                                 .label(SharedString::from(name))
@@ -584,13 +566,7 @@ impl Render for ThemeEditor {
                             .when(self.selected.is_some(), |actions| {
                                 actions.child(
                                     Button::new("delete-theme")
-                                        .custom(
-                                            ButtonCustomVariant::new(cx)
-                                                .color(style::rest(danger.opacity(0.2)))
-                                                .hover(danger.opacity(0.3))
-                                                .active(danger.opacity(0.3))
-                                                .foreground(danger),
-                                        )
+                                        .custom(style::tint_button(danger, cx))
                                         .icon(icons::icon(icons::TRASH))
                                         .label(t("delete"))
                                         // Deleting the theme in use also resets you to default.

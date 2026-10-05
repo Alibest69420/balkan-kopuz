@@ -1,9 +1,8 @@
 //! The docked column beside the content: the same queue and lyrics the sheet draws, in a narrower slot.
 
 use components::format::t;
-use components::{Segment, Segmented, icons, style};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{Sizable as _, h_flex, v_flex};
+use components::{IconButton, Segment, Segmented, icons, style};
+use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::{
     AnyElement, AppContext as _, Context, DragMoveEvent, InteractiveElement as _, IntoElement,
     ParentElement as _, Pixels, Render, StatefulInteractiveElement as _, Styled, Window, div, px,
@@ -65,12 +64,9 @@ impl NowPlaying {
                     .border_color(style::white(style::BORDER, cx))
                     .child(self.tab_strip(showing, false, cx))
                     .child(
-                        Button::new("panel-close")
-                            .custom(style::quiet_button(style::white(0.4, cx), cx))
-                            .with_size(CLOSE_GLYPH * (4. / 3.))
+                        IconButton::new("panel-close", icons::CLOSE)
                             .size(style::chrome().round_button)
-                            .rounded(style::chrome().round_button / 2.)
-                            .icon(icons::icon(icons::CLOSE))
+                            .glyph(CLOSE_GLYPH)
                             .tooltip(t("close"))
                             .on_click(|_, _, cx| {
                                 Chrome::global(cx)

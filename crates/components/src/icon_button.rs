@@ -1,0 +1,227 @@
+//! The one round glyph button: a hero's play, shuffle and download, a page's add, a cover's corner.
+
+use std::rc::Rc;
+
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _};
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::{
+    App, ClickEvent, Hsla, IntoElement, Pixels, RenderOnce, SharedString, Styled as _, Window, px,
+};
+
+use crate::{focus, hover, icons, motion, style};
+
+const HOVER: u64 = 1;
+const WASH: u64 = 2;
+const INK: u64 = 3;
+const EDGE: u64 = 4;
+
+/// `border-white/20 hover:border-white/40`, an outlined button's ring.
+const OUTLINE: (f32, f32) = (0.20, 0.40);
+/// What a disabled button fades to, since its frame paints the fill a Button would have dimmed.
+const DISABLED: f32 = 0.5;
+
+/// What a round button's colours say.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum IconTone {
+    /// `bg-indigo-500 hover:bg-indigo-400`: the one filled action, such as play.
+    Accent,
+    /// No fill until the pointer washes it; slate glyph that whitens, or the accent while lit.
+    #[default]
+    Quiet,
+    /// A ringed button whose white/70 glyph whitens, washing under the pointer.
+    Outline,
+    /// `bg-black/40` over a cover, ringed in white/10.
+    Scrim,
+}
+
+impl IconTone {
+    /// The fill, the glyph, and the ring, for a pointer over it or not.
+    fn colours(self, hot: bool, lit: bool, cx: &App) -> (Hsla, Hsla, Option<(f32, f32)>) {
+        let wash = style::white(if hot { style::HOVER } else { 0. }, cx);
+        let ink = |rest: Hsla| match (lit, hot) {
+            (true, _) => cx.theme().primary,
+            (false, true) => cx.theme().foreground,
+            (false, false) => rest,
+        };
+        match self {
+            IconTone::Accent => (
+                match hot {
+                    true => cx.theme().primary_hover,
+                    false => cx.theme().primary,
+                },
+                cx.theme().primary_foreground,
+                None,
+            ),
+            IconTone::Quiet => (wash, ink(style::slate_400(cx)), None),
+            IconTone::Outline => (wash, ink(style::white(0.7, cx)), Some(OUTLINE)),
+            IconTone::Scrim => (
+                style::black(0.4, cx),
+                ink(style::white(style::TEXT_SECONDARY, cx)),
+                Some((style::BORDER, style::BORDER)),
+            ),
+        }
+    }
+}
+
+type OnClick = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
+
+/// A circle holding one glyph; its frame owns the hover, so the colours tween and a tooltip still fits.
+#[derive(IntoElement)]
+pub struct IconButton {
+    id: SharedString,
+    icon: &'static str,
+    size: Pixels,
+    glyph: Option<Pixels>,
+    tone: IconTone,
+    ring: Option<(f32, f32)>,
+    lit: bool,
+    disabled: bool,
+    loading: bool,
+    stop: bool,
+    shadow: bool,
+    tooltip: Option<SharedString>,
+    click: Option<OnClick>,
+}
+
+impl IconButton {
+    pub fn new(id: impl Into<SharedString>, icon: &'static str) -> Self {
+        Self {
+            id: id.into(),
+            icon,
+            size: px(40.),
+            glyph: None,
+            tone: IconTone::Quiet,
+            ring: None,
+            lit: false,
+            disabled: false,
+            loading: false,
+            stop: false,
+            shadow: false,
+            tooltip: None,
+            click: None,
+        }
+    }
+
+    /// The circle's diameter; the glyph follows at about a third of it unless set.
+    pub fn size(mut self, size: Pixels) -> Self {
+        self.size = size;
+        self
+    }
+
+    pub fn glyph(mut self, glyph: Pixels) -> Self {
+        self.glyph = Some(glyph);
+        self
+    }
+
+    pub fn tone(mut self, tone: IconTone) -> Self {
+        self.tone = tone;
+        self
+    }
+
+    /// A ring at white/`rest`, brightening to white/`hot` under the pointer, on any tone.
+    pub fn ring(mut self, rest: f32, hot: f32) -> Self {
+        self.ring = Some((rest, hot));
+        self
+    }
+
+    /// Already on, such as shuffle: the glyph takes the accent.
+    pub fn lit(mut self, lit: bool) -> Self {
+        self.lit = lit;
+        self
+    }
+
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
+    }
+
+    pub fn loading(mut self, loading: bool) -> Self {
+        self.loading = loading;
+        self
+    }
+
+    /// Keep the press from reaching what the button sits on, such as a row that would play.
+    pub fn stop_propagation(mut self, stop: bool) -> Self {
+        self.stop = stop;
+        self
+    }
+
+    /// `shadow-md`, for a button floating over a cover rather than sitting on the page.
+    pub fn shadow(mut self, shadow: bool) -> Self {
+        self.shadow = shadow;
+        self
+    }
+
+    pub fn tooltip(mut self, tooltip: impl Into<SharedString>) -> Self {
+        self.tooltip = Some(tooltip.into());
+        self
+    }
+
+    pub fn on_click(
+        mut self,
+        click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.click = Some(Rc::new(click));
+        self
+    }
+}
+
+/// The chevron a detail page opens with, stepping back through the navigation history.
+pub fn back_button(id: impl Into<SharedString>, cx: &App) -> Button {
+    let button = Button::new(id.into())
+        .custom(style::quiet_button(style::slate_400(cx), cx))
+        .icon(icons::icon(icons::CHEVRON_LEFT))
+        .tooltip(crate::format::t("go_back"))
+        .on_click(|_, _, cx| {
+            store::Navigator::global(cx).update(cx, |navigator, cx| navigator.go_back(cx))
+        });
+    focus::quiet(button, cx)
+}
+
+impl RenderOnce for IconButton {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let id = self.id;
+        let (hovered, pointer) = motion::hovered(motion::channel(&id, HOVER), window, cx);
+        let hot = hovered && !self.disabled;
+        let (fill, ink, ring) = self.tone.colours(hot, self.lit, cx);
+        let fill = motion::color(motion::channel(&id, WASH), fill, window, cx);
+        let ink = motion::color(motion::channel(&id, INK), ink, window, cx);
+        let edge = self.ring.or(ring).map(|(rest, lifted)| {
+            let alpha = if hot { lifted } else { rest };
+            motion::color(
+                motion::channel(&id, EDGE),
+                style::white(alpha, cx),
+                window,
+                cx,
+            )
+        });
+        let glyph = self.glyph.unwrap_or(self.size * 0.36);
+        let stop = self.stop;
+        let button = Button::new(SharedString::from(format!("{id}-button")))
+            .custom(style::bare_button(ink, cx))
+            .icon(icons::icon(self.icon))
+            .with_size(glyph / 0.75)
+            .size_full()
+            .rounded(self.size / 2.)
+            .disabled(self.disabled)
+            .loading(self.loading)
+            .when_some(self.tooltip, |button, tip| button.tooltip(tip))
+            .when_some(self.click, |button, click| {
+                button.on_click(move |event, window, cx| {
+                    if stop {
+                        cx.stop_propagation();
+                    }
+                    click(event, window, cx);
+                })
+            });
+        hover::framed(&id, pointer, focus::quiet(button, cx))
+            .flex_shrink_0()
+            .size(self.size)
+            .rounded_full()
+            .bg(fill)
+            .when_some(edge, |frame, edge| frame.border_1().border_color(edge))
+            .when(self.disabled, |frame| frame.opacity(DISABLED))
+            .when(self.shadow, |frame| frame.shadow_md())
+    }
+}

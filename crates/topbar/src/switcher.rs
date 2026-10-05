@@ -4,7 +4,7 @@ use api::{SourceInfo, SourceState};
 use components::format::{t, text};
 use components::{icons, style};
 use gpui_kit::base::StyledExt as _;
-use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::{ActiveTheme as _, Icon, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -238,21 +238,19 @@ fn trigger(
                         .text_color(style::white(HEAD_COUNT, cx)),
                 )
         });
-    let button = Button::new("source-trigger")
-        .tab_index(0)
-        .custom(
-            ButtonCustomVariant::new(cx)
-                .color(style::white(style::BORDER, cx))
-                .hover(style::white(style::RAISED, cx))
-                .active(style::white(style::RAISED, cx))
-                .foreground(cx.theme().foreground),
-        )
-        .border_color(style::white(style::BORDER, cx))
-        .rounded(px(8.))
-        .map(|button| match collapsed {
-            true => button.size(RAIL_TILE).tooltip(tooltip),
-            false => button.w_full().h_auto().px_2p5().py_2(),
-        });
+    let button = style::dress(
+        Button::new("source-trigger").tab_index(0),
+        gpui_kit::transparent_black(),
+        style::white(style::RAISED, cx),
+        cx.theme().foreground,
+        style::white(style::BORDER, cx),
+        cx,
+    )
+    .rounded(px(8.))
+    .map(|button| match collapsed {
+        true => button.size(RAIL_TILE).tooltip(tooltip),
+        false => button.w_full().h_auto().px_2p5().py_2(),
+    });
     button.child(tile)
 }
 

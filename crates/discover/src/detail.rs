@@ -4,9 +4,9 @@ use api::{CatalogDetail, CatalogDetailRequest, CatalogItemKind};
 use components::format::t;
 use components::{
     Cover, EmptyState, Loading, PageHeader, Scrim, TrackActions, TrackList, TrackListEvent,
-    TrackListOptions, icons, motion, style,
+    TrackListOptions, icons, style,
 };
-use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -144,7 +144,6 @@ pub struct CatalogArtist {
     loading: bool,
     error: Option<SharedString>,
     generation: u64,
-    shuffle_hovered: bool,
     scroll: ScrollHandle,
     _load: Option<Task<()>>,
 }
@@ -158,7 +157,6 @@ impl CatalogArtist {
             loading: false,
             error: None,
             generation: 0,
-            shuffle_hovered: false,
             scroll: ScrollHandle::new(),
             _load: None,
         };
@@ -204,19 +202,7 @@ impl CatalogArtist {
         }));
     }
 
-    fn banner(
-        &self,
-        detail: &CatalogDetail,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        // `hover:scale-105` on the inverted pill: GPUI has no transform, so the wash carries it.
-        let shuffle_target = if self.shuffle_hovered {
-            style::white(0.9, cx)
-        } else {
-            cx.theme().foreground
-        };
-        let shuffle_color = motion::color("artist-shuffle-bg", shuffle_target, window, cx);
+    fn banner(&self, detail: &CatalogDetail, _: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         div()
             .relative()
             .w_full()
@@ -269,23 +255,10 @@ impl CatalogArtist {
                     .when_some(detail.playback_id.clone(), |banner, id| {
                         banner.child(
                             h_flex().mt_2().child(
-                                // `bg-white text-black`: the banner's one inverted control.
-                                Button::new("artist-shuffle")
-                                    .custom(
-                                        ButtonCustomVariant::new(cx)
-                                            .color(shuffle_color)
-                                            .foreground(cx.theme().background)
-                                            .hover(shuffle_color)
-                                            .active(style::white(0.8, cx)),
-                                    )
-                                    .bg(shuffle_color)
+                                style::inverted(Button::new("artist-shuffle"), cx)
                                     .rounded(px(999.))
                                     .icon(icons::icon(icons::SHUFFLE).xsmall())
                                     .label(t("shuffle"))
-                                    .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
-                                        this.shuffle_hovered = *hovered;
-                                        cx.notify();
-                                    }))
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         let id = id.clone();
                                         this.shelves.update(cx, |shelves, cx| {

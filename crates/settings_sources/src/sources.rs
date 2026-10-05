@@ -6,7 +6,7 @@ use api::schema::{FieldKind, FieldSpec, FieldValue};
 use api::{SignInKind, SourceFolderEntry, SourceInfo, SourceState, Table};
 use components::dialogs::{DialogSize, FormDialog};
 use components::format::{t, t_with, text};
-use components::{Badge, FieldChanged, SchemaForm, icons};
+use components::{Badge, FieldChanged, SchemaForm, icons, style};
 use components::{EmptyState, ErrorBanner, Loading};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::spinner::Spinner;
@@ -354,7 +354,7 @@ impl Sources {
                 let source = source.clone();
                 row.child(
                     Button::new("source-login")
-                        .custom(ui::soft(cx))
+                        .custom(style::soft_button(cx.theme().foreground, cx))
                         .xsmall()
                         .label(t("login"))
                         .on_click(cx.listener(move |this: &mut Self, _, window, cx| {
@@ -580,7 +580,7 @@ impl Sources {
                             .when(!source.active, |row| {
                                 row.child(
                                     Button::new(SharedString::from(format!("switch-{id}")))
-                                        .custom(ui::soft(cx))
+                                        .custom(style::soft_button(cx.theme().foreground, cx))
                                         .xsmall()
                                         .label(t("switch_to_server"))
                                         .on_click(cx.listener({
@@ -594,7 +594,7 @@ impl Sources {
                             .when(!source.permanent, |row| {
                                 row.child(
                                     Button::new(SharedString::from(format!("delete-{id}")))
-                                        .custom(ui::danger_text(cx))
+                                        .custom(style::tint_text_button(cx.theme().danger, cx))
                                         .small()
                                         .label(t("delete"))
                                         .on_click(cx.listener({
@@ -658,7 +658,7 @@ impl Render for Sources {
                 .children(rows)
                 .child(
                     Button::new("add-source")
-                        .custom(ui::soft(cx))
+                        .custom(style::soft_button(cx.theme().foreground, cx))
                         .small()
                         .icon(icons::icon(icons::PLUS))
                         .label(t("add_source"))

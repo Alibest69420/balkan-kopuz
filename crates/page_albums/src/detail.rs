@@ -6,20 +6,19 @@ use api::{
 };
 use components::format::{t, t_with};
 use components::{
-    Cover, DetailHeader, EmptyState, Heading, Link, Loading, SectionHeading, Tone, TrackActions,
-    TrackList, TrackListEvent, TrackListOptions, icons, motion, style,
+    Cover, DetailHeader, EmptyState, Heading, IconButton, IconTone, Link, Loading, SectionHeading,
+    Tone, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons, motion, style,
 };
-use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, Hsla, InteractiveElement as _, IntoElement,
+    AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
     ParentElement as _, Pixels, Render, ScrollHandle, SharedString,
     StatefulInteractiveElement as _, Styled, Subscription, Window, div, px, rems,
 };
 use store::{DownloadsModel, Navigator, PlayerModel, Query, Route, SourcesModel, Target, actions};
 
-use crate::clear_variant;
 use crate::ops;
 
 // TODO(offline): filtering the listing to downloaded tracks waits on an offline seam the checklist flags as wrong.
@@ -32,18 +31,9 @@ const HERO_ACTION: Pixels = px(56.);
 const HERO_SECONDARY: Pixels = px(48.);
 const REMOTE_ACTION: Pixels = px(64.);
 const REMOTE_SECONDARY: Pixels = px(44.);
-// The cover's upload scrim tracks hover alongside the action buttons.
 const COVER: &str = "album-cover";
-
-/// What a round hero action looks like: its ring alphas, its resting ink, and whether it washes on hover.
-#[derive(Clone, Copy)]
-struct Chrome {
-    ring: Option<(f32, f32)>,
-    ink: Hsla,
-    wash: bool,
-    // A control already in its "on" state paints the hovered look and stays there.
-    lit: bool,
-}
+/// `border-white/15 hover:border-white/30`: the catalog-styled page's quieter ring.
+const REMOTE_RING: (f32, f32) = (0.15, 0.30);
 
 /// One disc's rows; its list reports a play by the album-wide index its subscription carries.
 struct DiscGroup {
@@ -64,8 +54,6 @@ pub struct AlbumDetail {
     remote_id: Option<String>,
     capabilities: SourceCapabilities,
     scroll: ScrollHandle,
-    // Which round action or the cover the pointer is over; it drives their tweens.
-    hovered: Option<&'static str>,
     _subscriptions: Vec<Subscription>,
     _lists: Vec<Subscription>,
 }
@@ -127,7 +115,6 @@ impl AlbumDetail {
             // Sources usually loaded before the page opened, so their observer would not fire again.
             capabilities: SourcesModel::global(cx).read(cx).capabilities(),
             scroll: ScrollHandle::new(),
-            hovered: None,
             _subscriptions: subscriptions,
             _lists: Vec::new(),
         }
@@ -272,144 +259,35 @@ impl AlbumDetail {
             * 1000
     }
 
-    fn back_button(&self) -> impl IntoElement {
-        Button::new("album-back")
-            .ghost()
-            .icon(icons::icon(icons::CHEVRON_LEFT))
-            .on_click(|_, _, cx| {
-                Navigator::global(cx).update(cx, |navigator, cx| navigator.go_back(cx))
-            })
-    }
-
-    /// The circular chrome both heroes hang their actions on.
-    fn round_button(
-        id: &'static str,
-        icon: &'static str,
-        box_size: Pixels,
-        glyph: Pixels,
-        cx: &Context<Self>,
-    ) -> Button {
-        Button::new(id)
-            .ghost()
-            .icon(icons::icon(icon))
-            .with_size(glyph / 0.75)
-            .rounded(cx.theme().radius_full())
-            .w(box_size)
-            .h(box_size)
-            .flex_shrink_0()
-    }
-
-    /// `transition-colors` on a round action: the frame owns the ring and wash, the button its glyph.
-    fn ringed(
-        &self,
-        id: &'static str,
-        button: Button,
-        box_size: Pixels,
-        chrome: Chrome,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let active = chrome.lit || self.hovered == Some(id);
-        let ring = chrome.ring.map(|(idle, hovered)| {
-            let alpha = if active { hovered } else { idle };
-            motion::color(motion::id(id, "ring"), style::white(alpha, cx), window, cx)
-        });
-        let wash = style::white(
-            if active && chrome.wash {
-                style::HOVER
-            } else {
-                0.
-            },
-            cx,
-        );
-        let background = motion::color(motion::id(id, "bg"), wash, window, cx);
-        let target = if chrome.lit || !active {
-            chrome.ink
-        } else {
-            cx.theme().foreground
-        };
-        let ink = motion::color(motion::id(id, "ink"), target, window, cx);
-        div()
-            .id(id)
-            .size(box_size)
-            .flex_shrink_0()
-            .rounded_full()
-            .bg(background)
-            .when_some(ring, |frame, colour| frame.border_1().border_color(colour))
-            .on_hover(
-                cx.listener(move |this, hovered: &bool, _, cx| this.track_hover(id, *hovered, cx)),
-            )
-            .child(button.size_full().custom(clear_variant(ink, cx)))
-    }
-
-    /// A leave for a control that is no longer the hovered one would clear its successor.
-    fn track_hover(&mut self, id: &'static str, hovered: bool, cx: &mut Context<Self>) {
-        if !hovered && self.hovered != Some(id) {
-            return;
-        }
-        self.hovered = hovered.then_some(id);
-        cx.notify();
-    }
-
     /// `bg-indigo-500 hover:bg-indigo-400 text-black`, the one filled action on the page.
-    fn play_button(&self, box_size: Pixels, cx: &Context<Self>) -> impl IntoElement {
+    fn play_button(&self, size: Pixels) -> IconButton {
         let keys = self.keys();
-        let accent = cx.theme().primary_hover;
-        Self::round_button("album-play", icons::PLAY, box_size, box_size * 0.36, cx)
-            // A Button paints its own hover, so the fill comes from a variant.
-            .custom(
-                ButtonCustomVariant::new(cx)
-                    .color(cx.theme().primary)
-                    .hover(accent)
-                    .active(accent)
-                    .foreground(cx.theme().primary_foreground),
-            )
-            .when(!keys.is_empty(), |button| button.bg(cx.theme().primary))
+        IconButton::new("album-play", icons::PLAY)
+            .size(size)
+            .tone(IconTone::Accent)
             .tooltip(t("play"))
             .disabled(keys.is_empty())
             .on_click(move |_, _, cx| actions::play_all(keys.clone(), cx))
     }
 
     /// The shuffle toggle: accent-coloured while on, muted while off.
-    fn shuffle_button(
-        &self,
-        box_size: Pixels,
-        outlined: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    fn shuffle_button(&self, size: Pixels, outlined: bool, cx: &App) -> IconButton {
         let shuffled = PlayerModel::global(cx).read(cx).shuffle();
-        let button = Self::round_button(
-            "album-shuffle",
-            icons::SHUFFLE,
-            box_size,
-            box_size * 0.36,
-            cx,
-        )
-        .tooltip(t("shuffle"))
-        .on_click(move |_, _, cx| {
-            PlayerModel::global(cx).update(cx, |player, cx| player.set_shuffle(!shuffled, cx))
-        });
-        let chrome = Chrome {
-            ring: outlined.then_some((0.15, 0.3)),
-            ink: if shuffled {
-                cx.theme().primary
-            } else {
-                style::slate_400(cx)
-            },
-            wash: true,
-            lit: shuffled,
-        };
-        self.ringed("album-shuffle-frame", button, box_size, chrome, window, cx)
+        let button = IconButton::new("album-shuffle", icons::SHUFFLE)
+            .size(size)
+            .lit(shuffled)
+            .tooltip(t("shuffle"))
+            .on_click(move |_, _, cx| {
+                PlayerModel::global(cx).update(cx, |player, cx| player.set_shuffle(!shuffled, cx))
+            });
+        match outlined {
+            true => button.ring(REMOTE_RING.0, REMOTE_RING.1),
+            false => button,
+        }
     }
 
     /// Download the whole album, or give its offline copies back; disabled while a download runs.
-    fn download_all_button(
-        &self,
-        box_size: Pixels,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Option<AnyElement> {
+    fn download_all_button(&self, size: Pixels, cx: &App) -> Option<IconButton> {
         if !self.capabilities.downloads {
             return None;
         }
@@ -420,53 +298,29 @@ impl AlbumDetail {
         let downloads = DownloadsModel::global(cx).read(cx);
         let stored = keys.iter().all(|key| downloads.is_stored(key));
         let busy = keys.iter().any(|key| downloads.is_active(key));
-        // TODO(i18n): en.ftl has no key for the album-wide download toggle.
-        let label = if stored {
-            "Remove downloads"
-        } else {
-            "Download all"
-        };
-        let button = Self::round_button(
-            "album-download-all",
-            if stored {
-                icons::TRASH
-            } else {
-                icons::DOWNLOAD
-            },
-            box_size,
-            box_size * 0.33,
-            cx,
-        )
-        .tooltip(label)
-        .disabled(busy)
-        .on_click(move |_, _, cx| {
-            let keys = keys.clone();
-            DownloadsModel::global(cx).update(cx, |downloads, cx| {
-                if stored {
-                    for key in keys {
-                        downloads.remove(key, cx);
-                    }
-                } else {
-                    downloads.download(keys, cx);
-                }
-            })
-        });
-        let chrome = Chrome {
-            ring: Some((0.2, 0.4)),
-            ink: style::white(0.7, cx),
-            wash: true,
-            lit: false,
+        let (icon, label) = match stored {
+            true => (icons::TRASH, t("remove_download")),
+            false => (icons::DOWNLOAD, t("download_offline")),
         };
         Some(
-            self.ringed(
-                "album-download-all-frame",
-                button,
-                box_size,
-                chrome,
-                window,
-                cx,
-            )
-            .into_any_element(),
+            IconButton::new("album-download-all", icon)
+                .size(size)
+                .glyph(size * 0.33)
+                .tone(IconTone::Outline)
+                .tooltip(label)
+                .disabled(busy)
+                .on_click(move |_, _, cx| {
+                    let keys = keys.clone();
+                    DownloadsModel::global(cx).update(cx, |downloads, cx| {
+                        if stored {
+                            for key in keys {
+                                downloads.remove(key, cx);
+                            }
+                        } else {
+                            downloads.download(keys, cx);
+                        }
+                    })
+                }),
         )
     }
 
@@ -482,9 +336,10 @@ impl AlbumDetail {
         let id = album.id.clone();
         let remove_id = album.id.clone();
         let scrim = style::black(0.5, cx);
+        let (over, pointer) = motion::hovered(motion::id(COVER, "hover"), window, cx);
         let veil = motion::amount(
             motion::id(COVER, "scrim"),
-            if self.hovered == Some(COVER) { 1. } else { 0. },
+            if over { 1. } else { 0. },
             motion::FAST,
             window,
             cx,
@@ -493,9 +348,7 @@ impl AlbumDetail {
             .id(COVER)
             .relative()
             .flex_shrink_0()
-            .on_hover(
-                cx.listener(|this, hovered: &bool, _, cx| this.track_hover(COVER, *hovered, cx)),
-            )
+            .on_hover(motion::track(pointer))
             .child(
                 Cover::new(album.artwork.as_ref())
                     .size(size)
@@ -645,37 +498,20 @@ impl AlbumDetail {
             ))
             .meta(count)
             .meta(format!("{} {}", self.total_ms() / 60_000, t("min")))
-            .action(self.shuffle_button(HERO_ACTION, false, window, cx))
-            .action(self.play_button(HERO_ACTION, cx))
-            .action({
-                let button = Self::round_button(
-                    "album-select-all",
-                    icons::CHECK,
-                    HERO_SECONDARY,
-                    HERO_SECONDARY * 0.33,
-                    cx,
-                )
-                .tooltip(t("select_all"))
-                .on_click(cx.listener(|this, _, _, cx| this.select_all(cx)));
-                let chrome = Chrome {
-                    ring: Some((0.2, 0.4)),
-                    ink: style::white(0.7, cx),
-                    wash: true,
-                    lit: false,
-                };
-                self.ringed(
-                    "album-select-all-frame",
-                    button,
-                    HERO_SECONDARY,
-                    chrome,
-                    window,
-                    cx,
-                )
-            });
+            .action(self.shuffle_button(HERO_ACTION, false, cx))
+            .action(self.play_button(HERO_ACTION))
+            .action(
+                IconButton::new("album-select-all", icons::CHECK)
+                    .size(HERO_SECONDARY)
+                    .glyph(HERO_SECONDARY * 0.33)
+                    .tone(IconTone::Outline)
+                    .tooltip(t("select_all"))
+                    .on_click(cx.listener(|this, _, _, cx| this.select_all(cx))),
+            );
         if album.year > 0 {
             header = header.meta(album.year.to_string());
         }
-        if let Some(download) = self.download_all_button(HERO_SECONDARY, window, cx) {
+        if let Some(download) = self.download_all_button(HERO_SECONDARY, cx) {
             header = header.action(download);
         }
         v_flex()
@@ -688,7 +524,7 @@ impl AlbumDetail {
                     .flex_shrink_0()
                     .mb_8()
                     .items_center()
-                    .child(self.back_button()),
+                    .child(components::back_button("album-back", cx)),
             )
             .child(div().flex_shrink_0().mb_12().child(header))
             .child(self.tracks_body(cx))
@@ -721,12 +557,10 @@ impl AlbumDetail {
         let artist_route = view.artist_key.clone().map(Route::Artist);
         let browse_id = view.browse_id.clone();
         let first_key = self.rows.first().map(|row| row.key.clone());
-
-        let outlined = Chrome {
-            ring: Some((0.15, 0.3)),
-            ink: style::slate_400(cx),
-            wash: false,
-            lit: false,
+        let outlined = |id: &'static str, icon: &'static str| {
+            IconButton::new(id, icon)
+                .size(REMOTE_SECONDARY)
+                .ring(REMOTE_RING.0, REMOTE_RING.1)
         };
 
         v_flex()
@@ -739,7 +573,7 @@ impl AlbumDetail {
                     .flex_shrink_0()
                     .mb_8()
                     .items_center()
-                    .child(self.back_button()),
+                    .child(components::back_button("album-back", cx)),
             )
             .child(
                 h_flex()
@@ -804,61 +638,27 @@ impl AlbumDetail {
                                     .gap_3()
                                     .items_center()
                                     .flex_wrap()
-                                    .children(self.download_all_button(
-                                        REMOTE_SECONDARY,
-                                        window,
-                                        cx,
-                                    ))
+                                    .children(self.download_all_button(REMOTE_SECONDARY, cx))
                                     .children(artist_route.map(|artist_route| {
-                                        let button = Self::round_button(
-                                            "album-remote-artist-button",
-                                            icons::MIC,
-                                            REMOTE_SECONDARY,
-                                            REMOTE_SECONDARY * 0.36,
-                                            cx,
-                                        )
-                                        // TODO(i18n): en.ftl has no go-to-artist key.
-                                        .tooltip("Go to artist")
-                                        .on_click(move |_, _, cx| {
-                                            Navigator::navigate(artist_route.clone(), cx)
-                                        });
-                                        self.ringed(
-                                            "album-remote-artist-frame",
-                                            button,
-                                            REMOTE_SECONDARY,
-                                            outlined,
-                                            window,
-                                            cx,
-                                        )
+                                        outlined("album-remote-artist", icons::MIC)
+                                            .tooltip(t("go_to_artist"))
+                                            .on_click(move |_, _, cx| {
+                                                Navigator::navigate(artist_route.clone(), cx)
+                                            })
                                     }))
-                                    .child(self.play_button(REMOTE_ACTION, cx))
-                                    .child(self.shuffle_button(REMOTE_SECONDARY, true, window, cx))
-                                    .child({
-                                        let button = Self::round_button(
-                                            "album-remote-share",
-                                            icons::SHARE,
-                                            REMOTE_SECONDARY,
-                                            REMOTE_SECONDARY * 0.36,
-                                            cx,
-                                        )
-                                        // TODO(i18n): en.ftl has no generic share key.
-                                        .tooltip("Share")
-                                        .on_click(move |_, _, cx| {
-                                            ops::share_album(
-                                                browse_id.clone(),
-                                                first_key.clone(),
-                                                cx,
-                                            )
-                                        });
-                                        self.ringed(
-                                            "album-remote-share-frame",
-                                            button,
-                                            REMOTE_SECONDARY,
-                                            outlined,
-                                            window,
-                                            cx,
-                                        )
-                                    }),
+                                    .child(self.play_button(REMOTE_ACTION))
+                                    .child(self.shuffle_button(REMOTE_SECONDARY, true, cx))
+                                    .child(
+                                        outlined("album-remote-share", icons::SHARE)
+                                            .tooltip(t("share"))
+                                            .on_click(move |_, _, cx| {
+                                                ops::share_album(
+                                                    browse_id.clone(),
+                                                    first_key.clone(),
+                                                    cx,
+                                                )
+                                            }),
+                                    ),
                             ),
                     )
                     .child(

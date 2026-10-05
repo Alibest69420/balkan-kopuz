@@ -6,28 +6,26 @@ use api::{ArtworkTarget, ArtworkUpload, PlaylistCapability, PlaylistReorder, Tab
 use components::format::{t, t_with};
 use components::track_list::{TrackActions, TrackList, TrackListEvent};
 use components::{
-    DetailHeader, EmptyState, TrackHeader, detail_header_skeleton, icons, motion, style,
+    DetailHeader, EmptyState, IconButton, IconTone, TrackHeader, detail_header_skeleton, icons,
 };
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, Size, v_flex};
+use gpui_kit::component::v_flex;
 use gpui_kit::{
     AnyElement, AppContext as _, Context, Entity, IntoElement, ParentElement as _,
-    PathPromptOptions, Pixels, Rems, Render, SharedString, Styled as _, Subscription, Window, div,
-    px, rems,
+    PathPromptOptions, Pixels, Render, SharedString, Styled as _, Subscription, Window, div, px,
 };
 use link::Link;
 use store::{
     DownloadsModel, Navigator, Notices, PlaylistsModel, Query, Route, SourcesModel, actions,
 };
 
-use crate::cards::tweened;
-
 /// `w-64 h-64`: the showcase cover.
 const HERO: Pixels = px(256.);
 /// `w-14 h-14`: the round play and radio buttons beside it.
-const HERO_BUTTON: Rems = rems(3.5);
-/// A `Button` sizes its glyph at 0.75× itself, and the showcase's is `text-xl`.
-const HERO_GLYPH: Pixels = px(20. / 0.75);
+const HERO_BUTTON: Pixels = px(56.);
+/// `w-12 h-12`: the outlined download and delete.
+const HERO_SECONDARY: Pixels = px(48.);
+/// `text-xl`, the showcase's glyph.
+const HERO_GLYPH: Pixels = px(20.);
 
 pub struct PlaylistDetail {
     id: SharedString,
@@ -290,57 +288,6 @@ impl Render for PlaylistDetail {
                 .iter()
                 .all(|key| downloads.read(cx).is_stored(key.as_str()));
         let name = SharedString::from(playlist.name.clone());
-        // These buttons carry no border; `tweened` still wants a colour for the edge it would paint.
-        let clear = style::white(0., cx);
-        let (play_hot, play_hover) = motion::hovered("play-playlist-hover", window, cx);
-        let play_fill = motion::color(
-            "play-playlist-fill",
-            if play_hot {
-                cx.theme().primary_hover
-            } else {
-                cx.theme().primary
-            },
-            window,
-            cx,
-        );
-        let play_text = cx.theme().primary_foreground;
-        let (radio_hot, radio_hover) = motion::hovered("playlist-radio-hover", window, cx);
-        let radio_fill = motion::color(
-            "playlist-radio-fill",
-            style::white(if radio_hot { style::HOVER } else { 0. }, cx),
-            window,
-            cx,
-        );
-        let radio_text = motion::color(
-            "playlist-radio-text",
-            if radio_hot {
-                cx.theme().foreground
-            } else {
-                style::slate_400(cx)
-            },
-            window,
-            cx,
-        );
-        // The frame still tracks the pointer while the download button is loading.
-        let (download_hot, download_hover) = motion::hovered("playlist-download-hover", window, cx);
-        let download_hot = download_hot && !active;
-        let (delete_hot, delete_hover) = motion::hovered("playlist-delete-hover", window, cx);
-        let outline = |hot: bool, cx: &mut Context<Self>| {
-            (
-                style::white(if hot { style::HOVER } else { 0. }, cx),
-                style::white(if hot { 1. } else { 0.70 }, cx),
-                style::white(if hot { 0.40 } else { style::ACTIVE }, cx),
-            )
-        };
-        let (download_fill, download_text, download_edge) = outline(download_hot, cx);
-        let download_fill = motion::color("playlist-download-fill", download_fill, window, cx);
-        let download_text = motion::color("playlist-download-text", download_text, window, cx);
-        let download_edge = motion::color("playlist-download-edge", download_edge, window, cx);
-        let (delete_fill, delete_text, delete_edge) = outline(delete_hot, cx);
-        let delete_fill = motion::color("playlist-delete-fill", delete_fill, window, cx);
-        let delete_text = motion::color("playlist-delete-text", delete_text, window, cx);
-        let delete_edge = motion::color("playlist-delete-edge", delete_edge, window, cx);
-
         let page = cx.entity().downgrade();
         let mut header = DetailHeader::new(name.clone())
             .artwork(playlist.artwork.as_ref())
@@ -352,91 +299,71 @@ impl Render for PlaylistDetail {
                 "playlist_track_count",
                 &[("count", keys.len().to_string())],
             ))
-            .action(tweened(
-                "play-playlist",
-                round_button("play-playlist", icons::PLAY)
+            .action(
+                IconButton::new("play-playlist", icons::PLAY)
+                    .size(HERO_BUTTON)
+                    .glyph(HERO_GLYPH)
+                    .tone(IconTone::Accent)
                     .tooltip(t("play"))
                     .on_click({
                         let keys = keys.clone();
                         move |_, _, cx| actions::play_all(keys.clone(), cx)
                     }),
-                play_hover,
-                play_fill,
-                play_text,
-                clear,
-                cx,
-            ));
+            );
         if capabilities.playlist_radio {
             let id = self.id.to_string();
-            header = header.action(tweened(
-                "playlist-radio",
-                round_button("playlist-radio", icons::RADIO)
+            header = header.action(
+                IconButton::new("playlist-radio", icons::RADIO)
+                    .size(HERO_BUTTON)
+                    .glyph(HERO_GLYPH)
                     .tooltip(t("start_radio"))
                     .on_click(move |_, _, cx| actions::start_playlist_radio(id.clone(), cx)),
-                radio_hover,
-                radio_fill,
-                radio_text,
-                clear,
-                cx,
-            ));
+            );
         }
         if capabilities.downloads {
             let keys = keys.clone();
-            header = header.action(tweened(
-                "playlist-download",
-                Button::new("playlist-download")
-                    .size_12()
-                    .rounded_full()
-                    .border_1()
-                    .icon(icons::icon(if stored {
+            header = header.action(
+                IconButton::new(
+                    "playlist-download",
+                    if stored {
                         icons::TRASH
                     } else {
                         icons::DOWNLOAD
-                    }))
-                    .tooltip(if stored {
-                        t("remove_from_cache")
-                    } else {
-                        t("downloader_download")
-                    })
-                    .loading(active)
-                    .on_click(move |_, _, cx| {
-                        let keys = keys.clone();
-                        DownloadsModel::global(cx).update(cx, |downloads, cx| {
-                            if stored {
-                                for key in keys {
-                                    downloads.remove(key, cx);
-                                }
-                            } else {
-                                downloads.download(keys, cx);
+                    },
+                )
+                .size(HERO_SECONDARY)
+                .tone(IconTone::Outline)
+                .tooltip(if stored {
+                    t("remove_from_cache")
+                } else {
+                    t("downloader_download")
+                })
+                .loading(active)
+                .on_click(move |_, _, cx| {
+                    let keys = keys.clone();
+                    DownloadsModel::global(cx).update(cx, |downloads, cx| {
+                        if stored {
+                            for key in keys {
+                                downloads.remove(key, cx);
                             }
-                        });
-                    }),
-                download_hover,
-                download_fill,
-                download_text,
-                download_edge,
-                cx,
-            ));
+                        } else {
+                            downloads.download(keys, cx);
+                        }
+                    });
+                }),
+            );
         }
         if capabilities.playlists != PlaylistCapability::None {
             let name = name.clone();
-            header = header.action(tweened(
-                "playlist-delete",
-                Button::new("playlist-delete")
-                    .size_12()
-                    .rounded_full()
-                    .border_1()
-                    .icon(icons::icon(icons::TRASH))
+            header = header.action(
+                IconButton::new("playlist-delete", icons::TRASH)
+                    .size(HERO_SECONDARY)
+                    .tone(IconTone::Outline)
                     .tooltip(t("delete_playlist"))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.delete(window, cx, name.clone())
                     })),
-                delete_hover,
-                delete_fill,
-                delete_text,
-                delete_edge,
-                cx,
-            ));
+            );
         }
 
         let body = self.body(keys.len(), window, cx);
@@ -445,14 +372,7 @@ impl Render for PlaylistDetail {
             .px_8()
             .pt_8()
             .gap_8()
-            .child(
-                Button::new("playlist-back")
-                    .custom(style::quiet_button(style::slate_400(cx), cx))
-                    .icon(icons::icon(icons::CHEVRON_LEFT))
-                    .on_click(|_, _, cx| {
-                        Navigator::global(cx).update(cx, |navigator, cx| navigator.go_back(cx))
-                    }),
-            )
+            .child(components::back_button("playlist-back", cx))
             .child(header)
             .child(body)
     }
@@ -511,15 +431,6 @@ impl PlaylistDetail {
             .child(div().flex_1().min_h_0().child(self.list.clone()))
             .into_any_element()
     }
-}
-
-/// `w-14 h-14 rounded-full` with a `text-xl` glyph: the showcase's play and radio.
-fn round_button(id: &'static str, icon: &'static str) -> Button {
-    Button::new(id)
-        .with_size(Size::Size(HERO_GLYPH))
-        .size(HERO_BUTTON)
-        .rounded_full()
-        .icon(icons::icon(icon))
 }
 
 /// The upload's content type, by extension, the way §5.4 spells it out.

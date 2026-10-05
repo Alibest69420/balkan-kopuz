@@ -8,7 +8,7 @@ use components::settings::{
 };
 use components::{icons, style};
 use config::{AppConfig, BackBehavior, PlayerBarPosition};
-use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::slider::SliderState;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -22,14 +22,6 @@ use theme_editor::ThemeEditor;
 
 /// `text-white/50`, the path a file setting shows.
 const PATH: f32 = 0.50;
-/// `bg-white/10 hover:bg-white/20`, the quiet button the settings rows use.
-fn soft(cx: &App) -> ButtonCustomVariant {
-    ButtonCustomVariant::new(cx)
-        .color(style::rest(style::white(style::HOVER, cx)))
-        .hover(style::white(style::ACTIVE, cx))
-        .active(style::white(style::ACTIVE, cx))
-        .foreground(cx.theme().foreground)
-}
 
 /// The i18n key each built-in theme is listed under; `kettek16` is a name, not a phrase.
 fn theme_label(id: &str) -> SharedString {
@@ -156,7 +148,7 @@ impl AppearanceSettings {
                 )
                 .child(
                     Button::new(SharedString::from(format!("{key}-remove")))
-                        .custom(soft(cx).foreground(danger))
+                        .custom(style::soft_button(danger, cx))
                         .small()
                         .icon(icons::icon(icons::TRASH))
                         .label(t("remove"))
@@ -168,7 +160,7 @@ impl AppearanceSettings {
             })
             .child(
                 Button::new(SharedString::from(format!("{key}-choose")))
-                    .custom(soft(cx))
+                    .custom(style::soft_button(cx.theme().foreground, cx))
                     .small()
                     .icon(icons::icon(icons::FOLDER))
                     .label(choose)
