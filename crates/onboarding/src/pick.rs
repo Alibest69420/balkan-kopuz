@@ -1,6 +1,7 @@
 //! Step one: every service the daemon offers, each opening the shared "add source" form on itself.
 
 use api::ServiceInfo;
+use components::EmptyState;
 use components::dialogs::{DialogSize, FormDialog};
 use components::format::{t, text};
 use components::{Heading, SectionHeading, icons};
@@ -10,7 +11,6 @@ use gpui_kit::{
     AnyElement, App, Context, Hsla, IntoElement, ParentElement as _, Rgba, SharedString,
     StatefulInteractiveElement as _, Styled, Window,
 };
-use settings_sources::ui as forms;
 
 use crate::{FirstRun, ui};
 
@@ -23,7 +23,7 @@ impl FirstRun {
             .gap_3()
             .child(SectionHeading::new(t("first_run_step_source")).heading(Heading::Step))
             .when(services.is_empty(), |step| {
-                step.child(forms::empty(t("first_run_no_services"), cx))
+                step.child(EmptyState::new(t("first_run_no_services")).compact())
             })
             .children(services.into_iter().map(|service| {
                 let accent = accent_of(&service, cx);

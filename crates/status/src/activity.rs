@@ -13,7 +13,8 @@ use gpui_kit::{
 };
 use store::{Finished, JobsModel};
 
-use crate::{DONE, FAILED, ROW_GLYPH, empty, header, row};
+use crate::{DONE, FAILED, ROW_GLYPH, header, row};
+use components::EmptyState;
 
 const BAR: Pixels = px(3.);
 
@@ -171,7 +172,7 @@ impl Render for ActivityList {
             .w_full()
             .child(header(t("activity"), None, cx))
             .when(rows.is_empty(), |body| {
-                body.child(empty(t("activity_idle"), cx))
+                body.child(EmptyState::new(t("activity_idle")).compact())
             })
             .when(!rows.is_empty(), |body| {
                 body.child(

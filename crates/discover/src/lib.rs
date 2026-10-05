@@ -14,10 +14,9 @@ use api::{AlbumInfo, AlbumPage, ApiError, KopuzApi, SearchResults, Table};
 use components::format::{t, t_with};
 use components::{
     Chip, ChipSize, EmptyState, GridMode, Heading, Loading, PageHeader, SearchTrigger,
-    SectionHeading, TileGrid, TrackList, TrackListEvent, TriggerSize, heading_link, icons, style,
+    SectionHeading, TileGrid, TrackList, TrackListEvent, TriggerSize, heading_link, icons,
 };
-use gpui_kit::component::spinner::Spinner;
-use gpui_kit::component::{Sizable as _, h_flex, v_flex};
+use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
@@ -26,7 +25,6 @@ use gpui_kit::{
 };
 use store::{Chrome, Link, PlayerModel, Query, SourcesModel, actions, all};
 
-use crate::detail::spinner_row;
 use crate::genres::{GenreCard, GenreTile, genres_of};
 use crate::shelves::Shelves;
 use store::Playing;
@@ -323,13 +321,11 @@ impl Discover {
                         .flex_1()
                         .min_h_0()
                         .justify_center()
-                        .child(states::failed(
-                            "discover-library-retry",
+                        .child(EmptyState::failed(
                             message,
                             cx.listener(|this, _, _, cx| {
                                 this.albums.update(cx, |albums, cx| albums.refresh(cx));
                             }),
-                            cx,
                         )),
                 )
                 .into_any_element();
@@ -370,28 +366,15 @@ impl Discover {
                     .child(PageHeader::new(t("discover")).action(self.search_hint(cx)))
                     .children(shelf)
                     .when_some(failure, |body, message| {
-                        body.child(states::failed(
-                            "discover-retry",
+                        body.child(EmptyState::failed(
                             message,
                             cx.listener(|this, _, _, cx| this.reload(cx)),
-                            cx,
                         ))
                     })
-                    .when(waiting, |body| body.child(spinner_row()))
+                    .when(waiting, |body| body.child(Loading::new()))
                     .child(self.shelves.clone())
                     .when(self.loading_more, |body| {
-                        body.child(
-                            h_flex()
-                                .w_full()
-                                .items_center()
-                                .justify_center()
-                                .gap_3()
-                                .py_6()
-                                .text_xs()
-                                .text_color(style::white(0.5, cx))
-                                .child(Spinner::new().small())
-                                .child(t("discover_more_loading")),
-                        )
+                        body.child(Loading::new().label(t("discover_more_loading")).compact())
                     }),
             )
             .into_any_element()
@@ -453,16 +436,15 @@ impl Discover {
         let nothing = found == 0 && self.result_albums.is_empty();
 
         let body = if let Some(message) = failure {
-            states::failed(
-                "discover-results-retry",
+            EmptyState::failed(
                 message,
                 cx.listener(|this, _, _, cx| {
                     this.results.update(cx, |results, cx| results.refresh(cx));
                 }),
-                cx,
             )
+            .into_any_element()
         } else if !settled {
-            Loading.into_any_element()
+            Loading::new().into_any_element()
         } else if nothing {
             div()
                 .flex_1()

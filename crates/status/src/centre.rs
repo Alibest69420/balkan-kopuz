@@ -11,7 +11,8 @@ use gpui_kit::{
 };
 use store::{Notices, Record};
 
-use crate::{DONE, FAILED, ROW_GLYPH, empty, header, row};
+use crate::{DONE, FAILED, ROW_GLYPH, header, row};
+use components::EmptyState;
 
 /// The bell's body.
 pub struct NoticeCentre {
@@ -82,7 +83,7 @@ impl Render for NoticeCentre {
             .w_full()
             .child(header(t("notifications"), clear, cx))
             .when(entries.is_empty(), |body| {
-                body.child(empty(t("notifications_empty"), cx))
+                body.child(EmptyState::new(t("notifications_empty")).compact())
             })
             .when(!entries.is_empty(), |body| {
                 body.child(

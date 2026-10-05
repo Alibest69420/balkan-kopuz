@@ -465,24 +465,18 @@ impl PlaylistDetail {
         let rows = self.list.read(cx).rows().len();
         if rows == 0 {
             if let Some(error) = query.error() {
+                let reason = store::human(error);
                 return v_flex()
                     .flex_1()
                     .min_h_0()
-                    .items_center()
-                    .justify_center()
-                    .gap_4()
                     .child(
-                        EmptyState::new(t("library_read_failed"))
-                            .icon(icons::WARNING)
-                            .detail(store::human(error)),
-                    )
-                    .child(
-                        Button::new("playlist-retry")
-                            .primary()
-                            .label(t("retry_now"))
-                            .on_click(cx.listener(|this, _, _, cx| {
+                        EmptyState::failed(
+                            t("library_read_failed"),
+                            cx.listener(|this, _, _, cx| {
                                 this.tracks.update(cx, |query, cx| query.refresh(cx));
-                            })),
+                            }),
+                        )
+                        .detail(reason),
                     )
                     .into_any_element();
             }

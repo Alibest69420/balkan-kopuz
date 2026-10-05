@@ -329,7 +329,7 @@ impl ArtistDetail {
         let count = keys.len();
         let settled = self.tracks.read(cx).is_settled();
         let body = if !settled && count == 0 {
-            Loading.into_any_element()
+            Loading::new().into_any_element()
         } else if count == 0 {
             EmptyState::new(t("no_tracks_found"))
                 .icon(icons::MUSIC)
@@ -667,11 +667,10 @@ impl ArtistDetail {
         let fields = available_fields(&albums);
 
         let body = if !settled && albums.is_empty() {
-            Loading.into_any_element()
+            Loading::new().into_any_element()
         } else if albums.is_empty() {
-            div()
-                .text_color(style::slate_500(cx))
-                .child(t("no_albums_found"))
+            EmptyState::new(t("no_albums_found"))
+                .icon(icons::DISC)
                 .into_any_element()
         } else {
             let cards: Vec<AnyElement> = albums

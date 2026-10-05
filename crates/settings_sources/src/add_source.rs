@@ -3,6 +3,7 @@
 use api::schema::{FieldKind, FieldValue};
 use api::{DraftCheck, ServiceInfo, SignInKind, SourceDraft, Table};
 use components::format::{t, text};
+use components::{ErrorBanner, FieldProblem};
 use components::{FieldChanged, SchemaForm};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -203,8 +204,7 @@ impl AddSource {
                 .is_some_and(|check| check.sign_in == SignInKind::Browser)
     }
 
-    /// Save the draft. Closes the dialog itself once the daemon accepts it and keeps it open with
-    /// the problems otherwise, so whatever calls this must not close the dialog as well.
+    /// Save the draft; it closes the dialog itself once accepted, so a caller must not close it too.
     pub fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.saving || self.blocked() || self.service.is_none() {
             return;
@@ -303,7 +303,7 @@ impl Render for AddSource {
                     .gap_1()
                     .child(Input::new(&self.name).disabled(saving))
                     .when_some(self.name_problem.clone(), |field, problem| {
-                        field.child(ui::field_problem(problem, cx))
+                        field.child(FieldProblem::new(problem))
                     }),
             )
             .child(
@@ -333,7 +333,7 @@ impl Render for AddSource {
             )
             .children(self.form.clone())
             .when_some(self.error.clone(), |form, message| {
-                form.child(ui::error(message, cx))
+                form.child(ErrorBanner::new(message))
             })
             .child(
                 h_flex()

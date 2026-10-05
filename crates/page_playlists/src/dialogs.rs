@@ -3,6 +3,7 @@
 use std::rc::Rc;
 
 use api::PlaylistCapability;
+use components::ErrorBanner;
 use components::dialogs::{DialogSize, FormDialog, FormFooter};
 use components::format::t;
 use components::{icons, motion, style};
@@ -93,19 +94,7 @@ impl Render for AddPlaylist {
             .gap_4()
             .w_full()
             .when_some(self.error.clone(), |column, error| {
-                column.child(
-                    div()
-                        .px_3()
-                        .py_2()
-                        .rounded(px(6.))
-                        .text_sm()
-                        .opacity(reveal)
-                        .text_color(cx.theme().danger)
-                        .bg(cx.theme().danger.opacity(0.1))
-                        .border_1()
-                        .border_color(cx.theme().danger.opacity(0.3))
-                        .child(error),
-                )
+                column.child(ErrorBanner::new(error).reveal(reveal))
             })
             .child(Input::new(&self.name))
             .when(folders, |column| {

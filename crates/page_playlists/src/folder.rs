@@ -45,7 +45,7 @@ impl Render for PlaylistFolder {
                     .icon(icons::FOLDER)
                     .into_any_element()
             } else {
-                Loading.into_any_element()
+                Loading::new().into_any_element()
             });
         };
         let inside: Vec<_> = folder

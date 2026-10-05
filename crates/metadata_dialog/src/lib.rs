@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use api::{ArtworkChange, TrackInfo, TrackMetadataPatch};
+use components::ErrorBanner;
 use components::dialogs::{DialogSize, FormDialog, FormFooter};
 use components::format::{duration, t};
 use components::{Cover, Loading, icons, motion, style};
@@ -343,7 +344,6 @@ impl MetadataDialog {
 
     fn editor(&self, cx: &Context<Self>) -> AnyElement {
         let (bad_track, bad_disc) = self.unreadable(cx);
-        let danger = cx.theme().danger;
         v_flex()
             .gap_3()
             .child(self.field(t("title"), &self.title, cx))
@@ -367,19 +367,7 @@ impl MetadataDialog {
                     ))),
             )
             .when_some(self.failure.clone(), |body, reason| {
-                body.child(
-                    div()
-                        .w_full()
-                        .px_3()
-                        .py_2()
-                        .rounded(style::radius_lg())
-                        .border_1()
-                        .border_color(danger.opacity(0.3))
-                        .bg(danger.opacity(0.1))
-                        .text_sm()
-                        .text_color(danger)
-                        .child(reason),
-                )
+                body.child(ErrorBanner::new(reason))
             })
             .child(
                 div()
@@ -455,7 +443,10 @@ fn number(value: Option<u32>) -> String {
 impl Render for MetadataDialog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(track) = self.track.clone() else {
-            return div().h(LOADING_HEIGHT).child(Loading).into_any_element();
+            return div()
+                .h(LOADING_HEIGHT)
+                .child(Loading::new())
+                .into_any_element();
         };
         let editing = self.editing;
         let (bad_track, bad_disc) = self.unreadable(cx);

@@ -343,7 +343,7 @@ impl Render for Playlists {
         let loaded = PlaylistsModel::global(cx).read(cx).is_loaded();
         let header = self.header(capabilities, window, cx);
         let body = if !loaded {
-            Loading.into_any_element()
+            Loading::new().into_any_element()
         } else if capabilities.folders {
             self.folders_layout(cx)
         } else {

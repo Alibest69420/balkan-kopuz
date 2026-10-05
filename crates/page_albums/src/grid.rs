@@ -3,7 +3,8 @@
 use api::{AlbumInfo, AlbumPage, JobKind, Table};
 use components::format::t;
 use components::{
-    Frame, GridMode, Loading, PageHeader, TileGrid, album_row, album_tile, icons, motion, style,
+    EmptyState, Frame, GridMode, Loading, PageHeader, TileGrid, album_row, album_tile, icons,
+    motion, style,
 };
 use config::{AlbumSortField, AlbumViewMode, SortCriterion, SortDirection};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -302,17 +303,19 @@ impl Render for Albums {
                     .child(self.view_toggle(window, cx))
                     .child(self.sort_control(window, cx)),
             )
-            .child(div().flex_1().min_h_0().pb_8().map(|body| {
-                match (bands, settled) {
-                    (Some(bands), _) => body.child(bands),
-                    (None, false) => body.child(Loading),
-                    (None, true) => body.child(
-                        div()
-                            .text_color(style::slate_500(cx))
-                            .child(t("no_albums_found")),
-                    ),
-                }
-            }))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .pb_8()
+                    .map(|body| match (bands, settled) {
+                        (Some(bands), _) => body.child(bands),
+                        (None, false) => body.child(Loading::new()),
+                        (None, true) => {
+                            body.child(EmptyState::new(t("no_albums_found")).icon(icons::DISC))
+                        }
+                    }),
+            )
     }
 }
 

@@ -2,14 +2,13 @@
 
 use api::ApiEvent;
 use api::schema::{ChoiceOption, FieldValue};
+use components::ErrorBanner;
 use components::dialogs::FormDialog;
 use components::format::{t, text};
 use components::{Chip, ChipSize, FieldChanged, SchemaForm, icons, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, Icon, Sizable as _, WindowExt as _, h_flex, v_flex,
-};
+use gpui_kit::component::{Disableable as _, Sizable as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
@@ -201,24 +200,6 @@ impl UrlDownload {
             .collect();
         h_flex().gap_1p5().flex_wrap().children(chips)
     }
-
-    fn failure_box(&self, failure: SharedString, cx: &Context<Self>) -> impl IntoElement {
-        let danger = cx.theme().danger;
-        h_flex()
-            .w_full()
-            .gap_2()
-            .items_start()
-            .px_3()
-            .py_2()
-            .rounded(style::radius_lg())
-            .border_1()
-            .border_color(danger.opacity(0.3))
-            .bg(danger.opacity(0.1))
-            .text_sm()
-            .text_color(danger)
-            .child(Icon::default().path(icons::WARNING).small())
-            .child(div().flex_1().min_w_0().child(failure))
-    }
 }
 
 impl Render for UrlDownload {
@@ -242,7 +223,7 @@ impl Render for UrlDownload {
             )
             .child(self.chips(cx))
             .when_some(self.failure.clone(), |body, failure| {
-                body.child(self.failure_box(failure, cx))
+                body.child(ErrorBanner::new(failure).icon())
             })
             .child(
                 h_flex().child(

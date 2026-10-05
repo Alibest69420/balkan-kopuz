@@ -7,6 +7,7 @@ use api::{SignInKind, SourceFolderEntry, SourceInfo, SourceState, Table};
 use components::dialogs::{DialogSize, FormDialog};
 use components::format::{t, t_with, text};
 use components::{Badge, FieldChanged, SchemaForm, icons};
+use components::{EmptyState, ErrorBanner, Loading};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
@@ -382,7 +383,7 @@ impl Sources {
             .border_color(cx.theme().border)
             .child(ui::hint(t("remote_music_folders"), cx))
             .when(chosen.is_empty(), |column| {
-                column.child(ui::empty(t("no_music_folders"), cx))
+                column.child(EmptyState::new(t("no_music_folders")).compact())
             })
             .children(chosen.iter().map(|folder| {
                 let folder = folder.clone();
@@ -465,13 +466,13 @@ impl Sources {
             )
             .child(v_flex().w_full().gap_1().max_h(px(224.)).map(|list| {
                 if self.browser.loading {
-                    return list.child(ui::empty(t("loading_folders"), cx));
+                    return list.child(Loading::new().label(t("loading_folders")).compact());
                 }
                 if let Some(error) = self.browser.error.clone() {
-                    return list.child(ui::error(error, cx));
+                    return list.child(ErrorBanner::new(error));
                 }
                 if self.browser.entries.is_empty() {
-                    return list.child(ui::empty(t("no_subfolders"), cx));
+                    return list.child(EmptyState::new(t("no_subfolders")).compact());
                 }
                 list.children(self.browser.entries.iter().map(|entry| {
                     let target = entry.path.clone();
@@ -652,7 +653,7 @@ impl Render for Sources {
         ui::section(t("sources")).opaque().child(
             ui::card(cx)
                 .when(sources.is_empty(), |card| {
-                    card.child(ui::empty(t("no_saved_servers"), cx))
+                    card.child(EmptyState::new(t("no_saved_servers")).compact())
                 })
                 .children(rows)
                 .child(

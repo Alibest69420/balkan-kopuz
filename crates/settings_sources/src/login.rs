@@ -1,6 +1,7 @@
 //! The username/password sign-in a server asks for when its `SignInKind` is `Password`.
 
 use api::SourceLoginRequest;
+use components::ErrorBanner;
 use components::dialogs::{DialogSize, FormDialog};
 use components::format::{t, t_with};
 use gpui_kit::component::WindowExt as _;
@@ -14,8 +15,6 @@ use gpui_kit::{
 };
 use link::Link;
 use store::SourcesModel;
-
-use crate::ui;
 
 /// Open the sign-in dialog for `server_id` on a fresh form, so it works without the settings page open.
 pub fn open(server_id: String, service: SharedString, window: &mut Window, cx: &mut gpui_kit::App) {
@@ -139,7 +138,7 @@ impl Render for LoginForm {
                     .disabled(loading),
             )
             .when_some(self.error.clone(), |form, message| {
-                form.child(ui::error(message, cx))
+                form.child(ErrorBanner::new(message))
             })
             .child(
                 h_flex()

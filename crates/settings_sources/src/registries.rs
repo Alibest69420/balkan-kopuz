@@ -2,6 +2,7 @@
 
 use components::dialogs::{DialogSize, FormDialog};
 use components::format::{t, t_with};
+use components::{EmptyState, ErrorBanner};
 use components::{icons, style};
 use config::RegistryEntry;
 use gpui_kit::component::WindowExt as _;
@@ -208,10 +209,10 @@ impl Render for RadioRegistries {
                 )
                 .when(expanded, |card| {
                     card.when(entries.is_empty(), |card| {
-                        card.child(ui::empty(t("radio_registries_empty"), cx))
+                        card.child(EmptyState::new(t("radio_registries_empty")).compact())
                     })
                     .when_some(self.error.clone(), |card, message| {
-                        card.child(ui::error(message, cx))
+                        card.child(ErrorBanner::new(message))
                     })
                     .children(
                         entries
@@ -337,7 +338,7 @@ impl Render for AddRegistry {
             .gap_3()
             .child(Input::new(&self.url).disabled(saving))
             .when_some(self.error.clone(), |form, message| {
-                form.child(ui::error(message, cx))
+                form.child(ErrorBanner::new(message))
             })
             .child(
                 h_flex()

@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 use api::{QueueContext, RadioStationInfo, Table};
+use components::Loading;
 use components::format::t;
 use components::{
     Badge, BadgeTone, Chip, ChipSize, ChipTone, Cover, EmptyState, Heading, PageHeader,
@@ -11,7 +12,6 @@ use components::{
 };
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::input::{InputEvent, InputState};
-use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -617,21 +617,17 @@ impl Radio {
                 )
                 .into_any_element()
             }
-            Line::Status(Status::Loading) => h_flex()
-                .w_full()
-                .justify_center()
-                .items_center()
-                .gap_3()
-                .py_16()
-                .text_sm()
-                .text_color(style::white(style::TEXT_DIM, cx))
-                .child(Spinner::new())
-                .child(t("radio_loading_stations"))
+            Line::Status(Status::Loading) => Loading::new()
+                .label(t("radio_loading_stations"))
                 .into_any_element(),
-            Line::Status(Status::Failed(error)) => EmptyState::new(t("radio_search_failed"))
-                .detail(error)
-                .icon(icons::RADIO)
-                .into_any_element(),
+            Line::Status(Status::Failed(error)) => EmptyState::failed(
+                t("radio_search_failed"),
+                cx.listener(|this, _, _, cx| {
+                    this.directory.update(cx, |query, cx| query.refresh(cx));
+                }),
+            )
+            .detail(error)
+            .into_any_element(),
             Line::Status(Status::Empty) => EmptyState::new(t("radio_no_stations_match"))
                 .icon(icons::RADIO)
                 .into_any_element(),

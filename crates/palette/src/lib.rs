@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use api::{AlbumPage, ApiError, ArtistPage, KopuzApi, SearchResults, Table};
 use components::format::{t, t_with};
-use components::{Badge, SearchField, icons, motion, style};
+use components::{Badge, EmptyState, SearchField, icons, motion, style};
 use gpui_kit::base::motion::{Easing, Presence, Transition};
 use gpui_kit::component::input::{Escape, IndentInline, InputEvent, InputState, MoveDown, MoveUp};
 use gpui_kit::component::kbd::Kbd;
@@ -967,26 +967,13 @@ impl Palette {
             }))
     }
 
-    fn empty(&self, cx: &gpui_kit::App) -> impl IntoElement {
-        v_flex()
-            .w_full()
-            .py_10()
-            .gap_2()
-            .items_center()
-            .child(
-                icons::icon(icons::SEARCH)
-                    .with_size(style::text_9())
-                    .text_color(style::white(style::TEXT_FAINT, cx)),
-            )
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(style::white(style::TEXT_MUTED, cx))
-                    .child(match self.query.is_empty() {
-                        true => t("palette_empty"),
-                        false => t_with("no_results_found", &[("query", self.query.clone())]),
-                    }),
-            )
+    fn empty(&self) -> EmptyState {
+        EmptyState::new(match self.query.is_empty() {
+            true => t("palette_empty"),
+            false => t_with("no_results_found", &[("query", self.query.clone())]),
+        })
+        .icon(icons::SEARCH)
+        .compact()
     }
 }
 
@@ -1067,7 +1054,7 @@ impl Render for Palette {
                                 ),
                             ),
                     )
-                    .when(count == 0, |panel| panel.child(self.empty(cx)))
+                    .when(count == 0, |panel| panel.child(self.empty()))
                     .when(count > 0, |panel| {
                         panel.child(
                             div().w_full().h(height).py_1().child(

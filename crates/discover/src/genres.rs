@@ -250,16 +250,15 @@ impl Render for Genre {
         let failure = self.tracks.read(cx).error().map(states::read_failure);
         let settled = self.tracks.read(cx).is_settled();
         let body = if let Some(message) = failure {
-            states::failed(
-                "genre-retry",
+            EmptyState::failed(
                 message,
                 cx.listener(|this, _, _, cx| {
                     this.tracks.update(cx, |tracks, cx| tracks.refresh(cx));
                 }),
-                cx,
             )
+            .into_any_element()
         } else if !settled {
-            Loading.into_any_element()
+            Loading::new().into_any_element()
         } else if count == 0 {
             EmptyState::new(t("no_tracks_found"))
                 .icon(icons::DISC)

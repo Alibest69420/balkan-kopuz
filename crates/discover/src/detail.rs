@@ -3,11 +3,10 @@
 use api::{CatalogDetail, CatalogDetailRequest, CatalogItemKind};
 use components::format::t;
 use components::{
-    Cover, EmptyState, PageHeader, Scrim, TrackActions, TrackList, TrackListEvent,
+    Cover, EmptyState, Loading, PageHeader, Scrim, TrackActions, TrackList, TrackListEvent,
     TrackListOptions, icons, motion, style,
 };
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
-use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -122,13 +121,11 @@ impl Render for CatalogPlaylist {
             .child(PageHeader::new(self.title.clone()).back(Route::Discover))
             .map(|page| {
                 if self.loading {
-                    page.child(spinner_row())
+                    page.child(Loading::new())
                 } else if let Some(message) = self.error.clone() {
-                    page.child(states::failed(
-                        "catalog-playlist-retry",
+                    page.child(EmptyState::failed(
                         message,
                         cx.listener(|this, _, _, cx| this.load(cx)),
-                        cx,
                     ))
                 } else if empty {
                     page.child(EmptyState::new(t("playlist_not_found")).icon(icons::LIST))
@@ -324,13 +321,11 @@ impl Render for CatalogArtist {
                     .pb_10()
                     .gap_8()
                     .child(PageHeader::new(self.name()).back(Route::Discover))
-                    .when(self.loading, |page| page.child(spinner_row()))
+                    .when(self.loading, |page| page.child(Loading::new()))
                     .when_some(self.error.clone(), |page, message| {
-                        page.child(states::failed(
-                            "catalog-artist-retry",
+                        page.child(EmptyState::failed(
                             message,
                             cx.listener(|this, _, _, cx| this.load(cx)),
-                            cx,
                         ))
                     })
                     .children(banner)
@@ -338,13 +333,4 @@ impl Render for CatalogArtist {
             )
             .into_any_element()
     }
-}
-
-pub fn spinner_row() -> impl IntoElement {
-    h_flex()
-        .w_full()
-        .items_center()
-        .justify_center()
-        .py_12()
-        .child(Spinner::new().large())
 }

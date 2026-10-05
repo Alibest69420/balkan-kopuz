@@ -19,6 +19,7 @@ use gpui_kit::{
 use crate::format::{t, text};
 use crate::icons;
 use crate::motion;
+use crate::states::FieldProblem;
 use crate::style;
 
 /// One field was answered; the owner sends it to whichever `set_*_settings` call it belongs to.
@@ -449,7 +450,7 @@ impl SchemaForm {
                     })
             })
             .when_some(self.problem_for(&key), |field, problem| {
-                field.child(div().text_xs().text_color(cx.theme().danger).child(problem))
+                field.child(FieldProblem::new(problem))
             })
     }
 
@@ -595,16 +596,10 @@ impl Render for SchemaForm {
             .filter(|problem| problem.field.is_none())
             .map(|problem| text(&problem.label))
             .collect();
-        v_flex()
-            .w_full()
-            .children(rows)
-            .children(form_problems.into_iter().map(|problem| {
-                div()
-                    .px_5()
-                    .py_1()
-                    .text_xs()
-                    .text_color(cx.theme().danger)
-                    .child(problem)
-            }))
+        v_flex().w_full().children(rows).children(
+            form_problems
+                .into_iter()
+                .map(|problem| div().px_5().py_1().child(FieldProblem::new(problem))),
+        )
     }
 }

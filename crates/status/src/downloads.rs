@@ -16,7 +16,8 @@ use gpui_kit::{
 };
 use store::{DownloadItem, DownloadsModel, ItemState, JobEvent, JobsModel, Link, Notices, Query};
 
-use crate::{DONE, FAILED, ROW_GLYPH, empty, header, row};
+use crate::{DONE, FAILED, ROW_GLYPH, header, row};
+use components::EmptyState;
 
 /// The same one-line list row the playlists panel draws, so a skin moves both together.
 fn row_height() -> Pixels {
@@ -320,7 +321,7 @@ impl Render for DownloadsList {
                 )
             })
             .when(count == 0, |body| {
-                body.child(empty(t("downloads_idle"), cx))
+                body.child(EmptyState::new(t("downloads_idle")).compact())
             })
             .when(count > 0, |body| {
                 body.child(

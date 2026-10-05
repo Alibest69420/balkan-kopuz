@@ -1,5 +1,4 @@
-//! What the app is busy with: the activity, downloads and notification popovers in the bar,
-//! the reconnect banner, and the toasts everything else pushes.
+//! What the app is busy with: the bar's activity, downloads and notification popovers, the reconnect banner and toasts.
 
 mod activity;
 mod banner;
@@ -14,7 +13,7 @@ use components::format::t;
 use components::{Heading, SectionHeading, icons, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::popover::Popover;
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex};
 use gpui_kit::{
     Anchor, AnyElement, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _,
     Pixels, Render, SharedString, Styled, Subscription, Window, div, px,
@@ -299,20 +298,6 @@ pub(crate) fn header(title: SharedString, action: Option<AnyElement>, cx: &App) 
         .border_b_1()
         .border_color(style::white(style::BORDER, cx))
         .child(heading)
-        .into_any_element()
-}
-
-/// What a popover says when it has nothing to list.
-pub(crate) fn empty(message: SharedString, cx: &App) -> AnyElement {
-    v_flex()
-        .w_full()
-        .items_center()
-        .justify_center()
-        .py_6()
-        .px_3()
-        .text_xs()
-        .text_color(style::white(style::TEXT_MUTED, cx))
-        .child(message)
         .into_any_element()
 }
 

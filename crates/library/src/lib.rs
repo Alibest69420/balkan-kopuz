@@ -72,8 +72,7 @@ pub fn register(cx: &mut App) {
         KeyBinding::new("escape", ClearSelection, Some("Library")),
         KeyBinding::new("ctrl-tab", NextFacet, Some("Library")),
         KeyBinding::new("ctrl-shift-tab", PreviousFacet, Some("Library")),
-        // A single-key binding has to decline to something with focus, and a filter box is where
-        // "/" is a character; the deeper context wins, so typing one lands in the box.
+        // The deeper Input context wins, so "/" typed into a filter box stays a character.
         KeyBinding::new("/", gpui_kit::NoAction, Some("Input")),
         KeyBinding::new("down", gpui_kit::NoAction, Some("Input")),
         KeyBinding::new("up", gpui_kit::NoAction, Some("Input")),
@@ -467,10 +466,7 @@ impl Library {
         }));
     }
 
-    /// Whether the whole filtered listing has to be read, rather than the window on screen.
-    ///
-    /// Grouping needs every row to know where a group starts, the downloaded and year chips are
-    /// narrowings the wire cannot express, and a column the daemon cannot order by is sorted here.
+    /// Whether grouping, a chip the wire cannot express, or a client-side sort needs the whole listing.
     fn needs_whole(&self) -> bool {
         match self.filters.facet {
             Facet::Tracks => {
@@ -1024,10 +1020,10 @@ impl Library {
             && empty
         {
             let page = cx.entity().downgrade();
-            return states::failed(&error, move |_, cx| {
+            return states::failed(&error, move |_, _, cx| {
                 page.update(cx, |this, cx| this.retry(cx)).ok();
             })
-            .render(window, cx);
+            .into_any_element();
         }
         if self.total() == 0 {
             if !self.settled(cx) {
@@ -1035,7 +1031,7 @@ impl Library {
             }
             if self.filters.is_narrowed() {
                 let page = cx.entity().downgrade();
-                return states::no_matches(move |window, cx| {
+                return states::no_matches(move |_, window, cx| {
                     page.update(cx, |this, cx| {
                         let cleared = this.filters.cleared();
                         this.search
@@ -1044,9 +1040,9 @@ impl Library {
                     })
                     .ok();
                 })
-                .render(window, cx);
+                .into_any_element();
             }
-            return states::empty_library(cx).render(window, cx);
+            return states::empty_library(cx).into_any_element();
         }
         match self.filters.facet {
             Facet::Tracks => self.table(window, cx),

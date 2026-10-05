@@ -141,7 +141,7 @@ impl Render for Artists {
         let empty = self.entries.is_empty();
 
         let body = match (settled, empty) {
-            (false, true) => Loading.into_any_element(),
+            (false, true) => Loading::new().into_any_element(),
             (true, true) => EmptyState::new(t("artists"))
                 .icon(icons::MIC)
                 .detail(t("no_tracks_found"))

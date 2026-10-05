@@ -1,12 +1,13 @@
 //! One set of tags written across a whole selection: a blank field leaves that tag as it is.
 
 use api::{ArtworkChange, TrackMetadataPatch};
+use components::ErrorBanner;
 use components::dialogs::{DialogSize, FormDialog};
 use components::format::{t, t_with};
 use components::style;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, WindowExt as _, h_flex, v_flex};
+use gpui_kit::component::{Disableable as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
@@ -111,7 +112,6 @@ impl BatchDialog {
 
 impl Render for BatchDialog {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let danger = cx.theme().danger;
         let nothing =
             self.typed(&self.artist, cx).is_none() && self.typed(&self.album, cx).is_none();
         v_flex()
@@ -128,19 +128,7 @@ impl Render for BatchDialog {
             .child(self.field(t("artist"), &self.artist, cx))
             .child(self.field(t("album"), &self.album, cx))
             .when_some(self.failure.clone(), |body, reason| {
-                body.child(
-                    div()
-                        .w_full()
-                        .px_3()
-                        .py_2()
-                        .rounded(style::radius_lg())
-                        .border_1()
-                        .border_color(danger.opacity(0.3))
-                        .bg(danger.opacity(0.1))
-                        .text_sm()
-                        .text_color(danger)
-                        .child(reason),
-                )
+                body.child(ErrorBanner::new(reason))
             })
             .child(
                 div()

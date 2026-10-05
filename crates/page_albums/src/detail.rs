@@ -550,15 +550,7 @@ impl AlbumDetail {
 
     fn tracks_body(&self, cx: &Context<Self>) -> AnyElement {
         if self.rows.is_empty() {
-            return v_flex()
-                .w_full()
-                .py_12()
-                .items_center()
-                .justify_center()
-                .text_color(style::slate_500(cx))
-                .child(icons::icon(icons::MUSIC).size(px(36.)).into_any_element())
-                .child(div().mt_4().text_lg().child(t("no_tracks_found")))
-                .into_any_element();
+            return EmptyState::new(t("no_tracks_found")).into_any_element();
         }
         let hover = style::white(style::RAISED, cx);
         div()
@@ -607,8 +599,7 @@ impl AlbumDetail {
         let ink = cx.theme().primary_foreground;
         let rule = style::black(0.2, cx);
         let divider = move || div().w(px(1.)).h_5().flex_shrink_0().bg(rule);
-        // The bar is an accent slab, so its buttons paint nothing of their own; without the
-        // variant a Button's hover layer repaints the glyph in the theme's grey over the accent.
+        // Without this variant a Button's hover layer repaints the glyph grey over the accent slab.
         let bare = clear_variant(ink, cx);
         let entry = |id: &'static str, icon: &'static str, label: SharedString| {
             Button::new(id)
@@ -974,7 +965,7 @@ impl Render for AlbumDetail {
             true => EmptyState::new(t("album_not_found"))
                 .icon(icons::DISC)
                 .into_any_element(),
-            false => Loading.into_any_element(),
+            false => Loading::new().into_any_element(),
         }
     }
 }

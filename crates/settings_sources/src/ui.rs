@@ -112,36 +112,6 @@ pub fn hint(text: SharedString, cx: &App) -> Div {
         .child(text)
 }
 
-/// `text-xs text-slate-500 italic`: what a list says when it holds nothing.
-pub fn empty(text: SharedString, cx: &App) -> Div {
-    div()
-        .text_xs()
-        .italic()
-        .text_color(style::slate_500(cx))
-        .child(text)
-}
-
-/// `.popup .error`: red text in a red box, the way every dialog reports a failure.
-pub fn error(text: SharedString, cx: &App) -> Div {
-    let danger = cx.theme().danger;
-    div()
-        .w_full()
-        .px_3()
-        .py_2()
-        .rounded(style::radius(cx))
-        .border_1()
-        .border_color(danger.opacity(0.3))
-        .bg(danger.opacity(0.1))
-        .text_sm()
-        .text_color(danger)
-        .child(text)
-}
-
-/// Why one field is wrong, under that field rather than at the foot of the form.
-pub fn field_problem(text: SharedString, cx: &App) -> Div {
-    div().text_xs().text_color(cx.theme().danger).child(text)
-}
-
 /// One folder of a library, with the button that drops it.
 pub fn folder_row(
     id: impl Into<ElementId>,
