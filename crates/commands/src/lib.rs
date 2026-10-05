@@ -7,10 +7,7 @@ mod registry;
 mod track_list;
 
 use gpui_kit::component::menu::{PopupMenu, PopupMenuItem};
-use gpui_kit::component::{ActiveTheme as _, h_flex};
-use gpui_kit::{
-    Action, App, Context, IntoElement, ParentElement as _, SharedString, Styled as _, Window,
-};
+use gpui_kit::{Action, App, Context, SharedString, Window};
 use store::{Kind, Target};
 
 pub use keys::{conflict, context_for, default_keystroke, keymap, keystroke_for, rebind, written};
@@ -136,28 +133,12 @@ fn build_menu(target: Target, mut menu: PopupMenu, cx: &mut Context<PopupMenu>) 
 }
 
 fn item(command: &'static Command, target: &Target, cx: &App) -> PopupMenuItem {
-    let label = command.label(target, cx);
-    let icon = command.icon;
-    let entry = if command.danger {
-        // Taking something off disk should not look like the item above it.
-        PopupMenuItem::element(move |_, cx| {
-            h_flex()
-                .gap_2()
-                .items_center()
-                .text_color(cx.theme().danger)
-                .children(icon.map(components::icons::icon))
-                .child(label.clone())
-                .into_any_element()
-        })
-    } else {
-        let entry = PopupMenuItem::new(label);
-        match icon {
-            Some(icon) => entry.icon(components::icons::icon(icon)),
-            None => entry,
-        }
-    };
     let target = target.clone();
-    entry.on_click(move |_, window, cx| command.perform(target.clone(), window, cx))
+    components::menus::menu_item(command.label(&target, cx), command.icon)
+        // Taking something off disk should not look like the item above it.
+        .danger(command.danger)
+        .on_click(move |_, window, cx| command.perform(target.clone(), window, cx))
+        .into()
 }
 
 /// An icon-only button's tooltip: what it does, and the key that does it without the pointer.

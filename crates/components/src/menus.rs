@@ -2,8 +2,12 @@
 
 use std::rc::Rc;
 
-use gpui_kit::component::menu::{ContextMenuExt, PopupMenu};
-use gpui_kit::{AnyElement, App, Context, Global, IntoElement, Window};
+use gpui_kit::component::menu::{ContextMenuExt, PopupMenu, PopupMenuItem};
+use gpui_kit::component::{ActiveTheme as _, h_flex};
+use gpui_kit::{
+    AnyElement, App, ClickEvent, Context, Global, IntoElement, ParentElement as _, SharedString,
+    Styled as _, Window,
+};
 use store::Target;
 
 type Builder = Rc<dyn Fn(Target, PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu>;
@@ -72,3 +76,66 @@ pub trait WithContextMenu: ContextMenuExt + IntoElement + Sized + 'static {
 }
 
 impl<T: ContextMenuExt + IntoElement + Sized + 'static> WithContextMenu for T {}
+
+type OnPick = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
+
+/// One menu entry: a label, an optional glyph, and a danger colour for what takes something away.
+pub struct MenuItem {
+    label: SharedString,
+    icon: Option<&'static str>,
+    danger: bool,
+    pick: Option<OnPick>,
+}
+
+pub fn menu_item(label: impl Into<SharedString>, icon: Option<&'static str>) -> MenuItem {
+    MenuItem {
+        label: label.into(),
+        icon,
+        danger: false,
+        pick: None,
+    }
+}
+
+impl MenuItem {
+    pub fn danger(mut self, danger: bool) -> Self {
+        self.danger = danger;
+        self
+    }
+
+    pub fn on_click(mut self, pick: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
+        self.pick = Some(Rc::new(pick));
+        self
+    }
+}
+
+impl From<MenuItem> for PopupMenuItem {
+    fn from(item: MenuItem) -> Self {
+        let MenuItem {
+            label,
+            icon,
+            danger,
+            pick,
+        } = item;
+        let entry = if danger {
+            PopupMenuItem::element(move |_, cx| {
+                h_flex()
+                    .gap_2()
+                    .items_center()
+                    .text_color(cx.theme().danger)
+                    .children(icon.map(crate::icons::icon))
+                    .child(label.clone())
+                    .into_any_element()
+            })
+        } else {
+            let entry = PopupMenuItem::new(label);
+            match icon {
+                Some(icon) => entry.icon(crate::icons::icon(icon)),
+                None => entry,
+            }
+        };
+        match pick {
+            Some(pick) => entry.on_click(move |event, window, cx| pick(event, window, cx)),
+            None => entry,
+        }
+    }
+}

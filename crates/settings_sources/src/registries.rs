@@ -2,18 +2,17 @@
 
 use components::dialogs::{DialogSize, FormDialog};
 use components::format::{t, t_with};
-use components::{EmptyState, ErrorBanner};
+use components::{CheckRow, Disclosure, EmptyState, ErrorBanner};
 use components::{icons, style};
 use config::RegistryEntry;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
-    Styled, Subscription, Window, div,
+    Styled, Subscription, Window,
 };
 use link::Link;
 use store::ConfigModel;
@@ -113,54 +112,22 @@ impl RadioRegistries {
             .open(self.add.clone(), window, cx);
     }
 
-    fn entry(
-        &self,
-        entry: &RegistryEntry,
-        locked: bool,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    fn entry(&self, entry: &RegistryEntry, locked: bool, cx: &mut Context<Self>) -> CheckRow {
         let url = entry.url.clone();
-        let enabled = entry.enabled;
         let shown = if entry.is_default {
             t("radio_default_registry")
         } else {
             SharedString::from(url.clone())
         };
-        h_flex()
-            .w_full()
-            .gap_3()
-            .items_center()
-            .p_2()
-            .rounded(style::radius(cx))
-            .bg(style::white(style::RAISED, cx))
-            .child(
-                Checkbox::new(SharedString::from(format!("registry-{url}")))
-                    .checked(enabled)
-                    .disabled(locked)
-                    .on_click(cx.listener({
-                        let url = url.clone();
-                        move |this: &mut Self, checked: &bool, _, cx| {
-                            this.toggle(url.clone(), *checked, cx)
-                        }
-                    })),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .truncate()
-                    .text_xs()
-                    .map(|label| {
-                        if enabled {
-                            label.text_color(style::slate_400(cx))
-                        } else {
-                            label.line_through().text_color(style::slate_500(cx))
-                        }
-                    })
-                    .child(shown),
-            )
+        CheckRow::new(format!("registry-{url}"), shown)
+            .checked(entry.enabled)
+            .locked(locked)
+            .on_toggle(cx.listener({
+                let url = url.clone();
+                move |this: &mut Self, checked: &bool, _, cx| this.toggle(url.clone(), *checked, cx)
+            }))
             .when(!entry.is_default, |row| {
-                row.child(
+                row.trailing(
                     Button::new(SharedString::from(format!("delete-registry-{url}")))
                         .custom(style::tint_text_button(cx.theme().danger, cx))
                         .xsmall()
@@ -190,34 +157,24 @@ impl Render for RadioRegistries {
         let expanded = self.expanded;
 
         ui::section(t("radio")).opaque().child(
-            ui::card(cx)
-                .child(
-                    Button::new("registries-toggle")
-                        .ghost()
-                        .justify_between()
-                        .w_full()
-                        .label(summary)
-                        .icon(icons::icon(if expanded {
-                            icons::CHEVRON_UP
-                        } else {
-                            icons::CHEVRON_DOWN
-                        }))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.expanded = !this.expanded;
-                            cx.notify();
-                        })),
-                )
-                .when(expanded, |card| {
-                    card.when(entries.is_empty(), |card| {
-                        card.child(EmptyState::new(t("radio_registries_empty")).compact())
-                    })
-                    .when_some(self.error.clone(), |card, message| {
-                        card.child(ErrorBanner::new(message))
-                    })
+            ui::card(cx).child(
+                Disclosure::new("registries-toggle", summary)
+                    .open(expanded)
+                    .on_toggle(cx.listener(|this, _, _, cx| {
+                        this.expanded = !this.expanded;
+                        cx.notify();
+                    }))
+                    .children(
+                        entries
+                            .is_empty()
+                            .then(|| EmptyState::new(t("radio_registries_empty")).compact()),
+                    )
+                    .children(self.error.clone().map(ErrorBanner::new))
                     .children(
                         entries
                             .iter()
-                            .map(|entry| self.entry(entry, locked, cx).into_any_element()),
+                            .map(|entry| self.entry(entry, locked, cx))
+                            .collect::<Vec<_>>(),
                     )
                     .child(
                         Button::new("add-registry")
@@ -228,8 +185,8 @@ impl Render for RadioRegistries {
                             .disabled(locked)
                             .on_click(cx.listener(|this, _, window, cx| this.open_add(window, cx)))
                             .self_start(),
-                    )
-                }),
+                    ),
+            ),
         )
     }
 }

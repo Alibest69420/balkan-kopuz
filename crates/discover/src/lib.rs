@@ -25,7 +25,7 @@ use gpui_kit::{
 };
 use store::{Chrome, Link, PlayerModel, Query, SourcesModel, actions, all};
 
-use crate::genres::{GenreCard, GenreTile, genres_of};
+use crate::genres::{GenreTile, genre_card, genres_of};
 use crate::shelves::Shelves;
 use store::Playing;
 
@@ -178,7 +178,7 @@ impl Discover {
             albums,
             genres: Vec::new(),
             all_genres: false,
-            genre_bands: TileGrid::new("discover-genre-grid").gap(genres::TILE_GAP),
+            genre_bands: TileGrid::new("discover-genre-grid").gap(components::GENRE_TILE_GAP),
             query,
             results,
             tracks,
@@ -281,7 +281,7 @@ impl Discover {
             .genres
             .iter()
             .take(LANDING_GENRES)
-            .map(|tile| GenreCard::new(tile).into_any_element())
+            .map(|tile| genre_card(tile).into_any_element())
             .collect();
         let mut heading = SectionHeading::new(t("browse_genres")).heading(Heading::Band);
         if more {
@@ -382,10 +382,10 @@ impl Discover {
             .genre_bands
             .bands(
                 self.genres.len(),
-                genres::TILE,
+                components::GENRE_TILE,
                 GridMode::Tiles,
                 |this: &mut Discover, index, _, _| {
-                    GenreCard::new(&this.genres[index]).into_any_element()
+                    genre_card(&this.genres[index]).into_any_element()
                 },
             )
             .build(window, cx);
