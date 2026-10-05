@@ -251,11 +251,7 @@ impl Library {
             .iter()
             .map(|key| SharedString::from(key.clone()))
             .collect();
-        let label = match keys.len() {
-            0 | 1 => SharedString::from(track.title.clone()),
-            many => SharedString::from(format!("{} +{}", track.title, many - 1)),
-        };
-        Target::tracks(keys, label)
+        Target::selection(keys, track.title.clone())
     }
 
     /// The header: a sort control per column, a grip between them, and a menu to hide them.

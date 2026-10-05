@@ -62,6 +62,16 @@ impl Target {
         }
     }
 
+    /// Picked tracks named "Title +3" after the first, rather than a count needing a plural per locale.
+    pub fn selection(keys: Vec<SharedString>, first: impl Into<SharedString>) -> Self {
+        let first = first.into();
+        let label = match keys.len() {
+            0 | 1 => first,
+            many => SharedString::from(format!("{first} +{}", many - 1)),
+        };
+        Target::Tracks { keys, label }
+    }
+
     pub fn kind(&self) -> Kind {
         match self {
             Target::None => Kind::None,

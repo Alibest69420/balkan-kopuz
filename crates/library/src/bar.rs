@@ -3,14 +3,14 @@
 use api::TrackFilter;
 use commands::Command;
 use components::format::{t, t_with};
-use components::{ChipSize, ChipTone, PageHeader, SearchField, icons, menus, style};
+use components::{ChipSize, ChipTone, PageHeader, SearchField, icons, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, Context, FontWeight, IntoElement, ParentElement as _, SharedString,
-    Styled as _, Window, div, px, rems,
+    AnyElement, App, Context, IntoElement, ParentElement as _, SharedString, Styled as _, Window,
+    div, rems,
 };
 use store::layout::{Density, TileSize, ViewMode};
 use store::{Link, Target};
@@ -18,9 +18,6 @@ use store::{Link, Target};
 use crate::Library;
 use crate::facet::Facet;
 use crate::filters::{Chip, Filters};
-
-/// How many verbs the pill spells out before the rest go under the dots.
-const SPELLED_OUT: usize = 3;
 
 impl Library {
     /// The heading, the facet switch, the filter bar and the facet's own controls.
@@ -439,11 +436,7 @@ impl Library {
     }
 
     /// The pill over the listing while anything is picked. It never says nothing is.
-    pub(crate) fn selection_bar(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Option<AnyElement> {
+    pub(crate) fn selection_bar(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
         if !self.selection.is_active() {
             return None;
         }
@@ -451,90 +444,42 @@ impl Library {
         if count == 0 {
             return None;
         }
-        let target = self.pill_target(cx);
-        let verbs: Vec<&'static Command> = commands::for_palette(&target, cx)
-            .into_iter()
-            .filter(|command| command.section == commands::Section::Act && command.icon.is_some())
-            .take(SPELLED_OUT)
-            .collect();
-        let fade = components::motion::enter(
-            "library-selection-bar",
-            components::motion::MEDIUM,
-            window,
-            cx,
-        );
-        let ink = cx.theme().primary_foreground;
-        let rule = style::black(0.2, cx);
-        let bare = style::bare_button(ink, cx);
+        let target = self.pill_target();
+        let run = cx.entity().downgrade();
+        let cancel = cx.entity().downgrade();
         Some(
-            div()
-                .absolute()
-                .bottom_10()
-                .left_0()
-                .right_0()
-                .flex()
-                .justify_center()
-                .opacity(fade)
-                .child(
-                    h_flex()
-                        .gap_4()
-                        .items_center()
-                        .px_6()
-                        .py_2p5()
-                        .rounded(cx.theme().radius_full())
-                        .bg(cx.theme().primary)
-                        .text_color(ink)
-                        .shadow_2xl()
-                        .child(
-                            div()
-                                .pl_2()
-                                .font_weight(FontWeight::BOLD)
-                                .child(t_with("library_selected", &[("count", count.to_string())])),
-                        )
-                        .child(div().w(px(1.)).h_5().flex_shrink_0().bg(rule))
-                        .children(verbs.into_iter().map(|command| {
-                            Button::new(SharedString::from(format!("library-act-{}", command.id)))
-                                .custom(bare)
-                                .icon(icons::icon(command.icon.unwrap_or(icons::PLAY)))
-                                .label(command.label(&target, cx))
-                                .font_weight(FontWeight::MEDIUM)
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.run_on_selection(command, window, cx)
-                                }))
-                        }))
-                        .child(
-                            Button::new("library-selection-more")
-                                .custom(bare)
-                                .icon(icons::icon(icons::MORE))
-                                .dropdown_menu(menus::builder(target.clone())),
-                        )
-                        .child(div().w(px(1.)).h_5().flex_shrink_0().bg(rule))
-                        .child(
-                            Button::new("library-selection-cancel")
-                                .custom(bare)
-                                .icon(icons::icon(icons::CLOSE))
-                                .tooltip(t("cancel"))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.selection.clear();
-                                    cx.notify();
-                                })),
-                        ),
-                )
-                .into_any_element(),
+            commands::selection_bar(
+                "library-selection",
+                count,
+                target,
+                move |command, _, window, cx| {
+                    run.update(cx, |this, cx| this.run_on_selection(command, window, cx))
+                        .ok();
+                },
+                cx,
+            )
+            .on_cancel(move |_, cx| {
+                cancel
+                    .update(cx, |this, cx| {
+                        this.selection.clear();
+                        cx.notify();
+                    })
+                    .ok();
+            })
+            .into_any_element(),
         )
     }
 
-    /// What the pill's labels describe. Under select-all the keys are not known yet, so the
-    /// target is the shape of the selection, and the keys are fetched when a verb is pressed.
-    fn pill_target(&self, cx: &App) -> Target {
-        if let Some(target) = self.picked_target(cx) {
+    /// What the pill's labels describe; under select-all the keys are fetched when a verb is pressed.
+    fn pill_target(&self) -> Target {
+        if let Some(target) = self.picked_target() {
             return target;
         }
         Target::tracks(Vec::new(), t("library_whole_selection"))
     }
 
     /// The target for what was actually clicked, when the keys are already in hand.
-    fn picked_target(&self, cx: &App) -> Option<Target> {
+    fn picked_target(&self) -> Option<Target> {
         if self.selection.is_everything() {
             return None;
         }
@@ -547,7 +492,7 @@ impl Library {
                 .iter()
                 .map(|key| SharedString::from(key.clone()))
                 .collect();
-            return Some(Target::tracks(keys, self.selection_label(cx)));
+            return Some(Target::selection(keys, self.first_title()));
         }
         if picked.len() == 1 {
             return self
@@ -559,10 +504,10 @@ impl Library {
         None
     }
 
-    /// "Title +3" rather than a count, which would need a plural form per locale.
-    fn selection_label(&self, _: &App) -> SharedString {
-        let picked = self.selection.picked();
-        let first = picked
+    /// The title of the row picked first, which names the whole selection.
+    fn first_title(&self) -> String {
+        self.selection
+            .picked()
             .first()
             .and_then(|key| {
                 self.rows
@@ -570,11 +515,7 @@ impl Library {
                     .find(|row| &row.key == key)
                     .map(|row| row.title.clone())
             })
-            .unwrap_or_default();
-        match picked.len() {
-            0 | 1 => SharedString::from(first),
-            many => SharedString::from(format!("{first} +{}", many - 1)),
-        }
+            .unwrap_or_default()
     }
 
     /// Run a verb on the selection, fetching the keys first when the selection is a filter.
@@ -584,7 +525,7 @@ impl Library {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(target) = self.picked_target(cx) {
+        if let Some(target) = self.picked_target() {
             command.perform(target, window, cx);
             self.selection.clear();
             cx.notify();

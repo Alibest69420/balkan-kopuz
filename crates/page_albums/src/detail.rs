@@ -2,7 +2,7 @@
 
 use api::{
     AlbumInfo, AlbumPresentation, ArtworkRef, CatalogDetail, CatalogDetailRequest, CatalogItemKind,
-    PlaylistCapability, SourceCapabilities, Table, TrackInfo,
+    SourceCapabilities, Table, TrackInfo,
 };
 use components::format::{t, t_with};
 use components::{
@@ -15,9 +15,9 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, Hsla, InteractiveElement as _, IntoElement,
     ParentElement as _, Pixels, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement as _, Styled, Subscription, Window, div, px,
+    StatefulInteractiveElement as _, Styled, Subscription, Window, div, px, rems,
 };
-use store::{DownloadsModel, Navigator, PlayerModel, Query, Route, SourcesModel, actions};
+use store::{DownloadsModel, Navigator, PlayerModel, Query, Route, SourcesModel, Target, actions};
 
 use crate::clear_variant;
 use crate::ops;
@@ -588,113 +588,41 @@ impl AlbumDetail {
             .into_any_element()
     }
 
-    fn selection_bar(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+    fn selection_bar(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         if !self.is_selecting(cx) {
             return None;
         }
-        let fade = motion::enter("album-selection-bar", motion::MEDIUM, window, cx);
         let keys = self.selected_keys(cx);
-        let playlists = self.capabilities.playlists != PlaylistCapability::None;
-        let deletable = self.capabilities.delete_from_disk;
-        let ink = cx.theme().primary_foreground;
-        let rule = style::black(0.2, cx);
-        let divider = move || div().w(px(1.)).h_5().flex_shrink_0().bg(rule);
-        // Without this variant a Button's hover layer repaints the glyph grey over the accent slab.
-        let bare = clear_variant(ink, cx);
-        let entry = |id: &'static str, icon: &'static str, label: SharedString| {
-            Button::new(id)
-                .icon(icons::icon(icon))
-                .label(label)
-                .custom(bare)
-                .font_weight(gpui_kit::FontWeight::MEDIUM)
-        };
-        Some(
-            div()
-                .absolute()
-                .bottom_24()
-                .left_0()
-                .right_0()
-                .flex()
-                .justify_center()
-                .opacity(fade)
-                .child(
-                    h_flex()
-                        .gap_4()
-                        .items_center()
-                        .px_6()
-                        .py_2p5()
-                        .rounded(cx.theme().radius_full())
-                        .bg(cx.theme().primary)
-                        .text_color(ink)
-                        .shadow_2xl()
-                        .child(
-                            div()
-                                .pl_2()
-                                .text_lg()
-                                .font_weight(gpui_kit::FontWeight::BOLD)
-                                .child(t_with(
-                                    "showcase_song_count",
-                                    &[("count", keys.len().to_string())],
-                                )),
-                        )
-                        .child(divider())
-                        .child(
-                            h_flex()
-                                .gap_4()
-                                .items_center()
-                                .child(
-                                    entry(
-                                        "album-selection-queue",
-                                        icons::QUEUE_ADD,
-                                        t("add_to_queue"),
-                                    )
-                                    .on_click({
-                                        let keys = keys.clone();
-                                        move |_, _, cx| actions::append(keys.clone(), cx)
-                                    }),
-                                )
-                                .when(playlists, |bar| {
-                                    bar.child(
-                                        entry(
-                                            "album-selection-playlist",
-                                            icons::PLUS,
-                                            t("add_to_playlist"),
-                                        )
-                                        .on_click({
-                                            let keys = keys.clone();
-                                            move |_, window, cx| {
-                                                components::playlist_picker::open(
-                                                    keys.clone(),
-                                                    window,
-                                                    cx,
-                                                )
-                                            }
-                                        }),
-                                    )
-                                })
-                                .when(deletable, |bar| {
-                                    bar.child(
-                                        entry("album-selection-delete", icons::TRASH, t("delete"))
-                                            .on_click({
-                                                let keys = keys.clone();
-                                                move |_, _, cx| ops::delete_tracks(keys.clone(), cx)
-                                            }),
-                                    )
-                                }),
-                        )
-                        .child(divider())
-                        .child(
-                            Button::new("album-selection-cancel")
-                                .icon(icons::icon(icons::CLOSE))
-                                .tooltip(t("cancel"))
-                                .custom(clear_variant(ink, cx))
-                                .pr_2()
-                                .text_lg()
-                                .on_click(cx.listener(|this, _, _, cx| this.clear_selection(cx))),
-                        ),
-                )
-                .into_any_element(),
+        let first = self
+            .rows
+            .iter()
+            .find(|row| keys.first() == Some(&row.key))
+            .map(|row| row.title.clone())
+            .unwrap_or_default();
+        let picked = keys.iter().cloned().map(SharedString::from).collect();
+        let page = cx.entity().downgrade();
+        let (acted, cancelled) = (page.clone(), page);
+        let bar = commands::selection_bar(
+            "album-selection",
+            keys.len(),
+            Target::selection(picked, first),
+            move |command, target, window, cx| {
+                command.perform(target, window, cx);
+                acted.update(cx, |this, cx| this.clear_selection(cx)).ok();
+            },
+            cx,
         )
+        .lift(rems(6.))
+        .on_cancel(move |_, cx| {
+            cancelled
+                .update(cx, |this, cx| this.clear_selection(cx))
+                .ok();
+        });
+        let bar = match self.capabilities.delete_from_disk {
+            true => bar.on_delete(move |_, cx| ops::delete_tracks(keys.clone(), cx)),
+            false => bar,
+        };
+        Some(bar.into_any_element())
     }
 
     fn standard_detail(
@@ -764,7 +692,7 @@ impl AlbumDetail {
             )
             .child(div().flex_shrink_0().mb_12().child(header))
             .child(self.tracks_body(cx))
-            .children(self.selection_bar(window, cx))
+            .children(self.selection_bar(cx))
             .into_any_element()
     }
 

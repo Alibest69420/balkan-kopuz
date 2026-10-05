@@ -265,12 +265,7 @@ impl TrackList {
             .filter(|candidate| self.selected.contains(&candidate.key))
             .map(|candidate| SharedString::from(candidate.key.clone()))
             .collect();
-        // "Title +3" rather than a count, which would need a plural form per locale.
-        let label = match keys.len() {
-            0 | 1 => SharedString::from(row.title.clone()),
-            many => SharedString::from(format!("{} +{}", row.title, many - 1)),
-        };
-        Target::tracks(keys, label)
+        Target::selection(keys, row.title.clone())
     }
 
     /// What the keyboard acts on: the selection when there is one, else the row under the cursor.

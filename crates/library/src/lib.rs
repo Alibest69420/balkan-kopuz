@@ -973,7 +973,7 @@ impl Render for Library {
         let dimmed = self.stale(cx);
         let chrome = self.chrome(window, cx);
         let body = self.body(window, cx);
-        let bar = self.selection_bar(window, cx);
+        let bar = self.selection_bar(cx);
         v_flex()
             .size_full()
             .relative()

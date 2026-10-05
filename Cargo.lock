@@ -5260,6 +5260,7 @@ dependencies = [
 name = "page_albums"
 version = "0.1.0"
 dependencies = [
+ "commands",
  "components",
  "gpui-kit",
  "kopuz-api",
@@ -5276,6 +5277,7 @@ dependencies = [
 name = "page_artists"
 version = "0.1.0"
 dependencies = [
+ "commands",
  "components",
  "gpui-kit",
  "kopuz-api",

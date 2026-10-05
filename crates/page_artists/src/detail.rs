@@ -5,13 +5,13 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use api::{
-    AlbumInfo, ArtworkTarget, ArtworkUpload, JobKind, PlaylistCapability, SourceCapabilities,
-    Table, TrackInfo, TrackPage,
+    AlbumInfo, ArtworkTarget, ArtworkUpload, JobKind, SourceCapabilities, Table, TrackInfo,
+    TrackPage,
 };
 use components::format::{t, t_with, total_duration};
 use components::{
     Cover, DetailHeader, EmptyState, Loading, TrackActions, TrackHeader, TrackList, TrackListEvent,
-    TrackListOptions, icons, motion, playlist_picker, style,
+    TrackListOptions, icons, motion, style,
 };
 use config::{AlbumSortField, AlbumViewMode, ArtistViewOrder, SortCriterion, SortDirection};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -25,7 +25,8 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled as _, Subscription, Task, Window, div, px, rems,
 };
 use store::{
-    ConfigModel, DownloadsModel, JobsModel, Navigator, PlayerModel, Query, SourcesModel, actions,
+    ConfigModel, DownloadsModel, JobsModel, Navigator, PlayerModel, Query, SourcesModel, Target,
+    actions,
 };
 
 use crate::controls::{self, ViewModeKey};
@@ -136,13 +137,7 @@ impl ArtistDetail {
                 let keys = list.read(cx).keys();
                 actions::play_tracks(keys, Some(*index as u32), cx);
             }
-            TrackListEvent::Delete(keys) => {
-                let from_disk = capabilities(cx).delete_from_disk;
-                let keys = keys.clone();
-                actions::run(cx, move |api| async move {
-                    api.delete_tracks(keys, from_disk).await
-                });
-            }
+            TrackListEvent::Delete(keys) => delete_tracks(keys.clone(), cx),
             _ => cx.notify(),
         }
     }
@@ -584,80 +579,40 @@ impl ArtistDetail {
     }
 
     fn selection_bar(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let capabilities = capabilities(cx);
-        let selected = self.list.read(cx).selected_keys();
-        let count = selected.len();
-        h_flex()
-            .absolute()
-            .bottom_24()
-            .left_0()
-            .right_0()
-            .justify_center()
-            .child(
-                h_flex()
-                    .gap_4()
-                    .items_center()
-                    .px_6()
-                    .py_2p5()
-                    .rounded_full()
-                    .shadow_lg()
-                    .bg(cx.theme().primary)
-                    .text_color(cx.theme().primary_foreground)
-                    // TODO(i18n): the Dioxus frontend had no key for this either.
-                    .child(SharedString::from(format!("{count} selected")))
-                    .child(
-                        Button::new("selection-queue")
-                            .ghost()
-                            .icon(icons::icon(icons::QUEUE_ADD))
-                            .label(t("add_to_queue"))
-                            .on_click({
-                                let selected = selected.clone();
-                                move |_, _, cx| actions::append(selected.clone(), cx)
-                            }),
-                    )
-                    .when(capabilities.playlists != PlaylistCapability::None, |bar| {
-                        bar.child(
-                            Button::new("selection-playlist")
-                                .ghost()
-                                .icon(icons::icon(icons::PLUS))
-                                .label(t("add_to_playlist"))
-                                .on_click({
-                                    let selected = selected.clone();
-                                    move |_, window, cx| {
-                                        playlist_picker::open(selected.clone(), window, cx)
-                                    }
-                                }),
-                        )
-                    })
-                    .when(capabilities.delete_from_disk, |bar| {
-                        bar.child(
-                            Button::new("selection-delete")
-                                .ghost()
-                                .icon(icons::icon(icons::TRASH))
-                                .label(t("delete"))
-                                .on_click(cx.listener({
-                                    let selected = selected.clone();
-                                    move |this, _, _, cx| {
-                                        let keys = selected.clone();
-                                        actions::run(cx, move |api| async move {
-                                            api.delete_tracks(keys, true).await
-                                        });
-                                        this.list.update(cx, |list, cx| list.clear_selection(cx));
-                                    }
-                                })),
-                        )
-                    })
-                    .child(
-                        Button::new("selection-cancel")
-                            .ghost()
-                            .icon(icons::icon(icons::CLOSE))
-                            .tooltip(t("cancel"))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.list.update(cx, |list, cx| list.clear_selection(cx))
-                            })),
-                    ),
-            )
-            .into_any_element()
+        let (keys, first) = {
+            let list = self.list.read(cx);
+            let keys = list.selected_keys();
+            let first = list
+                .rows()
+                .iter()
+                .find(|row| keys.first() == Some(&row.key))
+                .map(|row| row.title.clone())
+                .unwrap_or_default();
+            (keys, first)
+        };
+        let picked = keys.iter().cloned().map(SharedString::from).collect();
+        let (acted, cancelled) = (self.list.downgrade(), self.list.downgrade());
+        let bar = commands::selection_bar(
+            "artist-selection",
+            keys.len(),
+            Target::selection(picked, first),
+            move |command, target, window, cx| {
+                command.perform(target, window, cx);
+                acted.update(cx, |list, cx| list.clear_selection(cx)).ok();
+            },
+            cx,
+        )
+        .lift(rems(6.))
+        .on_cancel(move |_, cx| {
+            cancelled
+                .update(cx, |list, cx| list.clear_selection(cx))
+                .ok();
+        });
+        let bar = match capabilities(cx).delete_from_disk {
+            true => bar.on_delete(move |_, cx| delete_tracks(keys.clone(), cx)),
+            false => bar,
+        };
+        bar.into_any_element()
     }
 
     fn albums_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
@@ -742,6 +697,13 @@ fn set_downloaded(keys: Vec<String>, download: bool, cx: &mut App) {
                 downloads.remove(key, cx);
             }
         }
+    });
+}
+
+fn delete_tracks(keys: Vec<String>, cx: &mut App) {
+    let from_disk = capabilities(cx).delete_from_disk;
+    actions::run(cx, move |api| async move {
+        api.delete_tracks(keys, from_disk).await
     });
 }
 

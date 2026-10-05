@@ -196,6 +196,39 @@ pub fn for_palette(target: &Target, cx: &App) -> Vec<&'static Command> {
     commands
 }
 
+/// How many verbs a selection pill spells out before the rest go under its dots.
+const SPELLED_OUT: usize = 3;
+
+/// The selection pill over `target`: its first verbs spelled out, the rest in the dots menu.
+pub fn selection_bar(
+    id: impl Into<SharedString>,
+    count: usize,
+    target: Target,
+    run: impl Fn(&'static Command, Target, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> components::SelectionBar {
+    let run = std::rc::Rc::new(run);
+    let verbs: Vec<components::Verb> = for_palette(&target, cx)
+        .into_iter()
+        .filter(|command| command.section == Section::Act)
+        .filter_map(|command| {
+            let icon = command.icon?;
+            let run = run.clone();
+            let acted = target.clone();
+            Some(components::Verb::new(
+                command.id,
+                icon,
+                command.label(&target, cx),
+                move |window, cx| run(command, acted.clone(), window, cx),
+            ))
+        })
+        .take(SPELLED_OUT)
+        .collect();
+    components::SelectionBar::new(id, count)
+        .verbs(verbs)
+        .target(target)
+}
+
 fn group_rank(group: Group) -> u8 {
     match group {
         Group::Playback => 0,
