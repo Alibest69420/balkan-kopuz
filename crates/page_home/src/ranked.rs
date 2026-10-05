@@ -1,9 +1,9 @@
 //! A ranking reads as a list, not a row of equals: it is numbered, and it says what it counted.
 
-use components::TileRow;
 use components::format::t;
+use components::{SectionHeading, TileRow};
 use gpui_kit::component::{h_flex, v_flex};
-use gpui_kit::{AnyElement, FontWeight, IntoElement, ParentElement as _, Styled, div};
+use gpui_kit::{AnyElement, IntoElement, ParentElement as _, Styled};
 
 use crate::data::Shelf;
 
@@ -28,12 +28,7 @@ pub(crate) fn ranked(shelf: &Shelf) -> AnyElement {
     v_flex()
         .w_full()
         .gap_4()
-        .child(
-            div()
-                .text_2xl()
-                .font_weight(FontWeight::SEMIBOLD)
-                .child(t(crate::shelf::title(shelf.name))),
-        )
+        .child(SectionHeading::new(t(crate::shelf::title(shelf.name))))
         .child(
             h_flex().w_full().gap_8().items_start().children(
                 columns

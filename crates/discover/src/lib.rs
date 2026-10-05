@@ -13,7 +13,7 @@ use std::sync::Arc;
 use api::{AlbumInfo, AlbumPage, ApiError, KopuzApi, SearchResults, Table};
 use components::format::{t, t_with};
 use components::{
-    EmptyState, GridMode, Heading, Loading, PageHeader, ShelfHeading, TileGrid, TrackList,
+    EmptyState, GridMode, Heading, Loading, PageHeader, SectionHeading, TileGrid, TrackList,
     TrackListEvent, heading_link, icons, style,
 };
 use gpui_kit::component::kbd::Kbd;
@@ -302,7 +302,7 @@ impl Discover {
             .take(LANDING_GENRES)
             .map(|tile| GenreCard::new(tile).into_any_element())
             .collect();
-        let mut heading = ShelfHeading::new(t("browse_genres")).heading(Heading::Band);
+        let mut heading = SectionHeading::new(t("browse_genres")).heading(Heading::Band);
         if more {
             heading = heading.trailing(
                 heading_link("discover-all-genres", t("discover_show_all"), cx)
@@ -521,7 +521,7 @@ impl Discover {
                         div()
                             .flex_shrink_0()
                             .mb_4()
-                            .child(ShelfHeading::new(t("tracks")).heading(Heading::Band)),
+                            .child(SectionHeading::new(t("tracks")).heading(Heading::Band)),
                     )
                     .child(div().flex_1().min_h_0().pb_8().child(self.tracks.clone()))
                 })

@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use api::{QueueContext, RadioStationInfo, Table};
 use components::format::t;
-use components::{Cover, EmptyState, icons, motion, style};
+use components::{Cover, EmptyState, Heading, PageHeader, SectionHeading, icons, motion, style};
 use gpui_kit::component::button::{
     Button, ButtonCustomVariant, ButtonRounded, ButtonVariants as _,
 };
@@ -513,14 +513,12 @@ impl Radio {
     }
 
     /// `text-sm font-bold uppercase tracking-wider text-slate-400`, less the two GPUI cannot draw.
-    fn heading(&self, label: SharedString, cx: &Context<Self>) -> impl IntoElement {
+    fn heading(heading: SectionHeading) -> impl IntoElement {
         div()
+            .w_full()
             .pt_4()
             .pb_3()
-            .text_sm()
-            .font_weight(FontWeight::BOLD)
-            .text_color(style::slate_400(cx))
-            .child(label)
+            .child(heading.heading(Heading::Group))
     }
 
     /// What the list shows, in order: the pinned stations, then the directory or its state.
@@ -607,7 +605,9 @@ impl Radio {
             return div().into_any_element();
         };
         match line {
-            Line::SelectedHeading => self.heading(t("radio_selected"), cx).into_any_element(),
+            Line::SelectedHeading => {
+                Self::heading(SectionHeading::new(t("radio_selected"))).into_any_element()
+            }
             Line::Pinned(station, last) => div()
                 .w_full()
                 .map(|slot| match last {
@@ -618,26 +618,19 @@ impl Radio {
                 .into_any_element(),
             Line::DirectoryHeading => {
                 let searching = !self.query.trim().is_empty();
-                h_flex()
-                    .w_full()
-                    .items_end()
-                    .justify_between()
-                    .child(self.heading(
-                        if searching {
-                            t("radio_search_results")
-                        } else {
-                            t("radio_top_stations")
-                        },
-                        cx,
-                    ))
-                    .child(
+                let title = match searching {
+                    true => t("radio_search_results"),
+                    false => t("radio_top_stations"),
+                };
+                Self::heading(
+                    SectionHeading::new(title).trailing(
                         div()
-                            .pb_3()
                             .text_size(style::text_10())
                             .text_color(style::white(0.25, cx))
                             .child(t("radio_powered_by")),
-                    )
-                    .into_any_element()
+                    ),
+                )
+                .into_any_element()
             }
             Line::Status(Status::Loading) => h_flex()
                 .w_full()
@@ -692,43 +685,15 @@ impl Render for Radio {
             .px_8()
             .pt_8()
             .child(
-                h_flex()
-                    .w_full()
-                    .items_end()
-                    .justify_between()
-                    .flex_wrap()
-                    .gap_4()
-                    .mb_8()
-                    .child(
-                        v_flex()
-                            .min_w_0()
-                            .child(
-                                h_flex()
-                                    .items_center()
-                                    .gap_3()
-                                    .mb_2()
-                                    .child(
-                                        icons::icon(icons::RADIO)
-                                            .size(px(24.))
-                                            .text_color(cx.theme().primary_hover),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_3xl()
-                                            .font_weight(FontWeight::SEMIBOLD)
-                                            .child(t("radio")),
-                                    ),
-                            )
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(style::slate_400(cx))
-                                    .child(t("radio_subtitle")),
-                            ),
-                    )
-                    .child(div().w_full().max_w(search_width()).flex_shrink_0().child(
-                        Input::new(&self.filter).prefix(icons::icon(icons::SEARCH).small()),
-                    )),
+                div().w_full().mb_8().child(
+                    PageHeader::new(t("radio"))
+                        .icon(icons::RADIO)
+                        .subtitle(t("radio_subtitle"))
+                        .flush()
+                        .action(div().w(search_width()).flex_shrink_0().child(
+                            Input::new(&self.filter).prefix(icons::icon(icons::SEARCH).small()),
+                        )),
+                ),
             )
             .child(
                 // Virtualized: a whole directory rebuilt on every scrolled frame is what made this page lag.

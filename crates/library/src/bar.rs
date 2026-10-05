@@ -3,7 +3,7 @@
 use api::TrackFilter;
 use commands::Command;
 use components::format::{t, t_with};
-use components::{icons, menus, style};
+use components::{PageHeader, icons, menus, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
@@ -36,34 +36,10 @@ impl Library {
             .gap_4()
             .pb_4()
             .child(
-                h_flex()
-                    .w_full()
-                    .items_center()
-                    .justify_between()
-                    .flex_wrap()
-                    .gap_3()
-                    .child(
-                        h_flex()
-                            .items_baseline()
-                            .gap_3()
-                            .child(
-                                div()
-                                    .text_3xl()
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(cx.theme().foreground)
-                                    .child(t("your_library")),
-                            )
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(style::slate_400(cx))
-                                    .child(t_with(
-                                        "library_count",
-                                        &[("count", count.to_string())],
-                                    )),
-                            ),
-                    )
-                    .child(controls),
+                PageHeader::new(t("your_library"))
+                    .count(t_with("library_count", &[("count", count.to_string())]))
+                    .flush()
+                    .action(controls),
             )
             .child(switch)
             .child(filter_bar)

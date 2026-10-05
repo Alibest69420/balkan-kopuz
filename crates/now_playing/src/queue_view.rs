@@ -1,7 +1,9 @@
 //! The queue: what has been played, what is playing, and what is next, in one list.
 
 use components::format::{duration, t};
-use components::{EmptyState, TrackDrag, dialogs, icons, menus, motion, style, track_row};
+use components::{
+    EmptyState, Heading, SectionHeading, TrackDrag, dialogs, icons, menus, motion, style, track_row,
+};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::ContextMenuExt as _;
 use gpui_kit::component::tooltip::Tooltip;
@@ -254,9 +256,9 @@ impl QueueView {
         match self.lines.get(slot).copied() {
             Some(Line::Track(index)) => self.row(index, window, cx),
             Some(Line::History(count)) => self.history_heading(count, cx),
-            Some(Line::Now) => heading(t("queue_now"), None, cx).into_any_element(),
+            Some(Line::Now) => heading(SectionHeading::new(t("queue_now"))).into_any_element(),
             Some(Line::Next(count)) => {
-                heading(t("queue_next_up"), Some(count), cx).into_any_element()
+                heading(SectionHeading::new(t("queue_next_up")).count(count)).into_any_element()
             }
             None => div().into_any_element(),
         }
@@ -268,20 +270,21 @@ impl QueueView {
         } else {
             icons::CHEVRON_RIGHT
         };
-        heading(t("queue_history"), Some(count), cx)
-            .id("queue-history-heading")
-            .cursor_pointer()
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.history_open = !this.history_open;
-                this.rebuild(cx);
-                cx.notify();
-            }))
-            .child(
+        heading(
+            SectionHeading::new(t("queue_history")).count(count).beside(
                 icons::icon(glyph)
                     .size(components::lead::GLYPH)
                     .text_color(style::slate_500(cx)),
-            )
-            .into_any_element()
+            ),
+        )
+        .id("queue-history-heading")
+        .cursor_pointer()
+        .on_click(cx.listener(|this, _, _, cx| {
+            this.history_open = !this.history_open;
+            this.rebuild(cx);
+            cx.notify();
+        }))
+        .into_any_element()
     }
 
     fn row(&self, index: usize, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
@@ -556,19 +559,15 @@ impl Render for QueueView {
 }
 
 /// A section heading, drawn at row height so the whole list can stay one `uniform_list`.
-fn heading(label: SharedString, count: Option<usize>, cx: &App) -> Stateful<Div> {
+fn heading(heading: SectionHeading) -> Stateful<Div> {
     h_flex()
         .id("queue-heading")
         .h(style::media_row())
         .w_full()
         .items_end()
-        .gap_2()
         .px_2()
         .pb_2()
-        .text_size(style::text_11())
-        .text_color(style::white(style::TEXT_MUTED, cx))
-        .child(div().child(label))
-        .children(count.map(|count| div().child(count.to_string())))
+        .child(heading.heading(Heading::Caption))
 }
 
 fn tool(id: &'static str, glyph: &'static str, cx: &App) -> Button {

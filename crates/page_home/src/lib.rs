@@ -13,14 +13,14 @@ use std::collections::HashMap;
 
 use api::{AlbumPage, ArtistPage, Page, StatsView, Table, TrackFilter, TrackPage, TrackSort};
 use components::format::t;
-use components::{EmptyState, icons, style};
+use components::{EmptyState, PageHeader, TitleSize, icons, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{Sizable as _, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _,
-    IntoElement, ParentElement as _, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement as _, Styled, Subscription, Window, div, rems,
+    AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
+    ParentElement as _, Render, ScrollHandle, SharedString, StatefulInteractiveElement as _,
+    Styled, Subscription, Window,
 };
 use store::{Navigator, PlaylistsModel, Query, Route, SourcesModel};
 
@@ -210,17 +210,10 @@ impl Render for Home {
 
 /// `text-4xl font-black` "Home", and the pill that opens where the shelves are arranged.
 fn heading(cx: &App) -> AnyElement {
-    h_flex()
-        .w_full()
-        .justify_between()
-        .items_center()
-        .child(
-            div()
-                .text_size(rems(2.25))
-                .font_weight(FontWeight::BLACK)
-                .child(t("home")),
-        )
-        .child(
+    PageHeader::new(t("home"))
+        .size(TitleSize::Display)
+        .flush()
+        .action(
             Button::new("home-customize")
                 .custom(style::quiet_button(
                     style::white(style::TEXT_STRONG, cx),

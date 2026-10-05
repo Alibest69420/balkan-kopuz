@@ -2,7 +2,7 @@
 
 use api::ServiceInfo;
 use components::format::{t, text};
-use components::icons;
+use components::{Heading, SectionHeading, icons};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -21,7 +21,7 @@ impl FirstRun {
         v_flex()
             .w_full()
             .gap_3()
-            .child(ui::heading(t("first_run_step_source"), cx))
+            .child(SectionHeading::new(t("first_run_step_source")).heading(Heading::Step))
             .when(services.is_empty(), |step| {
                 step.child(forms::empty(t("first_run_no_services"), cx))
             })

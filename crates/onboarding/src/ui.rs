@@ -30,14 +30,6 @@ fn badge() -> Rems {
     rems(2.75)
 }
 
-pub(crate) fn heading(text: SharedString, cx: &App) -> Div {
-    div()
-        .text_base()
-        .font_weight(FontWeight::SEMIBOLD)
-        .text_color(style::white(style::TEXT_STRONG, cx))
-        .child(text)
-}
-
 pub(crate) fn hint(text: SharedString, cx: &App) -> Div {
     div().text_sm().text_color(style::slate_400(cx)).child(text)
 }

@@ -6,12 +6,12 @@ mod ui;
 
 use api::{AlbumPage, JobKind, Page, ServiceInfo, SourceInfo, Table};
 use components::format::t;
-use components::{icons, style};
+use components::{SectionHeading, icons, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
+    App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
     ParentElement as _, Render, ScrollHandle, StatefulInteractiveElement as _, Styled,
     Subscription, Window, div, px,
 };
@@ -204,12 +204,7 @@ impl FirstRun {
                             .text_color(cx.theme().primary),
                     ),
             )
-            .child(
-                div()
-                    .text_2xl()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(t("first_run_title")),
-            )
+            .child(SectionHeading::new(t("first_run_title")))
             .child(ui::hint(t("first_run_subtitle"), cx))
     }
 

@@ -14,7 +14,7 @@ use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyView, App, Context, Global, IntoElement, ParentElement as _, Render, SharedString, Styled,
-    Window, div,
+    Window,
 };
 use store::layout::Section as Group;
 
@@ -151,13 +151,4 @@ fn reset_row(title: &'static str, group: Group, cx: &App) -> impl IntoElement {
                 store::LayoutModel::global(cx).update(cx, |this, cx| this.reset(group, cx));
             }),
     )
-}
-
-/// The heading a contributed section draws above its rows, so they all look alike.
-pub fn heading(title: impl Into<SharedString>, cx: &App) -> impl IntoElement {
-    div()
-        .w_full()
-        .text_xs()
-        .text_color(style::white(style::TEXT_SECONDARY, cx))
-        .child(title.into())
 }

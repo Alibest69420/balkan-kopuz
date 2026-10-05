@@ -7,6 +7,7 @@ pub mod cover;
 pub mod dialogs;
 pub mod grid;
 pub mod header;
+pub mod heading;
 pub mod karaoke;
 pub mod lead;
 pub mod menus;
@@ -28,10 +29,11 @@ pub use cards::{
     Frame, PlayState, Tile, TileRow, album_row, album_tile, artist_row, artist_tile, playlist_tile,
     tile_grid,
 };
-pub use carousel::{Arrows, Carousel, Heading, ShelfHeading, heading_link};
+pub use carousel::{Arrows, Carousel, heading_link};
 pub use cover::{Cover, Scrim};
 pub use grid::{GridMode, JumpRail, TileGrid, rail_letter};
-pub use header::{DetailHeader, PageHeader, detail_header_skeleton};
+pub use header::{DetailHeader, PageHeader, TitleSize, detail_header_skeleton};
+pub use heading::{Heading, SectionHeading};
 pub use karaoke::KaraokeText;
 pub use schema_form::{FieldChanged, SchemaForm};
 pub use settings::{Section, SettingRow, Toggle, section};

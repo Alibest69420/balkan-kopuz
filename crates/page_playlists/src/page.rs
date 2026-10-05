@@ -2,15 +2,14 @@
 
 use api::{AlbumPresentation, JobKind, PlaylistInfo, SourceCapabilities};
 use components::format::t;
-use components::{EmptyState, Loading, PageHeader, icons, motion, style};
+use components::{EmptyState, Heading, Loading, PageHeader, SectionHeading, icons, motion, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Context, FontWeight, InteractiveElement as _, IntoElement,
-    ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
-    Subscription, Window, div, px,
+    AnyElement, App, ClickEvent, Context, InteractiveElement as _, IntoElement, ParentElement as _,
+    Render, SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Window, px,
 };
 use store::{DownloadsModel, JobsModel, PlaylistsModel, SourcesModel, actions};
 
@@ -162,13 +161,8 @@ impl Playlists {
                     v_flex()
                         .gap_4()
                         .when(!folders.is_empty(), |section| {
-                            section.child(
-                                div()
-                                    .text_sm()
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(style::white(0.40, cx))
-                                    .child(t("playlists")),
-                            )
+                            section
+                                .child(SectionHeading::new(t("playlists")).heading(Heading::Group))
                         })
                         .child(card_grid().children(root.iter().map(playlist_card))),
                 )

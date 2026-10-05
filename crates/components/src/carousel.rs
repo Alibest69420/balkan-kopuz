@@ -10,6 +10,7 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled, Window, div, linear_color_stop, linear_gradient, px,
 };
 
+use crate::heading::{Heading, SectionHeading};
 use crate::{icons, motion, scroll, style};
 
 /// The carousel's own channels, keyed off its id.
@@ -33,18 +34,6 @@ const FADE: f32 = 48.;
 /// `hover:scale-105` on an arrow that grows.
 const ARROW_GROWTH: f32 = 1.05;
 
-/// How loud a shelf's title is.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum Heading {
-    /// `text-3xl`: the shelf that leads a page.
-    Lead,
-    /// `text-2xl`: a shelf among shelves.
-    #[default]
-    Shelf,
-    /// `text-xl text-white/80`: a band over search results.
-    Band,
-}
-
 /// When a carousel's arrows show.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Arrows {
@@ -52,89 +41,6 @@ pub enum Arrows {
     #[default]
     Hover,
     Always,
-}
-
-/// A shelf's heading row: an optional strapline over the title, and what sits at its end.
-#[derive(IntoElement)]
-pub struct ShelfHeading {
-    title: SharedString,
-    strapline: Option<SharedString>,
-    heading: Heading,
-    trailing: Vec<AnyElement>,
-}
-
-impl ShelfHeading {
-    pub fn new(title: impl Into<SharedString>) -> Self {
-        Self {
-            title: title.into(),
-            strapline: None,
-            heading: Heading::Shelf,
-            trailing: Vec::new(),
-        }
-    }
-
-    /// The small line over the title, such as what a catalog shelf is grouped by.
-    pub fn strapline(mut self, strapline: Option<impl Into<SharedString>>) -> Self {
-        self.strapline = strapline.map(Into::into);
-        self
-    }
-
-    pub fn heading(mut self, heading: Heading) -> Self {
-        self.heading = heading;
-        self
-    }
-
-    /// Something at the row's end, such as a "show all" link; several line up in order.
-    pub fn trailing(mut self, element: impl IntoElement) -> Self {
-        self.trailing.push(element.into_any_element());
-        self
-    }
-}
-
-impl RenderOnce for ShelfHeading {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let stacked = self.strapline.is_some();
-        h_flex()
-            .w_full()
-            .justify_between()
-            .gap_4()
-            .map(|row| match stacked {
-                true => row.items_end(),
-                false => row.items_center(),
-            })
-            .child(
-                v_flex()
-                    .min_w_0()
-                    .when_some(self.strapline, |column, strapline| {
-                        column.child(
-                            div()
-                                .mb_0p5()
-                                .text_size(style::text_10())
-                                .font_weight(FontWeight::BOLD)
-                                .text_color(style::white(0.4, cx))
-                                .child(strapline),
-                        )
-                    })
-                    .child(
-                        div()
-                            .truncate()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .map(|title| match self.heading {
-                                Heading::Lead => title.text_3xl(),
-                                Heading::Shelf => title.text_2xl(),
-                                Heading::Band => title.text_xl().text_color(style::white(0.8, cx)),
-                            })
-                            .child(self.title),
-                    ),
-            )
-            .child(
-                h_flex()
-                    .flex_shrink_0()
-                    .items_center()
-                    .gap_4()
-                    .children(self.trailing),
-            )
-    }
 }
 
 /// A quiet link at the end of a heading, such as "show all".
@@ -156,7 +62,7 @@ type BuildTile = Rc<dyn Fn(usize, &mut Window, &mut App) -> AnyElement>;
 #[derive(IntoElement)]
 pub struct Carousel {
     id: SharedString,
-    heading: ShelfHeading,
+    heading: SectionHeading,
     action: Option<AnyElement>,
     arrows: Arrows,
     grow: bool,
@@ -178,7 +84,7 @@ impl Carousel {
     ) -> Self {
         Self {
             id: id.into(),
-            heading: ShelfHeading::new(title),
+            heading: SectionHeading::new(title),
             action: None,
             arrows: Arrows::Hover,
             grow: false,
@@ -297,7 +203,7 @@ impl RenderOnce for Carousel {
                 window,
                 cx,
             ));
-        let compact = self.heading.heading == Heading::Band;
+        let compact = self.heading.is_compact();
         let heading = self.heading.trailing(
             h_flex()
                 .items_center()

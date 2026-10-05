@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use api::{CatalogDetailRequest, CatalogItem, CatalogItemKind, CatalogShelf};
 use components::format::t;
 use components::{
-    Arrows, Carousel, PlayState, ShelfHeading, Tile, TrackActions, TrackList, TrackListEvent,
+    Arrows, Carousel, PlayState, SectionHeading, Tile, TrackActions, TrackList, TrackListEvent,
     TrackListOptions, heading_link, icons, style,
 };
 use gpui_kit::component::v_flex;
@@ -235,7 +235,7 @@ impl Shelves {
         let view = &self.views[index];
         let title = SharedString::from(view.shelf.title.clone());
         let rows = list.read(cx).rows().len();
-        let mut heading = ShelfHeading::new(title.clone());
+        let mut heading = SectionHeading::new(title.clone());
         if let Some(more) = view.shelf.more_ref.clone() {
             heading = heading.trailing(
                 heading_link(("show-all", index), t("discover_show_all"), cx).on_click(

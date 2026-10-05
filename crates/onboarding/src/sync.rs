@@ -2,7 +2,7 @@
 
 use api::JobProgress;
 use components::format::{t, t_with};
-use components::style;
+use components::{Heading, SectionHeading, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::progress::Progress;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
@@ -32,7 +32,7 @@ impl FirstRun {
         v_flex()
             .w_full()
             .gap_3()
-            .child(crate::ui::heading(t("first_run_sync_title"), cx))
+            .child(SectionHeading::new(t("first_run_sync_title")).heading(Heading::Step))
             .when(waiting, |step| {
                 step.child(crate::ui::hint(t("first_run_waiting_sign_in"), cx))
                     .child(

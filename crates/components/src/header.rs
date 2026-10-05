@@ -10,13 +10,27 @@ use gpui_kit::{
 use store::Route;
 
 use crate::cover::Cover;
-use crate::style;
+use crate::{icons, style};
+
+/// How big a page's title is drawn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum TitleSize {
+    /// `text-3xl font-semibold`, every page but one.
+    #[default]
+    Page,
+    /// `text-4xl font-black`, the home page's greeting.
+    Display,
+}
 
 /// The title block every page opens with, with its actions on the right.
 #[derive(IntoElement)]
 pub struct PageHeader {
     title: SharedString,
     subtitle: Option<SharedString>,
+    count: Option<SharedString>,
+    icon: Option<&'static str>,
+    size: TitleSize,
+    flush: bool,
     actions: Vec<AnyElement>,
 }
 
@@ -25,12 +39,39 @@ impl PageHeader {
         Self {
             title: title.into(),
             subtitle: None,
+            count: None,
+            icon: None,
+            size: TitleSize::Page,
+            flush: false,
             actions: Vec::new(),
         }
     }
 
     pub fn subtitle(mut self, subtitle: impl Into<SharedString>) -> Self {
         self.subtitle = Some(subtitle.into());
+        self
+    }
+
+    /// A count read on the title's baseline, such as how many tracks a library holds.
+    pub fn count(mut self, count: impl Into<SharedString>) -> Self {
+        self.count = Some(count.into());
+        self
+    }
+
+    /// A glyph in the accent before the title.
+    pub fn icon(mut self, icon: &'static str) -> Self {
+        self.icon = Some(icon);
+        self
+    }
+
+    pub fn size(mut self, size: TitleSize) -> Self {
+        self.size = size;
+        self
+    }
+
+    /// No space of its own under it, for a page that spaces its column itself.
+    pub fn flush(mut self) -> Self {
+        self.flush = true;
         self
     }
 
@@ -47,32 +88,46 @@ impl PageHeader {
 
 impl RenderOnce for PageHeader {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let quiet =
+            |text: SharedString| div().text_sm().text_color(style::slate_400(cx)).child(text);
+        let title = div()
+            .text_color(cx.theme().foreground)
+            .map(|title| match self.size {
+                TitleSize::Page => title.text_3xl().font_weight(FontWeight::SEMIBOLD),
+                TitleSize::Display => title.text_size(rems(2.25)).font_weight(FontWeight::BLACK),
+            })
+            .child(self.title);
         h_flex()
             .w_full()
             .justify_between()
             .items_center()
+            .flex_wrap()
             .gap_3()
-            .pb_6()
+            .when(!self.flush, |header| header.pb_6())
             .child(
-                h_flex().gap_3().items_center().child(
-                    v_flex()
-                        .gap_0p5()
-                        .child(
-                            div()
-                                .text_3xl()
-                                .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                                .text_color(cx.theme().foreground)
-                                .child(self.title),
-                        )
-                        .when_some(self.subtitle, |column, subtitle| {
-                            column.child(
-                                div()
-                                    .text_sm()
-                                    .text_color(style::slate_400(cx))
-                                    .child(subtitle),
-                            )
-                        }),
-                ),
+                v_flex()
+                    .min_w_0()
+                    .gap_0p5()
+                    .child(
+                        h_flex()
+                            .items_center()
+                            .gap_3()
+                            .when_some(self.icon, |line, icon| {
+                                line.child(
+                                    icons::icon(icon)
+                                        .size(px(24.))
+                                        .text_color(cx.theme().primary_hover),
+                                )
+                            })
+                            .child(
+                                h_flex()
+                                    .items_baseline()
+                                    .gap_3()
+                                    .child(title)
+                                    .children(self.count.map(quiet)),
+                            ),
+                    )
+                    .children(self.subtitle.map(quiet)),
             )
             .child(h_flex().gap_2().items_center().children(self.actions))
     }

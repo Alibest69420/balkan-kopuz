@@ -6,8 +6,8 @@ use api::{
 };
 use components::format::{t, t_with};
 use components::{
-    Cover, DetailHeader, EmptyState, Loading, TrackActions, TrackList, TrackListEvent,
-    TrackListOptions, icons, motion, style,
+    Cover, DetailHeader, EmptyState, Heading, Loading, SectionHeading, TrackActions, TrackList,
+    TrackListEvent, TrackListOptions, icons, motion, style,
 };
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
@@ -596,18 +596,18 @@ impl AlbumDetail {
                     .w_full()
                     .when_some(group.disc, |column, disc| {
                         column.child(
-                            h_flex()
+                            div()
                                 .id(("album-disc", disc as usize))
                                 .w_full()
-                                .gap_3()
-                                .items_center()
                                 .p_2()
                                 .rounded(style::radius_lg())
                                 .hover(move |heading| heading.bg(hover))
-                                .text_color(cx.theme().muted_foreground)
-                                .child(icons::icon(icons::DISC))
-                                // TODO(i18n): en.ftl has no disc-heading key.
-                                .child(format!("Disc {disc}")),
+                                .child(
+                                    // TODO(i18n): en.ftl has no disc-heading key.
+                                    SectionHeading::new(format!("Disc {disc}"))
+                                        .heading(Heading::Group)
+                                        .icon(icons::DISC),
+                                ),
                         )
                     })
                     .child(

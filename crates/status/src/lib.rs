@@ -11,8 +11,7 @@ mod toasts;
 mod url_download;
 
 use components::format::t;
-use components::{icons, style};
-use gpui_kit::base::StyledExt as _;
+use components::{Heading, SectionHeading, icons, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::popover::Popover;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
@@ -290,23 +289,17 @@ impl Render for StatusCluster {
 
 /// A popover's own heading, with whatever action belongs beside it.
 pub(crate) fn header(title: SharedString, action: Option<AnyElement>, cx: &App) -> AnyElement {
-    h_flex()
+    let mut heading = SectionHeading::new(title).heading(Heading::Label);
+    if let Some(action) = action {
+        heading = heading.trailing(action);
+    }
+    div()
         .w_full()
-        .justify_between()
-        .items_center()
-        .gap_2()
         .px_3()
         .py_2()
         .border_b_1()
         .border_color(style::white(style::BORDER, cx))
-        .child(
-            div()
-                .text_xs()
-                .font_semibold()
-                .text_color(style::white(style::TEXT_SECONDARY, cx))
-                .child(title),
-        )
-        .children(action)
+        .child(heading)
         .into_any_element()
 }
 
