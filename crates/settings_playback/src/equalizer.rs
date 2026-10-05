@@ -1,21 +1,17 @@
 //! The equalizer panel: enable, preset, preamp and the ten bands, heard live through `preview_equalizer`.
 
 use components::format::t;
-use components::settings::Toggle;
-use components::{motion, style};
+use components::settings::{Choice, READOUT, SliderRow, Toggle, set_slider, slider_state};
+use components::{Lockable as _, motion, style};
 use config::{EqPreset, EqualizerSettings};
-use gpui_kit::component::button::Button;
-use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::{
     App, AppContext as _, Context, Div, ElementId, Entity, IntoElement, ParentElement as _, Render,
-    SharedString, Styled, Subscription, Window, div, rems,
+    SharedString, Styled, Subscription, Window, div,
 };
 use link::Link;
 use store::ConfigModel;
-
-use crate::{set_slider, write_config};
 
 /// `border-white/8` around the band graph.
 const GRAPH_BORDER: f32 = 0.08;
@@ -43,24 +39,11 @@ impl Equalizer {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let settings = current(cx);
         let gains = settings.resolved_bands();
-        let preamp = cx.new(|_| {
-            SliderState::new()
-                .min(PREAMP_MIN_DB)
-                .max(PREAMP_MAX_DB)
-                .step(STEP_DB)
-                .default_value(settings.preamp_db)
-        });
+        let preamp =
+            cx.new(|_| slider_state(PREAMP_MIN_DB, PREAMP_MAX_DB, STEP_DB, settings.preamp_db));
         let bands: Vec<Entity<SliderState>> = gains
             .iter()
-            .map(|gain| {
-                cx.new(|_| {
-                    SliderState::new()
-                        .min(BAND_MIN_DB)
-                        .max(BAND_MAX_DB)
-                        .step(STEP_DB)
-                        .default_value(*gain)
-                })
-            })
+            .map(|gain| cx.new(|_| slider_state(BAND_MIN_DB, BAND_MAX_DB, STEP_DB, *gain)))
             .collect();
 
         let config = ConfigModel::global(cx);
@@ -106,8 +89,7 @@ impl Equalizer {
         cx.notify();
     }
 
-    /// The ten sliders a preset switch moves at once, each on its own tween so they read as a sweep.
-    /// The channel is sampled even when a drag owns the curve, so the next sweep starts where it is.
+    /// The ten sliders a preset moves at once, each tweened; sampled even mid-drag so the next sweep starts there.
     fn sweep(
         &self,
         gains: &[f32],
@@ -152,7 +134,7 @@ impl Render for Equalizer {
             cx,
         );
         let muted = cx.theme().muted_foreground;
-        let readout = style::white(crate::READOUT, cx);
+        let readout = style::white(READOUT, cx);
 
         v_flex()
             .w_full()
@@ -177,24 +159,10 @@ impl Render for Equalizer {
                             .w_64()
                             .child(div().text_xs().text_color(muted).child(t("eq_preset")))
                             .child(
-                                Button::new("eq-preset")
-                                    .outline()
-                                    .flex_1()
-                                    .justify_between()
-                                    .label(preset_label(preset))
-                                    .disabled(locked)
-                                    .dropdown_menu(move |mut menu, _, _| {
-                                        for option in EqPreset::all() {
-                                            menu = menu.item(
-                                                PopupMenuItem::new(preset_label(option))
-                                                    .checked(option == preset)
-                                                    .on_click(move |_, _, cx| {
-                                                        set_preset(option, cx)
-                                                    }),
-                                            );
-                                        }
-                                        menu
-                                    }),
+                                Choice::listed("eq-preset", preset, EqPreset::all(), preset_label)
+                                    .fill(true)
+                                    .on_change(set_preset)
+                                    .lock(locked),
                             ),
                     )
                     .child(
@@ -213,20 +181,10 @@ impl Render for Equalizer {
                                     ),
                             )
                             .child(
-                                div()
-                                    .flex_1()
-                                    .child(Slider::new(&self.preamp).disabled(locked)),
-                            )
-                            .child(
-                                div()
-                                    .w(rems(3.5))
-                                    .text_xs()
-                                    .text_right()
-                                    .text_color(readout)
-                                    .child(SharedString::from(format!(
-                                        "{:+.1} dB",
-                                        settings.preamp_db
-                                    ))),
+                                SliderRow::new(&self.preamp)
+                                    .fill(true)
+                                    .readout(|db| SharedString::from(format!("{db:+.1} dB")))
+                                    .lock(locked),
                             ),
                     ),
             )
@@ -295,9 +253,7 @@ fn current(cx: &App) -> EqualizerSettings {
     ConfigModel::global(cx).read(cx).config().equalizer.clone()
 }
 
-/// How often a drag may reach the daemon. `SliderEvent::Change` fires continuously while the
-/// pointer moves, so dragging one band was sending dozens of previews a second down the socket.
-/// The config write behind this is already debounced; the preview was not.
+/// How often a drag may preview: `Change` fires per pointer move, and unlike the config write a preview is not debounced.
 const PREVIEW_INTERVAL: std::time::Duration = std::time::Duration::from_millis(40);
 
 /// When the last preview went out.
@@ -316,13 +272,10 @@ fn preview_due(cx: &mut App) -> bool {
     due
 }
 
-/// Save the curve and let the engine play it at once; a preview is not persisted, the write is.
-///
-/// `settled` is a drag that has ended, which always previews: throttling the last event of a
-/// drag would leave the engine on a stale curve until the debounced config write caught up.
+/// Save the curve and preview it; a `settled` drag always previews, or the engine would sit on a stale curve.
 fn apply(settings: EqualizerSettings, settled: bool, cx: &mut App) {
     let preview = settings.clone();
-    write_config(cx, move |config| config.equalizer = settings);
+    ConfigModel::edit(cx, move |config| config.equalizer = settings);
     if !settled && !preview_due(cx) {
         return;
     }

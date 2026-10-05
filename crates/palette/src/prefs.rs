@@ -1,7 +1,7 @@
 //! Settings → Interface: what the palette remembers and what it puts first.
 
 use components::format::t;
-use components::settings::{SettingRow, Toggle, choice, section};
+use components::settings::{SettingRow, choice, section, toggle_row};
 use gpui_kit::component::v_flex;
 use gpui_kit::{
     App, AppContext as _, Context, IntoElement, ParentElement as _, Render, SharedString, Styled,
@@ -36,22 +36,22 @@ impl Render for Prefs {
             .child(
                 section(t("interface_palette"))
                     .children(
-                        SettingRow::new(t("palette_history"))
-                            .description(t("palette_history_description"))
-                            .control(
-                                Toggle::new("palette-history")
-                                    .enabled(held.history)
-                                    .on_change(|value, _, cx| {
-                                        LayoutModel::edit(cx, |layout| {
-                                            layout.palette.history = *value;
-                                            if !*value {
-                                                layout.palette.recent_commands.clear();
-                                                layout.palette.recent_searches.clear();
-                                            }
-                                        });
-                                    }),
-                            )
-                            .shown(cx),
+                        toggle_row(
+                            "palette-history",
+                            t("palette_history"),
+                            held.history,
+                            |on, cx| {
+                                LayoutModel::edit(cx, |layout| {
+                                    layout.palette.history = on;
+                                    if !on {
+                                        layout.palette.recent_commands.clear();
+                                        layout.palette.recent_searches.clear();
+                                    }
+                                });
+                            },
+                        )
+                        .description(t("palette_history_description"))
+                        .shown(cx),
                     )
                     .children(
                         SettingRow::new(t("palette_recents"))
@@ -67,18 +67,18 @@ impl Render for Prefs {
                             .shown(cx),
                     )
                     .children(
-                        SettingRow::new(t("palette_current_track_first"))
-                            .description(t("palette_current_track_first_description"))
-                            .control(
-                                Toggle::new("palette-current-track-first")
-                                    .enabled(held.current_track_first)
-                                    .on_change(|value, _, cx| {
-                                        LayoutModel::edit(cx, |layout| {
-                                            layout.palette.current_track_first = *value
-                                        });
-                                    }),
-                            )
-                            .shown(cx),
+                        toggle_row(
+                            "palette-current-track-first",
+                            t("palette_current_track_first"),
+                            held.current_track_first,
+                            |on, cx| {
+                                LayoutModel::edit(cx, |layout| {
+                                    layout.palette.current_track_first = on
+                                });
+                            },
+                        )
+                        .description(t("palette_current_track_first_description"))
+                        .shown(cx),
                     ),
             )
             .into_any_element()

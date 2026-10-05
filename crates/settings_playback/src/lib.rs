@@ -4,27 +4,24 @@ mod equalizer;
 
 use api::schema::FieldSpec;
 use components::format::{t, t_with};
-use components::settings::{SettingRow, Toggle, section};
-use components::{FieldChanged, SchemaForm, style};
+use components::settings::{
+    Choice, SettingRow, SliderRow, on_slider_change, section, set_slider, slider_state, toggle_row,
+};
+use components::{FieldChanged, Lockable as _, SchemaForm};
 use config::{
-    AppConfig, ChannelMode, DeviceChangeBehavior, LYRICS_OFFSET_LIMIT_MS, OfflineQuality,
-    SampleRateMode,
+    ChannelMode, DeviceChangeBehavior, LYRICS_OFFSET_LIMIT_MS, OfflineQuality, SampleRateMode,
 };
 use equalizer::Equalizer;
-use gpui_kit::component::button::Button;
-use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
-use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, h_flex, v_flex};
+use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::component::slider::SliderState;
+use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
-    ParentElement as _, Render, SharedString, Styled, Subscription, Window, div, rems,
+    AppContext as _, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
+    Render, SharedString, Styled, Subscription, Window, div,
 };
 use link::Link;
 use store::{ConfigModel, PlayerModel, Query};
-
-/// `text-white/80`, what a slider's value reads in.
-pub(crate) const READOUT: f32 = 0.80;
 
 const CROSSFADE_MAX_SECONDS: f32 = 12.0;
 const VOLUME_STEP_MIN_PERCENT: f32 = 1.0;
@@ -55,28 +52,25 @@ impl PlaybackSettings {
                 current.lyrics_offset_ms,
             )
         };
-        let crossfade = slider(
-            0.0,
-            CROSSFADE_MAX_SECONDS,
-            1.0,
-            crossfade_seconds as f32,
-            cx,
-        );
-        let volume_scroll = slider(
-            VOLUME_STEP_MIN_PERCENT,
-            VOLUME_STEP_MAX_PERCENT,
-            1.0,
-            volume_percent(volume_step),
-            cx,
-        );
+        let crossfade =
+            cx.new(|_| slider_state(0.0, CROSSFADE_MAX_SECONDS, 1.0, crossfade_seconds as f32));
+        let volume_scroll = cx.new(|_| {
+            slider_state(
+                VOLUME_STEP_MIN_PERCENT,
+                VOLUME_STEP_MAX_PERCENT,
+                1.0,
+                volume_percent(volume_step),
+            )
+        });
         let limit = LYRICS_OFFSET_LIMIT_MS as f32;
-        let lyrics_offset = slider(
-            -limit,
-            limit,
-            LYRICS_OFFSET_STEP_MS,
-            lyrics_offset_ms as f32,
-            cx,
-        );
+        let lyrics_offset = cx.new(|_| {
+            slider_state(
+                -limit,
+                limit,
+                LYRICS_OFFSET_STEP_MS,
+                lyrics_offset_ms as f32,
+            )
+        });
 
         let artwork = cx.new(|cx| SchemaForm::new(Vec::new(), window, cx));
         let artwork_settings =
@@ -84,39 +78,36 @@ impl PlaybackSettings {
         let equalizer = cx.new(|cx| Equalizer::new(window, cx));
 
         let player = PlayerModel::global(cx);
-        let mut subscriptions = vec![
+        let subscriptions = vec![
             cx.observe_in(&config, window, |this, _, window, cx| this.sync(window, cx)),
             // The auto-offset row reads the engine's measured output latency.
             cx.observe(&player, |_, _, cx| cx.notify()),
             cx.observe_in(&artwork_settings, window, Self::adopt_artwork),
             cx.subscribe(&artwork, Self::save_artwork),
+            on_slider_change(
+                &crossfade,
+                cx,
+                ConfigModel::writer("crossfade_seconds", |config, value: f32| {
+                    config.crossfade_seconds = value.clamp(0.0, CROSSFADE_MAX_SECONDS) as u8;
+                }),
+            ),
+            on_slider_change(
+                &volume_scroll,
+                cx,
+                ConfigModel::writer("volume_scroll_step", |config, value: f32| {
+                    config.volume_scroll_step =
+                        value.clamp(VOLUME_STEP_MIN_PERCENT, VOLUME_STEP_MAX_PERCENT) / 100.0;
+                }),
+            ),
+            on_slider_change(
+                &lyrics_offset,
+                cx,
+                ConfigModel::writer("lyrics_offset_ms", |config, value: f32| {
+                    config.lyrics_offset_ms =
+                        (value as i32).clamp(-LYRICS_OFFSET_LIMIT_MS, LYRICS_OFFSET_LIMIT_MS);
+                }),
+            ),
         ];
-        subscriptions.push(on_slider_change(
-            "crossfade_seconds",
-            &crossfade,
-            cx,
-            |value, config| {
-                config.crossfade_seconds = value.clamp(0.0, CROSSFADE_MAX_SECONDS) as u8;
-            },
-        ));
-        subscriptions.push(on_slider_change(
-            "volume_scroll_step",
-            &volume_scroll,
-            cx,
-            |value, config| {
-                config.volume_scroll_step =
-                    value.clamp(VOLUME_STEP_MIN_PERCENT, VOLUME_STEP_MAX_PERCENT) / 100.0;
-            },
-        ));
-        subscriptions.push(on_slider_change(
-            "lyrics_offset_ms",
-            &lyrics_offset,
-            cx,
-            |value, config| {
-                config.lyrics_offset_ms =
-                    (value as i32).clamp(-LYRICS_OFFSET_LIMIT_MS, LYRICS_OFFSET_LIMIT_MS);
-            },
-        ));
 
         Self {
             section: None,
@@ -163,9 +154,7 @@ impl PlaybackSettings {
             return;
         };
         let locked = ConfigModel::global(cx).read(cx).locked_keys().to_vec();
-        // `set_specs` rebuilds every input from scratch, and saving one field refreshes this
-        // query — so without the guard, tabbing from one artwork field to the next saved the
-        // first, refetched, and swapped the second's input out from under the caret.
+        // Saving a field refetches this, and an unguarded `set_specs` would swap the next input out from under the caret.
         let changed = self.artwork_specs.as_ref() != Some(&specs);
         if changed {
             self.artwork_specs = Some(specs.clone());
@@ -201,55 +190,36 @@ impl PlaybackSettings {
     }
 
     fn offline(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let model = ConfigModel::global(cx);
-        let (quality, locked) = {
-            let config = model.read(cx);
-            (
-                config.config().offline_quality,
-                config.is_locked("offline_quality"),
-            )
-        };
+        let quality = ConfigModel::global(cx).read(cx).config().offline_quality;
         section(t("offline_downloads")).children(
-            row("offline_quality", t("download_quality"), cx)
+            SettingRow::new(t("download_quality"))
+                .bind("offline_quality", cx)
                 .description(t("download_quality_description"))
-                .control(choice(
-                    "offline-quality",
-                    quality,
-                    OfflineQuality::ALL,
-                    |quality| SharedString::from(quality.label()),
-                    locked,
-                    |quality, config| config.offline_quality = quality,
-                ))
+                .setting(
+                    Choice::listed(
+                        "offline-quality",
+                        quality,
+                        OfflineQuality::ALL.iter().copied(),
+                        |quality| SharedString::from(quality.label()),
+                    )
+                    .on_change(ConfigModel::writer("offline_quality", |config, quality| {
+                        config.offline_quality = quality
+                    })),
+                )
                 .shown(cx),
         )
     }
 
     fn metadata(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let model = ConfigModel::global(cx);
-        let settings = {
-            let config = model.read(cx);
-            LyricsSettings {
-                prefer_local: config.config().prefer_local_lyrics,
-                musixmatch: config.config().enable_musixmatch_lyrics,
-                auto: config.config().lyrics_offset_auto,
-                offset_ms: config.config().lyrics_offset_ms,
-                prefer_local_locked: config.is_locked("prefer_local_lyrics"),
-                musixmatch_locked: config.is_locked("enable_musixmatch_lyrics"),
-                auto_locked: config.is_locked("lyrics_offset_auto"),
-                offset_locked: config.is_locked("lyrics_offset_ms"),
-            }
-        };
+        let config = model.read(cx).config();
+        let prefer_local = config.prefer_local_lyrics;
+        let musixmatch = config.enable_musixmatch_lyrics;
+        let auto = config.lyrics_offset_auto;
         let latency_ms = PlayerModel::global(cx)
             .read(cx)
             .output_latency_ms()
             .unwrap_or(0);
-        let offset_label = if settings.auto {
-            format!("{latency_ms} ms")
-        } else if settings.offset_ms == 0 {
-            "0 ms".to_string()
-        } else {
-            format!("{:+} ms", settings.offset_ms)
-        };
 
         section(t("metadata"))
             .children(components::settings::when_unfiltered(
@@ -257,158 +227,151 @@ impl PlaybackSettings {
                 cx,
             ))
             .children(
-                row("prefer_local_lyrics", t("prefer_local_lyrics"), cx)
-                    .description(t("prefer_local_lyrics_description"))
-                    .control(
-                        Toggle::new("prefer_local_lyrics")
-                            .enabled(settings.prefer_local)
-                            .disabled(settings.prefer_local_locked)
-                            .on_change(cx.listener(|_, checked: &bool, _, cx| {
-                                let checked = *checked;
-                                write_key("prefer_local_lyrics", cx, move |config| {
-                                    config.prefer_local_lyrics = checked;
-                                });
-                            })),
-                    )
-                    .shown(cx),
-            )
-            .children(
-                row(
-                    "enable_musixmatch_lyrics",
-                    t("enable_musixmatch_lyrics"),
-                    cx,
+                toggle_row(
+                    "prefer_local_lyrics",
+                    t("prefer_local_lyrics"),
+                    prefer_local,
+                    ConfigModel::writer("prefer_local_lyrics", |config, on| {
+                        config.prefer_local_lyrics = on
+                    }),
                 )
-                .description(t("enable_musixmatch_lyrics_description"))
-                .control(
-                    Toggle::new("enable_musixmatch_lyrics")
-                        .enabled(settings.musixmatch)
-                        .disabled(settings.musixmatch_locked)
-                        .on_change(cx.listener(|_, checked: &bool, _, cx| {
-                            let checked = *checked;
-                            write_key("enable_musixmatch_lyrics", cx, move |config| {
-                                config.enable_musixmatch_lyrics = checked;
-                            });
-                        })),
-                )
+                .bind("prefer_local_lyrics", cx)
+                .description(t("prefer_local_lyrics_description"))
                 .shown(cx),
             )
             .children(
-                row("lyrics_offset_auto", t("lyrics_offset_auto"), cx)
-                    .description(t_with(
-                        "lyrics_offset_auto_description",
-                        &[("latency", latency_ms.to_string())],
-                    ))
-                    .control(
-                        Toggle::new("lyrics_offset_auto")
-                            .enabled(settings.auto)
-                            .disabled(settings.auto_locked)
-                            .on_change(cx.listener(|_, checked: &bool, _, cx| {
-                                let checked = *checked;
-                                write_key("lyrics_offset_auto", cx, move |config| {
-                                    config.lyrics_offset_auto = checked;
-                                });
-                            })),
-                    )
-                    .shown(cx),
+                toggle_row(
+                    "enable_musixmatch_lyrics",
+                    t("enable_musixmatch_lyrics"),
+                    musixmatch,
+                    ConfigModel::writer("enable_musixmatch_lyrics", |config, on| {
+                        config.enable_musixmatch_lyrics = on
+                    }),
+                )
+                .bind("enable_musixmatch_lyrics", cx)
+                .description(t("enable_musixmatch_lyrics_description"))
+                .shown(cx),
             )
             .children(
-                row("lyrics_offset_ms", t("lyrics_offset"), cx)
+                toggle_row(
+                    "lyrics_offset_auto",
+                    t("lyrics_offset_auto"),
+                    auto,
+                    ConfigModel::writer("lyrics_offset_auto", |config, on| {
+                        config.lyrics_offset_auto = on
+                    }),
+                )
+                .bind("lyrics_offset_auto", cx)
+                .description(t_with(
+                    "lyrics_offset_auto_description",
+                    &[("latency", latency_ms.to_string())],
+                ))
+                .shown(cx),
+            )
+            .children(
+                SettingRow::new(t("lyrics_offset"))
+                    .bind("lyrics_offset_ms", cx)
                     .description(t("lyrics_offset_description"))
-                    .control(readout(
-                        Slider::new(&self.lyrics_offset)
-                            .disabled(settings.offset_locked || settings.auto),
-                        offset_label,
-                        cx,
-                    ))
+                    .setting(
+                        SliderRow::new(&self.lyrics_offset)
+                            .readout(move |value| {
+                                SharedString::from(match (auto, value as i32) {
+                                    (true, _) => format!("{latency_ms} ms"),
+                                    (false, 0) => "0 ms".to_string(),
+                                    (false, offset) => format!("{offset:+} ms"),
+                                })
+                            })
+                            .lock(auto),
+                    )
                     .shown(cx),
             )
     }
 
     fn player(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let model = ConfigModel::global(cx);
-        let settings = {
-            let config = model.read(cx);
-            PlayerSettings {
-                crossfade_seconds: config.config().crossfade_seconds,
-                volume_step: config.config().volume_scroll_step,
-                channel_mode: config.config().channel_mode,
-                device_change: config.config().device_change_behavior,
-                sample_rate: config.config().sample_rate_mode,
-                crossfade_locked: config.is_locked("crossfade_seconds"),
-                volume_locked: config.is_locked("volume_scroll_step"),
-                channel_locked: config.is_locked("channel_mode"),
-                device_locked: config.is_locked("device_change_behavior"),
-                sample_rate_locked: config.is_locked("sample_rate_mode"),
-            }
-        };
-        let crossfade_label = if settings.crossfade_seconds == 0 {
-            t("crossfade_off")
-        } else {
-            SharedString::from(format!("{}s", settings.crossfade_seconds))
-        };
+        let config = model.read(cx).config();
+        let channel_mode = config.channel_mode;
+        let device_change = config.device_change_behavior;
+        let sample_rate = config.sample_rate_mode;
 
         section(t("player_settings"))
             .children(
-                row("crossfade_seconds", t("crossfade"), cx)
+                SettingRow::new(t("crossfade"))
+                    .bind("crossfade_seconds", cx)
                     .description(t("crossfade_description"))
-                    .control(readout(
-                        Slider::new(&self.crossfade).disabled(settings.crossfade_locked),
-                        crossfade_label,
-                        cx,
-                    ))
+                    .setting(SliderRow::new(&self.crossfade).readout(|seconds| {
+                        match seconds as i32 {
+                            0 => t("crossfade_off"),
+                            seconds => SharedString::from(format!("{seconds}s")),
+                        }
+                    }))
                     .shown(cx),
             )
             .children(
-                row("volume_scroll_step", t("volume_scroll_step"), cx)
+                SettingRow::new(t("volume_scroll_step"))
+                    .bind("volume_scroll_step", cx)
                     .description(t("volume_scroll_step_description"))
-                    .control(readout(
-                        Slider::new(&self.volume_scroll).disabled(settings.volume_locked),
-                        SharedString::from(format!("{}%", volume_percent(settings.volume_step))),
-                        cx,
-                    ))
+                    .setting(
+                        SliderRow::new(&self.volume_scroll)
+                            .readout(|percent| SharedString::from(format!("{}%", percent as i32))),
+                    )
                     .shown(cx),
             )
             .children(
-                row("channel_mode", t("channel_mode"), cx)
+                SettingRow::new(t("channel_mode"))
+                    .bind("channel_mode", cx)
                     .description(t("channel_mode_description"))
-                    .control(choice(
-                        "channel_mode",
-                        settings.channel_mode,
-                        ChannelMode::ALL,
-                        channel_mode_label,
-                        settings.channel_locked,
-                        |mode, config| config.channel_mode = mode,
-                    ))
+                    .setting(
+                        Choice::listed(
+                            "channel_mode",
+                            channel_mode,
+                            ChannelMode::ALL.iter().copied(),
+                            channel_mode_label,
+                        )
+                        .on_change(ConfigModel::writer("channel_mode", |config, mode| {
+                            config.channel_mode = mode
+                        })),
+                    )
                     .shown(cx),
             )
             .children(
-                row("device_change_behavior", t("device_change_behavior"), cx)
+                SettingRow::new(t("device_change_behavior"))
+                    .bind("device_change_behavior", cx)
                     .description(t("device_change_behavior_description"))
-                    .control(choice(
-                        "device_change_behavior",
-                        settings.device_change,
-                        DeviceChangeBehavior::ALL,
-                        device_change_label,
-                        settings.device_locked,
-                        |behavior, config| config.device_change_behavior = behavior,
-                    ))
+                    .setting(
+                        Choice::listed(
+                            "device_change_behavior",
+                            device_change,
+                            DeviceChangeBehavior::ALL.iter().copied(),
+                            device_change_label,
+                        )
+                        .on_change(ConfigModel::writer(
+                            "device_change_behavior",
+                            |config, behavior| config.device_change_behavior = behavior,
+                        )),
+                    )
                     .shown(cx),
             )
             .children(
-                row("sample_rate_mode", t("sample_rate_mode"), cx)
+                SettingRow::new(t("sample_rate_mode"))
+                    .bind("sample_rate_mode", cx)
                     .description(t("sample_rate_mode_description"))
-                    .control(choice(
-                        "sample_rate_mode",
-                        settings.sample_rate,
-                        SampleRateMode::ALL,
-                        sample_rate_label,
-                        settings.sample_rate_locked,
-                        |mode, config| config.sample_rate_mode = mode,
-                    ))
+                    .setting(
+                        Choice::listed(
+                            "sample_rate_mode",
+                            sample_rate,
+                            SampleRateMode::ALL.iter().copied(),
+                            sample_rate_label,
+                        )
+                        .on_change(ConfigModel::writer("sample_rate_mode", |config, mode| {
+                            config.sample_rate_mode = mode
+                        })),
+                    )
                     .shown(cx),
             )
             .children(
-                row("equalizer", t("equalizer"), cx)
+                SettingRow::new(t("equalizer"))
+                    .bind("equalizer", cx)
                     .description(t("equalizer_description"))
                     .stacked()
                     .control(self.equalizer.clone())
@@ -418,31 +381,21 @@ impl PlaybackSettings {
 
     // TODO(logs): opening and exporting the log folder is local filesystem work a socket-only client has no business doing.
     fn tools(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let model = ConfigModel::global(cx);
-        let (tracing_enabled, locked) = {
-            let config = model.read(cx);
-            (
-                config.config().tracing_enabled,
-                config.is_locked("tracing_enabled"),
-            )
-        };
+        let tracing_enabled = ConfigModel::global(cx).read(cx).config().tracing_enabled;
         let warning = cx.theme().warning.opacity(0.8);
         section(t("logs"))
             .children(
-                row("tracing_enabled", t("enable_tracing"), cx)
-                    .description(t("enable_tracing_description"))
-                    .control(
-                        Toggle::new("tracing_enabled")
-                            .enabled(tracing_enabled)
-                            .disabled(locked)
-                            .on_change(cx.listener(|_, checked: &bool, _, cx| {
-                                let checked = *checked;
-                                write_key("tracing_enabled", cx, move |config| {
-                                    config.tracing_enabled = checked
-                                });
-                            })),
-                    )
-                    .shown(cx),
+                toggle_row(
+                    "tracing_enabled",
+                    t("enable_tracing"),
+                    tracing_enabled,
+                    ConfigModel::writer("tracing_enabled", |config, on| {
+                        config.tracing_enabled = on
+                    }),
+                )
+                .bind("tracing_enabled", cx)
+                .description(t("enable_tracing_description"))
+                .shown(cx),
             )
             .children(components::settings::when_unfiltered(
                 div()
@@ -483,135 +436,6 @@ impl Render for PlaybackSettings {
             .when(self.shows("player"), |panel| panel.child(self.player(cx)))
             .when(self.shows("tools"), |panel| panel.child(self.tools(cx)))
     }
-}
-
-/// What the metadata rows read, copied out so the config borrow ends before the rows are built.
-struct LyricsSettings {
-    prefer_local: bool,
-    musixmatch: bool,
-    auto: bool,
-    offset_ms: i32,
-    prefer_local_locked: bool,
-    musixmatch_locked: bool,
-    auto_locked: bool,
-    offset_locked: bool,
-}
-
-struct PlayerSettings {
-    crossfade_seconds: u8,
-    volume_step: f32,
-    channel_mode: ChannelMode,
-    device_change: DeviceChangeBehavior,
-    sample_rate: SampleRateMode,
-    crossfade_locked: bool,
-    volume_locked: bool,
-    channel_locked: bool,
-    device_locked: bool,
-    sample_rate_locked: bool,
-}
-
-/// Edit the daemon's settings; the write itself is debounced by [`ConfigModel`].
-pub(crate) fn write_config(cx: &mut App, edit: impl FnOnce(&mut AppConfig)) {
-    ConfigModel::global(cx).update(cx, |model, cx| model.update(cx, edit));
-}
-
-/// The same edit, naming the row it belongs to so that row can confirm the write.
-pub(crate) fn write_key(key: &'static str, cx: &mut App, edit: impl FnOnce(&mut AppConfig)) {
-    ConfigModel::global(cx).update(cx, |model, cx| model.update_key(key, cx, edit));
-}
-
-/// One settings row, already told whether its key is pinned and whether its write just landed.
-fn row(key: &'static str, title: SharedString, cx: &App) -> SettingRow {
-    let config = ConfigModel::global(cx).read(cx);
-    SettingRow::new(title)
-        .locked(config.is_locked(key))
-        .saved(config.just_saved(key))
-}
-
-pub(crate) fn set_slider(
-    state: &Entity<SliderState>,
-    value: f32,
-    window: &mut Window,
-    cx: &mut App,
-) {
-    if (state.read(cx).value().end() - value).abs() < f32::EPSILON {
-        return;
-    }
-    state.update(cx, |state, cx| state.set_value(value, window, cx));
-}
-
-fn slider(
-    min: f32,
-    max: f32,
-    step: f32,
-    value: f32,
-    cx: &mut Context<PlaybackSettings>,
-) -> Entity<SliderState> {
-    cx.new(|_| {
-        SliderState::new()
-            .min(min)
-            .max(max)
-            .step(step)
-            .default_value(value)
-    })
-}
-
-fn on_slider_change(
-    key: &'static str,
-    state: &Entity<SliderState>,
-    cx: &mut Context<PlaybackSettings>,
-    apply: impl Fn(f32, &mut AppConfig) + 'static,
-) -> Subscription {
-    cx.subscribe(state, move |_, _, event: &SliderEvent, cx| {
-        if let SliderEvent::Change(value) = event {
-            let value = value.end().round();
-            write_key(key, cx, |config| apply(value, config));
-        }
-    })
-}
-
-/// A slider with its current value beside it, the way every numeric row here reads.
-fn readout(slider: Slider, label: impl Into<SharedString>, cx: &App) -> impl IntoElement {
-    h_flex()
-        .gap_3()
-        .items_center()
-        .min_w(rems(13.75))
-        .child(div().w_40().child(slider))
-        .child(
-            div()
-                .w_16()
-                .text_xs()
-                .text_right()
-                .text_color(style::white(READOUT, cx))
-                .child(label.into()),
-        )
-}
-
-/// One config value picked from a fixed set of variants; `key` is both the element id and the setting.
-fn choice<T: Copy + PartialEq + 'static>(
-    key: &'static str,
-    current: T,
-    options: &'static [T],
-    label: fn(T) -> SharedString,
-    locked: bool,
-    write: fn(T, &mut AppConfig),
-) -> impl IntoElement {
-    Button::new(key)
-        .outline()
-        .label(label(current))
-        .disabled(locked)
-        .dropdown_menu(move |mut menu, _, _| {
-            for option in options.iter().copied() {
-                menu = menu.item(
-                    PopupMenuItem::new(label(option))
-                        .checked(option == current)
-                        .on_click(move |_, _, cx| {
-                            write_key(key, cx, |config| write(option, config));
-                        }),
-                );
-            }
-            menu
-        })
 }
 
 fn volume_percent(step: f32) -> f32 {

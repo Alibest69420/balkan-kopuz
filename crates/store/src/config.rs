@@ -102,6 +102,24 @@ impl ConfigModel {
         self._save.is_some()
     }
 
+    /// Change settings from anywhere holding an `App`.
+    pub fn edit(cx: &mut App, edit: impl FnOnce(&mut AppConfig)) {
+        Self::global(cx).update(cx, |model, cx| model.update(cx, edit));
+    }
+
+    /// The same, naming the key it touches so that key's row can confirm the write.
+    pub fn edit_key(key: &'static str, cx: &mut App, edit: impl FnOnce(&mut AppConfig)) {
+        Self::global(cx).update(cx, |model, cx| model.update_key(key, cx, edit));
+    }
+
+    /// What a settings control calls with the value it picked, written under `key`.
+    pub fn writer<T: 'static>(
+        key: &'static str,
+        set: impl Fn(&mut AppConfig, T) + 'static,
+    ) -> impl Fn(T, &mut App) + 'static {
+        move |value, cx| Self::edit_key(key, cx, |config| set(config, value))
+    }
+
     /// The same edit, naming the key it touches so that row can confirm the write.
     pub fn update_key(
         &mut self,

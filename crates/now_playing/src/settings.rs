@@ -1,7 +1,7 @@
 //! Settings → Interface: what the bar keeps in reach, and how the sheet is dressed.
 
 use components::format::t;
-use components::settings::{SettingRow, Toggle, choice, section};
+use components::settings::{SettingRow, choice, section, toggle_row};
 use gpui_kit::component::v_flex;
 use gpui_kit::{
     App, AppContext as _, Context, IntoElement, ParentElement as _, Render, Styled, Window,
@@ -61,48 +61,60 @@ impl Render for PlayerSettings {
                             ))
                             .shown(cx),
                     )
-                    .children(toggle_row(
-                        "player-shuffle",
-                        "interface_player_shuffle",
-                        player.shuffle,
-                        |layout, on| layout.player.shuffle = on,
-                        cx,
-                    ))
-                    .children(toggle_row(
-                        "player-repeat",
-                        "interface_player_repeat",
-                        player.repeat,
-                        |layout, on| layout.player.repeat = on,
-                        cx,
-                    ))
-                    .children(toggle_row(
-                        "player-volume",
-                        "interface_player_volume",
-                        player.volume,
-                        |layout, on| layout.player.volume = on,
-                        cx,
-                    ))
-                    .children(toggle_row(
-                        "player-queue",
-                        "interface_player_queue",
-                        player.queue,
-                        |layout, on| layout.player.queue = on,
-                        cx,
-                    ))
-                    .children(toggle_row(
-                        "player-lyrics",
-                        "interface_player_lyrics",
-                        player.lyrics,
-                        |layout, on| layout.player.lyrics = on,
-                        cx,
-                    ))
-                    .children(toggle_row(
-                        "player-favorite",
-                        "interface_player_favorite",
-                        player.favorite,
-                        |layout, on| layout.player.favorite = on,
-                        cx,
-                    )),
+                    .children(
+                        toggle_row(
+                            "player-shuffle",
+                            t("interface_player_shuffle"),
+                            player.shuffle,
+                            |on, cx| LayoutModel::edit(cx, |layout| layout.player.shuffle = on),
+                        )
+                        .shown(cx),
+                    )
+                    .children(
+                        toggle_row(
+                            "player-repeat",
+                            t("interface_player_repeat"),
+                            player.repeat,
+                            |on, cx| LayoutModel::edit(cx, |layout| layout.player.repeat = on),
+                        )
+                        .shown(cx),
+                    )
+                    .children(
+                        toggle_row(
+                            "player-volume",
+                            t("interface_player_volume"),
+                            player.volume,
+                            |on, cx| LayoutModel::edit(cx, |layout| layout.player.volume = on),
+                        )
+                        .shown(cx),
+                    )
+                    .children(
+                        toggle_row(
+                            "player-queue",
+                            t("interface_player_queue"),
+                            player.queue,
+                            |on, cx| LayoutModel::edit(cx, |layout| layout.player.queue = on),
+                        )
+                        .shown(cx),
+                    )
+                    .children(
+                        toggle_row(
+                            "player-lyrics",
+                            t("interface_player_lyrics"),
+                            player.lyrics,
+                            |on, cx| LayoutModel::edit(cx, |layout| layout.player.lyrics = on),
+                        )
+                        .shown(cx),
+                    )
+                    .children(
+                        toggle_row(
+                            "player-favorite",
+                            t("interface_player_favorite"),
+                            player.favorite,
+                            |on, cx| LayoutModel::edit(cx, |layout| layout.player.favorite = on),
+                        )
+                        .shown(cx),
+                    ),
             )
             .into_any_element()
     }
@@ -176,20 +188,4 @@ impl Render for SheetSettings {
             )
             .into_any_element()
     }
-}
-
-/// One of the bar's optional controls, as a row that hides itself when the page is filtered.
-fn toggle_row(
-    id: &'static str,
-    title: &'static str,
-    on: bool,
-    set: impl Fn(&mut store::Layout, bool) + 'static,
-    cx: &App,
-) -> Option<SettingRow> {
-    SettingRow::new(t(title))
-        .control(Toggle::new(id).enabled(on).on_change(move |on, _, cx| {
-            let on = *on;
-            LayoutModel::edit(cx, |layout| set(layout, on));
-        }))
-        .shown(cx)
 }

@@ -43,7 +43,7 @@ pub use karaoke::KaraokeText;
 pub use link::{Link, Tone, heading_link};
 pub use schema_form::{FieldChanged, SchemaForm};
 pub use search::{SearchField, SearchTrigger, TriggerSize};
-pub use settings::{Section, SettingRow, Toggle, section};
+pub use settings::{Choice, Lockable, Section, SettingRow, SliderRow, Toggle, section};
 pub use states::{EmptyState, Loading};
 pub use tabs::{Bar, Tab, TabStrip};
 pub use track_header::TrackHeader;

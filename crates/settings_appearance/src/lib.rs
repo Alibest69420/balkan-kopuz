@@ -3,12 +3,13 @@
 mod theme_editor;
 
 use components::format::t;
-use components::settings::{SettingRow, Toggle, section};
+use components::settings::{
+    Choice, SettingRow, SliderRow, on_slider_change, section, set_slider, slider_state, toggle_row,
+};
 use components::{icons, style};
 use config::{AppConfig, BackBehavior, PlayerBarPosition};
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
-use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
-use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
+use gpui_kit::component::slider::SliderState;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -19,18 +20,8 @@ use gpui_kit::{
 use store::ConfigModel;
 use theme_editor::ThemeEditor;
 
-/// `text-white/80`, what a slider's value reads in.
-const READOUT: f32 = 0.80;
 /// `text-white/50`, the path a file setting shows.
 const PATH: f32 = 0.50;
-/// `w-40`, the width every settings slider is drawn at.
-fn slider_width() -> gpui_kit::Rems {
-    rems(10.)
-}
-/// `.settings-select`: `width: min(14rem, …)`.
-fn select_width() -> gpui_kit::Rems {
-    rems(14.)
-}
 /// `bg-white/10 hover:bg-white/20`, the quiet button the settings rows use.
 fn soft(cx: &App) -> ButtonCustomVariant {
     ButtonCustomVariant::new(cx)
@@ -67,16 +58,9 @@ fn theme_label(id: &str) -> SharedString {
     t(key)
 }
 
-/// Edit the daemon's settings, naming the row it belongs to so that row can confirm the write.
-fn edit_key(key: &'static str, cx: &mut App, change: impl FnOnce(&mut AppConfig)) {
-    ConfigModel::global(cx).update(cx, |model, cx| model.update_key(key, cx, change));
-}
-
-fn set_slider(state: &Entity<SliderState>, value: f32, window: &mut Window, cx: &mut App) {
-    if state.read(cx).value().start() == value {
-        return;
-    }
-    state.update(cx, |state, cx| state.set_value(value, window, cx));
+/// What a whole-percent slider reads as.
+fn percent(value: f32) -> SharedString {
+    SharedString::from(format!("{}%", value as i32))
 }
 
 pub struct AppearanceSettings {
@@ -92,46 +76,37 @@ impl AppearanceSettings {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let config = ConfigModel::global(cx);
         let cfg = config.read(cx).config().clone();
-        let slider = |min: f32, max: f32, step: f32, value: f32, cx: &mut Context<Self>| {
-            cx.new(|_| {
-                SliderState::new()
-                    .min(min)
-                    .max(max)
-                    .step(step)
-                    .default_value(value)
-            })
-        };
-        let darkening = slider(0., 95., 5., cfg.cover_art_darkening as f32, cx);
-        let blur = slider(0., 100., 5., cfg.cover_art_blur as f32, cx);
-        let lyrics_blur = slider(10., 200., 10., cfg.lyrics_depth_blur_strength as f32, cx);
+        let darkening = cx.new(|_| slider_state(0., 95., 5., cfg.cover_art_darkening as f32));
+        let blur = cx.new(|_| slider_state(0., 100., 5., cfg.cover_art_blur as f32));
+        let lyrics_blur =
+            cx.new(|_| slider_state(10., 200., 10., cfg.lyrics_depth_blur_strength as f32));
 
         let subscriptions = vec![
             cx.observe_in(&config, window, |this, _, window, cx| {
                 this.sync(window, cx);
                 cx.notify();
             }),
-            cx.subscribe(&darkening, |_, _, event: &SliderEvent, cx| {
-                if let SliderEvent::Change(value) = event {
-                    let percent = value.start().round().clamp(0., 95.) as u8;
-                    edit_key("cover_art_darkening", cx, |cfg| {
-                        cfg.cover_art_darkening = percent
-                    });
-                }
-            }),
-            cx.subscribe(&blur, |_, _, event: &SliderEvent, cx| {
-                if let SliderEvent::Change(value) = event {
-                    let radius = value.start().round().clamp(0., 100.) as u8;
-                    edit_key("cover_art_blur", cx, |cfg| cfg.cover_art_blur = radius);
-                }
-            }),
-            cx.subscribe(&lyrics_blur, |_, _, event: &SliderEvent, cx| {
-                if let SliderEvent::Change(value) = event {
-                    let strength = value.start().round().clamp(10., 200.) as u8;
-                    edit_key("lyrics_depth_blur_strength", cx, |cfg| {
-                        cfg.lyrics_depth_blur_strength = strength
-                    });
-                }
-            }),
+            on_slider_change(
+                &darkening,
+                cx,
+                ConfigModel::writer("cover_art_darkening", |cfg, value: f32| {
+                    cfg.cover_art_darkening = value.clamp(0., 95.) as u8
+                }),
+            ),
+            on_slider_change(
+                &blur,
+                cx,
+                ConfigModel::writer("cover_art_blur", |cfg, value: f32| {
+                    cfg.cover_art_blur = value.clamp(0., 100.) as u8
+                }),
+            ),
+            on_slider_change(
+                &lyrics_blur,
+                cx,
+                ConfigModel::writer("lyrics_depth_blur_strength", |cfg, value: f32| {
+                    cfg.lyrics_depth_blur_strength = value.clamp(10., 200.) as u8
+                }),
+            ),
         ];
 
         Self {
@@ -155,107 +130,6 @@ impl AppearanceSettings {
             window,
             cx,
         );
-    }
-
-    /// One row: locked when a managed file pins the key, ticked when that key's write just landed.
-    fn row(&self, label: SharedString, key: &str, control: AnyElement, cx: &App) -> SettingRow {
-        let config = ConfigModel::global(cx).read(cx);
-        SettingRow::new(label)
-            .locked(config.is_locked(key))
-            .saved(config.just_saved(key))
-            .control(control)
-    }
-
-    fn toggle(
-        &self,
-        key: &'static str,
-        checked: bool,
-        change: impl Fn(&mut AppConfig, bool) + 'static,
-        cx: &App,
-    ) -> AnyElement {
-        let locked = ConfigModel::global(cx).read(cx).is_locked(key);
-        Toggle::new(key)
-            .enabled(checked)
-            .disabled(locked)
-            .on_change(move |value: &bool, _, cx| {
-                let value = *value;
-                edit_key(key, cx, |cfg| change(cfg, value));
-            })
-            .into_any_element()
-    }
-
-    /// One control shape for every enumerated setting: a button that drops its options down.
-    fn choice<T: Clone + PartialEq + 'static>(
-        &self,
-        key: &'static str,
-        current: &T,
-        options: Vec<(T, SharedString)>,
-        change: impl Fn(&mut AppConfig, T) + Clone + 'static,
-        cx: &App,
-    ) -> AnyElement {
-        let locked = ConfigModel::global(cx).read(cx).is_locked(key);
-        let label = options
-            .iter()
-            .find(|(value, _)| value == current)
-            .map(|(_, label)| label.clone())
-            .unwrap_or_else(|| t("choose"));
-        // A disabled trigger still opens its dropdown, so a locked row gets a plain button.
-        if locked {
-            return Button::new(key)
-                .outline()
-                .w(select_width())
-                .justify_between()
-                .label(label)
-                .disabled(true)
-                .into_any_element();
-        }
-        Button::new(key)
-            .outline()
-            .w(select_width())
-            .justify_between()
-            .icon(icons::icon(icons::CHEVRON_DOWN))
-            .label(label)
-            .dropdown_menu(move |mut menu, _, _| {
-                for (value, label) in &options {
-                    let value = value.clone();
-                    let change = change.clone();
-                    menu =
-                        menu.item(PopupMenuItem::new(label.clone()).on_click(move |_, _, cx| {
-                            let value = value.clone();
-                            edit_key(key, cx, |cfg| change(cfg, value));
-                        }));
-                }
-                menu
-            })
-            .into_any_element()
-    }
-
-    fn slider_row(
-        &self,
-        key: &'static str,
-        state: &Entity<SliderState>,
-        readout: SharedString,
-        cx: &App,
-    ) -> AnyElement {
-        let locked = ConfigModel::global(cx).read(cx).is_locked(key);
-        h_flex()
-            .gap_3()
-            .items_center()
-            .min_w(rems(13.75))
-            .child(
-                div()
-                    .w(slider_width())
-                    .child(Slider::new(state).disabled(locked)),
-            )
-            .child(
-                div()
-                    .w_16()
-                    .text_xs()
-                    .text_right()
-                    .text_color(style::white(READOUT, cx))
-                    .child(readout),
-            )
-            .into_any_element()
     }
 
     /// Path settings share one shape: the chosen path, Remove when set, and the picker button.
@@ -288,7 +162,7 @@ impl AppearanceSettings {
                         .label(t("remove"))
                         .disabled(locked)
                         .on_click(move |_, _, cx| {
-                            edit_key(key, cx, |cfg| set_path(cfg, key, String::new()));
+                            ConfigModel::edit_key(key, cx, |cfg| set_path(cfg, key, String::new()));
                         }),
                 )
             })
@@ -317,7 +191,7 @@ impl AppearanceSettings {
             {
                 let value = path.to_string_lossy().to_string();
                 this.update(cx, |_, cx| {
-                    edit_key(key, cx, |cfg| set_path(cfg, key, value));
+                    ConfigModel::edit_key(key, cx, |cfg| set_path(cfg, key, value));
                 })
                 .ok();
             }
@@ -329,54 +203,46 @@ impl AppearanceSettings {
         let mut rows = Vec::new();
         push(
             &mut rows,
-            self.row(
-                t("auto_check_updates"),
+            toggle_row(
                 "auto_check_updates",
-                self.toggle(
-                    "auto_check_updates",
-                    cfg.auto_check_updates,
-                    |cfg, value| cfg.auto_check_updates = value,
-                    cx,
-                ),
-                cx,
+                t("auto_check_updates"),
+                cfg.auto_check_updates,
+                ConfigModel::writer("auto_check_updates", |cfg, on| cfg.auto_check_updates = on),
             )
+            .bind("auto_check_updates", cx)
             .description(t("auto_check_updates_description")),
             cx,
         );
         push(
             &mut rows,
-            self.row(
-                t("minimize_to_tray"),
+            toggle_row(
                 "minimize_to_tray",
-                self.toggle(
-                    "minimize_to_tray",
-                    cfg.minimize_to_tray,
-                    |cfg, value| cfg.minimize_to_tray = value,
-                    cx,
-                ),
-                cx,
+                t("minimize_to_tray"),
+                cfg.minimize_to_tray,
+                ConfigModel::writer("minimize_to_tray", |cfg, on| cfg.minimize_to_tray = on),
             )
+            .bind("minimize_to_tray", cx)
             .description(t("minimize_to_tray_description")),
             cx,
         );
         push(
             &mut rows,
-            self.row(
-                t("back_behavior"),
-                "back_behavior",
-                self.choice(
-                    "back_behavior",
-                    &cfg.back_behavior,
-                    vec![
-                        (BackBehavior::RewindThenPrev, t("back_behavior_rewind")),
-                        (BackBehavior::AlwaysPrev, t("back_behavior_always_prev")),
-                    ],
-                    |cfg, value| cfg.back_behavior = value,
-                    cx,
+            SettingRow::new(t("back_behavior"))
+                .bind("back_behavior", cx)
+                .description(t("back_behavior_description"))
+                .setting(
+                    Choice::new(
+                        "back_behavior",
+                        cfg.back_behavior,
+                        vec![
+                            (BackBehavior::RewindThenPrev, t("back_behavior_rewind")),
+                            (BackBehavior::AlwaysPrev, t("back_behavior_always_prev")),
+                        ],
+                    )
+                    .on_change(ConfigModel::writer("back_behavior", |cfg, value| {
+                        cfg.back_behavior = value
+                    })),
                 ),
-                cx,
-            )
-            .description(t("back_behavior_description")),
             cx,
         );
         rows
@@ -386,231 +252,185 @@ impl AppearanceSettings {
         let mut rows = Vec::new();
         push(
             &mut rows,
-            self.row(t("language"), "language", self.language(cfg, cx), cx),
+            SettingRow::new(t("language"))
+                .bind("language", cx)
+                .setting(self.language(cfg)),
             cx,
         );
         push(
             &mut rows,
-            self.row(t("appearance"), "theme", self.theme(cfg, cx), cx)
-                .description(t("theme_description")),
+            SettingRow::new(t("appearance"))
+                .bind("theme", cx)
+                .description(t("theme_description"))
+                .setting(self.theme(cfg)),
             cx,
         );
         push(
             &mut rows,
-            self.row(
-                t("cover_art_background"),
+            toggle_row(
                 "cover_art_background",
-                self.toggle(
-                    "cover_art_background",
-                    cfg.cover_art_background,
-                    |cfg, value| cfg.cover_art_background = value,
-                    cx,
-                ),
-                cx,
+                t("cover_art_background"),
+                cfg.cover_art_background,
+                ConfigModel::writer("cover_art_background", |cfg, on| {
+                    cfg.cover_art_background = on
+                }),
             )
+            .bind("cover_art_background", cx)
             .description(t("cover_art_background_description")),
             cx,
         );
         push(
             &mut rows,
-            self.row(
-                t("custom_background"),
-                "custom_background_path",
-                self.path_row(
+            SettingRow::new(t("custom_background"))
+                .bind("custom_background_path", cx)
+                .description(t("custom_background_description"))
+                .control(self.path_row(
                     "custom_background_path",
                     cfg.custom_background_path.clone(),
                     t("choose_image"),
                     cx,
-                ),
-                cx,
-            )
-            .description(t("custom_background_description")),
+                )),
             cx,
         );
         push(
             &mut rows,
-            self.row(
-                t("custom_font"),
-                "custom_font_path",
-                self.path_row(
+            SettingRow::new(t("custom_font"))
+                .bind("custom_font_path", cx)
+                .description(t("custom_font_description"))
+                .control(self.path_row(
                     "custom_font_path",
                     cfg.custom_font_path.clone(),
                     t("choose_font"),
                     cx,
-                ),
-                cx,
-            )
-            .description(t("custom_font_description")),
+                )),
             cx,
         );
 
         if cfg.cover_art_background || !cfg.custom_background_path.is_empty() {
             push(
                 &mut rows,
-                self.row(
-                    t("cover_art_darkening"),
-                    "cover_art_darkening",
-                    self.slider_row(
-                        "cover_art_darkening",
-                        &self.darkening,
-                        SharedString::from(format!("{}%", cfg.cover_art_darkening)),
-                        cx,
-                    ),
-                    cx,
-                ),
+                SettingRow::new(t("cover_art_darkening"))
+                    .bind("cover_art_darkening", cx)
+                    .setting(SliderRow::new(&self.darkening).readout(percent)),
                 cx,
             );
             push(
                 &mut rows,
-                self.row(
-                    t("cover_art_blur"),
-                    "cover_art_blur",
-                    self.slider_row(
-                        "cover_art_blur",
-                        &self.blur,
-                        SharedString::from(format!("{}px", cfg.cover_art_blur)),
-                        cx,
+                SettingRow::new(t("cover_art_blur"))
+                    .bind("cover_art_blur", cx)
+                    .setting(
+                        SliderRow::new(&self.blur)
+                            .readout(|value| SharedString::from(format!("{}px", value as i32))),
                     ),
-                    cx,
-                ),
                 cx,
             );
         }
 
         push(
             &mut rows,
-            self.row(
-                t("lyrics_depth_blur"),
+            toggle_row(
                 "lyrics_depth_blur",
-                self.toggle(
-                    "lyrics_depth_blur",
-                    cfg.lyrics_depth_blur,
-                    |cfg, value| cfg.lyrics_depth_blur = value,
-                    cx,
-                ),
-                cx,
-            ),
+                t("lyrics_depth_blur"),
+                cfg.lyrics_depth_blur,
+                ConfigModel::writer("lyrics_depth_blur", |cfg, on| cfg.lyrics_depth_blur = on),
+            )
+            .bind("lyrics_depth_blur", cx),
             cx,
         );
         if cfg.lyrics_depth_blur {
             push(
                 &mut rows,
-                self.row(
-                    t("lyrics_depth_blur_strength"),
-                    "lyrics_depth_blur_strength",
-                    self.slider_row(
-                        "lyrics_depth_blur_strength",
-                        &self.lyrics_blur,
-                        SharedString::from(format!("{}%", cfg.lyrics_depth_blur_strength)),
-                        cx,
-                    ),
-                    cx,
-                ),
+                SettingRow::new(t("lyrics_depth_blur_strength"))
+                    .bind("lyrics_depth_blur_strength", cx)
+                    .setting(SliderRow::new(&self.lyrics_blur).readout(percent)),
                 cx,
             );
         }
 
         push(
             &mut rows,
-            self.row(
-                t("reduce_animations"),
+            toggle_row(
                 "reduce_animations",
-                self.toggle(
-                    "reduce_animations",
-                    cfg.reduce_animations,
-                    |cfg, value| cfg.reduce_animations = value,
-                    cx,
-                ),
-                cx,
+                t("reduce_animations"),
+                cfg.reduce_animations,
+                ConfigModel::writer("reduce_animations", |cfg, on| cfg.reduce_animations = on),
             )
+            .bind("reduce_animations", cx)
             .description(t("reduce_animations_description")),
             cx,
         );
         push(
             &mut rows,
-            self.row(
-                t("fullscreen_use_player_bar"),
+            toggle_row(
                 "fullscreen_use_player_bar",
-                self.toggle(
-                    "fullscreen_use_player_bar",
-                    cfg.fullscreen_use_player_bar,
-                    |cfg, value| cfg.fullscreen_use_player_bar = value,
-                    cx,
-                ),
-                cx,
-            ),
+                t("fullscreen_use_player_bar"),
+                cfg.fullscreen_use_player_bar,
+                ConfigModel::writer("fullscreen_use_player_bar", |cfg, on| {
+                    cfg.fullscreen_use_player_bar = on
+                }),
+            )
+            .bind("fullscreen_use_player_bar", cx),
             cx,
         );
         push(
             &mut rows,
-            self.row(
-                t("show_source_toggle"),
+            toggle_row(
                 "show_source_toggle",
-                self.toggle(
-                    "show_source_toggle",
-                    cfg.show_source_toggle,
-                    |cfg, value| cfg.show_source_toggle = value,
-                    cx,
-                ),
-                cx,
+                t("show_source_toggle"),
+                cfg.show_source_toggle,
+                ConfigModel::writer("show_source_toggle", |cfg, on| cfg.show_source_toggle = on),
             )
+            .bind("show_source_toggle", cx)
             .description(t("show_source_toggle_description")),
             cx,
         );
         push(
             &mut rows,
-            self.row(
-                t("show_row_images"),
+            toggle_row(
                 "show_row_images",
-                self.toggle(
-                    "show_row_images",
-                    cfg.show_row_images,
-                    |cfg, value| cfg.show_row_images = value,
-                    cx,
-                ),
-                cx,
+                t("show_row_images"),
+                cfg.show_row_images,
+                ConfigModel::writer("show_row_images", |cfg, on| cfg.show_row_images = on),
             )
+            .bind("show_row_images", cx)
             .description(t("show_row_images_description")),
             cx,
         );
         push(
             &mut rows,
-            self.row(
-                t("player_bar_position"),
-                "player_bar_position",
-                self.choice(
-                    "player_bar_position",
-                    &cfg.player_bar_position,
-                    vec![
-                        (PlayerBarPosition::Bottom, t("position_bottom")),
-                        (PlayerBarPosition::Top, t("position_top")),
-                    ],
-                    |cfg, value| cfg.player_bar_position = value,
-                    cx,
+            SettingRow::new(t("player_bar_position"))
+                .bind("player_bar_position", cx)
+                .setting(
+                    Choice::new(
+                        "player_bar_position",
+                        cfg.player_bar_position,
+                        vec![
+                            (PlayerBarPosition::Bottom, t("position_bottom")),
+                            (PlayerBarPosition::Top, t("position_top")),
+                        ],
+                    )
+                    .on_change(ConfigModel::writer("player_bar_position", |cfg, value| {
+                        cfg.player_bar_position = value
+                    })),
                 ),
-                cx,
-            ),
             cx,
         );
         // TODO(parity): titlebar_mode, ui_style (no Vaxry layout), settings_layout and the live theme.
         rows
     }
 
-    fn language(&self, cfg: &AppConfig, cx: &App) -> AnyElement {
+    fn language(&self, cfg: &AppConfig) -> Choice<String> {
         let options = i18n::available_languages()
             .iter()
             .map(|(code, name)| (code.to_string(), SharedString::from(*name)))
             .collect();
-        self.choice(
-            "language",
-            &cfg.language,
-            options,
-            |cfg, value| cfg.language = value,
-            cx,
-        )
+        Choice::new("language", cfg.language.clone(), options)
+            .on_change(ConfigModel::writer("language", |cfg, value| {
+                cfg.language = value
+            }))
     }
 
-    fn theme(&self, cfg: &AppConfig, cx: &App) -> AnyElement {
+    fn theme(&self, cfg: &AppConfig) -> Choice<String> {
         let mut options: Vec<(String, SharedString)> = theme::BUILT_IN
             .iter()
             .map(|palette| (palette.name.to_string(), theme_label(palette.name)))
@@ -622,13 +442,8 @@ impl AppearanceSettings {
             .collect();
         custom.sort_by(|left, right| left.1.cmp(&right.1));
         options.extend(custom);
-        self.choice(
-            "theme",
-            &cfg.theme,
-            options,
-            |cfg, value| cfg.theme = value,
-            cx,
-        )
+        Choice::new("theme", cfg.theme.clone(), options)
+            .on_change(ConfigModel::writer("theme", |cfg, value| cfg.theme = value))
     }
 }
 

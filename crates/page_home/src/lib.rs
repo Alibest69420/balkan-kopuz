@@ -22,6 +22,7 @@ use gpui_kit::{
     ParentElement as _, Render, ScrollHandle, SharedString, StatefulInteractiveElement as _,
     Styled, Subscription, Window,
 };
+use store::layout::Ordered as _;
 use store::{Navigator, PlaylistsModel, Query, Route, SourcesModel};
 
 use data::{RECENT_TRACKS_WINDOW, RECENTLY_ADDED_WINDOW, Shelf};

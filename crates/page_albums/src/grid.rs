@@ -321,9 +321,7 @@ fn view_mode(cx: &App) -> AlbumViewMode {
 }
 
 fn set_view_mode(mode: AlbumViewMode, cx: &mut App) {
-    ConfigModel::global(cx).update(cx, |model, cx| {
-        model.update(cx, |config| config.album_view_mode = mode)
-    });
+    ConfigModel::edit(cx, |config| config.album_view_mode = mode);
 }
 
 fn criteria(cx: &App) -> Vec<SortCriterion<AlbumSortField>> {
@@ -352,7 +350,5 @@ fn set_sort_direction(direction: SortDirection, cx: &mut App) {
 }
 
 fn write_criteria(sorted: Vec<SortCriterion<AlbumSortField>>, cx: &mut App) {
-    ConfigModel::global(cx).update(cx, |model, cx| {
-        model.update(cx, |config| config.album_sort = sorted)
-    });
+    ConfigModel::edit(cx, |config| config.album_sort = sorted);
 }

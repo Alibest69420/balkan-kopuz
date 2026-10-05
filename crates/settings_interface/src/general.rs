@@ -1,7 +1,7 @@
 //! The knobs that belong to no single package: motion, accent and how big everything is drawn.
 
 use components::format::t;
-use components::settings::{SettingRow, choice, section, select_width};
+use components::settings::{SettingRow, choice, nearest, section, select_width};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::v_flex;
 use gpui_kit::{
@@ -132,7 +132,7 @@ impl Render for General {
                             .description(t("interface_scale_description"))
                             .control(choice(
                                 "interface-scale",
-                                &nearest(scale),
+                                &nearest(STEPS, scale).unwrap_or(1.),
                                 STEPS.iter().map(|step| (*step, percent(*step))).collect(),
                                 |value, cx| {
                                     LayoutModel::edit(cx, |layout| layout.interface.scale = value)
@@ -151,20 +151,6 @@ impl Render for General {
     }
 }
 
-/// The step a saved scale reads as, so a hand-edited value still lights one option.
-fn nearest(scale: f32) -> f32 {
-    STEPS
-        .iter()
-        .copied()
-        .min_by(|a, b| {
-            (a - scale)
-                .abs()
-                .partial_cmp(&(b - scale).abs())
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
-        .unwrap_or(1.)
-}
-
 fn percent(scale: f32) -> SharedString {
     SharedString::from(format!("{}%", (scale * 100.).round() as i32))
 }
@@ -172,13 +158,6 @@ fn percent(scale: f32) -> SharedString {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_saved_scale_lights_the_step_it_is_closest_to() {
-        assert_eq!(nearest(1.0), 1.0);
-        assert_eq!(nearest(1.12), 1.1);
-        assert_eq!(nearest(5.), 1.4);
-    }
 
     #[test]
     fn a_step_reads_as_a_percentage() {

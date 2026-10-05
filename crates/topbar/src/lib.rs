@@ -17,7 +17,7 @@ use gpui_kit::{
     MouseButton, MouseDownEvent, NavigationDirection, ParentElement as _, Pixels, Render,
     SharedString, Styled, Subscription, Window, div, px,
 };
-use store::layout::NavPosition;
+use store::layout::{NavPosition, Ordered as _};
 use store::{ConfigModel, LayoutModel, Navigator, Route, SourcesModel};
 
 pub use bounds::{remember as remember_bounds, saved_bounds};

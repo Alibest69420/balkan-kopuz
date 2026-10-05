@@ -112,10 +112,6 @@ pub fn config(cx: &App) -> AppConfig {
     model.read(cx).config().clone()
 }
 
-fn edit(cx: &mut App, change: impl FnOnce(&mut AppConfig)) {
-    ConfigModel::global(cx).update(cx, |model, cx| model.update(cx, change));
-}
-
 /// The `h-9 p-1 rounded-full bg-white/5` track both segmented toggles sit in.
 fn pill(cx: &App) -> Div {
     h_flex()
@@ -186,7 +182,7 @@ pub fn view_mode_toggle(key: ViewModeKey, window: &mut Window, cx: &mut App) -> 
                     .icon(icons::icon(icons::GRID))
                     .tooltip(t("view_grid"))
                     .on_click(move |_, _, cx| {
-                        edit(cx, |config| key.write(config, AlbumViewMode::Grid))
+                        ConfigModel::edit(cx, |config| key.write(config, AlbumViewMode::Grid))
                     })
             },
             window,
@@ -200,7 +196,7 @@ pub fn view_mode_toggle(key: ViewModeKey, window: &mut Window, cx: &mut App) -> 
                     .icon(icons::icon(icons::ROWS))
                     .tooltip(t("view_list"))
                     .on_click(move |_, _, cx| {
-                        edit(cx, |config| key.write(config, AlbumViewMode::List))
+                        ConfigModel::edit(cx, |config| key.write(config, AlbumViewMode::List))
                     })
             },
             window,
@@ -248,7 +244,9 @@ pub fn sort_control<F: SortTarget>(
             menu.separator().item(
                 PopupMenuItem::new(t("sort_none"))
                     .icon(icons::icon(icons::CLOSE))
-                    .on_click(|_, _, cx| edit(cx, |config| F::write(config, Vec::new()))),
+                    .on_click(|_, _, cx| {
+                        ConfigModel::edit(cx, |config| F::write(config, Vec::new()))
+                    }),
             )
         })
 }
@@ -268,7 +266,7 @@ fn promote<F: SortTarget>(field: F, cx: &mut App) {
             current.insert(0, SortCriterion::new(field, SortDirection::Asc));
         }
     }
-    edit(cx, move |config| F::write(config, current));
+    ConfigModel::edit(cx, move |config| F::write(config, current));
 }
 
 /// Tracks ⇄ Albums for one artist, writing `cfg.artist_view_order`.
@@ -284,7 +282,7 @@ pub fn view_order_toggle(
             tracks,
             |button| {
                 button.label(t("tracks")).on_click(|_, _, cx| {
-                    edit(cx, |config| {
+                    ConfigModel::edit(cx, |config| {
                         config.artist_view_order = ArtistViewOrder::Tracks
                     })
                 })
@@ -297,7 +295,7 @@ pub fn view_order_toggle(
             !tracks,
             |button| {
                 button.label(t("albums")).on_click(|_, _, cx| {
-                    edit(cx, |config| {
+                    ConfigModel::edit(cx, |config| {
                         config.artist_view_order = ArtistViewOrder::Albums
                     })
                 })

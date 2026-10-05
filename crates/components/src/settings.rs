@@ -3,16 +3,19 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gpui_kit::component::button::Button;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
+use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
 use gpui_kit::component::tooltip::Tooltip;
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, ElementId, Entity, FontWeight, Global, Hsla, InteractiveElement as _,
     IntoElement, ParentElement, Rems, RenderOnce, SharedString, StatefulInteractiveElement as _,
     Styled, Window, div, px, rems,
 };
+use store::layout::Ordered;
+use store::{ConfigModel, Layout, LayoutModel};
 
 use crate::format::t;
 use crate::{icons, motion, style};
@@ -118,35 +121,293 @@ pub fn select_width() -> Rems {
     rems(13.75)
 }
 
-/// One control shape for every enumerated setting: a button that drops its options down.
+/// `w-40`, the track every settings slider is drawn at.
+fn slider_width() -> Rems {
+    rems(10.)
+}
+
+/// `text-white/80`, what a slider's value reads in.
+pub const READOUT: f32 = 0.80;
+
+/// A control a managed settings file can pin; locking only ever adds to what the control already had.
+pub trait Lockable {
+    fn lock(self, locked: bool) -> Self;
+}
+
+type Write<T> = Rc<dyn Fn(T, &mut App)>;
+
+/// One control for every enumerated setting: a fixed-width trigger dropping its options, the current one checked.
+#[derive(IntoElement)]
+pub struct Choice<T: Clone + PartialEq + 'static> {
+    id: ElementId,
+    current: T,
+    options: Vec<(T, SharedString)>,
+    locked: bool,
+    fill: bool,
+    write: Option<Write<T>>,
+}
+
+impl<T: Clone + PartialEq + 'static> Choice<T> {
+    pub fn new(id: impl Into<ElementId>, current: T, options: Vec<(T, SharedString)>) -> Self {
+        Self {
+            id: id.into(),
+            current,
+            options,
+            locked: false,
+            fill: false,
+            write: None,
+        }
+    }
+
+    /// Every value of a fixed set, each named by `label`.
+    pub fn listed(
+        id: impl Into<ElementId>,
+        current: T,
+        values: impl IntoIterator<Item = T>,
+        label: impl Fn(T) -> SharedString,
+    ) -> Self {
+        let options = values
+            .into_iter()
+            .map(|value| (value.clone(), label(value)))
+            .collect();
+        Self::new(id, current, options)
+    }
+
+    /// Stretch across the space it is given instead of the shared fixed width.
+    pub fn fill(mut self, fill: bool) -> Self {
+        self.fill = fill;
+        self
+    }
+
+    /// Where a pick is stored, such as a config key's writer or a layout field.
+    pub fn on_change(mut self, write: impl Fn(T, &mut App) + 'static) -> Self {
+        self.write = Some(Rc::new(write));
+        self
+    }
+}
+
+/// A [`Choice`] in one call: its id, the current value, every option, and where a pick goes.
 pub fn choice<T: Clone + PartialEq + 'static>(
     id: impl Into<ElementId>,
     current: &T,
     options: Vec<(T, SharedString)>,
-    change: impl Fn(T, &mut App) + Clone + 'static,
-) -> AnyElement {
-    let label = options
-        .iter()
-        .find(|(value, _)| value == current)
-        .map(|(_, label)| label.clone())
-        .unwrap_or_else(|| t("choose"));
-    Button::new(id)
-        .outline()
-        .w(select_width())
-        .justify_between()
-        .icon(icons::icon(icons::CHEVRON_DOWN))
-        .label(label)
-        .dropdown_menu(move |mut menu, _, _| {
-            for (value, label) in &options {
-                let value = value.clone();
-                let change = change.clone();
-                menu = menu.item(PopupMenuItem::new(label.clone()).on_click(move |_, _, cx| {
-                    change(value.clone(), cx);
-                }));
-            }
-            menu
-        })
-        .into_any_element()
+    write: impl Fn(T, &mut App) + 'static,
+) -> Choice<T> {
+    Choice::new(id, current.clone(), options).on_change(write)
+}
+
+impl<T: Clone + PartialEq + 'static> Lockable for Choice<T> {
+    fn lock(mut self, locked: bool) -> Self {
+        self.locked |= locked;
+        self
+    }
+}
+
+impl<T: Clone + PartialEq + 'static> RenderOnce for Choice<T> {
+    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+        let label = self
+            .options
+            .iter()
+            .find(|(value, _)| *value == self.current)
+            .map(|(_, label)| label.clone())
+            .unwrap_or_else(|| t("choose"));
+        let trigger = Button::new(self.id)
+            .outline()
+            .justify_between()
+            .label(label)
+            .map(|trigger| match self.fill {
+                true => trigger.flex_1(),
+                false => trigger.w(select_width()),
+            });
+        // A disabled trigger still opens its dropdown, so a locked one gets none.
+        if self.locked {
+            return trigger.disabled(true).into_any_element();
+        }
+        let (current, options, write) = (self.current, self.options, self.write);
+        trigger
+            .icon(icons::icon(icons::CHEVRON_DOWN))
+            .dropdown_menu(move |mut menu, _, _| {
+                for (value, label) in &options {
+                    let item = PopupMenuItem::new(label.clone()).checked(*value == current);
+                    menu = menu.item(match write.clone() {
+                        Some(write) => {
+                            let value = value.clone();
+                            item.on_click(move |_, _, cx| write(value.clone(), cx))
+                        }
+                        None => item,
+                    });
+                }
+                menu
+            })
+            .into_any_element()
+    }
+}
+
+/// A slider with its value read out beside it, the way every numeric setting reads.
+#[derive(IntoElement)]
+pub struct SliderRow {
+    state: Entity<SliderState>,
+    readout: Option<Rc<dyn Fn(f32) -> SharedString>>,
+    locked: bool,
+    fill: bool,
+}
+
+impl SliderRow {
+    pub fn new(state: &Entity<SliderState>) -> Self {
+        Self {
+            state: state.clone(),
+            readout: None,
+            locked: false,
+            fill: false,
+        }
+    }
+
+    /// How the slider's current value reads beside it.
+    pub fn readout(mut self, format: impl Fn(f32) -> SharedString + 'static) -> Self {
+        self.readout = Some(Rc::new(format));
+        self
+    }
+
+    /// Stretch across the space it is given instead of the shared fixed track.
+    pub fn fill(mut self, fill: bool) -> Self {
+        self.fill = fill;
+        self
+    }
+}
+
+impl Lockable for SliderRow {
+    fn lock(mut self, locked: bool) -> Self {
+        self.locked |= locked;
+        self
+    }
+}
+
+impl RenderOnce for SliderRow {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let value = self.state.read(cx).value().end();
+        let fill = self.fill;
+        h_flex()
+            .gap_3()
+            .items_center()
+            .map(|row| match fill {
+                true => row.flex_1().min_w_0(),
+                false => row.min_w(select_width()),
+            })
+            .child(
+                div()
+                    .map(|track| match fill {
+                        true => track.flex_1(),
+                        false => track.w(slider_width()),
+                    })
+                    .child(Slider::new(&self.state).disabled(self.locked)),
+            )
+            .when_some(self.readout, |row, format| {
+                row.child(
+                    div()
+                        .flex_shrink_0()
+                        .w_16()
+                        .text_xs()
+                        .text_right()
+                        .text_color(style::white(READOUT, cx))
+                        .child(format(value)),
+                )
+            })
+    }
+}
+
+/// A slider's state over `min..=max` in `step`s, starting at `value`.
+pub fn slider_state(min: f32, max: f32, step: f32, value: f32) -> SliderState {
+    SliderState::new()
+        .min(min)
+        .max(max)
+        .step(step)
+        .default_value(value)
+}
+
+/// Write a settings slider's value as it moves, rounded to the whole units every such slider steps in.
+pub fn on_slider_change<V: 'static>(
+    state: &Entity<SliderState>,
+    cx: &mut gpui_kit::Context<V>,
+    write: impl Fn(f32, &mut App) + 'static,
+) -> gpui_kit::Subscription {
+    cx.subscribe(state, move |_, _, event: &SliderEvent, cx| {
+        if let SliderEvent::Change(value) = event {
+            write(value.end().round(), cx);
+        }
+    })
+}
+
+/// Move a slider to a value it is told from outside, leaving it be when it is already there.
+pub fn set_slider(state: &Entity<SliderState>, value: f32, window: &mut Window, cx: &mut App) {
+    if (state.read(cx).value().end() - value).abs() < f32::EPSILON {
+        return;
+    }
+    state.update(cx, |state, cx| state.set_value(value, window, cx));
+}
+
+/// The offered step a saved value reads as, so a hand-edited or dragged one still lights an option.
+pub fn nearest(steps: &[f32], value: f32) -> Option<f32> {
+    steps.iter().copied().min_by(|a, b| {
+        (a - value)
+            .abs()
+            .partial_cmp(&(b - value).abs())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    })
+}
+
+/// A boolean setting's row; `write` stores the answer wherever that setting lives.
+pub fn toggle_row(
+    id: impl Into<SharedString>,
+    title: impl Into<SharedString>,
+    on: bool,
+    write: impl Fn(bool, &mut App) + 'static,
+) -> SettingRow {
+    SettingRow::new(title).setting(
+        Toggle::new(id)
+            .enabled(on)
+            .on_change(move |on, _, cx| write(*on, cx)),
+    )
+}
+
+/// One name of a reorderable list: steps past its neighbours, and a toggle that shows or hides it.
+pub fn order_row<L: Ordered + 'static>(
+    prefix: &'static str,
+    name: &'static str,
+    title: impl Into<SharedString>,
+    list: &L,
+    field: fn(&mut Layout) -> &mut L,
+    cx: &App,
+) -> SettingRow {
+    let shown = list.shows(name);
+    let order = list.visible();
+    let at = order.iter().position(|held| *held == name);
+    let first = at == Some(0);
+    let last = at.is_some_and(|at| at + 1 == order.len());
+    let step = |delta: isize, glyph: &'static str, enabled: bool| {
+        Button::new(SharedString::from(format!("{prefix}-move-{name}-{delta}")))
+            .small()
+            .custom(style::quiet_button(style::slate_400(cx), cx))
+            .icon(icons::icon(glyph))
+            .disabled(!enabled)
+            .on_click(move |_, _, cx| {
+                LayoutModel::edit(cx, |layout| field(layout).step(name, delta))
+            })
+    };
+    SettingRow::new(title).control(
+        h_flex()
+            .gap_1()
+            .items_center()
+            .child(step(-1, icons::CHEVRON_UP, shown && !first))
+            .child(step(1, icons::CHEVRON_DOWN, shown && !last))
+            .child(
+                Toggle::new(SharedString::from(format!("{prefix}-shows-{name}")))
+                    .enabled(shown)
+                    .on_change(move |on, _, cx| {
+                        let on = *on;
+                        LayoutModel::edit(cx, |layout| field(layout).show(name, on));
+                    }),
+            ),
+    )
 }
 
 /// `.settings-section`: `border-white/11` over `bg-black/78`.
@@ -187,24 +448,6 @@ pub fn row_height() -> Rems {
 /// `prefix` over a domain key: one stable channel per row, per section, per toggle half.
 fn scoped(prefix: &'static str, key: &SharedString) -> ElementId {
     (ElementId::from(prefix), key.clone()).into()
-}
-
-/// Hover as tracked state, because a tween needs the value a `.hover()` refinement never exposes.
-fn hover_state(id: impl Into<ElementId>, window: &mut Window, cx: &mut App) -> Entity<bool> {
-    window.use_keyed_state(id, cx, |_, _| false)
-}
-
-/// The listener that keeps one of those in step.
-fn track_hover(state: Entity<bool>) -> impl Fn(&bool, &mut Window, &mut App) + 'static {
-    move |over, _, cx| {
-        let over = *over;
-        state.update(cx, |held, cx| {
-            if *held != over {
-                *held = over;
-                cx.notify();
-            }
-        });
-    }
 }
 
 /// A titled group of rows: the card the Dioxus settings page draws one category on.
@@ -256,8 +499,8 @@ impl RenderOnce for Section {
         // A filtered pass must not leave a match hidden inside a section that was collapsed earlier.
         let expanded = searching || *open.read(cx);
         let last = self.rows.len().saturating_sub(1);
-        let hovered = hover_state(scoped("section-hover", &self.title), window, cx);
-        let header_target = if *hovered.read(cx) {
+        let (over, hovered) = motion::hovered(scoped("section-hover", &self.title), window, cx);
+        let header_target = if over {
             style::white(HEADER_HOVER, cx)
         } else if theme::ambient(cx).is_some() {
             style::white(STRIPE, cx)
@@ -289,7 +532,7 @@ impl RenderOnce for Section {
                     .items_center()
                     .bg(header_bg)
                     .cursor_pointer()
-                    .on_hover(track_hover(hovered))
+                    .on_hover(motion::track(hovered))
                     .on_click(move |_, _, cx| {
                         open.update(cx, |held, cx| {
                             *held = !*held;
@@ -332,6 +575,9 @@ impl RenderOnce for Section {
     }
 }
 
+/// A row's control, built once the row knows whether it is locked.
+type Control = Box<dyn FnOnce(bool) -> AnyElement>;
+
 /// One setting: its label on the left, its control on the right.
 #[derive(IntoElement)]
 pub struct SettingRow {
@@ -340,7 +586,7 @@ pub struct SettingRow {
     locked: bool,
     stacked: bool,
     saved: bool,
-    control: Option<AnyElement>,
+    control: Option<Control>,
 }
 
 impl SettingRow {
@@ -386,23 +632,40 @@ impl SettingRow {
         self
     }
 
+    /// Tie the row to a config key: locked when a managed file pins it, ticked once its write lands.
+    pub fn bind(self, key: &str, cx: &App) -> Self {
+        let config = ConfigModel::global(cx).read(cx);
+        let (locked, saved) = (config.is_locked(key), config.just_saved(key));
+        self.locked(locked).saved(saved)
+    }
+
     /// Put the control under the label instead of beside it, for a control that needs the width.
     pub fn stacked(mut self) -> Self {
         self.stacked = true;
         self
     }
 
+    /// A control the row's lock does not reach, such as a panel that reads its own.
     pub fn control(mut self, control: impl IntoElement) -> Self {
-        self.control = Some(control.into_any_element());
+        let control = control.into_any_element();
+        self.control = Some(Box::new(move |_| control));
+        self
+    }
+
+    /// A control the row locks along with itself.
+    pub fn setting(mut self, control: impl Lockable + IntoElement + 'static) -> Self {
+        self.control = Some(Box::new(move |locked| {
+            control.lock(locked).into_any_element()
+        }));
         self
     }
 }
 
 impl RenderOnce for SettingRow {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let hovered = hover_state(scoped("row-hover", &self.title), window, cx);
+        let (over, hovered) = motion::hovered(scoped("row-hover", &self.title), window, cx);
         let marked = highlighted(cx).is_some_and(|held| held == self.title);
-        let lift = if *hovered.read(cx) { style::RAISED } else { 0. };
+        let lift = if over { style::RAISED } else { 0. };
         let resting = match marked {
             true => style::accent(MARKED, cx),
             false => style::white(lift, cx),
@@ -464,11 +727,12 @@ impl RenderOnce for SettingRow {
                 .child(icons::icon(icons::CHECK).with_size(style::text_10()))
                 .child(t("setting_saved"))
         });
+        let locked = self.locked;
         let control = self.control.map(|control| {
             h_flex().gap_2().items_center().children(tick).child(
                 div()
                     .when(held < 1., |fading| fading.opacity(held))
-                    .child(control),
+                    .child(control(locked)),
             )
         });
         if self.stacked {
@@ -479,7 +743,7 @@ impl RenderOnce for SettingRow {
                 .px_5()
                 .py_4()
                 .bg(surface)
-                .on_hover(track_hover(hovered))
+                .on_hover(motion::track(hovered))
                 .child(div().mb_3().child(label))
                 .children(control)
                 .into_any_element()
@@ -494,7 +758,7 @@ impl RenderOnce for SettingRow {
                 .justify_between()
                 .items_center()
                 .bg(surface)
-                .on_hover(track_hover(hovered))
+                .on_hover(motion::track(hovered))
                 .child(label)
                 .children(control)
                 .into_any_element()
@@ -560,10 +824,10 @@ impl Toggle {
     ) -> impl IntoElement + use<> {
         let id = SharedString::from(format!("{}-{}", self.id, if value { "on" } else { "off" }));
         let selected = value == self.enabled;
-        let hovered = hover_state(scoped("toggle-half-hover", &id), window, cx);
+        let (over, hovered) = motion::hovered(scoped("toggle-half-hover", &id), window, cx);
         let target = if selected {
             style::white(1., cx)
-        } else if !self.disabled && *hovered.read(cx) {
+        } else if !self.disabled && over {
             style::white(TOGGLE_IDLE_HOVER, cx)
         } else {
             style::slate_500(cx)
@@ -583,11 +847,18 @@ impl Toggle {
         if self.disabled {
             return half;
         }
-        let half = half.cursor_pointer().on_hover(track_hover(hovered));
+        let half = half.cursor_pointer().on_hover(motion::track(hovered));
         match self.on_change.clone() {
             Some(handler) => half.on_click(move |_, window, cx| handler(&value, window, cx)),
             None => half,
         }
+    }
+}
+
+impl Lockable for Toggle {
+    fn lock(mut self, locked: bool) -> Self {
+        self.disabled |= locked;
+        self
     }
 }
 
@@ -633,7 +904,17 @@ impl RenderOnce for Toggle {
 
 #[cfg(test)]
 mod tests {
-    use super::hit;
+    use super::{hit, nearest};
+
+    #[test]
+    fn a_saved_value_lights_the_step_it_is_closest_to() {
+        let widths = [200., 260., 320., 380.];
+        assert_eq!(nearest(&widths, 263.), Some(260.));
+        assert_eq!(nearest(&widths, 1000.), Some(380.));
+        assert_eq!(nearest(&widths, 0.), Some(200.));
+        assert_eq!(nearest(&[0.8, 0.9, 1.0, 1.1], 1.12), Some(1.1));
+        assert_eq!(nearest(&[], 1.), None);
+    }
 
     #[test]
     fn the_filter_ignores_case_and_matches_anywhere_in_a_line() {

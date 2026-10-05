@@ -225,22 +225,84 @@ pub const DESTINATIONS: &[&str] = &[
     "activity",
 ];
 
-impl Nav {
-    /// The visible destinations, in order: the saved order first, then anything new, minus hidden.
-    pub fn visible(&self) -> Vec<&str> {
+/// A list of names a person can reorder and hide, laid over the names it knows.
+pub trait Ordered {
+    /// Every name the list can hold, in its designed order.
+    const KNOWN: &'static [&'static str];
+
+    fn order(&self) -> &[String];
+
+    fn hidden(&self) -> &[String];
+
+    fn lists(&mut self) -> (&mut Vec<String>, &mut Vec<String>);
+
+    /// The visible names, in order: the saved order first, then anything new, minus hidden.
+    fn visible(&self) -> Vec<&str> {
         let mut names: Vec<&str> = self
-            .order
+            .order()
             .iter()
             .map(String::as_str)
-            .filter(|name| DESTINATIONS.contains(name))
+            .filter(|name| Self::KNOWN.contains(name))
             .collect();
-        for name in DESTINATIONS {
+        for name in Self::KNOWN {
             if !names.contains(name) {
                 names.push(name);
             }
         }
-        names.retain(|name| !self.hidden.iter().any(|hidden| hidden == name));
+        names.retain(|name| self.shows(name));
         names
+    }
+
+    fn shows(&self, name: &str) -> bool {
+        !self.hidden().iter().any(|hidden| hidden == name)
+    }
+
+    fn show(&mut self, name: &str, shown: bool) {
+        let (_, hidden) = self.lists();
+        match shown {
+            true => hidden.retain(|held| held != name),
+            false => {
+                if !hidden.iter().any(|held| held == name) {
+                    hidden.push(name.to_string());
+                }
+            }
+        }
+    }
+
+    /// Move one name a place along the full order rather than the visible one.
+    fn step(&mut self, name: &str, delta: isize) {
+        let (order, _) = self.lists();
+        // A file written by hand may name only some of them; fill the rest in before moving one.
+        for known in Self::KNOWN {
+            if !order.iter().any(|held| held == known) {
+                order.push(known.to_string());
+            }
+        }
+        let Some(from) = order.iter().position(|held| held == name) else {
+            return;
+        };
+        let Some(to) = from.checked_add_signed(delta) else {
+            return;
+        };
+        if to < order.len() {
+            order.swap(from, to);
+        }
+    }
+}
+
+impl Ordered for Nav {
+    const KNOWN: &'static [&'static str] = DESTINATIONS;
+
+    fn order(&self) -> &[String] {
+        &self.order
+    }
+
+    fn hidden(&self) -> &[String] {
+        &self.hidden
+    }
+
+    fn lists(&mut self) -> (&mut Vec<String>, &mut Vec<String>) {
+        (&mut self.order, &mut self.hidden)
     }
 }
 
@@ -338,21 +400,19 @@ pub const SHELVES: &[&str] = &[
     "recently_played",
 ];
 
-impl Home {
-    pub fn visible(&self) -> Vec<&str> {
-        let mut names: Vec<&str> = self
-            .order
-            .iter()
-            .map(String::as_str)
-            .filter(|name| SHELVES.contains(name))
-            .collect();
-        for name in SHELVES {
-            if !names.contains(name) {
-                names.push(name);
-            }
-        }
-        names.retain(|name| !self.hidden.iter().any(|hidden| hidden == name));
-        names
+impl Ordered for Home {
+    const KNOWN: &'static [&'static str] = SHELVES;
+
+    fn order(&self) -> &[String] {
+        &self.order
+    }
+
+    fn hidden(&self) -> &[String] {
+        &self.hidden
+    }
+
+    fn lists(&mut self) -> (&mut Vec<String>, &mut Vec<String>) {
+        (&mut self.order, &mut self.hidden)
     }
 }
 
@@ -733,6 +793,51 @@ mod tests {
         let text = toml::to_string_pretty(&nav).expect("serialise");
         let back: Nav = toml::from_str(&text).expect("deserialise");
         assert_eq!(back.visible(), &["library", "home", "discover", "radio"]);
+    }
+
+    #[test]
+    fn moving_a_destination_changes_what_the_bar_draws() {
+        let mut nav = Nav::default();
+        nav.step("library", -1);
+        assert_eq!(nav.visible(), &["library", "home", "discover", "radio"]);
+    }
+
+    #[test]
+    fn the_first_destination_cannot_walk_off_the_front() {
+        let mut nav = Nav::default();
+        nav.step("home", -1);
+        assert_eq!(nav.visible(), Nav::default().visible());
+    }
+
+    #[test]
+    fn a_partial_order_still_moves_the_right_one() {
+        let mut nav = Nav {
+            order: vec!["home".into()],
+            hidden: Vec::new(),
+            ..Nav::default()
+        };
+        nav.step("radio", -1);
+        assert_eq!(
+            &nav.visible()[..4],
+            &["home", "library", "radio", "discover"]
+        );
+    }
+
+    #[test]
+    fn showing_and_hiding_a_name_is_idempotent() {
+        let mut home = Home::default();
+        home.show("top_artists", false);
+        home.show("top_artists", false);
+        assert_eq!(home.hidden, vec!["top_artists".to_string()]);
+        home.show("top_artists", true);
+        assert!(home.hidden.is_empty());
+    }
+
+    #[test]
+    fn moving_a_shelf_changes_what_the_page_draws() {
+        let mut home = Home::default();
+        home.step("recently_added", -1);
+        assert_eq!(&home.visible()[..2], &["recently_added", "jump_back_in"]);
     }
 
     #[test]

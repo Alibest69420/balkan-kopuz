@@ -290,10 +290,8 @@ impl ThemeEditor {
             .clone()
             .unwrap_or_else(|| theme_id(&name, &config.read(cx).config().custom_themes));
         let saved = id.clone();
-        config.update(cx, |model, cx| {
-            model.update(cx, |cfg| {
-                cfg.custom_themes.insert(saved, CustomTheme { name, vars });
-            })
+        ConfigModel::edit(cx, |cfg| {
+            cfg.custom_themes.insert(saved, CustomTheme { name, vars });
         });
         self.load(Some(id), window, cx);
     }
@@ -312,19 +310,16 @@ impl ThemeEditor {
             .unwrap_or_else(|| SharedString::from(id.clone()))
     }
 
-    /// Only ever reached from the confirmation: this drops the theme and, if it was the one in
-    /// use, puts the app back on the default.
+    /// Reached only from the confirmation; deleting the theme in use puts the app back on the default.
     fn delete_confirmed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(id) = self.selected.clone() else {
             return;
         };
-        ConfigModel::global(cx).update(cx, |model, cx| {
-            model.update(cx, |cfg| {
-                cfg.custom_themes.remove(&id);
-                if cfg.theme == id {
-                    cfg.theme = "default".to_string();
-                }
-            })
+        ConfigModel::edit(cx, |cfg| {
+            cfg.custom_themes.remove(&id);
+            if cfg.theme == id {
+                cfg.theme = "default".to_string();
+            }
         });
         self.load(None, window, cx);
     }

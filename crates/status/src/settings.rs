@@ -2,7 +2,7 @@
 
 use api::JobKind;
 use components::format::t;
-use components::settings::{SettingRow, Toggle, section};
+use components::settings::{section, toggle_row};
 use gpui_kit::component::v_flex;
 use gpui_kit::{
     App, AppContext as _, Context, IntoElement, ParentElement as _, Render, Styled, Window,
@@ -49,19 +49,18 @@ impl Render for NotificationSettings {
             .map(|kind| {
                 let key = store::kind_key(*kind);
                 let on = notifications.toasts(key);
-                SettingRow::new(store::kind_label(*kind))
-                    .description(t("interface_notifications_job_description"))
-                    .control(
-                        Toggle::new(format!("notifications-job-{key}"))
-                            .enabled(on)
-                            .on_change(move |on, _, cx| {
-                                let on = *on;
-                                LayoutModel::edit(cx, move |layout| {
-                                    layout.notifications.jobs.insert(key.to_string(), on);
-                                });
-                            }),
-                    )
-                    .shown(cx)
+                toggle_row(
+                    format!("notifications-job-{key}"),
+                    store::kind_label(*kind),
+                    on,
+                    move |on, cx| {
+                        LayoutModel::edit(cx, move |layout| {
+                            layout.notifications.jobs.insert(key.to_string(), on);
+                        });
+                    },
+                )
+                .description(t("interface_notifications_job_description"))
+                .shown(cx)
             })
             .collect();
         v_flex()
@@ -69,19 +68,16 @@ impl Render for NotificationSettings {
             .child(
                 section(t("interface_notifications"))
                     .children(
-                        SettingRow::new(t("interface_notifications_errors"))
-                            .description(t("interface_notifications_errors_description"))
-                            .control(
-                                Toggle::new("notifications-errors")
-                                    .enabled(notifications.errors)
-                                    .on_change(|on, _, cx| {
-                                        let on = *on;
-                                        LayoutModel::edit(cx, move |layout| {
-                                            layout.notifications.errors = on
-                                        });
-                                    }),
-                            )
-                            .shown(cx),
+                        toggle_row(
+                            "notifications-errors",
+                            t("interface_notifications_errors"),
+                            notifications.errors,
+                            |on, cx| {
+                                LayoutModel::edit(cx, |layout| layout.notifications.errors = on)
+                            },
+                        )
+                        .description(t("interface_notifications_errors_description"))
+                        .shown(cx),
                     )
                     .children(jobs.into_iter().flatten()),
             )

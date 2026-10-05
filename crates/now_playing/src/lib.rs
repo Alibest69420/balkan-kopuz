@@ -222,11 +222,7 @@ impl NowPlaying {
 
 /// A slider over the 0..1 fraction of something, since a `SliderState`'s range is fixed at build time.
 fn fraction_state(step: f32, start: f32) -> SliderState {
-    SliderState::new()
-        .min(0.)
-        .max(1.)
-        .step(step)
-        .default_value(start)
+    components::settings::slider_state(0., 1., step, start)
 }
 
 fn played_fraction(player: &PlayerModel) -> f32 {

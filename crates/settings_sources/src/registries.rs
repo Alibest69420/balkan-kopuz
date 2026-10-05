@@ -20,9 +20,7 @@ use crate::ui;
 
 /// Change the stored registries; the config model debounces the write.
 fn edit_registries(cx: &mut App, edit: impl FnOnce(&mut Vec<RegistryEntry>)) {
-    ConfigModel::global(cx).update(cx, |model, cx| {
-        model.update(cx, |config| edit(&mut config.radio_registries));
-    });
+    ConfigModel::edit(cx, |config| edit(&mut config.radio_registries));
 }
 
 pub struct RadioRegistries {
