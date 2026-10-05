@@ -1,5 +1,7 @@
 //! The header controls the two artist pages share: view mode, stacked sort, and Tracks⇄Albums.
 
+use components::format::t;
+use components::{icons, motion, style};
 use config::{
     AlbumSortField, AlbumViewMode, AppConfig, ArtistSortField, ArtistViewOrder, SortCriterion,
     SortDirection,
@@ -11,8 +13,6 @@ use gpui_kit::{
     App, Div, Hsla, IntoElement, ParentElement as _, SharedString, Styled as _, Window,
 };
 use store::ConfigModel;
-use widgets::format::t;
-use widgets::{icons, motion, style};
 
 /// `text-white/40`: the resting label of a segmented pill's unselected half.
 const SEGMENT_IDLE: f32 = 0.40;
@@ -156,7 +156,7 @@ fn segment(
         window,
         cx,
     );
-    widgets::hover::framed(
+    components::hover::framed(
         id,
         hover,
         finish(tweened(

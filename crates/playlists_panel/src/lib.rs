@@ -3,6 +3,9 @@
 mod order;
 mod settings;
 
+use components::focus::{Axis, Roving, Step};
+use components::format::t;
+use components::{EmptyState, TrackDrag, icons, menus, motion, style};
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::ContextMenuExt as _;
@@ -15,9 +18,6 @@ use gpui_kit::{
     UniformListScrollHandle, Window, div, px, uniform_list,
 };
 use store::{LayoutModel, Navigator, PlaylistsModel, Route, Target};
-use widgets::focus::{Axis, Roving, Step};
-use widgets::format::t;
-use widgets::{EmptyState, TrackDrag, icons, menus, motion, style};
 
 use order::Entry;
 
@@ -330,7 +330,7 @@ impl PlaylistsPanel {
                     .child(row.detail.clone()),
             )
             .when(focused, |element| {
-                element.child(widgets::focus::ring(style::radius_lg(), cx))
+                element.child(components::focus::ring(style::radius_lg(), cx))
             })
             .child(self.slot(index, 0., cx))
             .child(self.slot(index + 1, 0.5, cx))
@@ -434,7 +434,7 @@ impl PlaylistsPanel {
 impl Render for PlaylistsPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("playlists-panel");
-        widgets::scroll::smooth_list("playlists-panel-scroll", &self.scroll, window, cx);
+        components::scroll::smooth_list("playlists-panel-scroll", &self.scroll, window, cx);
         let count = self.rows.len();
         let body = match count {
             0 => div()

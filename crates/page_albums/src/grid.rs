@@ -3,6 +3,8 @@
 use std::collections::HashSet;
 
 use api::{AlbumInfo, AlbumPage, JobKind, Table};
+use components::format::t;
+use components::{Frame, Loading, PageHeader, album_row, album_tile, icons, motion, style};
 use config::{AlbumSortField, AlbumViewMode, SortCriterion, SortDirection};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
@@ -14,8 +16,6 @@ use gpui_kit::{
     Subscription, UniformListScrollHandle, Window, div, px, uniform_list,
 };
 use store::{ConfigModel, JobsModel, Query, SourcesModel};
-use widgets::format::t;
-use widgets::{Frame, Loading, PageHeader, album_row, album_tile, icons, motion, style};
 
 use crate::clear_variant;
 use crate::sort;
@@ -310,7 +310,7 @@ impl Render for Albums {
         let _timing = profile::render("albums");
         let settled = self.albums.read(cx).is_settled();
         let grid = view_mode(cx) == AlbumViewMode::Grid;
-        widgets::scroll::smooth_list("albums-scroll", &self.scroll, window, cx);
+        components::scroll::smooth_list("albums-scroll", &self.scroll, window, cx);
         let empty = self.visible.is_empty();
         // A tile row is the virtualized unit, so the grid builds a screenful instead of the library.
         let columns = match grid {

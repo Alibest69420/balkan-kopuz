@@ -1,5 +1,7 @@
 //! The daemon is not there: said in a strip across the chrome, with the page still behind it.
 
+use components::format::{t, t_with};
+use components::{icons, style};
 use gpui_kit::component::{ActiveTheme as _, h_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -7,8 +9,6 @@ use gpui_kit::{
     SharedString, StatefulInteractiveElement as _, Styled, Subscription, Window, div, px,
 };
 use link::ConnectionStatus;
-use widgets::format::{t, t_with};
-use widgets::{icons, style};
 
 use crate::chip;
 

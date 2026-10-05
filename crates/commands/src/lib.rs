@@ -83,7 +83,7 @@ impl Command {
         let title = self.label(&target, cx);
         let description = target.label();
         let run = self.run;
-        widgets::dialogs::confirm_delete(
+        components::dialogs::confirm_delete(
             title,
             description,
             move |window, cx| run(target.clone(), window, cx),
@@ -95,7 +95,7 @@ impl Command {
 
 /// Build the registry's menu hook; call once at startup, after `store::init`.
 pub fn init(cx: &mut App) {
-    widgets::menus::register(|target, menu, _window, cx| build_menu(target, menu, cx), cx);
+    components::menus::register(|target, menu, _window, cx| build_menu(target, menu, cx), cx);
     keys::register_handlers(cx);
 }
 
@@ -134,14 +134,14 @@ fn item(command: &'static Command, target: &Target, cx: &App) -> PopupMenuItem {
                 .gap_2()
                 .items_center()
                 .text_color(cx.theme().danger)
-                .children(icon.map(widgets::icons::icon))
+                .children(icon.map(components::icons::icon))
                 .child(label.clone())
                 .into_any_element()
         })
     } else {
         let entry = PopupMenuItem::new(label);
         match icon {
-            Some(icon) => entry.icon(widgets::icons::icon(icon)),
+            Some(icon) => entry.icon(components::icons::icon(icon)),
             None => entry,
         }
     };

@@ -1,6 +1,8 @@
 //! Shuffle · previous · play · next · repeat, plus the overflow the timer and the speed will land in.
 
 use api::LoopMode;
+use components::format::t;
+use components::{focus, icons, motion, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex};
@@ -10,8 +12,6 @@ use gpui_kit::{
     px, relative,
 };
 use store::PlayerModel;
-use widgets::format::t;
-use widgets::{focus, icons, motion, style};
 
 // Lucide names the shared icon set has no constant for yet.
 const TIMER: &str = "icons/timer.svg";

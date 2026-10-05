@@ -1,5 +1,8 @@
 //! The equalizer panel: enable, preset, preamp and the ten bands, heard live through `preview_equalizer`.
 
+use components::format::t;
+use components::settings::Toggle;
+use components::{motion, style};
 use config::{EqPreset, EqualizerSettings};
 use gpui_kit::component::button::Button;
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
@@ -11,9 +14,6 @@ use gpui_kit::{
 };
 use link::Link;
 use store::ConfigModel;
-use widgets::format::t;
-use widgets::settings::Toggle;
-use widgets::{motion, style};
 
 use crate::{set_slider, write_config};
 

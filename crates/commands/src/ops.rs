@@ -244,8 +244,8 @@ pub fn rename_playlist(target: &Target, window: &mut Window, cx: &mut App) {
     let Some(id) = playlist_id(target) else {
         return;
     };
-    widgets::dialogs::open_rename(
-        widgets::format::t("rename_playlist"),
+    components::dialogs::open_rename(
+        components::format::t("rename_playlist"),
         target.label(),
         move |name, cx| {
             let id = id.clone();
@@ -261,8 +261,8 @@ pub fn rename_playlist(target: &Target, window: &mut Window, cx: &mut App) {
 
 pub fn rename_folder(target: &Target, window: &mut Window, cx: &mut App) {
     let Some(id) = folder_id(target) else { return };
-    widgets::dialogs::open_rename(
-        widgets::format::t("rename_folder"),
+    components::dialogs::open_rename(
+        components::format::t("rename_folder"),
         target.label(),
         move |name, cx| {
             let id = id.clone();
@@ -325,7 +325,7 @@ fn title_key(title: &str) -> String {
 }
 
 pub fn delete_tracks(target: &Target, cx: &mut App) {
-    let Some(scope) = widgets::track_list::row_scope(cx) else {
+    let Some(scope) = components::track_list::row_scope(cx) else {
         tracing::warn!("nothing to delete: the menu did not come from a track row");
         return;
     };

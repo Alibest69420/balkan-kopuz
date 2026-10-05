@@ -1,5 +1,7 @@
 //! Settings → Interface: what the palette remembers and what it puts first.
 
+use components::format::t;
+use components::settings::{SettingRow, Toggle, choice, section};
 use gpui_kit::component::v_flex;
 use gpui_kit::{
     App, AppContext as _, Context, IntoElement, ParentElement as _, Render, SharedString, Styled,
@@ -7,8 +9,6 @@ use gpui_kit::{
 };
 use store::LayoutModel;
 use store::layout::Section as Group;
-use widgets::format::t;
-use widgets::settings::{SettingRow, Toggle, choice, section};
 
 /// How many recents the list may hold, as the setting offers them.
 const KEEP: &[usize] = &[3, 5, 10, 20];
@@ -86,5 +86,5 @@ impl Render for Prefs {
 }
 
 fn count(kept: usize) -> SharedString {
-    widgets::format::t_with("palette_recents_count", &[("count", kept.to_string())])
+    components::format::t_with("palette_recents_count", &[("count", kept.to_string())])
 }

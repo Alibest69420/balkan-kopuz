@@ -1,6 +1,8 @@
 //! The playlists page: folders and playlists, or the flat remote layout.
 
 use api::{AlbumPresentation, JobKind, PlaylistInfo, SourceCapabilities};
+use components::format::t;
+use components::{EmptyState, Loading, PageHeader, icons, motion, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
@@ -11,12 +13,10 @@ use gpui_kit::{
     Subscription, Window, div, px,
 };
 use store::{DownloadsModel, JobsModel, PlaylistsModel, SourcesModel, actions};
-use widgets::format::t;
-use widgets::{EmptyState, Loading, PageHeader, icons, motion, style};
 
 use crate::cards::{folder_card, playlist_card, tweened};
 use crate::dialogs;
-use widgets::{Tile, tile_grid as card_grid};
+use components::{Tile, tile_grid as card_grid};
 
 pub struct Playlists {
     requested_sync: bool,
@@ -260,7 +260,7 @@ impl Playlists {
             .subtitle(format!(
                 "{} • {}",
                 t("server_playlist"),
-                widgets::format::t_with(
+                components::format::t_with(
                     "playlist_track_count",
                     &[("count", playlist.track_keys.len().to_string())],
                 )

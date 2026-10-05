@@ -1,5 +1,7 @@
 //! Radio registries: the station lists the radio page reads, enabled one by one.
 
+use components::format::{t, t_with};
+use components::{icons, style};
 use config::RegistryEntry;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -13,8 +15,6 @@ use gpui_kit::{
 };
 use link::Link;
 use store::ConfigModel;
-use widgets::format::{t, t_with};
-use widgets::{icons, style};
 
 use crate::ui;
 

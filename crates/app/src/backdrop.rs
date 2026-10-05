@@ -19,12 +19,12 @@ pub(crate) fn layer(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
     };
     if !custom.is_empty() {
         let source: ImageSource = PathBuf::from(custom).into();
-        return Some(widgets::backdrop::wallpaper(source, darkening, blur, cx));
+        return Some(components::backdrop::wallpaper(source, darkening, blur, cx));
     }
     if cover {
         let artwork = PlayerModel::global(cx).read(cx).track()?.artwork.clone()?;
         let source = store::artwork_source(&artwork, true);
-        return Some(widgets::backdrop::wallpaper(source, darkening, blur, cx));
+        return Some(components::backdrop::wallpaper(source, darkening, blur, cx));
     }
-    widgets::backdrop::ambient(window, cx)
+    components::backdrop::ambient(window, cx)
 }

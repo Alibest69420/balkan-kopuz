@@ -4,6 +4,8 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 use api::{QueueContext, RadioStationInfo, Table};
+use components::format::t;
+use components::{Cover, EmptyState, icons, motion, style};
 use gpui_kit::component::button::{
     Button, ButtonCustomVariant, ButtonRounded, ButtonVariants as _,
 };
@@ -19,8 +21,6 @@ use gpui_kit::{
 };
 use link::Link;
 use store::{Notices, Query, actions};
-use widgets::format::t;
-use widgets::{Cover, EmptyState, icons, motion, style};
 
 // Typing settles before the directory is searched; the Dioxus page used the same delay.
 const DEBOUNCE: Duration = Duration::from_millis(300);

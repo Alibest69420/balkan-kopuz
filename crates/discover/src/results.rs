@@ -1,13 +1,13 @@
 //! What a query turned up: the strips of albums and artists over the list of matching tracks.
 
 use api::{AlbumInfo, TrackInfo};
+use components::{Tile, icons};
 use gpui_kit::component::h_flex;
 use gpui_kit::{
     AnyElement, App, InteractiveElement as _, IntoElement, ParentElement as _, Pixels,
     SharedString, StatefulInteractiveElement as _, Styled, px,
 };
 use store::{Playing, Route, Target};
-use widgets::{Tile, icons};
 
 const ALBUM_TILE: Pixels = px(128.);
 // An artist strip has no artwork to show off, so its tiles only have to be legible.

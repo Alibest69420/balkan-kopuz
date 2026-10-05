@@ -1,13 +1,13 @@
 //! What the page shows instead of rows, and the one button that gets you out of it.
 
 use api::ApiError;
+use components::format::t;
+use components::{icons, motion, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Icon, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{App, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div, px};
 use store::{Navigator, Route, SourcesModel};
-use widgets::format::t;
-use widgets::{icons, motion, style};
 
 /// The shared icon set has no sign-in glyph, which is the one an anonymous source wants.
 pub const SIGN_IN: &str = "icons/log-in.svg";

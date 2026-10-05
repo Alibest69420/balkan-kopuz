@@ -1,11 +1,11 @@
 //! The link could not be set up at all: a window that says why, rather than no window at all.
 
+use components::format::t;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::{
     Context, IntoElement, ParentElement as _, Pixels, Render, SharedString, Styled, Window, div, px,
 };
-use widgets::format::t;
 
 /// The reason reads as a paragraph, not as one long line across the window.
 const REASON_WIDTH: Pixels = px(420.);

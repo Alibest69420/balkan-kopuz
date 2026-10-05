@@ -2,8 +2,8 @@
 
 use std::sync::{Arc, OnceLock};
 
+use components::format::duration;
 use gpui_kit::{FontFeatures, Rems, SharedString, rems};
-use widgets::format::duration;
 
 const HOUR_MS: u64 = 3_600_000;
 // `4:33` and `1:04:33` at the sizes the clocks are drawn.

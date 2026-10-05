@@ -1,4 +1,4 @@
-//! What a command acts on. Pure data, so it sits below both `commands` and `widgets`.
+//! What a command acts on. Pure data, so it sits below both `commands` and `components`.
 
 use gpui_kit::SharedString;
 

@@ -1,5 +1,8 @@
 //! Settings → Interface → Home: which shelves the page draws, and in what order.
 
+use components::format::t;
+use components::settings::{SettingRow, Toggle, section};
+use components::{icons, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::{
@@ -8,9 +11,6 @@ use gpui_kit::{
 };
 use store::LayoutModel;
 use store::layout::{SHELVES, Section as Group};
-use widgets::format::t;
-use widgets::settings::{SettingRow, Toggle, section};
-use widgets::{icons, style};
 
 /// Registered by the app at startup, beside the other Interface sections.
 pub fn register(cx: &mut App) {

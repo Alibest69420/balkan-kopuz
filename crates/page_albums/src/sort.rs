@@ -3,9 +3,9 @@
 use std::cmp::Ordering;
 
 use api::AlbumInfo;
+use components::format::t;
 use config::{AlbumSortField, SortCriterion, SortDirection};
 use gpui_kit::SharedString;
-use widgets::format::t;
 
 /// The fields worth offering: one nothing carries a value for would sort the list into the order it had.
 pub fn available_fields(albums: &[AlbumInfo]) -> Vec<AlbumSortField> {

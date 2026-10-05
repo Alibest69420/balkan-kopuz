@@ -1,4 +1,4 @@
-use widgets::icons;
+use components::icons;
 
 /// The glyph a destination wears in the bar.
 pub(crate) fn icon(name: &str) -> &'static str {

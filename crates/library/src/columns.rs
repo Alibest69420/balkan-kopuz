@@ -1,7 +1,7 @@
 //! The tracks table's saved layout: which columns are shown, how wide, and in what order.
 
+use components::columns::{SPECS, spec};
 use store::layout::Column;
-use widgets::columns::{SPECS, spec};
 
 /// The columns that are drawn when nobody has changed anything.
 pub const SHIPPED: &[&str] = &["title", "artist", "album", "duration"];
@@ -63,7 +63,7 @@ pub const MAX_WIDTH: f32 = 600.;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use widgets::columns::visible;
+    use components::columns::visible;
 
     #[test]
     fn an_empty_layout_ships_the_designed_columns() {

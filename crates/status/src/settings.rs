@@ -1,14 +1,14 @@
 //! Settings → Interface → Notifications: what interrupts, and what only lands behind the bell.
 
 use api::JobKind;
+use components::format::t;
+use components::settings::{SettingRow, Toggle, section};
 use gpui_kit::component::v_flex;
 use gpui_kit::{
     App, AppContext as _, Context, IntoElement, ParentElement as _, Render, Styled, Window,
 };
 use store::LayoutModel;
 use store::layout::Section as Group;
-use widgets::format::t;
-use widgets::settings::{SettingRow, Toggle, section};
 
 /// The kinds a person can silence one at a time.
 const KINDS: &[JobKind] = &[

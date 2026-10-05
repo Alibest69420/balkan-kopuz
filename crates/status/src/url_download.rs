@@ -2,6 +2,8 @@
 
 use api::ApiEvent;
 use api::schema::{ChoiceOption, FieldValue};
+use components::format::{t, text};
+use components::{FieldChanged, SchemaForm, focus, icons, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{
@@ -14,15 +16,13 @@ use gpui_kit::{
     Subscription, Task, Window, div, px,
 };
 use store::{Link, Notices, Query};
-use widgets::format::{t, text};
-use widgets::{FieldChanged, SchemaForm, focus, icons, style};
 
 const DIALOG_WIDTH: Pixels = px(460.);
 const OPTIONS_HEIGHT: Pixels = px(240.);
 
 /// Wire the box the popover's chip and `downloads.add_url` both open.
 pub fn register(cx: &mut App) {
-    widgets::dialogs::register_url_download(open, cx);
+    components::dialogs::register_url_download(open, cx);
 }
 
 pub(crate) fn open(window: &mut Window, cx: &mut App) {

@@ -3,10 +3,10 @@
 use std::collections::{HashMap, HashSet};
 
 use api::{AlbumInfo, AlbumPage, ArtistPage, ArtworkRef, PlaylistInfo, TrackInfo, TrackPage};
+use components::format::t_with;
+use components::icons;
 use gpui_kit::SharedString;
 use store::{Route, Target};
-use widgets::format::t_with;
-use widgets::icons;
 
 /// Recently Added shows a shelf, but untitled and same-titled albums drop out afterwards.
 pub(crate) const RECENTLY_ADDED_WINDOW: u32 = 64;

@@ -1,14 +1,14 @@
 //! What a view draws instead of content: a read that failed, said plainly, with the button that runs it again.
 
 use api::{ApiError, ErrorCode};
+use components::format::{t, t_with};
+use components::{icons, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
 use gpui_kit::{
     AnyElement, App, ClickEvent, IntoElement, ParentElement as _, SharedString, Styled, Window,
     div, px,
 };
-use widgets::format::{t, t_with};
-use widgets::{icons, style};
 
 /// What a catalog failure says; a source nobody signed into is the one case worth wording ourselves.
 pub fn catalog_failure(error: &ApiError) -> SharedString {

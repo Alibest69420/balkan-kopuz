@@ -1,13 +1,13 @@
 //! Settings → Interface: what the bar keeps in reach, and how the sheet is dressed.
 
+use components::format::t;
+use components::settings::{SettingRow, Toggle, choice, section};
 use gpui_kit::component::v_flex;
 use gpui_kit::{
     App, AppContext as _, Context, IntoElement, ParentElement as _, Render, Styled, Window,
 };
 use store::LayoutModel;
 use store::layout::{Backdrop, Section as Group, SheetTab, Side, TileSize};
-use widgets::format::t;
-use widgets::settings::{SettingRow, Toggle, choice, section};
 
 /// Contribute both sections; call once at startup, after `settings_interface::init`.
 pub fn register(cx: &mut App) {

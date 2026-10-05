@@ -3,6 +3,11 @@
 use std::collections::HashSet;
 
 use api::{CatalogDetailRequest, CatalogItem, CatalogItemKind, CatalogShelf};
+use components::format::t;
+use components::{
+    PlayState, Tile, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons, motion,
+    style,
+};
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -12,11 +17,6 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled, Subscription, Task, Window, div, point, px,
 };
 use store::{Link, Navigator, Notices, PlayerModel, Route, SourcesModel, Target, actions};
-use widgets::format::t;
-use widgets::{
-    PlayState, Tile, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons, motion,
-    style,
-};
 
 use crate::states::catalog_failure;
 
@@ -290,7 +290,7 @@ impl Shelves {
                         move |_, event: &ScrollWheelEvent, window, cx| {
                             let delta = event.delta.pixel_delta(window.line_height());
                             if event.modifiers.shift && delta.y != px(0.) {
-                                widgets::scroll::nudge_x(&scroll, -delta.y);
+                                components::scroll::nudge_x(&scroll, -delta.y);
                                 cx.stop_propagation();
                             }
                         }

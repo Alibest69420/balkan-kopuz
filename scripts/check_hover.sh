@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # An element carries one hover listener, and gpui-component spends a Button's on
 # its tooltip. A second is a debug panic and a dropped listener in release, so a
-# Button may not carry both: wrap it with `widgets::hover::framed` instead.
+# Button may not carry both: wrap it with `components::hover::framed` instead.
 #
 # Flags a Button chain holding `.tooltip(` with a string and `.on_hover(`, which
 # is the shape that crashed the artist header and the playlist cards. A tooltip
@@ -41,5 +41,5 @@ if [ -z "$found" ]; then
 fi
 
 echo "$found" >&2
-echo "Wrap the button in widgets::hover::framed and hover the frame instead." >&2
+echo "Wrap the button in components::hover::framed and hover the frame instead." >&2
 exit 1

@@ -1,5 +1,8 @@
 //! Settings: the category rail and the panel it shows; each category lives in its own crate.
 
+use components::focus::{Axis, Roving, Step};
+use components::format::{t, t_with};
+use components::{EmptyState, PageHeader, icons, marker, motion, style};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -13,9 +16,6 @@ use settings_interface::InterfaceSettings;
 use settings_playback::PlaybackSettings;
 use settings_sources::SourceSettings;
 use store::ConfigModel;
-use widgets::focus::{Axis, Roving, Step};
-use widgets::format::{t, t_with};
-use widgets::{EmptyState, PageHeader, icons, marker, motion, style};
 
 /// `border-white/9` under the fan, over `bg-black/92`.
 const FAN_BORDER: f32 = 0.09;
@@ -136,7 +136,7 @@ impl Settings {
             .unwrap_or(Category::General);
         let search = cx.new(|cx| InputState::new(window, cx).placeholder(t("settings_search")));
         // The box is new, so whatever a previous visit was filtering by is not.
-        widgets::settings::set_query("", cx);
+        components::settings::set_query("", cx);
         let subscriptions = vec![
             cx.subscribe(&search, |this, state, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
@@ -174,8 +174,8 @@ impl Settings {
 
     /// Filtering spans every category, so the panels stop showing one section each while it lasts.
     fn filter(&mut self, typed: &str, cx: &mut Context<Self>) {
-        widgets::settings::set_query(typed, cx);
-        let searching = widgets::settings::query(cx).is_some();
+        components::settings::set_query(typed, cx);
+        let searching = components::settings::query(cx).is_some();
         if searching == self.searching {
             cx.notify();
             return;
@@ -217,7 +217,7 @@ impl Settings {
             self.search
                 .update(cx, |state, cx| state.set_value("", window, cx));
             self.searching = false;
-            widgets::settings::set_query("", cx);
+            components::settings::set_query("", cx);
         }
         self.select(category, cx);
     }
@@ -305,7 +305,7 @@ impl Settings {
             .restrict_scroll_to_axis()
             .border_b_1()
             .border_color(style::white(FAN_BORDER, cx))
-            .bg(widgets::settings::panel_background(FAN_BG, cx))
+            .bg(components::settings::panel_background(FAN_BG, cx))
             .child(
                 v_flex()
                     .flex_none()
@@ -350,7 +350,7 @@ impl Settings {
                                     this.choose(category, window, cx);
                                 }))
                                 .when(ringed, |item| {
-                                    item.child(widgets::focus::ring(style::radius_md(), cx))
+                                    item.child(components::focus::ring(style::radius_md(), cx))
                                 })
                         },
                     )))
@@ -437,11 +437,11 @@ impl Settings {
 
 impl Render for Settings {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        widgets::scroll::smooth("settings-panel", &self.scroll, window, cx);
+        components::scroll::smooth("settings-panel", &self.scroll, window, cx);
         let config = ConfigModel::global(cx);
         let loaded = config.read(cx).is_loaded();
         let locked = !config.read(cx).locked_keys().is_empty();
-        let empty = self.searching && widgets::settings::nothing_matched(cx);
+        let empty = self.searching && components::settings::nothing_matched(cx);
         let typed = SharedString::from(self.search.read(cx).value().to_string());
         // The page root is the scroller: a nested `flex_1 min_h_0` child measured no height here.
         v_flex()

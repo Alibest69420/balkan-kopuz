@@ -13,7 +13,7 @@ From page_library (a519fcea):
       the queue IS this listing; today it always highlights by key.
 - [ ] `store::actions`: `delete_tracks(keys, from_disk, cx)` helper; albums,
       playlists and favorites all want it.
-- [ ] `widgets`: shared `SelectionBar` (§5.6 — every list page has the same one).
+- [ ] `components`: shared `SelectionBar` (§5.6 — every list page has the same one).
       page_library has a local one to lift.
 - [ ] `en.ftl`: no key for "{n} selected" (hardcoded English in Dioxus too).
 
@@ -35,7 +35,7 @@ From page_downloader (af13edfe) — first SchemaForm consumer:
       inside a collapsible panel loses an edit if hidden while focused.
 - [ ] `EmptyState` is `size_full`, so it overflows siblings inside a v_flex page
       unless wrapped in `flex_1().min_h_0()`. Add a flex-friendly variant.
-- [ ] `widgets::icons`: no "sliders"/options or "gears"/processing glyph.
+- [ ] `components::icons`: no "sliders"/options or "gears"/processing glyph.
 
 From page_activity + page_radio (ac29020c):
 - [ ] `TrackList`: extra trailing columns (`Vec<(header, per-row element)>`) so a
@@ -79,7 +79,7 @@ From page_discover (a1c78fcb):
 - [ ] `PageHeader::back` takes a fixed Route; detail pages want
       `Navigator::go_back`. Add a back_button() variant.
 - [ ] Lift the horizontal carousel (scroll handle + arrows + clamping) into
-      `widgets::cards`; Home wants it too.
+      `components::cards`; Home wants it too.
 - [ ] `Tile`: add `on_click` — song cards need a command, not a route.
 - [ ] `TrackList` is size_full+uniform_list, so embedding in a scrolling page
       needs a reserved height; expose ROW_HEIGHT or add an intrinsic-height mode.
@@ -102,7 +102,7 @@ From settings_appearance + palettes (a3e9425b):
       building a Palette from `cfg.custom_themes[id].vars` (same 13 keys, infer
       `dark` from bg lightness). Same gap blocks the `album-art` and `live`
       pseudo-themes. theme/src/lib.rs is mine — PRIORITISE.
-- [ ] `widgets`: a settings-row vocabulary (row/toggle/choice/slider/path + the
+- [ ] `components`: a settings-row vocabulary (row/toggle/choice/slider/path + the
       locked hint). Three settings crates each built their own.
 - [ ] `Button::disabled` does NOT disable `dropdown_menu` (the popover ignores the
       trigger's disabled flag), so a locked choice row still opens. Needs a shared
@@ -122,10 +122,10 @@ From page_favorites (a449e9a4) — mostly CONFIRMING earlier requests:
 - [ ] `TrackList` never installs a drag source, so `TrackDrag` is a type nothing
       emits — queue drop (§3.7) cannot work until it does.
 - [ ] `PageHeader`: no icon slot (favorites heart dropped).
-- [ ] `widgets::icons`: no sign-in glyph; set is curated so pages use raw paths.
+- [ ] `components::icons`: no sign-in glyph; set is curated so pages use raw paths.
 
 RECURRING (implement first, in this order):
- 1. SelectionBar in widgets
+ 1. SelectionBar in components
  2. Sortable header + column geometry exposed by TrackList
  3. Scroll persistence store (per route)
  4. TrackList drag source + windowed mode
@@ -148,7 +148,7 @@ From settings_playback (a82359b1):
 - NOTE: equalizer is sliders, not the drag-able curve graph (§4.7). Accepted.
 
 From page_artists (ae99b324) — 4th/5th independent request for the same items:
-- ViewModeToggle + SortControl + SelectionBar in widgets (4 crates will dup).
+- ViewModeToggle + SortControl + SelectionBar in components (4 crates will dup).
   `page_artists::controls::SortTarget` trait generalizes cleanly — lift it.
 - PageHeader back-in-history variant (3rd request).
 - [ ] `TrackListEvent::Play(index)` should carry the keys (or key) — every page
@@ -192,7 +192,7 @@ From fullscreen (af979caf):
       implementation parameterised by layout once both have landed.
 
 From page_albums (a7e130dc):
-- CONFIRMS: widgets/track_list.rs + store::actions call keys that are missing at
+- CONFIRMS: components/track_list.rs + store::actions call keys that are missing at
   BUILD time because the fork pins kopuz at 6fe8a59a while the i18n agent added
   them to the working tree. Enable .cargo/config.toml (path patch) at integration
   and verify t() resolves; otherwise raw key names render in every row menu.
@@ -232,7 +232,7 @@ From sidebar (a06906296):
       `validate_source` independently. PRIORITISE.
 - [ ] No shared `api::Icon` -> element helper (Svg wrapping + FontAwesome
       fallback table). sidebar and settings_sources both need it; belongs in
-      widgets next to `icons`.
+      components next to `icons`.
 - [ ] `ConfigModel::is_locked` key spelling is undocumented, so sidebar left the
       reorder arrows always enabled. Document it or expose typed accessors.
 - FIXED A DIOXUS BUG: sidebar_order swap was by display index, which breaks when
@@ -243,7 +243,7 @@ From quick_search + metadata_dialog (af54a6cb):
       overlay must save/restore focus or the Shell key context leaves the
       dispatch path and Space/Ctrl+K/Escape go dead app-wide. Lift the dance out
       of quick_search before the next overlay copies it.
-- [ ] `widgets::dialogs::Dialogs` is a single-field global set with set_global —
+- [ ] `components::dialogs::Dialogs` is a single-field global set with set_global —
       a second registrar silently CLOBBERS the metadata opener. Make it a map.
 - [ ] No shared label/value detail-row widget (album/artist headers want it).
 - [ ] `theme::overlay` maps to accent_deep, which is opaque, so every scrim calls
@@ -252,7 +252,7 @@ From quick_search + metadata_dialog (af54a6cb):
   Input context and bindings beat key-down listeners (same root cause as space).
 
 From page_playlists (ab9e5d8a):
-- [ ] **`TrackActions::reorder` is a DEAD FLAG** in widgets/track_list.rs: the
+- [ ] **`TrackActions::reorder` is a DEAD FLAG** in components/track_list.rs: the
       event exists, the page handles it, but the row never renders the up/down
       controls. Render them (or expose a per-row trailing slot). MY BUG.
 - [ ] `Tile::on_click` covers the whole tile, so anything in `.overlay()` (dots
@@ -266,9 +266,9 @@ From page_playlists (ab9e5d8a):
 From page_home (ac7feb70):
 - [ ] `Tile` overlay is always visible and declares no hover group → every card
       page wraps it by hand. Add `Tile::hover_overlay(..)`. (4th Tile complaint.)
-- [ ] Lift `AlbumPlayButton` into widgets — §2.1 says "everywhere".
-- [ ] Lift the horizontal scroller + row heading into widgets (discover too).
-- [ ] `widgets::track_list::row_menu` is private and row-shaped; expose a
+- [ ] Lift `AlbumPlayButton` into components — §2.1 says "everywhere".
+- [ ] Lift the horizontal scroller + row heading into components (discover too).
+- [ ] `components::track_list::row_menu` is private and row-shaped; expose a
       `track_menu(track, entries)` builder (Home song cards, Discover SongCard,
       fullscreen actions menu all duplicate it).
 - [ ] `store::actions::set_favorite_many(keys, on)` + aggregate failure toast.
@@ -291,14 +291,14 @@ OPEN QUESTIONS FOR THE USER:
   and is wrong during a crossfade. Daemon-side fix or a store resolver.
 
 MOTION PASS (after all motion agents land):
-- [ ] Widen `widgets::motion` to take `impl Into<TransitionId>` instead of
+- [ ] Widen `components::motion` to take `impl Into<TransitionId>` instead of
       `impl Into<ElementId>`. `TransitionId` already has
       `From<(I: Into<ElementId>, C: Into<SharedString>)>`, which is the
       "id + channel" shape every call site wants, and three crates have now
       hand-rolled the same `channel()` helper to work around the narrow bound.
       Deferred because it is a signature change and five agents were mid-flight.
 - [ ] Lift `motion::appear` (wrapping `base::motion::Presence`) and
-      `motion::reveal` (wrapping `MotionReveal`) into `widgets::motion`:
+      `motion::reveal` (wrapping `MotionReveal`) into `components::motion`:
       overlays, quick_search and metadata_dialog all reach past the facade into
       `gpui_kit::base::motion` for entrance fades and the collapse reveal.
 - [ ] A hover helper for view-less render paths (`RenderOnce`, `Popover::content`
@@ -306,7 +306,7 @@ MOTION PASS (after all motion agents land):
       `use_keyed_state` + a track() closure factory.
 - [ ] `motion::INSTANT` (Duration::ZERO) — load-bearing in the sidebar, where a
       drag must track the pointer exactly while the collapse snap tweens.
-- [ ] A tweenable slider fill: nothing in widgets can tween a Slider's bar, so
+- [ ] A tweenable slider fill: nothing in components can tween a Slider's bar, so
       the seek and volume fills sit outside the motion system.
 - [ ] **`motion::tweened(button, fill, text, edge, cx)`** — asked for by three
       agents independently, and each wrote a private copy. A Button's own hover

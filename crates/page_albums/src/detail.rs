@@ -4,6 +4,11 @@ use api::{
     AlbumInfo, AlbumPage, AlbumPresentation, ArtworkRef, CatalogDetail, CatalogDetailRequest,
     CatalogItemKind, PlaylistCapability, SourceCapabilities, Table, TrackInfo,
 };
+use components::format::{t, t_with};
+use components::{
+    Cover, DetailHeader, EmptyState, Loading, TrackActions, TrackList, TrackListEvent,
+    TrackListOptions, icons, motion, style,
+};
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -13,11 +18,6 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled, Subscription, Window, div, px,
 };
 use store::{DownloadsModel, Navigator, PlayerModel, Query, Route, SourcesModel, actions};
-use widgets::format::{t, t_with};
-use widgets::{
-    Cover, DetailHeader, EmptyState, Loading, TrackActions, TrackList, TrackListEvent,
-    TrackListOptions, icons, motion, style,
-};
 
 use crate::clear_variant;
 use crate::ops;
@@ -725,7 +725,7 @@ impl AlbumDetail {
                                         .on_click({
                                             let keys = keys.clone();
                                             move |_, window, cx| {
-                                                widgets::playlist_picker::open(
+                                                components::playlist_picker::open(
                                                     keys.clone(),
                                                     window,
                                                     cx,
@@ -1013,7 +1013,7 @@ impl AlbumDetail {
 
 impl Render for AlbumDetail {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        widgets::scroll::smooth("album-detail-scroll", &self.scroll, window, cx);
+        components::scroll::smooth("album-detail-scroll", &self.scroll, window, cx);
         let album = self.album.read(cx).value().cloned().flatten();
         let remote = self.remote.read(cx).value().cloned().flatten();
 

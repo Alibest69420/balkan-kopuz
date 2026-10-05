@@ -10,6 +10,8 @@ mod startup;
 mod toasts;
 mod url_download;
 
+use components::format::t;
+use components::{icons, style};
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::popover::Popover;
@@ -20,8 +22,6 @@ use gpui_kit::{
     div, px,
 };
 use store::{DownloadsModel, ItemState, JobsModel, Navigator, Notices};
-use widgets::format::t;
-use widgets::{icons, style};
 
 pub use banner::ConnectionBanner;
 pub use settings::register as register_settings;
@@ -29,7 +29,7 @@ pub use startup::StartupError;
 pub use toasts::Toasts;
 pub use url_download::register as register_url_download;
 
-/// Lucide names this crate needs that `widgets::icons` does not carry.
+/// Lucide names this crate needs that `components::icons` does not carry.
 pub const BELL: &str = "icons/bell.svg";
 pub const JOBS: &str = "icons/activity.svg";
 pub const DONE: &str = "icons/circle-check.svg";

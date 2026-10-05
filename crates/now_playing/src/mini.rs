@@ -1,5 +1,7 @@
 //! The mini surface: cover, title, transport and a hair of seek bar, in ~380×148.
 
+use components::format::t;
+use components::{Cover, icons, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::{
@@ -7,8 +9,6 @@ use gpui_kit::{
     Window, div, px,
 };
 use store::PlayerModel;
-use widgets::format::t;
-use widgets::{Cover, icons, style};
 
 use crate::NowPlaying;
 use crate::transport::Metrics;
@@ -45,7 +45,7 @@ impl NowPlaying {
         let shown_ms = self.shown_ms(position_ms, total_ms);
         let reading: SharedString = format!(
             "{} {}",
-            widgets::format::duration(shown_ms),
+            components::format::duration(shown_ms),
             clock::trailing(shown_ms, total_ms, true)
         )
         .into();

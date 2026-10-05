@@ -3,6 +3,8 @@
 use std::rc::Rc;
 
 use api::PlaylistCapability;
+use components::format::t;
+use components::{icons, motion, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::dialog::{DialogClose, DialogFooter};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
@@ -14,10 +16,8 @@ use gpui_kit::{
     Styled as _, Subscription, Window, div, px,
 };
 use store::{PlaylistsModel, SourcesModel, actions};
-use widgets::format::t;
-use widgets::{icons, motion, style};
 
-// hover state and its listener are shared; see widgets::motion and widgets::hover.
+// hover state and its listener are shared; see components::motion and components::hover.
 
 /// `.popup`'s `min-width: 400px`.
 const DIALOG_WIDTH: gpui_kit::Pixels = px(400.);
@@ -401,11 +401,11 @@ pub(crate) fn open_folder_picker(playlist_id: String, window: &mut Window, cx: &
 
 /// Hand the shared rows the two dialogs only this page knows how to open.
 pub fn register(cx: &mut App) {
-    widgets::dialogs::register_rename(
+    components::dialogs::register_rename(
         |title, value, save, window, cx| {
             open_rename(title, value, move |name, cx| save(name, cx), window, cx)
         },
         cx,
     );
-    widgets::dialogs::register_folder_picker(open_folder_picker, cx);
+    components::dialogs::register_folder_picker(open_folder_picker, cx);
 }

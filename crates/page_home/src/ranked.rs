@@ -1,9 +1,9 @@
 //! A ranking reads as a list, not a row of equals: it is numbered, and it says what it counted.
 
+use components::TileRow;
+use components::format::t;
 use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::{AnyElement, FontWeight, IntoElement, ParentElement as _, Styled, div};
-use widgets::TileRow;
-use widgets::format::t;
 
 use crate::data::Shelf;
 

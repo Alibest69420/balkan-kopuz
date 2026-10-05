@@ -3,6 +3,9 @@
 mod equalizer;
 
 use api::schema::FieldSpec;
+use components::format::{t, t_with};
+use components::settings::{SettingRow, Toggle, section};
+use components::{FieldChanged, SchemaForm, style};
 use config::{
     AppConfig, ChannelMode, DeviceChangeBehavior, LYRICS_OFFSET_LIMIT_MS, OfflineQuality,
     SampleRateMode,
@@ -19,9 +22,6 @@ use gpui_kit::{
 };
 use link::Link;
 use store::{ConfigModel, PlayerModel, Query};
-use widgets::format::{t, t_with};
-use widgets::settings::{SettingRow, Toggle, section};
-use widgets::{FieldChanged, SchemaForm, style};
 
 /// `text-white/80`, what a slider's value reads in.
 pub(crate) const READOUT: f32 = 0.80;
@@ -252,7 +252,7 @@ impl PlaybackSettings {
         };
 
         section(t("metadata"))
-            .children(widgets::settings::when_unfiltered(
+            .children(components::settings::when_unfiltered(
                 div().px_5().py_2p5().child(self.artwork.clone()),
                 cx,
             ))
@@ -444,7 +444,7 @@ impl PlaybackSettings {
                     )
                     .shown(cx),
             )
-            .children(widgets::settings::when_unfiltered(
+            .children(components::settings::when_unfiltered(
                 div()
                     .px_5()
                     .pb_3()

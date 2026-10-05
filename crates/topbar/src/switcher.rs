@@ -1,6 +1,8 @@
 use std::time::Duration;
 
 use api::{SourceInfo, SourceState};
+use components::format::{t, text};
+use components::{icons, style};
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
@@ -11,8 +13,6 @@ use gpui_kit::{
     Pixels, RenderOnce, Rgba, SharedString, Styled, Window, div, pulsating_between, px, svg,
 };
 use store::{Navigator, Route, SourcesModel};
-use widgets::format::{t, text};
-use widgets::{icons, style};
 
 const GLYPH: Pixels = px(16.);
 const DOT: Pixels = px(6.);

@@ -3,6 +3,11 @@
 use std::collections::HashMap;
 
 use api::{AlbumInfo, ArtworkRef, Table, TrackPage};
+use components::format::{t, t_with};
+use components::{
+    EmptyState, Loading, PageHeader, TrackActions, TrackList, TrackListEvent, TrackListOptions,
+    icons, motion, style,
+};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -13,11 +18,6 @@ use gpui_kit::{
     linear_color_stop, linear_gradient, px,
 };
 use store::{Navigator, PlayerModel, Query, Route, SourcesModel, actions, all};
-use widgets::format::{t, t_with};
-use widgets::{
-    EmptyState, Loading, PageHeader, TrackActions, TrackList, TrackListEvent, TrackListOptions,
-    icons, motion, style,
-};
 
 use crate::states;
 

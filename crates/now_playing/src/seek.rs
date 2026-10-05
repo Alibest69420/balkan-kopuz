@@ -1,5 +1,7 @@
 //! The seek bar: a hair-thin paint in a hit area you can actually hit, with the buffer under it.
 
+use components::format::duration;
+use components::{motion, style};
 use gpui_kit::base::slider::{Slider as BareSlider, SliderIndicator, SliderTrack};
 use gpui_kit::component::{ActiveTheme as _, h_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -9,8 +11,6 @@ use gpui_kit::{
     Styled, Window, div, px, relative,
 };
 use store::PlayerModel;
-use widgets::format::duration;
-use widgets::{motion, style};
 
 use crate::{NowPlaying, buffer, clock, played_fraction, track_duration_ms};
 

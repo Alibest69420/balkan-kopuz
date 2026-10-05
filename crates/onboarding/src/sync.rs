@@ -1,6 +1,8 @@
 //! Step three: the first scan or sync, with whatever the daemon is reporting about it.
 
 use api::JobProgress;
+use components::format::{t, t_with};
+use components::style;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::progress::Progress;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
@@ -9,8 +11,6 @@ use gpui_kit::{
     AnyElement, Context, IntoElement, ParentElement as _, SharedString, Styled, Window, div,
 };
 use store::JobsModel;
-use widgets::format::{t, t_with};
-use widgets::style;
 
 use crate::{FirstRun, active_source, ready_to_sync};
 

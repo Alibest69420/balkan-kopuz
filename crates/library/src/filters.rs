@@ -174,11 +174,11 @@ impl Chip {
 
     pub fn icon(self) -> &'static str {
         match self {
-            Chip::Favorites => widgets::icons::HEART,
-            Chip::Downloaded => widgets::icons::DOWNLOAD,
-            Chip::Genre => widgets::icons::GRID,
-            Chip::Years => widgets::icons::CLOCK,
-            Chip::Folder => widgets::icons::FOLDER,
+            Chip::Favorites => components::icons::HEART,
+            Chip::Downloaded => components::icons::DOWNLOAD,
+            Chip::Genre => components::icons::GRID,
+            Chip::Years => components::icons::CLOCK,
+            Chip::Folder => components::icons::FOLDER,
         }
     }
 

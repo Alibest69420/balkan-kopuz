@@ -19,6 +19,8 @@ use api::{
     AlbumInfo, AlbumPage, ArtistPage, ArtworkRef, KopuzApi, Page, StatsView, Table, TrackInfo,
     TrackPage,
 };
+use components::format::t;
+use components::{skeleton, style};
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -33,8 +35,6 @@ use store::{
     DownloadsModel, LayoutModel, Link, Navigator, Pager, PlayerModel, PlaylistsModel, Query, Route,
     SourcesModel, Target,
 };
-use widgets::format::t;
-use widgets::{skeleton, style};
 
 pub use facet::Facet;
 pub use filters::{Chip, Filters, Sort};
@@ -276,7 +276,7 @@ impl Library {
             density: Density::default(),
             tile: TileSize::default(),
             search,
-            focus: widgets::focus::stop_handle(cx),
+            focus: components::focus::stop_handle(cx),
             scroll: UniformListScrollHandle::new(),
             tracks,
             albums,
@@ -1056,7 +1056,7 @@ impl Library {
     fn skeleton_body(&self, cx: &mut Context<Self>) -> AnyElement {
         match self.filters.facet {
             Facet::Tracks => {
-                let shown = widgets::columns::visible(&self.columns).len();
+                let shown = components::columns::visible(&self.columns).len();
                 let height = style::density_row(self.density);
                 let covers = self.density == Density::Comfortable;
                 skeleton::rows(14, height, covers, shown, cx).into_any_element()

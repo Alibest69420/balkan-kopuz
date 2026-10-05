@@ -1,6 +1,6 @@
 //! Which of the library's four shapes is on screen. Everything else about the page is shared.
 
-use widgets::icons;
+use components::icons;
 
 /// The four listings the one library page presents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]

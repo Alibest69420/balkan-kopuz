@@ -4,6 +4,8 @@ use std::collections::HashMap;
 
 use api::schema::{FieldSpec, FieldValue};
 use api::{ConnectKind, IntegrationInfo, Table};
+use components::format::{t, t_with, text};
+use components::{FieldChanged, SchemaForm, style};
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -13,8 +15,6 @@ use gpui_kit::{
 };
 use link::Link;
 use store::{ConfigModel, Notices, Query};
-use widgets::format::{t, t_with, text};
-use widgets::{FieldChanged, SchemaForm, style};
 
 use crate::ui;
 

@@ -1,5 +1,7 @@
 //! The bar across the bottom: the one presentation that is always there.
 
+use components::format::t;
+use components::{focus, icons, motion, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -8,8 +10,6 @@ use gpui_kit::{
     relative,
 };
 use store::{Chrome, ConfigModel, SidePanel};
-use widgets::format::t;
-use widgets::{focus, icons, motion, style};
 
 use crate::NowPlaying;
 use crate::transport::Metrics;

@@ -1,10 +1,10 @@
 //! The sheet `?` opens: every key in the app, read straight off the registry.
 
+use components::format::t;
+use components::style;
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
 use gpui_kit::{App, IntoElement, ParentElement as _, Pixels, Styled as _, Window, div, px};
-use widgets::format::t;
-use widgets::style;
 
 const SHEET_WIDTH: Pixels = px(720.);
 const SHEET_HEIGHT: Pixels = px(520.);

@@ -1,5 +1,7 @@
 //! The playlists inside one folder.
 
+use components::format::t;
+use components::{EmptyState, Loading, icons, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::{
@@ -7,11 +9,9 @@ use gpui_kit::{
     SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Window, div,
 };
 use store::{Navigator, PlaylistsModel, Route};
-use widgets::format::t;
-use widgets::{EmptyState, Loading, icons, style};
 
 use crate::cards::playlist_card;
-use widgets::tile_grid as card_grid;
+use components::tile_grid as card_grid;
 
 pub struct PlaylistFolder {
     id: SharedString,

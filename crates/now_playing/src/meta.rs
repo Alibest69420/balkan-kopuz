@@ -1,5 +1,7 @@
 //! The cover, the title, the artist and the line that says where the queue came from.
 
+use components::format::t;
+use components::{Cover, focus, icons, menus, style};
 use gpui_kit::base::ElementExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _};
@@ -15,8 +17,6 @@ use store::{
     Chrome, FavoritesModel, Navigator, PlaylistsModel, QueueModel, Route, SourcesModel, Target,
     actions,
 };
-use widgets::format::t;
-use widgets::{Cover, focus, icons, menus, style};
 
 use crate::NowPlaying;
 

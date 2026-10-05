@@ -1,6 +1,11 @@
 //! What the catalog opens onto: one browsed playlist, and a source's own page for an artist.
 
 use api::{CatalogDetail, CatalogDetailRequest, CatalogItemKind};
+use components::format::t;
+use components::{
+    EmptyState, PageHeader, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons,
+    motion, style,
+};
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
@@ -12,11 +17,6 @@ use gpui_kit::{
     linear_gradient, px, rems,
 };
 use store::{Link, Route, actions};
-use widgets::format::t;
-use widgets::{
-    EmptyState, PageHeader, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons,
-    motion, style,
-};
 
 use crate::shelves::Shelves;
 use crate::states;
@@ -310,7 +310,7 @@ impl CatalogArtist {
 impl Render for CatalogArtist {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("catalog-artist");
-        widgets::scroll::smooth("catalog-artist-scroll", &self.scroll, window, cx);
+        components::scroll::smooth("catalog-artist-scroll", &self.scroll, window, cx);
         let banner = self
             .detail
             .clone()

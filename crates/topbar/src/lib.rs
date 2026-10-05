@@ -5,6 +5,9 @@ mod settings;
 mod switcher;
 mod tabs;
 
+use components::focus::{Axis, Roving, Step};
+use components::format::t;
+use components::{icons, motion, style};
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::tooltip::Tooltip;
@@ -18,9 +21,6 @@ use gpui_kit::{
 };
 use store::layout::NavPosition;
 use store::{Chrome, ConfigModel, LayoutModel, Navigator, Route, SourcesModel};
-use widgets::focus::{Axis, Roving, Step};
-use widgets::format::t;
-use widgets::{icons, motion, style};
 
 pub use bounds::{remember as remember_bounds, saved_bounds};
 pub use settings::register as register_settings;
@@ -110,7 +110,7 @@ impl TopBar {
             position: NavPosition::Top,
             activity: None,
             tabs: Roving::new(Axis::Row, cx),
-            search_focus: widgets::focus::stop_handle(cx),
+            search_focus: components::focus::stop_handle(cx),
             hovered: None,
             ringing: false,
             compact: window.viewport_size().width < COMPACT_BELOW,
@@ -174,7 +174,7 @@ impl TopBar {
     fn tab(
         &self,
         at: Seat,
-        marks: Entity<widgets::marker::Marks>,
+        marks: Entity<components::marker::Marks>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -186,8 +186,8 @@ impl TopBar {
         } = at;
         let vertical = self.position == NavPosition::Left;
         let along = match vertical {
-            true => widgets::marker::Along::Column,
-            false => widgets::marker::Along::Row,
+            true => components::marker::Along::Column,
+            false => components::marker::Along::Row,
         };
         let hovered = self.hovered == Some(name);
         let ink = motion::color_over(
@@ -228,7 +228,7 @@ impl TopBar {
                 true => tab.w_full().py_2(),
                 false => tab.h_full().py_1(),
             })
-            .child(widgets::marker::probe(name, along, marks))
+            .child(components::marker::probe(name, along, marks))
             .when(self.compact && !vertical, |tab| {
                 tab.tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
             })
@@ -268,7 +268,7 @@ impl TopBar {
                     }),
             )
             .when(focused, |tab| {
-                tab.child(widgets::focus::ring(style::radius_lg(), cx))
+                tab.child(components::focus::ring(style::radius_lg(), cx))
             })
             .into_any_element()
     }
@@ -281,10 +281,10 @@ impl TopBar {
     ) -> AnyElement {
         let vertical = self.position == NavPosition::Left;
         let along = match vertical {
-            true => widgets::marker::Along::Column,
-            false => widgets::marker::Along::Row,
+            true => components::marker::Along::Column,
+            false => components::marker::Along::Row,
         };
-        let marks = widgets::marker::marks("nav-strip-marks", window, cx);
+        let marks = components::marker::marks("nav-strip-marks", window, cx);
         let tabs = self
             .destinations
             .clone()
@@ -302,7 +302,7 @@ impl TopBar {
             })
             .collect::<Vec<_>>();
         let (start, extent) = match current {
-            Some(name) => widgets::marker::slide("nav-mark", &marks, name, window, cx),
+            Some(name) => components::marker::slide("nav-mark", &marks, name, window, cx),
             None => (px(0.), px(0.)),
         };
         let strip = match vertical {
@@ -339,7 +339,7 @@ impl TopBar {
             .tabs
             .group(strip.id("nav-strip"), "NavBar")
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| this.key(event, cx)))
-            .child(widgets::marker::origin(along, marks))
+            .child(components::marker::origin(along, marks))
             .children(tabs);
         // The mark rides beside the tabs rather than over one of them, so it can travel.
         match vertical {
@@ -362,7 +362,7 @@ impl TopBar {
     /// The palette's doorway: it looks like a field, and clicking it opens the palette.
     fn search(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let focused = self.search_focus.is_focused(window);
-        widgets::focus::stop(h_flex().id("nav-search"), &self.search_focus, |_, cx| {
+        components::focus::stop(h_flex().id("nav-search"), &self.search_focus, |_, cx| {
             Chrome::global(cx).update(cx, |chrome, cx| chrome.set_quick_search(true, cx));
         })
         .relative()
@@ -398,7 +398,7 @@ impl TopBar {
         )
         .child(hint(cx))
         .when(focused, |field| {
-            field.child(widgets::focus::ring(style::radius_lg(), cx))
+            field.child(components::focus::ring(style::radius_lg(), cx))
         })
         .into_any_element()
     }

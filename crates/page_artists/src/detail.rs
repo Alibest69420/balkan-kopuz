@@ -8,6 +8,11 @@ use api::{
     AlbumInfo, ArtworkTarget, ArtworkUpload, JobKind, PlaylistCapability, SourceCapabilities,
     Table, TrackInfo, TrackPage,
 };
+use components::format::{t, t_with, total_duration};
+use components::{
+    Cover, DetailHeader, EmptyState, Loading, TrackActions, TrackHeader, TrackList, TrackListEvent,
+    TrackListOptions, icons, motion, playlist_picker, style,
+};
 use config::{AlbumSortField, AlbumViewMode, ArtistViewOrder, SortCriterion, SortDirection};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{
@@ -21,11 +26,6 @@ use gpui_kit::{
 };
 use store::{
     ConfigModel, DownloadsModel, JobsModel, Navigator, PlayerModel, Query, SourcesModel, actions,
-};
-use widgets::format::{t, t_with, total_duration};
-use widgets::{
-    Cover, DetailHeader, EmptyState, Loading, TrackActions, TrackHeader, TrackList, TrackListEvent,
-    TrackListOptions, icons, motion, playlist_picker, style,
 };
 
 use crate::controls::{self, ViewModeKey};
@@ -261,7 +261,7 @@ impl ArtistDetail {
 
 impl Render for ArtistDetail {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        widgets::scroll::smooth("artist-detail-scroll", &self.scroll, window, cx);
+        components::scroll::smooth("artist-detail-scroll", &self.scroll, window, cx);
         let config = controls::config(cx);
         let albums_view = config.artist_view_order == ArtistViewOrder::Albums;
         let failed = {
@@ -479,7 +479,7 @@ impl ArtistDetail {
                 &[("count", keys.len().to_string())],
             ))
             .meta(total_duration(total))
-            .action(widgets::hover::framed(
+            .action(components::hover::framed(
                 "artist-shuffle",
                 shuffle_hover,
                 controls::tweened(
@@ -512,7 +512,7 @@ impl ArtistDetail {
                     true => controls::tweened(play, play_fill, play_text, clear, cx),
                     false => play.primary(),
                 };
-                widgets::hover::framed("artist-play", play_hover, play)
+                components::hover::framed("artist-play", play_hover, play)
             });
         if capabilities.downloads {
             let download = Button::new("artist-download-all")
@@ -543,7 +543,7 @@ impl ArtistDetail {
                     .border_color(style::white(style::ACTIVE, cx))
                     .text_color(style::white(0.70, cx)),
             };
-            header = header.action(widgets::hover::framed(
+            header = header.action(components::hover::framed(
                 "artist-download-all",
                 download_hover,
                 download,
@@ -677,11 +677,11 @@ impl ArtistDetail {
             let cards: Vec<AnyElement> = albums
                 .iter()
                 .map(|album| match mode {
-                    AlbumViewMode::Grid => widgets::album_tile(album)
+                    AlbumViewMode::Grid => components::album_tile(album)
                         .size(px(CARD - 32.))
-                        .frame(widgets::Frame::Card)
+                        .frame(components::Frame::Card)
                         .into_any_element(),
-                    AlbumViewMode::List => widgets::album_row(album).into_any_element(),
+                    AlbumViewMode::List => components::album_row(album).into_any_element(),
                 })
                 .collect();
             div()

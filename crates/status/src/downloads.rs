@@ -4,6 +4,8 @@ use std::ops::Range;
 
 use api::schema::ChoiceOption;
 use api::{DownloadHistoryEntry, DownloadState, JobKind};
+use components::format::{t, t_with, text};
+use components::{focus, icons, style};
 use gpui_kit::component::progress::Progress;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -13,8 +15,6 @@ use gpui_kit::{
     Styled, Subscription, UniformListScrollHandle, Window, div, px, uniform_list,
 };
 use store::{DownloadItem, DownloadsModel, ItemState, JobEvent, JobsModel, Link, Notices, Query};
-use widgets::format::{t, t_with, text};
-use widgets::{focus, icons, style};
 
 use crate::{DONE, FAILED, ROW_GLYPH, chip, empty, header, quiet_chip, row};
 
@@ -101,7 +101,7 @@ impl DownloadsList {
         let asked = this.clone();
         focus::stop(div().id("downloads-add-url"), &handle, move |window, cx| {
             this.update(cx, |_, cx| cx.emit(Dismiss));
-            widgets::dialogs::open_url_download(window, cx);
+            components::dialogs::open_url_download(window, cx);
         })
         .relative()
         .px_2()
@@ -116,7 +116,7 @@ impl DownloadsList {
         .child(t("downloader_add_url"))
         .on_click(move |_, window, cx| {
             asked.update(cx, |_, cx| cx.emit(Dismiss));
-            widgets::dialogs::open_url_download(window, cx);
+            components::dialogs::open_url_download(window, cx);
         })
         .when(focused, |chip| {
             chip.child(focus::ring(style::radius(cx), cx))

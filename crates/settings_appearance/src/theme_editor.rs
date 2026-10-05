@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 
+use components::format::t;
+use components::{icons, motion, style};
 use config::CustomTheme;
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
@@ -16,8 +18,6 @@ use gpui_kit::{
     Subscription, Window, div, rems,
 };
 use store::ConfigModel;
-use widgets::format::t;
-use widgets::{icons, motion, style};
 
 /// `text-white/70`, what a color's name reads in.
 const LABEL: f32 = 0.70;
@@ -196,7 +196,7 @@ impl ThemeEditor {
             return;
         }
         let editor = cx.entity().downgrade();
-        widgets::dialogs::confirm_discard(
+        components::dialogs::confirm_discard(
             t("theme_unsaved_title"),
             t("theme_unsaved_body"),
             move |window, cx| {
@@ -601,7 +601,7 @@ impl Render for ThemeEditor {
                                         .on_click(cx.listener(|this, _, window, cx| {
                                             let name = this.editing_name(cx);
                                             let entity = cx.entity();
-                                            widgets::dialogs::confirm_delete(
+                                            components::dialogs::confirm_delete(
                                                 t("delete"),
                                                 name,
                                                 move |window, cx| {

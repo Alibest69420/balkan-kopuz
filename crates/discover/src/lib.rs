@@ -11,6 +11,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use api::{AlbumInfo, AlbumPage, ApiError, KopuzApi, SearchResults, Table};
+use components::format::{t, t_with};
+use components::{EmptyState, Loading, PageHeader, TrackList, TrackListEvent, icons, style};
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
@@ -22,8 +24,6 @@ use gpui_kit::{
     div, px, uniform_list,
 };
 use store::{Chrome, Link, PlayerModel, Query, SourcesModel, actions, all};
-use widgets::format::{t, t_with};
-use widgets::{EmptyState, Loading, PageHeader, TrackList, TrackListEvent, icons, style};
 
 use crate::detail::spinner_row;
 use crate::genres::{GenreCard, GenreTile, genres_of};
@@ -128,7 +128,7 @@ impl Discover {
         });
         let tracks = cx.new(|cx| {
             TrackList::new(cx)
-                .with_options(widgets::TrackListOptions::default())
+                .with_options(components::TrackListOptions::default())
                 .with_actions(genres::row_actions(cx))
         });
         let chrome = Chrome::global(cx);
@@ -349,7 +349,7 @@ impl Discover {
 
     /// The landing: what this source offers to browse, and what the library files its albums under.
     fn landing(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        widgets::scroll::smooth("discover-scroll", &self.scroll, window, cx);
+        components::scroll::smooth("discover-scroll", &self.scroll, window, cx);
         let sources = SourcesModel::global(cx);
         let loaded = sources.read(cx).is_loaded();
         let supported = sources.read(cx).capabilities().discover;
@@ -475,7 +475,7 @@ impl Discover {
 
     /// Every genre, as a grid that builds a screenful rather than the library.
     fn genre_grid(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        widgets::scroll::smooth_list("discover-genre-grid", &self.genre_scroll, window, cx);
+        components::scroll::smooth_list("discover-genre-grid", &self.genre_scroll, window, cx);
         let columns = self.genre_columns();
         let rows = self.genres.len().div_ceil(columns.max(1));
         v_flex()

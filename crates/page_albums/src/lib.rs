@@ -5,9 +5,9 @@ mod grid;
 mod ops;
 mod sort;
 
+use components::style;
 use gpui_kit::component::button::ButtonCustomVariant;
 use gpui_kit::{App, Hsla};
-use widgets::style;
 
 pub use detail::AlbumDetail;
 pub use grid::Albums;

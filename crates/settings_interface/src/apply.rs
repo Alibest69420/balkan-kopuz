@@ -34,8 +34,8 @@ pub(super) fn resolve(cx: &mut App) {
 
 /// Resolve `layout.skin` once per change, and hand the component library the radii it draws with.
 fn skin(cx: &mut App) {
-    widgets::skin::select(&store::layout(cx).skin);
-    let metrics = widgets::skin::metrics();
+    components::skin::select(&store::layout(cx).skin);
+    let metrics = components::skin::metrics();
     let theme = Theme::global(cx);
     if theme.radius == metrics.thumb_radius && theme.radius_lg == metrics.cover_radius {
         return;

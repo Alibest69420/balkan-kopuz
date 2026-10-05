@@ -1,5 +1,7 @@
 //! Continue: the queue the last session was interrupted in, and the one button that picks it up.
 
+use components::format::{t, t_with};
+use components::{Cover, icons, menus, motion, style};
 use gpui_kit::component::button::Button;
 use gpui_kit::component::menu::ContextMenuExt as _;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
@@ -9,8 +11,6 @@ use gpui_kit::{
     SharedString, StatefulInteractiveElement as _, Styled, Window, div, px, relative,
 };
 use store::{Navigator, PlayerModel, QueueModel, Route, Target};
-use widgets::format::{t, t_with};
-use widgets::{Cover, icons, menus, motion, style};
 
 use crate::Home;
 

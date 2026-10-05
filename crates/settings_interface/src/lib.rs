@@ -7,6 +7,8 @@ mod skin;
 
 use std::rc::Rc;
 
+use components::format::t;
+use components::{EmptyState, icons, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -15,8 +17,6 @@ use gpui_kit::{
     Window, div,
 };
 use store::layout::Section as Group;
-use widgets::format::t;
-use widgets::{EmptyState, icons, style};
 
 /// What builds one section's view, once, when the Interface panel is first drawn.
 type Build = Rc<dyn Fn(&mut Window, &mut App) -> AnyView>;
@@ -110,7 +110,7 @@ impl Render for InterfaceSettings {
                 .into_any_element();
         }
         // A filtered page is a list of matching rows; a "put this back" button is not one.
-        let filtering = widgets::settings::query(cx).is_some();
+        let filtering = components::settings::query(cx).is_some();
         let sections: Vec<_> = self
             .panels
             .iter()

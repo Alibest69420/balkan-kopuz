@@ -21,22 +21,22 @@ anyway. Severities are the auditors'. Tick items as they land.
       `Unreachable` and would retry.
 - [x] **Nothing can be dragged to the queue.** `TrackDrag` is declared and the
       queue registers `on_drop` + a drop-target highlight, but no row ever calls
-      `.on_drag` — `widgets/src/track_list.rs:117`, `side_panel/src/queue.rs:83`.
+      `.on_drag` — `components/src/track_list.rs:117`, `side_panel/src/queue.rs:83`.
       A port regression; the original drags rows.
 - [x] **Playlist reorder is dead end to end.** The page computes `reorder`, the
       list declares `TrackListEvent::Reorder`, the handler calls the API — and
       `row_menu` never reads the flag, so nothing emits it.
-      `widgets/src/track_list.rs:100`, `page_playlists/src/detail.rs:173`.
+      `components/src/track_list.rs:100`, `page_playlists/src/detail.rs:173`.
 
 ## Bad — the feature works but misleads or blocks
 
 - [x] **Selection sticks at "0 selected" and rows stop playing.** `set_rows`
       drops vanished keys but never re-evaluates `selecting`
-      (`widgets/src/track_list.rs:171`), so re-sorting with select-all on leaves
+      (`components/src/track_list.rs:171`), so re-sorting with select-all on leaves
       the pill over a spinner and clicks toggle checkboxes instead of playing.
 - [x] **Multi-select is unreachable on Search, Genre and Playlist detail**, and
       there is no ctrl-click or shift-click anywhere — ranges must be ticked one
-      checkbox at a time. `widgets/src/track_list.rs:312`.
+      checkbox at a time. `components/src/track_list.rs:312`.
 - [x] **No keyboard navigation in any list.** Nothing but the shell holds a
       focus handle. No arrows, no Enter, no ctrl-a; Escape does not clear a
       selection. Quick-search already does this properly and is the model.

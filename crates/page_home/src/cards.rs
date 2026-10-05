@@ -1,9 +1,9 @@
 //! One shelf card: the shared tile, sized for a shelf, with what its play button starts.
 
 use api::QueueContext;
+use components::PlayState;
 use gpui_kit::{AnyElement, App, IntoElement, ParentElement as _, Pixels, Styled, div, px};
 use store::{PlayerModel, QueueModel, actions};
-use widgets::PlayState;
 
 use crate::data::{Play, Tile};
 
@@ -19,7 +19,7 @@ pub(crate) fn step() -> Pixels {
 }
 
 pub(crate) fn card(tile: &Tile, cx: &App) -> AnyElement {
-    let mut card = widgets::Tile::new(tile.key.clone(), tile.title.clone())
+    let mut card = components::Tile::new(tile.key.clone(), tile.title.clone())
         .subtitle(tile.subtitle.clone())
         .artwork(tile.artwork.as_ref())
         .size(TILE)

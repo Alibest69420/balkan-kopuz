@@ -12,6 +12,8 @@ pub use settings::register;
 use std::collections::HashMap;
 
 use api::{AlbumPage, ArtistPage, Page, StatsView, Table, TrackFilter, TrackPage, TrackSort};
+use components::format::t;
+use components::{EmptyState, icons, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -21,8 +23,6 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled, Subscription, Window, div, rems,
 };
 use store::{Navigator, PlaylistsModel, Query, Route, SourcesModel};
-use widgets::format::t;
-use widgets::{EmptyState, icons, style};
 
 use data::{RECENT_TRACKS_WINDOW, RECENTLY_ADDED_WINDOW, Shelf};
 
@@ -174,7 +174,7 @@ impl Home {
 impl Render for Home {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("home");
-        widgets::scroll::smooth("home-scroll", &self.page, window, cx);
+        components::scroll::smooth("home-scroll", &self.page, window, cx);
         let banner = resume::banner(window, cx);
         let drawn = self.drawn(cx);
         let mut rows: Vec<AnyElement> = Vec::with_capacity(drawn.len());

@@ -16,7 +16,7 @@ i18n = { workspace = true }
 link = { workspace = true }
 store = { workspace = true }
 theme = { workspace = true }
-widgets = { workspace = true }
+components = { workspace = true }
 gpui-kit = { workspace = true }
 tracing = { workspace = true }
 

@@ -15,5 +15,5 @@ settings_interface = { path = "../settings_interface" }
 api = { workspace = true }
 theme = { workspace = true }
 store = { workspace = true }
-widgets = { workspace = true }
+components = { workspace = true }
 gpui-kit = { workspace = true }

@@ -1,6 +1,8 @@
 //! Albums, artists and playlists: one virtualized band grid, with a jump rail and type-ahead.
 
 use api::{AlbumInfo, ArtistInfo, PlaylistInfo};
+use components::format::t_with;
+use components::{Frame, TileRow, style};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -10,8 +12,6 @@ use gpui_kit::{
 };
 use store::layout::ViewMode;
 use store::{Navigator, PlaylistsModel, Route, Target};
-use widgets::format::t_with;
-use widgets::{Frame, TileRow, style};
 
 use crate::facet::Facet;
 use crate::{Library, Tile};
@@ -136,7 +136,7 @@ impl Library {
 
     /// The grid itself: bands of tiles, or one row per entry, beside the jump rail.
     pub(crate) fn grid(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        widgets::scroll::smooth_list("library-grid", &self.scroll, window, cx);
+        components::scroll::smooth_list("library-grid", &self.scroll, window, cx);
         let facet = self.filters().facet;
         let tiles = self.mode == ViewMode::Grid;
         let width = px(self.tile.width());
@@ -237,7 +237,7 @@ impl Library {
         facet: Facet,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        widgets::Tile::new(tile.id.clone(), tile.title.clone())
+        components::Tile::new(tile.id.clone(), tile.title.clone())
             .subtitle(tile.subtitle.clone())
             .artwork(tile.artwork.as_ref())
             .size(width - px(32.))

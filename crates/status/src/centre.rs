@@ -1,6 +1,8 @@
 //! The notification centre: every toast the app has shown, still readable after it faded.
 
 use api::NoticeLevel;
+use components::format::t;
+use components::{icons, style};
 use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -8,8 +10,6 @@ use gpui_kit::{
     SharedString, StatefulInteractiveElement as _, Styled, Subscription, Window, div,
 };
 use store::{Notices, Record};
-use widgets::format::t;
-use widgets::{icons, style};
 
 use crate::{DONE, FAILED, ROW_GLYPH, chip, empty, header, row};
 

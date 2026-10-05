@@ -1,5 +1,8 @@
 //! Settings → Interface → Navigation: where the bar sits, what it holds, and where the app opens.
 
+use components::format::t;
+use components::settings::{SettingRow, Toggle, choice, section};
+use components::{icons, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::{
@@ -8,9 +11,6 @@ use gpui_kit::{
 };
 use store::LayoutModel;
 use store::layout::{DESTINATIONS, NavPosition, Section as Group};
-use widgets::format::t;
-use widgets::settings::{SettingRow, Toggle, choice, section};
-use widgets::{icons, style};
 
 pub fn register(cx: &mut App) {
     settings_interface::register(

@@ -1,5 +1,7 @@
 //! A shelf: its heading, the arrows the pointer reveals, the fades at its edges, and its glide.
 
+use components::format::t;
+use components::{icons, motion, scroll, style};
 use gpui_kit::component::{ActiveTheme as _, Icon, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -7,8 +9,6 @@ use gpui_kit::{
     ParentElement as _, Pixels, ScrollHandle, ScrollWheelEvent, SharedString,
     StatefulInteractiveElement as _, Styled, Window, div, linear_color_stop, linear_gradient, px,
 };
-use widgets::format::t;
-use widgets::{icons, motion, scroll, style};
 
 use crate::Home;
 use crate::cards::{card, step};

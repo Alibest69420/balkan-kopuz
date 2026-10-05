@@ -4,9 +4,9 @@ mod editor;
 mod sheet;
 
 use commands::{Command, Group};
+use components::format::t;
 use gpui_kit::{App, AppContext as _, SharedString};
 use store::layout::Section as Group_;
-use widgets::format::t;
 
 /// One line of the sheet and one row of the editor: a verb and the key it answers to.
 pub(crate) struct Entry {
@@ -58,7 +58,7 @@ pub(crate) fn title() -> SharedString {
 
 /// Wire the sheet `?` opens and contribute the editor to Settings → Interface.
 pub fn init(cx: &mut App) {
-    widgets::dialogs::register_shortcuts(sheet::open, cx);
+    components::dialogs::register_shortcuts(sheet::open, cx);
     settings_interface::register(
         "shortcuts",
         "keyboard_shortcuts",

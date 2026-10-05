@@ -4,6 +4,8 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 use api::{AlbumPage, ArtistInfo, ArtistPage, Table};
+use components::format::t;
+use components::{EmptyState, Loading, PageHeader, icons};
 use config::{AlbumViewMode, ArtistSortField};
 use gpui_kit::component::v_flex;
 use gpui_kit::{
@@ -12,8 +14,6 @@ use gpui_kit::{
     uniform_list,
 };
 use store::{ConfigModel, Link, Query};
-use widgets::format::t;
-use widgets::{EmptyState, Loading, PageHeader, icons};
 
 use crate::controls::{self, ViewModeKey};
 use crate::names;
@@ -143,12 +143,12 @@ impl Artists {
                 .children(
                     entries
                         .iter()
-                        .map(|entry| widgets::artist_tile(entry).size(px(TILE))),
+                        .map(|entry| components::artist_tile(entry).size(px(TILE))),
                 )
                 .into_any_element(),
             AlbumViewMode::List => div()
                 .w_full()
-                .children(entries.iter().map(widgets::artist_row))
+                .children(entries.iter().map(components::artist_row))
                 .into_any_element(),
         }
     }
@@ -174,7 +174,7 @@ impl Artists {
 impl Render for Artists {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("artists");
-        widgets::scroll::smooth_list("artists-scroll", &self.scroll, window, cx);
+        components::scroll::smooth_list("artists-scroll", &self.scroll, window, cx);
         let settled = self.is_settled(cx);
         let mode = controls::config(cx).artists_view_mode;
         let empty = self.entries.is_empty();

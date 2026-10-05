@@ -5,6 +5,8 @@ mod sync;
 mod ui;
 
 use api::{AlbumPage, JobKind, Page, ServiceInfo, SourceInfo, Table};
+use components::format::t;
+use components::{icons, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -15,8 +17,6 @@ use gpui_kit::{
 };
 use settings_sources::add_source::{AddSource, SourceAdded};
 use store::{JobEvent, JobsModel, LayoutModel, Navigator, Query, Route, SourcesModel};
-use widgets::format::t;
-use widgets::{icons, style};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Step {
@@ -244,7 +244,7 @@ impl FirstRun {
 impl Render for FirstRun {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("first_run");
-        widgets::scroll::smooth("first-run-scroll", &self.scroll, window, cx);
+        components::scroll::smooth("first-run-scroll", &self.scroll, window, cx);
         let step = self.step;
         let body = match step {
             Step::Pick => self.pick_step(window, cx),

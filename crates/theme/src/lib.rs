@@ -224,7 +224,7 @@ fn config_value(name: &str, colors: &Colors, mode: ThemeMode) -> serde_json::Val
         );
     };
     // Kopuz's surfaces are its text color at low alpha (Tailwind `bg-white/N`),
-    // so the component library's own widgets are given the same.
+    // so the component library's own components are given the same.
     let raised = alpha(&colors.text, 0.05);
     let hover = alpha(&colors.text, 0.10);
     let active = alpha(&colors.text, 0.20);

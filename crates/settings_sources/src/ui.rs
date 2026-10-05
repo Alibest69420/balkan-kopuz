@@ -1,5 +1,7 @@
 //! The frames the Library and Connectivity panels share: cards, folder rows, the host-access warning.
 
+use components::format::t;
+use components::{icons, motion, style};
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::clipboard::Clipboard;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
@@ -8,10 +10,8 @@ use gpui_kit::{
     ParentElement as _, SharedString, Stateful, StatefulInteractiveElement as _, Styled, Window,
     div, px,
 };
-use widgets::format::t;
-use widgets::{icons, motion, style};
 
-pub use widgets::settings::section;
+pub use components::settings::section;
 
 // Flathub refuses `org.freedesktop.Flatpak` in the manifest, so the user grants it by hand.
 const HOST_ACCESS_COMMAND: &str =

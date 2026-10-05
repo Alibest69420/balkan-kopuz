@@ -2,6 +2,8 @@
 
 use api::TrackFilter;
 use commands::Command;
+use components::format::{t, t_with};
+use components::{icons, menus, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
@@ -13,8 +15,6 @@ use gpui_kit::{
 };
 use store::layout::{Density, TileSize, ViewMode};
 use store::{Link, Target};
-use widgets::format::{t, t_with};
-use widgets::{icons, menus, style};
 
 use crate::Library;
 use crate::facet::Facet;
@@ -495,8 +495,12 @@ impl Library {
             .filter(|command| command.section == commands::Section::Act && command.icon.is_some())
             .take(SPELLED_OUT)
             .collect();
-        let fade =
-            widgets::motion::enter("library-selection-bar", widgets::motion::MEDIUM, window, cx);
+        let fade = components::motion::enter(
+            "library-selection-bar",
+            components::motion::MEDIUM,
+            window,
+            cx,
+        );
         let ink = cx.theme().primary_foreground;
         let rule = style::black(0.2, cx);
         let bare = style::bare_button(ink, cx);

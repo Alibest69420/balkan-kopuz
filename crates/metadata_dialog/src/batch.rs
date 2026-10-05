@@ -1,6 +1,8 @@
 //! One set of tags written across a whole selection: a blank field leaves that tag as it is.
 
 use api::{ArtworkChange, TrackMetadataPatch};
+use components::format::{t, t_with};
+use components::style;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, WindowExt as _, h_flex, v_flex};
@@ -10,8 +12,6 @@ use gpui_kit::{
     Styled, Task, Window, div,
 };
 use store::{Link, Notices};
-use widgets::format::{t, t_with};
-use widgets::style;
 
 use crate::caption;
 

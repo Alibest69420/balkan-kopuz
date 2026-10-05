@@ -1,6 +1,8 @@
 //! Where the active source can play, when it plays somewhere other than this app.
 
 use api::ExternalDevice;
+use components::format::t;
+use components::{icons, motion, style};
 use gpui_kit::component::popover::Popover;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -9,8 +11,6 @@ use gpui_kit::{
     SharedString, StatefulInteractiveElement as _, Styled, WeakEntity, Window, div, px,
 };
 use store::{Chrome, Link, Notices, PlayerModel, SourcesModel};
-use widgets::format::t;
-use widgets::{icons, motion, style};
 
 use crate::NowPlaying;
 use crate::bar::utility;

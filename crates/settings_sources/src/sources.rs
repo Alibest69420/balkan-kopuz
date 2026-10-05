@@ -4,6 +4,8 @@ use std::collections::HashMap;
 
 use api::schema::{FieldKind, FieldSpec, FieldValue};
 use api::{SignInKind, SourceFolderEntry, SourceInfo, SourceState, Table};
+use components::format::{t, t_with, text};
+use components::{FieldChanged, SchemaForm, icons};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::spinner::Spinner;
@@ -15,8 +17,6 @@ use gpui_kit::{
 };
 use link::Link;
 use store::{ConfigModel, Notices, Query, SourcesModel};
-use widgets::format::{t, t_with, text};
-use widgets::{FieldChanged, SchemaForm, icons};
 
 use crate::add_source::{AddSource, SourceAdded};
 use crate::folders;
@@ -643,7 +643,7 @@ impl Sources {
                                             move |_: &mut Self, _, window, cx| {
                                                 let id = id.clone();
                                                 let entity = cx.entity();
-                                                widgets::dialogs::confirm_delete(
+                                                components::dialogs::confirm_delete(
                                                     t("delete"),
                                                     name.clone(),
                                                     move |_, cx| {

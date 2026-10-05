@@ -3,6 +3,12 @@
 use std::rc::Rc;
 
 use api::{QueueContext, TrackInfo};
+use components::columns::{self as table, Layout};
+use components::format::t;
+use components::track_header::{ColumnMove, ColumnResize};
+use components::track_list::TrackDrag;
+use components::track_row::RowMenu;
+use components::{TrackHeader, TrackRow, menus, style};
 use gpui_kit::component::menu::PopupMenu;
 use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::{
@@ -11,12 +17,6 @@ use gpui_kit::{
 };
 use store::layout::{Column, Density};
 use store::{Target, actions};
-use widgets::columns::{self as table, Layout};
-use widgets::format::t;
-use widgets::track_header::{ColumnMove, ColumnResize};
-use widgets::track_list::TrackDrag;
-use widgets::track_row::RowMenu;
-use widgets::{TrackHeader, TrackRow, menus, style};
 
 use crate::columns::{self, MAX_WIDTH, MIN_WIDTH};
 use crate::filters;
@@ -70,7 +70,7 @@ impl Library {
 
     /// The table: its header and the rows under it, of which only a screenful is ever built.
     pub(crate) fn table(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        widgets::scroll::smooth_list("library-table", &self.scroll, window, cx);
+        components::scroll::smooth_list("library-table", &self.scroll, window, cx);
         let grouped = self.group_by().is_some();
         let count = match grouped {
             true => self.lines.len(),
@@ -177,7 +177,7 @@ impl Library {
         let covers = self.density == Density::Comfortable
             && store::ConfigModel::global(cx).read(cx).row_images();
         let Some(track) = self.track_at(index) else {
-            return widgets::skeleton::row(slot, height, covers, layout.len(), cx)
+            return components::skeleton::row(slot, height, covers, layout.len(), cx)
                 .into_any_element();
         };
         let key = track.key.clone();

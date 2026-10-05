@@ -152,14 +152,14 @@ scan and connecting states are amber, which is `cx.theme().warning`.
 ## Skins
 
 A skin is metrics and chrome proportions; a palette is colour, and the two stay
-orthogonal. `widgets::skin` is the registry: a skin implements the `Skin` trait,
+orthogonal. `components::skin` is the registry: a skin implements the `Skin` trait,
 returning a `Metrics` and a `Chrome` it may fill field by field from
 `Metrics::default()`, plus optional asset swaps. `Normal` is the only one
 registered and is the baseline every value above is measured in.
 
 `layout.skin` names the skin; `settings_interface::apply` resolves it once per
 change into the registry and hands the component theme its `radius` /
-`radius_lg`. Nothing above reads it: the helpers in `widgets::style` already
+`radius_lg`. Nothing above reads it: the helpers in `components::style` already
 answer with the active skin's numbers, which is why `style::radius_lg()`,
 `style::row_height()`, `style::media_row()`, `style::density_row(..)` and
 `style::chrome()` exist. A radius, a row height, a control height or a bar's
@@ -190,7 +190,7 @@ helper that returns one.
 ## Motion
 
 `transition-*` and `duration-*` **do** port. `gpui_base::motion` has a real
-transition system and `widgets::motion` wraps it with Kopuz's timings. It is
+transition system and `components::motion` wraps it with Kopuz's timings. It is
 keyed by element id, honours reduce-motion for free (which is what
 `cfg.reduce_animations` should drive), and interpolates anything `Lerp`:
 `f32`, `Pixels`, `Point<Pixels>` and `Hsla`.

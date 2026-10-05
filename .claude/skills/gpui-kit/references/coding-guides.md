@@ -499,7 +499,7 @@ what `Button` does.
 
 Attach a `key_context` and its `on_action` handlers to the same focused region.
 Bindings are contextual: a registered Action without the intended focus path
-is not a working keyboard interaction. Composite widgets should implement the
+is not a working keyboard interaction. Composite components should implement the
 complete navigation model—arrow movement, Home/End or page movement where
 appropriate, confirmation, cancellation, and Tab behavior—rather than a few
 isolated shortcuts.

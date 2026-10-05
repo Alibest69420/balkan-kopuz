@@ -11,5 +11,5 @@ workspace = true
 
 [dependencies]
 profile = { path = "../profile" }
-widgets = { workspace = true }
+components = { workspace = true }
 gpui-kit = { workspace = true }

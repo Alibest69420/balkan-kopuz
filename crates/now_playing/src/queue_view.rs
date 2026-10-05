@@ -1,5 +1,7 @@
 //! The queue: what has been played, what is playing, and what is next, in one list.
 
+use components::format::{duration, t};
+use components::{EmptyState, TrackDrag, dialogs, icons, menus, motion, style, track_row};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::ContextMenuExt as _;
 use gpui_kit::component::tooltip::Tooltip;
@@ -12,8 +14,6 @@ use gpui_kit::{
     px, uniform_list,
 };
 use store::{ConfigModel, PlaylistsModel, QueueModel, Target};
-use widgets::format::{duration, t};
-use widgets::{EmptyState, TrackDrag, dialogs, icons, menus, motion, style, track_row};
 
 // Above this point in a row a drop lands before it, below it after.
 const DROP_SPLIT: Pixels = px(23.);
@@ -205,7 +205,7 @@ impl QueueView {
         let count = keys.len();
         model.update(cx, |queue, cx| queue.set_upcoming(Vec::new(), cx));
         store::Notices::undo(
-            widgets::format::t_with("cleared_upcoming", &[("count", count.to_string())]),
+            components::format::t_with("cleared_upcoming", &[("count", count.to_string())]),
             move |cx| insert_at(at, keys.clone(), cx),
             cx,
         );
@@ -278,7 +278,7 @@ impl QueueView {
             }))
             .child(
                 icons::icon(glyph)
-                    .size(widgets::lead::GLYPH)
+                    .size(components::lead::GLYPH)
                     .text_color(style::slate_500(cx)),
             )
             .into_any_element()
@@ -359,7 +359,7 @@ impl QueueView {
                     .items_end()
                     .text_xs()
                     .text_color(lead)
-                    .children(widgets::lead::lead(
+                    .children(components::lead::lead(
                         ROW_GROUP,
                         active,
                         Some((index + 1).to_string().into()),
@@ -494,7 +494,7 @@ impl QueueView {
 
 impl Render for QueueView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        widgets::scroll::smooth_list("queue-scroll", &self.scroll, window, cx);
+        components::scroll::smooth_list("queue-scroll", &self.scroll, window, cx);
         let count = QueueModel::global(cx).read(cx).len();
         if count == 0 {
             return v_flex()

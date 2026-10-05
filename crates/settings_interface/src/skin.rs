@@ -1,5 +1,7 @@
 //! Which registered skin draws the app; the palette beside it stays a separate question.
 
+use components::format::t;
+use components::settings::{SettingRow, choice, section};
 use gpui_kit::component::v_flex;
 use gpui_kit::{
     App, AppContext as _, Context, IntoElement, ParentElement as _, Render, SharedString, Styled,
@@ -7,8 +9,6 @@ use gpui_kit::{
 };
 use store::LayoutModel;
 use store::layout::Section as Group;
-use widgets::format::t;
-use widgets::settings::{SettingRow, choice, section};
 
 pub fn register(cx: &mut App) {
     crate::register(
@@ -26,7 +26,7 @@ struct Skin;
 impl Render for Skin {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let current = store::layout(cx).skin.clone();
-        let options: Vec<(String, SharedString)> = widgets::skin::registered()
+        let options: Vec<(String, SharedString)> = components::skin::registered()
             .into_iter()
             .map(|(id, title)| (id.to_string(), t(title)))
             .collect();

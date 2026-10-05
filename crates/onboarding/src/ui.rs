@@ -1,5 +1,6 @@
 //! The frames the three first-run steps share.
 
+use components::{icons, motion, style};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -7,9 +8,8 @@ use gpui_kit::{
     ParentElement as _, Rems, SharedString, Stateful, StatefulInteractiveElement as _, Styled,
     Window, div, px, rems,
 };
-use widgets::{icons, motion, style};
 
-/// Lucide paths this flow needs that `widgets::icons` has no name for yet.
+/// Lucide paths this flow needs that `components::icons` has no name for yet.
 pub(crate) const SERVER: &str = "icons/server.svg";
 pub(crate) const CLOUD: &str = "icons/cloud.svg";
 pub(crate) const SPARKLES: &str = "icons/sparkles.svg";

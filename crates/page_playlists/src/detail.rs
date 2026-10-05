@@ -3,6 +3,11 @@
 use std::path::Path;
 
 use api::{ArtworkTarget, ArtworkUpload, PlaylistCapability, PlaylistReorder, Table, TrackInfo};
+use components::format::{t, t_with};
+use components::track_list::{TrackActions, TrackList, TrackListEvent};
+use components::{
+    DetailHeader, EmptyState, TrackHeader, detail_header_skeleton, icons, motion, style,
+};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, Size, v_flex};
 use gpui_kit::{
@@ -13,11 +18,6 @@ use gpui_kit::{
 use link::Link;
 use store::{
     DownloadsModel, Navigator, Notices, PlaylistsModel, Query, Route, SourcesModel, actions,
-};
-use widgets::format::{t, t_with};
-use widgets::track_list::{TrackActions, TrackList, TrackListEvent};
-use widgets::{
-    DetailHeader, EmptyState, TrackHeader, detail_header_skeleton, icons, motion, style,
 };
 
 use crate::cards::tweened;
@@ -166,7 +166,7 @@ impl PlaylistDetail {
                 let Some(key) = removed else { return };
                 // Re-adding appends, so the undo puts the row back where it was as well.
                 store::Notices::undo(
-                    widgets::format::t("track_removed_from_playlist"),
+                    components::format::t("track_removed_from_playlist"),
                     move |cx| {
                         let (id, key) = (id.clone(), key.clone());
                         actions::run(cx, move |api| async move {
@@ -248,7 +248,7 @@ impl PlaylistDetail {
 
     fn delete(&mut self, window: &mut Window, cx: &mut Context<Self>, name: SharedString) {
         let id = self.id.to_string();
-        widgets::dialogs::confirm_delete(
+        components::dialogs::confirm_delete(
             t("delete_playlist"),
             name,
             move |_, cx| {
@@ -490,7 +490,7 @@ impl PlaylistDetail {
                     .flex_1()
                     .min_h_0()
                     .pb_20()
-                    .child(widgets::skeleton::rows(10, px(56.), true, 3, cx))
+                    .child(components::skeleton::rows(10, px(56.), true, 3, cx))
                     .into_any_element();
             }
             return v_flex()

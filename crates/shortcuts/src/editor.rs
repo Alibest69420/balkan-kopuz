@@ -1,5 +1,8 @@
 //! Settings → Interface → Shortcuts: rebind a key, see what it would collide with, put it back.
 
+use components::focus::{Axis, Roving, Step};
+use components::format::{t, t_with};
+use components::{icons, style};
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
@@ -8,9 +11,6 @@ use gpui_kit::{
     AnyElement, Context, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _,
     Render, SharedString, StatefulInteractiveElement as _, Styled, Subscription, Window, div,
 };
-use widgets::focus::{Axis, Roving, Step};
-use widgets::format::{t, t_with};
-use widgets::{icons, style};
 
 /// A lone modifier is not a shortcut, so a recording waits for a real key.
 const MODIFIERS: &[&str] = &[
@@ -132,7 +132,7 @@ impl Shortcuts {
 
     fn row(&self, index: usize, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let row = self.rows.get(index)?;
-        if !widgets::settings::matches(&[row.label.as_str()], cx) {
+        if !components::settings::matches(&[row.label.as_str()], cx) {
             return None;
         }
         let recording = self.recording == Some(index);
@@ -205,7 +205,7 @@ impl Shortcuts {
                     )
                 })
                 .when(ringed, |row| {
-                    row.child(widgets::focus::ring(style::radius_lg(), cx))
+                    row.child(components::focus::ring(style::radius_lg(), cx))
                 })
                 .into_any_element(),
         )
@@ -241,7 +241,7 @@ impl Render for Shortcuts {
             .gap_0p5()
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| this.key(event, cx)))
             .children(blocks);
-        widgets::settings::section(crate::title())
+        components::settings::section(crate::title())
             .child(
                 div()
                     .w_full()

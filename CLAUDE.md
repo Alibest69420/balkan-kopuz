@@ -20,8 +20,8 @@ Everything runs inside the dev shell: `nix develop --command <cmd>`. A bare
 
 ## Architecture
 
-Dependencies point one way: `app` → feature crates → `widgets` → `store` →
-`link` → `kopuz-api`.
+Dependencies point one way: `app` → feature crates → `components` →
+`primitives` → `store` → `link` → `kopuz-api`.
 
 - `crates/link` — the daemon seam. `Link::call` runs an API call on the tokio
   runtime tonic needs and hands back a future GPUI can await; `Connection`
@@ -33,9 +33,14 @@ Dependencies point one way: `app` → feature crates → `widgets` → `store` �
   `DownloadsModel`, `JobsModel`, `Navigator`, `Chrome`, `Notices`.
   `Query<T>` is the read that keeps itself fresh; `store::actions` holds the
   play/queue/share commands; `store::artwork_source` feeds `img()`.
-- `crates/widgets` — the shared vocabulary: `Cover`, `Tile`, `TrackList`,
-  `PageHeader`, `EmptyState`, `Loading`, `SchemaForm`, the playlist picker,
-  `icons`, and `format::{t, t_with, duration}`.
+- `crates/components` — every shared component, each defined once: `Cover`,
+  `Tile`/`TileRow`, `TrackList`/`TrackRow`/`TrackHeader`, `PageHeader`,
+  `EmptyState`, `Loading`, `SchemaForm`, menus, dialogs, the playlist picker.
+  It re-exports `primitives`, so a feature crate depends on `components` alone.
+  Before drawing something a second page also draws, put it here instead.
+- `crates/primitives` — what components are drawn with: `style` tokens,
+  `motion`, `focus`, `icons`, `format::{t, t_with, duration}`, `scroll`,
+  `skin`. It cannot reach a component, and the compiler holds that line.
 - `crates/theme` — Kopuz's 13-token palettes projected onto the component theme.
 - `crates/page_*`, `crates/sidebar`, `player_bar`, `side_panel`, `fullscreen`,
   `quick_search`, `overlays`, `metadata_dialog` — one feature each. The app
@@ -53,7 +58,7 @@ Dependencies point one way: `app` → feature crates → `widgets` → `store` �
   feature code, and prefer rem-scale helpers (`p_2()`, `text_sm()`, `w_64()`)
   over `px(...)` except for genuinely measured geometry such as row heights.
 - Repeated elements need stable domain ids, never a list index that can move.
-- Every user-visible string goes through `widgets::format::t` with a key that
+- Every user-visible string goes through `components::format::t` with a key that
   exists in `../kopuz/crates/i18n/locales/en.ftl`. If no key fits, use the
   literal English the Dioxus app used and leave a `TODO(i18n)`.
 - Gate every affordance on `SourcesModel::global(cx).read(cx).capabilities()`,

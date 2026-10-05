@@ -1,6 +1,8 @@
 //! Step one: every service the daemon offers, each opening the shared "add source" form on itself.
 
 use api::ServiceInfo;
+use components::format::{t, text};
+use components::icons;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -9,8 +11,6 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled, Window, div,
 };
 use settings_sources::ui as forms;
-use widgets::format::{t, text};
-use widgets::icons;
 
 use crate::{FirstRun, ui};
 

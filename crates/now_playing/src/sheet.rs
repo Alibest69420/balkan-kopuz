@@ -6,6 +6,8 @@ mod tests;
 
 use std::path::PathBuf;
 
+use components::format::t;
+use components::{Cover, icons, menus, motion, style};
 use gpui_kit::base::ElementExt as _;
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::menu::DropdownMenu as _;
@@ -20,8 +22,6 @@ use gpui_kit::{
 };
 use store::layout::{Backdrop, Side};
 use store::{Chrome, ConfigModel, FavoritesModel, Navigator, Route, SourcesModel};
-use widgets::format::t;
-use widgets::{Cover, icons, menus, motion, style};
 
 use crate::NowPlaying;
 use crate::meta::{cover_size, playing_from, track_target};
@@ -493,12 +493,12 @@ impl NowPlaying {
                     store::artwork_source(artwork?, true)
                 } else {
                     // No picture was asked for, so the sheet takes the same light the window does.
-                    return widgets::backdrop::ambient(window, cx);
+                    return components::backdrop::ambient(window, cx);
                 };
                 // The sheet is read over, so the art never gets to be as bright as a wallpaper.
                 let darkening = config.config().cover_art_darkening.max(72);
                 let blur = config.config().cover_art_blur;
-                Some(widgets::backdrop::wallpaper(source, darkening, blur, cx))
+                Some(components::backdrop::wallpaper(source, darkening, blur, cx))
             }
         }
     }

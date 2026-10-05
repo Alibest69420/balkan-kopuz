@@ -1,5 +1,7 @@
 //! The volume control: a perceptual curve at the UI edge, a linear level on the wire.
 
+use components::format::t;
+use components::{focus, icons, motion, style};
 use gpui_kit::base::slider::{Slider as BareSlider, SliderIndicator, SliderTrack};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex};
@@ -10,8 +12,6 @@ use gpui_kit::{
     relative, rems,
 };
 use store::{ConfigModel, PlayerModel};
-use widgets::format::t;
-use widgets::{focus, icons, motion, style};
 
 use crate::{NowPlaying, channel};
 

@@ -1085,13 +1085,28 @@ checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
 name = "commands"
 version = "0.1.0"
 dependencies = [
+ "components",
  "gpui-kit",
  "kopuz-api",
  "kopuz-i18n",
  "link",
  "store",
  "tracing",
- "widgets",
+]
+
+[[package]]
+name = "components"
+version = "0.1.0"
+dependencies = [
+ "gpui-kit",
+ "kopuz-api",
+ "kopuz-i18n",
+ "link",
+ "primitives",
+ "profile",
+ "store",
+ "theme",
+ "tracing",
 ]
 
 [[package]]
@@ -1446,9 +1461,9 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 name = "debug_overlay"
 version = "0.1.0"
 dependencies = [
+ "components",
  "gpui-kit",
  "profile",
- "widgets",
 ]
 
 [[package]]
@@ -1558,6 +1573,7 @@ name = "discover"
 version = "0.1.0"
 dependencies = [
  "commands",
+ "components",
  "gpui-kit",
  "kopuz-api",
  "kopuz-config",
@@ -1567,7 +1583,6 @@ dependencies = [
  "store",
  "theme",
  "tracing",
- "widgets",
 ]
 
 [[package]]
@@ -3845,6 +3860,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "commands",
+ "components",
  "debug_overlay",
  "discover",
  "gpui-kit",
@@ -3876,7 +3892,6 @@ dependencies = [
  "topbar",
  "tracing",
  "tracing-subscriber",
- "widgets",
 ]
 
 [[package]]
@@ -4018,6 +4033,7 @@ name = "library"
 version = "0.1.0"
 dependencies = [
  "commands",
+ "components",
  "gpui-kit",
  "kopuz-api",
  "kopuz-config",
@@ -4028,7 +4044,6 @@ dependencies = [
  "store",
  "theme",
  "tracing",
- "widgets",
 ]
 
 [[package]]
@@ -4359,6 +4374,7 @@ dependencies = [
 name = "metadata_dialog"
 version = "0.1.0"
 dependencies = [
+ "components",
  "gpui-kit",
  "kopuz-api",
  "kopuz-config",
@@ -4367,7 +4383,6 @@ dependencies = [
  "store",
  "theme",
  "tracing",
- "widgets",
 ]
 
 [[package]]
@@ -4640,6 +4655,7 @@ dependencies = [
 name = "now_playing"
 version = "0.1.0"
 dependencies = [
+ "components",
  "gpui-kit",
  "kopuz-api",
  "kopuz-config",
@@ -4650,7 +4666,6 @@ dependencies = [
  "store",
  "theme",
  "tracing",
- "widgets",
 ]
 
 [[package]]
@@ -5135,12 +5150,12 @@ dependencies = [
 name = "onboarding"
 version = "0.1.0"
 dependencies = [
+ "components",
  "gpui-kit",
  "kopuz-api",
  "profile",
  "settings_sources",
  "store",
- "widgets",
 ]
 
 [[package]]
@@ -5229,6 +5244,7 @@ dependencies = [
 name = "overlays"
 version = "0.1.0"
 dependencies = [
+ "components",
  "gpui-kit",
  "kopuz-api",
  "kopuz-config",
@@ -5238,13 +5254,13 @@ dependencies = [
  "store",
  "theme",
  "tracing",
- "widgets",
 ]
 
 [[package]]
 name = "page_albums"
 version = "0.1.0"
 dependencies = [
+ "components",
  "gpui-kit",
  "kopuz-api",
  "kopuz-config",
@@ -5254,13 +5270,13 @@ dependencies = [
  "store",
  "theme",
  "tracing",
- "widgets",
 ]
 
 [[package]]
 name = "page_artists"
 version = "0.1.0"
 dependencies = [
+ "components",
  "gpui-kit",
  "kopuz-api",
  "kopuz-config",
@@ -5270,26 +5286,26 @@ dependencies = [
  "store",
  "theme",
  "tracing",
- "widgets",
 ]
 
 [[package]]
 name = "page_home"
 version = "0.1.0"
 dependencies = [
+ "components",
  "gpui-kit",
  "kopuz-api",
  "profile",
  "settings_interface",
  "store",
  "theme",
- "widgets",
 ]
 
 [[package]]
 name = "page_playlists"
 version = "0.1.0"
 dependencies = [
+ "components",
  "gpui-kit",
  "kopuz-api",
  "kopuz-config",
@@ -5298,13 +5314,13 @@ dependencies = [
  "store",
  "theme",
  "tracing",
- "widgets",
 ]
 
 [[package]]
 name = "page_radio"
 version = "0.1.0"
 dependencies = [
+ "components",
  "gpui-kit",
  "kopuz-api",
  "kopuz-config",
@@ -5313,13 +5329,13 @@ dependencies = [
  "store",
  "theme",
  "tracing",
- "widgets",
 ]
 
 [[package]]
 name = "page_settings"
 version = "0.1.0"
 dependencies = [
+ "components",
  "gpui-kit",
  "kopuz-api",
  "kopuz-config",
@@ -5332,7 +5348,6 @@ dependencies = [
  "store",
  "theme",
  "tracing",
- "widgets",
 ]
 
 [[package]]
@@ -5340,6 +5355,7 @@ name = "palette"
 version = "0.1.0"
 dependencies = [
  "commands",
+ "components",
  "gpui-kit",
  "kopuz-api",
  "kopuz-i18n",
@@ -5348,7 +5364,6 @@ dependencies = [
  "settings_interface",
  "store",
  "theme",
- "widgets",
 ]
 
 [[package]]
@@ -5571,6 +5586,7 @@ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 name = "playlists_panel"
 version = "0.1.0"
 dependencies = [
+ "components",
  "gpui-kit",
  "kopuz-api",
  "kopuz-i18n",
@@ -5579,7 +5595,6 @@ dependencies = [
  "store",
  "theme",
  "tracing",
- "widgets",
 ]
 
 [[package]]
@@ -5719,6 +5734,20 @@ checksum = "479ca8adacdd7ce8f1fb39ce9ecccbfe93a3f1344b3d0d97f20bc0196208f62b"
 dependencies = [
  "proc-macro2",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "primitives"
+version = "0.1.0"
+dependencies = [
+ "gpui-kit",
+ "kopuz-api",
+ "kopuz-i18n",
+ "link",
+ "profile",
+ "store",
+ "theme",
+ "tracing",
 ]
 
 [[package]]
@@ -6908,6 +6937,7 @@ dependencies = [
 name = "settings_appearance"
 version = "0.1.0"
 dependencies = [
+ "components",
  "gpui-kit",
  "kopuz-api",
  "kopuz-config",
@@ -6916,7 +6946,6 @@ dependencies = [
  "store",
  "theme",
  "tracing",
- "widgets",
 ]
 
 [[package]]
@@ -6924,17 +6953,18 @@ name = "settings_interface"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "components",
  "fontdb",
  "gpui-kit",
  "kopuz-i18n",
  "store",
- "widgets",
 ]
 
 [[package]]
 name = "settings_playback"
 version = "0.1.0"
 dependencies = [
+ "components",
  "gpui-kit",
  "kopuz-api",
  "kopuz-config",
@@ -6943,13 +6973,13 @@ dependencies = [
  "store",
  "theme",
  "tracing",
- "widgets",
 ]
 
 [[package]]
 name = "settings_sources"
 version = "0.1.0"
 dependencies = [
+ "components",
  "gpui-kit",
  "kopuz-api",
  "kopuz-config",
@@ -6958,7 +6988,6 @@ dependencies = [
  "store",
  "theme",
  "tracing",
- "widgets",
 ]
 
 [[package]]
@@ -7024,11 +7053,11 @@ name = "shortcuts"
 version = "0.1.0"
 dependencies = [
  "commands",
+ "components",
  "gpui-kit",
  "kopuz-i18n",
  "settings_interface",
  "store",
- "widgets",
 ]
 
 [[package]]
@@ -7208,6 +7237,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 name = "status"
 version = "0.1.0"
 dependencies = [
+ "components",
  "gpui-kit",
  "kopuz-api",
  "kopuz-i18n",
@@ -7217,7 +7247,6 @@ dependencies = [
  "store",
  "theme",
  "tracing",
- "widgets",
 ]
 
 [[package]]
@@ -7967,6 +7996,7 @@ name = "topbar"
 version = "0.1.0"
 dependencies = [
  "commands",
+ "components",
  "gpui-kit",
  "kopuz-api",
  "kopuz-i18n",
@@ -7976,7 +8006,6 @@ dependencies = [
  "store",
  "theme",
  "tracing",
- "widgets",
 ]
 
 [[package]]
@@ -8881,20 +8910,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bae2f2b2b816647a1cab1acc91f5bd20812d53cb344382635ec2181940c8034f"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "widgets"
-version = "0.1.0"
-dependencies = [
- "gpui-kit",
- "kopuz-api",
- "kopuz-i18n",
- "link",
- "profile",
- "store",
- "theme",
- "tracing",
 ]
 
 [[package]]

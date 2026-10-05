@@ -3,6 +3,8 @@
 use std::path::PathBuf;
 
 use api::{ArtworkChange, TrackInfo, TrackMetadataPatch};
+use components::format::{duration, t};
+use components::{Cover, Loading, icons, motion, style};
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::base::motion::{Easing, Presence, Transition};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -16,8 +18,6 @@ use gpui_kit::{
     img, px,
 };
 use store::{Link, Notices};
-use widgets::format::{duration, t};
-use widgets::{Cover, Loading, icons, motion, style};
 
 // Measured geometry: `max-w-lg`, the `w-24 h-24` cover, its `rounded-lg`, the `max-h-[60vh]` body.
 const DIALOG_WIDTH: Pixels = px(512.);
@@ -33,8 +33,8 @@ mod batch;
 
 /// Register the dialog so a track row's "View metadata" can open it.
 pub fn register(cx: &mut App) {
-    widgets::dialogs::register_track_metadata(open, cx);
-    widgets::dialogs::register_batch_metadata(batch::open, cx);
+    components::dialogs::register_track_metadata(open, cx);
+    components::dialogs::register_batch_metadata(batch::open, cx);
 }
 
 fn open(key: String, editable: bool, window: &mut Window, cx: &mut App) {

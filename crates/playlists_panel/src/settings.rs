@@ -1,13 +1,13 @@
 //! Settings → Interface → Playlists panel: whether the column is there, and how wide it opens.
 
+use components::format::t;
+use components::settings::{SettingRow, Toggle, choice, section};
 use gpui_kit::component::v_flex;
 use gpui_kit::{
     App, AppContext as _, Context, IntoElement, ParentElement as _, Render, Styled, Window,
 };
 use store::LayoutModel;
 use store::layout::{Panel, Section as Group};
-use widgets::format::t;
-use widgets::settings::{SettingRow, Toggle, choice, section};
 
 /// The widths the panel offers, inside what the drag handle allows.
 const WIDTHS: &[f32] = &[200., 260., 320., 380.];

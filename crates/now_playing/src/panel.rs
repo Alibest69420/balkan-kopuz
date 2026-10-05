@@ -1,5 +1,7 @@
 //! The docked column beside the content: the same queue and lyrics the sheet draws, in a narrower slot.
 
+use components::format::t;
+use components::{icons, motion, style};
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Selectable as _, Sizable as _, h_flex, v_flex};
@@ -10,8 +12,6 @@ use gpui_kit::{
 };
 use store::layout::SheetTab;
 use store::{Chrome, SidePanel};
-use widgets::format::t;
-use widgets::{icons, motion, style};
 
 use crate::NowPlaying;
 use crate::channel;
@@ -204,7 +204,7 @@ impl NowPlaying {
                 .clone()
                 .map(IntoElement::into_any_element)
                 .unwrap_or_else(|| div().into_any_element()),
-            SheetTab::Related => widgets::EmptyState::new(t("related_soon"))
+            SheetTab::Related => components::EmptyState::new(t("related_soon"))
                 .icon(icons::COMPASS)
                 .into_any_element(),
             SheetTab::Queue => self

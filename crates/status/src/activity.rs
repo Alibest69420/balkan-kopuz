@@ -1,6 +1,8 @@
 //! What the daemon is working on: every running job, its progress, and how to stop it.
 
 use api::{JobKind, JobProgress};
+use components::format::t;
+use components::{icons, style};
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::progress::Progress;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
@@ -10,8 +12,6 @@ use gpui_kit::{
     SharedString, StatefulInteractiveElement as _, Styled, Subscription, Window, div, px,
 };
 use store::{Finished, JobsModel};
-use widgets::format::t;
-use widgets::{icons, style};
 
 use crate::{DONE, FAILED, ROW_GLYPH, chip, empty, header, quiet_chip, row};
 

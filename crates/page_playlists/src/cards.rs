@@ -1,11 +1,11 @@
 //! The playlist and folder cards, and the menus they carry.
 
 use api::{PlaylistFolderInfo, PlaylistInfo};
+use components::format::t_with;
+use components::{Frame, Tile, icons};
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::{App, Entity, Hsla, IntoElement, Pixels, Styled as _, px};
 use store::{Route, Target};
-use widgets::format::t_with;
-use widgets::{Frame, Tile, icons};
 
 /// The `w-full h-32` picture inside a card's `p-4`.
 const COVER: Pixels = px(128.);
@@ -31,7 +31,7 @@ pub(crate) fn tweened(
         .bg(fill)
         .border_color(edge)
         .text_color(text);
-    widgets::hover::framed(id, hover, button)
+    components::hover::framed(id, hover, button)
 }
 
 /// The card for one playlist; whether it sits in a folder is the catalog's answer, not a flag.

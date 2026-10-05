@@ -1,11 +1,11 @@
 //! The list. Order here is the order a menu draws and the order the palette falls back to.
 
 use api::PlaylistCapability;
+use components::format::t;
+use components::icons;
+use components::track_list::row_scope;
 use gpui_kit::App;
 use store::{Kind, Navigator, Route, Target, actions};
-use widgets::format::t;
-use widgets::icons;
-use widgets::track_list::row_scope;
 
 use crate::ops;
 use crate::{Binding, Command, Group, Section};
@@ -64,7 +64,7 @@ static COMMANDS: &[Command] = &[
         applies: ONLY_TRACKS,
         available: has_tracks,
         run: |target, _, cx| actions::play_tracks(ops::track_keys(&target), Some(0), cx),
-        action: Some(|| Box::new(widgets::track_list::ActivateRow)),
+        action: Some(|| Box::new(components::track_list::ActivateRow)),
     },
     Command {
         id: "track.play_next",
@@ -81,7 +81,7 @@ static COMMANDS: &[Command] = &[
         applies: TRACKS,
         available: has_tracks,
         run: |target, _, cx| actions::play_next(ops::track_keys(&target), cx),
-        action: Some(|| Box::new(widgets::track_list::PlayNextSelection)),
+        action: Some(|| Box::new(components::track_list::PlayNextSelection)),
     },
     Command {
         id: "track.add_to_queue",
@@ -98,7 +98,7 @@ static COMMANDS: &[Command] = &[
         applies: TRACKS,
         available: has_tracks,
         run: |target, _, cx| actions::append(ops::track_keys(&target), cx),
-        action: Some(|| Box::new(widgets::track_list::QueueSelection)),
+        action: Some(|| Box::new(components::track_list::QueueSelection)),
     },
     Command {
         id: "track.add_to_playlist",
@@ -115,7 +115,7 @@ static COMMANDS: &[Command] = &[
             has_tracks(target, cx) && ops::caps(cx).playlists != PlaylistCapability::None
         },
         run: |target, window, cx| {
-            widgets::playlist_picker::open(ops::track_keys(&target), window, cx)
+            components::playlist_picker::open(ops::track_keys(&target), window, cx)
         },
         action: None,
     },
@@ -137,7 +137,7 @@ static COMMANDS: &[Command] = &[
         applies: TRACKS,
         available: has_tracks,
         run: |target, _, cx| ops::toggle_favorite(&target, cx),
-        action: Some(|| Box::new(widgets::track_list::FavoriteSelection)),
+        action: Some(|| Box::new(components::track_list::FavoriteSelection)),
     },
     Command {
         id: "track.radio",
@@ -235,7 +235,7 @@ static COMMANDS: &[Command] = &[
         run: |target, window, cx| {
             if let Some(key) = ops::first_key(&target) {
                 let editable = ops::caps(cx).edit_tags;
-                widgets::dialogs::open_track_metadata(key, editable, window, cx);
+                components::dialogs::open_track_metadata(key, editable, window, cx);
             }
         },
         action: None,
@@ -252,7 +252,7 @@ static COMMANDS: &[Command] = &[
         applies: TRACKS,
         available: many_tracks,
         run: |target, window, cx| {
-            widgets::dialogs::open_batch_metadata(ops::track_keys(&target), window, cx);
+            components::dialogs::open_batch_metadata(ops::track_keys(&target), window, cx);
         },
         action: None,
     },
@@ -329,7 +329,7 @@ static COMMANDS: &[Command] = &[
             has_tracks(target, cx) && row_scope(cx).is_some_and(|row| row.actions.delete)
         },
         run: |target, _, cx| ops::delete_tracks(&target, cx),
-        action: Some(|| Box::new(widgets::track_list::RemoveSelection)),
+        action: Some(|| Box::new(components::track_list::RemoveSelection)),
     },
     // Albums.
     Command {
@@ -383,7 +383,7 @@ static COMMANDS: &[Command] = &[
             ops::with_album_keys(id, cx, move |keys, cx| {
                 handle
                     .update(cx, |_, window, cx| {
-                        widgets::playlist_picker::open(keys, window, cx)
+                        components::playlist_picker::open(keys, window, cx)
                     })
                     .ok();
             });
@@ -552,7 +552,7 @@ static COMMANDS: &[Command] = &[
         available: |_, cx| ops::caps(cx).folders,
         run: |target, window, cx| {
             if let Some(id) = ops::playlist_id(&target) {
-                widgets::dialogs::open_folder_picker(id, window, cx);
+                components::dialogs::open_folder_picker(id, window, cx);
             }
         },
         action: None,
@@ -1048,7 +1048,7 @@ static COMMANDS: &[Command] = &[
         danger: false,
         applies: NOTHING,
         available: yes,
-        run: |_, window, cx| widgets::dialogs::open_url_download(window, cx),
+        run: |_, window, cx| components::dialogs::open_url_download(window, cx),
         action: None,
     },
     Command {
@@ -1065,7 +1065,7 @@ static COMMANDS: &[Command] = &[
         danger: false,
         applies: NOTHING,
         available: yes,
-        run: |_, window, cx| widgets::dialogs::open_shortcuts(window, cx),
+        run: |_, window, cx| components::dialogs::open_shortcuts(window, cx),
         action: Some(|| Box::new(crate::keys::ShowShortcuts)),
     },
     Command {

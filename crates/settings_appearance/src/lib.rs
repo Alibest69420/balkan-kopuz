@@ -2,6 +2,9 @@
 
 mod theme_editor;
 
+use components::format::t;
+use components::settings::{SettingRow, Toggle, section};
+use components::{icons, style};
 use config::{AppConfig, BackBehavior, PlayerBarPosition};
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
@@ -15,9 +18,6 @@ use gpui_kit::{
 };
 use store::ConfigModel;
 use theme_editor::ThemeEditor;
-use widgets::format::t;
-use widgets::settings::{SettingRow, Toggle, section};
-use widgets::{icons, style};
 
 /// `text-white/80`, what a slider's value reads in.
 const READOUT: f32 = 0.80;

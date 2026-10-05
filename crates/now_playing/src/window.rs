@@ -1,5 +1,6 @@
 //! The mini player's own window: a layer-shell overlay where the compositor offers one, else a small window.
 
+use components::style;
 use gpui_kit::component::{ActiveTheme as _, Root};
 use gpui_kit::layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions};
 use gpui_kit::{
@@ -9,7 +10,6 @@ use gpui_kit::{
     point, px, size,
 };
 use store::Chrome;
-use widgets::style;
 
 use crate::NowPlaying;
 

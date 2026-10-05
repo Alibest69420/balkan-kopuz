@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use api::NoticeLevel;
+use components::format::{t, t_with};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::notification::Notification;
 use gpui_kit::component::{Sizable as _, WindowExt as _};
@@ -11,7 +12,6 @@ use gpui_kit::{
     App, Context, ElementId, IntoElement, Render, SharedString, Subscription, Task, Window, div,
 };
 use store::{BatchFinished, DownloadsModel, Notice, Notices, Undo};
-use widgets::format::{t, t_with};
 
 /// How long an undo stays offered.
 const UNDO: Duration = Duration::from_secs(6);

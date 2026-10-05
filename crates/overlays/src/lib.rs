@@ -1,6 +1,8 @@
 //! The banners over the routed page: the scan line, the playback error, and the daemon's absence.
 
 use api::{JobKind, JobProgress};
+use components::format::t;
+use components::{icons, motion, style};
 use gpui_kit::base::motion::{Easing, Presence, Transition};
 use gpui_kit::component::progress::Progress;
 use gpui_kit::component::tooltip::Tooltip;
@@ -13,8 +15,6 @@ use gpui_kit::{
 };
 use status::{ConnectionBanner, Toasts};
 use store::{JobsModel, PlayerModel};
-use widgets::format::t;
-use widgets::{icons, motion, style};
 
 // TODO(parity): the offline banner needs a connectivity probe this client does not have (§3.1).
 // TODO(parity): the update banner checks GitHub, which is outside the daemon seam (§3.1).

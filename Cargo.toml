@@ -20,7 +20,8 @@ gpui-kit = "0.6.4"
 commands = { path = "crates/commands" }
 link = { path = "crates/link" }
 store = { path = "crates/store" }
-widgets = { path = "crates/widgets" }
+components = { path = "crates/components" }
+primitives = { path = "crates/primitives" }
 theme = { path = "crates/theme" }
 
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros", "process"] }

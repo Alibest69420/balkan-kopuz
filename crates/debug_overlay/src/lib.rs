@@ -2,12 +2,12 @@
 
 use std::time::Duration;
 
+use components::style;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::{
     AnyElement, App, Context, InteractiveElement as _, IntoElement, ParentElement as _, Pixels,
     Render, SharedString, Styled, Task, Window, actions, div, px,
 };
-use widgets::style;
 
 actions!(kopuz, [ToggleDebugOverlay]);
 

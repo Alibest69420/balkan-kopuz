@@ -1,13 +1,13 @@
 //! Settings → Interface → Library: the defaults every facet starts from.
 
+use components::format::t;
+use components::settings::{SettingRow, choice, section};
 use gpui_kit::component::v_flex;
 use gpui_kit::{
     App, AppContext as _, Context, IntoElement, ParentElement as _, Render, Styled as _, Window,
 };
 use store::LayoutModel;
 use store::layout::{Density, Section as Group, TileSize, ViewMode};
-use widgets::format::t;
-use widgets::settings::{SettingRow, choice, section};
 
 use crate::facet::Facet;
 

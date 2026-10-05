@@ -1,5 +1,7 @@
 //! The knobs that belong to no single package: motion, accent and how big everything is drawn.
 
+use components::format::t;
+use components::settings::{SettingRow, choice, section, select_width};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::v_flex;
 use gpui_kit::{
@@ -8,8 +10,6 @@ use gpui_kit::{
 };
 use store::LayoutModel;
 use store::layout::{Accent, Ambient, Motion, Section as Group};
-use widgets::format::t;
-use widgets::settings::{SettingRow, choice, section, select_width};
 
 /// The scale steps the size setting offers, inside `layout::SCALE_RANGE`.
 const STEPS: &[f32] = &[0.8, 0.9, 1.0, 1.1, 1.25, 1.4];

@@ -13,6 +13,6 @@ workspace = true
 api = { workspace = true }
 profile = { path = "../profile" }
 store = { workspace = true }
-widgets = { workspace = true }
+components = { workspace = true }
 settings_sources = { path = "../settings_sources" }
 gpui-kit = { workspace = true }

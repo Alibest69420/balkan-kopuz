@@ -11,6 +11,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use api::{AlbumPage, ApiError, ArtistPage, KopuzApi, SearchResults, Table};
+use components::format::{t, t_with};
+use components::{icons, motion, style};
 use gpui_kit::base::motion::{Easing, Presence, Transition};
 use gpui_kit::component::input::{
     Escape, IndentInline, Input, InputEvent, InputState, MoveDown, MoveUp,
@@ -26,8 +28,6 @@ use gpui_kit::{
 };
 use mode::{Mode, Part};
 use store::{Chrome, LayoutModel, Navigator, PlayerModel, PlaylistsModel, Query, Route, Target};
-use widgets::format::{t, t_with};
-use widgets::{icons, motion, style};
 
 pub use prefs::register as register_settings;
 
@@ -405,7 +405,7 @@ impl Palette {
             }
             Act::Setting { slug, title } => {
                 self.close(cx);
-                widgets::settings::set_highlight(Some(title), cx);
+                components::settings::set_highlight(Some(title), cx);
                 let route = Route::Settings {
                     section: Some(SharedString::from(slug)),
                 };
@@ -889,7 +889,7 @@ impl Palette {
                     .rounded(style::radius_lg())
                     .when(chosen, |row| {
                         row.bg(style::accent(CHOSEN, cx))
-                            .child(widgets::focus::ring(style::radius_lg(), cx))
+                            .child(components::focus::ring(style::radius_lg(), cx))
                     })
                     .child(
                         icons::icon(item.icon)
@@ -1010,7 +1010,7 @@ impl Render for Palette {
         let _span = profile::render("palette");
         let count = self.lines.len();
         let height = list_height(count, window);
-        widgets::scroll::smooth_list("palette-list", &self.scroll, window, cx);
+        components::scroll::smooth_list("palette-list", &self.scroll, window, cx);
         // The palette is only in the tree while it is open, so its entrance starts from nothing.
         let revealed = Presence::new("palette", true)
             .transition(Transition::new(motion::FAST).easing(Easing::EaseOut))

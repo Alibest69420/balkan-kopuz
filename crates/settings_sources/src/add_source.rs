@@ -2,6 +2,8 @@
 
 use api::schema::{FieldKind, FieldValue};
 use api::{DraftCheck, ServiceInfo, SignInKind, SourceDraft, Table};
+use components::format::{t, text};
+use components::{FieldChanged, SchemaForm};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
@@ -14,8 +16,6 @@ use gpui_kit::{
 };
 use link::Link;
 use store::Query;
-use widgets::format::{t, text};
-use widgets::{FieldChanged, SchemaForm};
 
 use crate::ui;
 

@@ -4,6 +4,8 @@ use std::ops::Range;
 use std::time::Instant;
 
 use api::{LyricLineView, LyricsView as LyricsSource};
+use components::format::t;
+use components::{KaraokeText, icons, style};
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
@@ -14,8 +16,6 @@ use gpui_kit::{
     Subscription, Task, Window, div, point, px, relative, rems,
 };
 use store::{ConfigModel, PlayerModel, Playhead};
-use widgets::format::t;
-use widgets::{KaraokeText, icons, style};
 
 // Where the active line parks in the panel, as a fraction of its height.
 const COMFORT_OFFSET: f32 = 0.42;
@@ -626,7 +626,7 @@ impl Render for LyricsView {
         let base = cx.theme().foreground;
         let background = cx.theme().background;
         let sung = theme::readable_on(
-            widgets::motion::accent(theme::Surface::Sheet, base, window, cx),
+            components::motion::accent(theme::Surface::Sheet, base, window, cx),
             background,
         );
 

@@ -1,6 +1,7 @@
 //! The username/password sign-in a server asks for when its `SignInKind` is `Password`.
 
 use api::SourceLoginRequest;
+use components::format::{t, t_with};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputContentType, InputState};
@@ -12,7 +13,6 @@ use gpui_kit::{
 };
 use link::Link;
 use store::SourcesModel;
-use widgets::format::{t, t_with};
 
 use crate::ui;
 
