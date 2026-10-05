@@ -27,8 +27,8 @@ use widgets::{EmptyState, Loading, PageHeader, TrackList, TrackListEvent, icons,
 
 use crate::detail::spinner_row;
 use crate::genres::{GenreCard, GenreTile, genres_of};
-use crate::results::Playing;
 use crate::shelves::Shelves;
+use store::Playing;
 
 pub use detail::{CatalogArtist, CatalogPlaylist};
 pub use genres::Genre;
@@ -182,10 +182,7 @@ impl Discover {
             }),
             // The player notifies on every tick, so only a change of what is marked is worth a frame.
             cx.observe(&player, |this, player, cx| {
-                let marked = player.read(cx).track().map(|now| Playing {
-                    album: Some(now.album.clone()),
-                    artist: Some(now.artist.clone()),
-                });
+                let marked = player.read(cx).track().map(Playing::of);
                 let marked = marked.unwrap_or_default();
                 if marked == this.playing {
                     return;

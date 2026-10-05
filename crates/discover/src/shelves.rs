@@ -4,7 +4,6 @@ use std::collections::HashSet;
 
 use api::{CatalogDetailRequest, CatalogItem, CatalogItemKind, CatalogShelf};
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
-use gpui_kit::component::menu::ContextMenuExt as _;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -15,7 +14,8 @@ use gpui_kit::{
 use store::{Link, Navigator, Notices, PlayerModel, Route, SourcesModel, Target, actions};
 use widgets::format::t;
 use widgets::{
-    Tile, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons, menus, motion, style,
+    PlayState, Tile, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons, motion,
+    style,
 };
 
 use crate::states::catalog_failure;
@@ -39,8 +39,7 @@ pub struct Shelves {
     // The catalog id or track key whose tile owns the pause overlay.
     now_playing: Option<String>,
     pending: Option<String>,
-    // The tile and the carousel arrow under the pointer, which their tweens react to.
-    hovered_tile: Option<SharedString>,
+    // The carousel arrow under the pointer, which its tween reacts to.
     hovered_nudge: Option<SharedString>,
     _play: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
@@ -53,20 +52,10 @@ impl Shelves {
             views: Vec::new(),
             now_playing: None,
             pending: None,
-            hovered_tile: None,
             hovered_nudge: None,
             _play: None,
             _subscriptions: vec![cx.observe(&player, |_, _, cx| cx.notify())],
         }
-    }
-
-    fn set_tile_hover(&mut self, id: SharedString, hovered: bool, cx: &mut Context<Self>) {
-        if hovered {
-            self.hovered_tile = Some(id);
-        } else if self.hovered_tile.as_ref() == Some(&id) {
-            self.hovered_tile = None;
-        }
-        cx.notify();
     }
 
     fn set_nudge_hover(&mut self, id: SharedString, hovered: bool, cx: &mut Context<Self>) {
@@ -245,7 +234,7 @@ impl Shelves {
             .shelf
             .items
             .iter()
-            .map(|item| self.tile(index, item, window, cx))
+            .map(|item| self.tile(index, item, cx))
             .collect();
         let arrows = h_flex()
             .flex_shrink_0()
@@ -369,248 +358,95 @@ impl Shelves {
             .into_any_element()
     }
 
-    fn tile(
-        &self,
-        shelf: usize,
-        item: &CatalogItem,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    fn tile(&self, shelf: usize, item: &CatalogItem, cx: &mut Context<Self>) -> AnyElement {
+        let tile = Tile::new(element_id(shelf, &item.id), item.title.clone())
+            .subtitle(item.subtitle.clone().unwrap_or_default())
+            .artwork(item.artwork.as_ref())
+            .size(TILE);
         match item.kind {
-            CatalogItemKind::Track => self.song_tile(shelf, item, window, cx),
+            CatalogItemKind::Track => self.song_tile(tile, item, cx),
             CatalogItemKind::Album | CatalogItemKind::Playlist => {
-                self.playable_tile(shelf, item, window, cx)
+                self.playable_tile(tile, item, cx)
             }
-            CatalogItemKind::Artist => self.artist_tile(shelf, item),
-            CatalogItemKind::Mood | CatalogItemKind::Unknown => self.inert_tile(shelf, item),
+            // An artist tile's id is the key the daemon minted for it.
+            CatalogItemKind::Artist => tile
+                .placeholder(icons::MIC)
+                .round(true)
+                .tint(true)
+                .route(Route::DiscoverArtist(item.id.clone()))
+                .menu(Some(Target::Artist {
+                    key: item.id.clone(),
+                    name: item.title.clone().into(),
+                }))
+                .into_any_element(),
+            CatalogItemKind::Mood | CatalogItemKind::Unknown => tile.into_any_element(),
         }
     }
 
-    fn playable_tile(
-        &self,
-        shelf: usize,
-        item: &CatalogItem,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    fn playable_tile(&self, tile: Tile, item: &CatalogItem, cx: &mut Context<Self>) -> AnyElement {
         let id = item.id.clone();
         let kind = item.kind;
         let album = kind == CatalogItemKind::Album;
-        let route = if album {
-            Route::Album(id.clone().into())
-        } else {
-            Route::DiscoverPlaylist {
+        let route = match album {
+            true => Route::Album(id.clone().into()),
+            false => Route::DiscoverPlaylist {
                 id: id.clone().into(),
                 title: item.title.clone().into(),
-            }
+            },
         };
-        let hover_id = SharedString::from(format!("tile-hover-{shelf}-{id}"));
-        let hovered = self.hovered_tile.as_ref() == Some(&hover_id);
-        let overlay = self.play_overlay(shelf, item, kind, hovered, window, cx);
-        // A catalog playlist is nobody's saved list, so only an album carries the album menu.
-        let target = album.then(|| Target::Album {
-            id: id.clone().into(),
-            title: item.title.clone().into(),
-        });
-        let frame = div()
-            .id(hover_id.clone())
-            .flex_shrink_0()
-            .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
-                this.set_tile_hover(hover_id.clone(), *hovered, cx)
+        tile.placeholder(if album { icons::DISC } else { icons::LIST })
+            .route(route)
+            // A catalog playlist is nobody's saved list, so only an album carries the album menu.
+            .menu(album.then(|| Target::Album {
+                id: id.clone().into(),
+                title: item.title.clone().into(),
             }))
-            .child(
-                Tile::new(element_id(shelf, &id), item.title.clone())
-                    .subtitle(item.subtitle.clone().unwrap_or_default())
-                    .artwork(item.artwork.as_ref())
-                    .placeholder(if album { icons::DISC } else { icons::LIST })
-                    .size(TILE)
-                    .route(route)
-                    .overlay(overlay),
-            );
-        match target {
-            Some(target) => frame
-                .context_menu(menus::builder(target))
-                .into_any_element(),
-            None => frame.into_any_element(),
-        }
-    }
-
-    fn artist_tile(&self, shelf: usize, item: &CatalogItem) -> AnyElement {
-        // An artist tile's id is the key the daemon minted for it.
-        let key = item.id.clone();
-        let target = Target::Artist {
-            key: key.clone(),
-            name: item.title.clone().into(),
-        };
-        div()
-            .id(SharedString::from(format!(
-                "shelf-artist-{shelf}-{}",
-                item.id
-            )))
-            .flex_shrink_0()
-            .child(
-                Tile::new(element_id(shelf, &item.id), item.title.clone())
-                    .artwork(item.artwork.as_ref())
-                    .placeholder(icons::MIC)
-                    .size(TILE)
-                    .round(true)
-                    .route(Route::DiscoverArtist(key)),
-            )
-            .context_menu(menus::builder(target))
-            .into_any_element()
-    }
-
-    fn inert_tile(&self, shelf: usize, item: &CatalogItem) -> AnyElement {
-        div()
-            .flex_shrink_0()
-            .child(
-                Tile::new(element_id(shelf, &item.id), item.title.clone())
-                    .artwork(item.artwork.as_ref())
-                    .size(TILE),
+            .play(
+                self.play_state(&id, cx),
+                cx.listener(move |this, _, _, cx| this.toggle_or_play(kind, id.clone(), cx)),
             )
             .into_any_element()
     }
 
-    fn song_tile(
-        &self,
-        shelf: usize,
-        item: &CatalogItem,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    fn song_tile(&self, tile: Tile, item: &CatalogItem, cx: &mut Context<Self>) -> AnyElement {
         let Some(track) = item.track.as_ref() else {
-            return div().into_any_element();
+            return tile.into_any_element();
         };
         let key = track.key.clone();
         let radio = SourcesModel::global(cx).read(cx).capabilities().track_radio;
-        let hover_id = SharedString::from(format!("song-{shelf}-{key}"));
-        let hovered = self.hovered_tile.as_ref() == Some(&hover_id);
-        let overlay = self.song_overlay(shelf, &key, hovered, window, cx);
-        let target = Target::track(key.clone(), track.title.clone());
-        div()
-            .id(hover_id.clone())
-            .flex_shrink_0()
-            .on_hover(cx.listener({
-                let hover_id = hover_id.clone();
-                move |this, hovered: &bool, _, cx| {
-                    this.set_tile_hover(hover_id.clone(), *hovered, cx)
-                }
-            }))
-            .on_click(cx.listener(move |this, _, _, cx| {
-                if this.now_playing.as_deref() == Some(key.as_str()) {
-                    PlayerModel::global(cx).update(cx, |player, cx| player.toggle(cx));
-                    return;
-                }
-                this.now_playing = Some(key.clone());
-                if radio {
-                    actions::start_track_radio(key.clone(), cx);
-                } else {
-                    actions::play_tracks(vec![key.clone()], None, cx);
-                }
-                cx.notify();
-            }))
-            .child(
-                Tile::new(element_id(shelf, &item.id), item.title.clone())
-                    .subtitle(item.subtitle.clone().unwrap_or_default())
-                    .artwork(item.artwork.as_ref())
-                    .size(TILE)
-                    .overlay(overlay),
-            )
-            .context_menu(menus::builder(target))
-            .into_any_element()
-    }
-
-    fn play_overlay(
-        &self,
-        shelf: usize,
-        item: &CatalogItem,
-        kind: CatalogItemKind,
-        hovered: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let id = item.id.clone();
-        let loading = self.pending.as_deref() == Some(id.as_str());
-        let icon = if self.shows_pause(&id, cx) {
-            icons::PAUSE
-        } else {
-            icons::PLAY
+        let start = move |this: &mut Self, cx: &mut Context<Self>| {
+            if this.now_playing.as_deref() == Some(key.as_str()) {
+                PlayerModel::global(cx).update(cx, |player, cx| player.toggle(cx));
+                return;
+            }
+            this.now_playing = Some(key.clone());
+            if radio {
+                actions::start_track_radio(key.clone(), cx);
+            } else {
+                actions::play_tracks(vec![key.clone()], None, cx);
+            }
+            cx.notify();
         };
-        // `group-hover:opacity-100 transition-all duration-300`, less the lift GPUI cannot translate.
-        let reveal = motion::amount(
-            SharedString::from(format!("tile-reveal-{shelf}-{id}")),
-            if hovered { 1. } else { 0. },
-            motion::SLOW,
-            window,
-            cx,
-        );
-        div()
-            .absolute()
-            .right_3()
-            .bottom_3()
-            .opacity(reveal)
-            .child(
-                // `bg-white text-black`: the one control in the app that inverts the theme.
-                Button::new(SharedString::from(format!("play-{shelf}-{id}")))
-                    .custom(
-                        ButtonCustomVariant::new(cx)
-                            .color(cx.theme().foreground)
-                            .foreground(cx.theme().background)
-                            .hover(style::white(0.9, cx))
-                            .active(style::white(0.8, cx))
-                            .shadow(true),
-                    )
-                    .bg(cx.theme().foreground)
-                    .rounded(px(999.))
-                    .with_size(px(40.))
-                    .loading(loading)
-                    .icon(icons::icon(icon).small())
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        cx.stop_propagation();
-                        this.toggle_or_play(kind, id.clone(), cx);
-                    })),
+        let press = start.clone();
+        tile.menu(Some(Target::track(track.key.clone(), track.title.clone())))
+            .on_click(cx.listener(move |this, _, _, cx| start(this, cx)))
+            .play(
+                self.play_state(&track.key, cx),
+                cx.listener(move |this, _, _, cx| press(this, cx)),
             )
             .into_any_element()
     }
 
-    fn song_overlay(
-        &self,
-        shelf: usize,
-        key: &str,
-        hovered: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let icon = if self.shows_pause(key, cx) {
-            icons::PAUSE
-        } else {
-            icons::PLAY
-        };
-        let reveal = motion::amount(
-            SharedString::from(format!("song-reveal-{shelf}-{key}")),
-            if hovered { 1. } else { 0. },
-            motion::MEDIUM,
-            window,
-            cx,
-        );
-        div()
-            .absolute()
-            .size_full()
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded(style::radius_xl())
-            .bg(style::black(0.4, cx))
-            .text_color(cx.theme().foreground)
-            .opacity(reveal)
-            .child(icons::icon(icon).size(px(24.)))
-            .into_any_element()
-    }
-
-    fn shows_pause(&self, id: &str, cx: &Context<Self>) -> bool {
-        self.now_playing.as_deref() == Some(id)
-            && self.pending.is_none()
+    fn play_state(&self, id: &str, cx: &Context<Self>) -> PlayState {
+        if self.pending.as_deref() == Some(id) {
+            return PlayState::Loading;
+        }
+        match self.now_playing.as_deref() == Some(id)
             && PlayerModel::global(cx).read(cx).is_playing()
+        {
+            true => PlayState::Playing,
+            false => PlayState::Idle,
+        }
     }
 }
 

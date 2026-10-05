@@ -1,19 +1,17 @@
 //! Albums, artists and playlists: one virtualized band grid, with a jump rail and type-ahead.
 
 use api::{AlbumInfo, ArtistInfo, PlaylistInfo};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Context, FontWeight, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, SharedString, StatefulInteractiveElement as _, Styled as _, Window,
-    div, px, uniform_list,
+    AnyElement, App, ClickEvent, Context, InteractiveElement as _, IntoElement, ParentElement as _,
+    Pixels, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, px,
+    uniform_list,
 };
 use store::layout::ViewMode;
 use store::{Navigator, PlaylistsModel, Route, Target};
 use widgets::format::t_with;
-use widgets::{Cover, icons, menus, motion, style};
+use widgets::{Frame, TileRow, style};
 
 use crate::facet::Facet;
 use crate::{Library, Tile};
@@ -73,10 +71,7 @@ impl Library {
     }
 
     fn album_tile(&self, album: &AlbumInfo) -> Tile {
-        let playing = self
-            .playing_title
-            .as_ref()
-            .is_some_and(|(_, title)| title == &album.title);
+        let playing = self.playing.is_album(&album.id);
         Tile {
             id: SharedString::from(album.id.clone()),
             title: SharedString::from(album.title.clone()),
@@ -106,10 +101,7 @@ impl Library {
     }
 
     fn artist_tile(&self, artist: &ArtistInfo) -> Tile {
-        let playing = self
-            .playing_title
-            .as_ref()
-            .is_some_and(|(credited, _)| credited == &artist.name);
+        let playing = self.playing.is_artist(&artist.key);
         Tile {
             // The id is the key, since a selection hands it back to `artist_tracks`.
             id: SharedString::from(artist.key.to_string()),
@@ -132,13 +124,13 @@ impl Library {
 
     fn playlist_tiles(&self, cx: &Context<Self>) -> Vec<Tile> {
         let query = self.filters().search.trim().to_lowercase();
-        let playing = self.playing_key.clone();
+        let playing = self.playing.track();
         PlaylistsModel::global(cx)
             .read(cx)
             .playlists()
             .iter()
             .filter(|playlist| query.is_empty() || playlist.name.to_lowercase().contains(&query))
-            .map(|playlist| playlist_tile(playlist, playing.as_deref()))
+            .map(|playlist| playlist_tile(playlist, playing))
             .collect()
     }
 
@@ -167,7 +159,7 @@ impl Library {
                             let rows = (range.start * columns)..(range.end * columns);
                             this.ensure_window(&rows, window, cx);
                             range
-                                .map(|band| this.band(band, columns, tiles, facet, window, cx))
+                                .map(|band| this.band(band, columns, tiles, facet, cx))
                                 .collect()
                         }),
                     )
@@ -196,7 +188,6 @@ impl Library {
         columns: usize,
         tiles: bool,
         facet: Facet,
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let first = band * columns;
@@ -221,8 +212,8 @@ impl Library {
                     };
                 };
                 match tiles {
-                    true => self.card(&tile, index, width, facet, window, cx),
-                    false => self.line_of(&tile, index, facet, window, cx),
+                    true => self.card(&tile, index, width, facet, cx),
+                    false => self.line_of(&tile, index, facet, cx),
                 }
             })
             .collect();
@@ -244,135 +235,20 @@ impl Library {
         index: usize,
         width: Pixels,
         facet: Facet,
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let hovered = self.hovered.as_ref() == Some(&tile.id);
-        let selected = self.selection.contains(&tile.id);
-        let cursor = self.selection.cursor() == Some(index);
-        let cover = width - px(32.);
-        let wash = motion::color(
-            motion::row_id("library-card", index),
-            match selected {
-                true => style::white(style::SELECTED, cx),
-                false => style::white(if hovered { style::HOVER } else { style::RAISED }, cx),
-            },
-            window,
-            cx,
-        );
-        let dots = motion::amount(
-            motion::row_id("library-card-dots", index),
-            widgets::focus::reveal(hovered || cursor || self.menu_open.as_ref() == Some(&tile.id)),
-            motion::FAST,
-            window,
-            cx,
-        );
-        let title_ink = match tile.playing {
-            true => cx.theme().primary,
-            false => cx.theme().foreground,
-        };
-        v_flex()
-            .id(("library-card", index))
-            .relative()
-            .w(width)
-            .p_4()
-            .rounded(style::radius_xl())
-            .bg(wash)
-            .when(cursor, |card| {
-                card.child(widgets::focus::ring(style::radius_xl(), cx))
-            })
-            .on_hover(self.hover_listener(tile.id.clone(), cx))
+        widgets::Tile::new(tile.id.clone(), tile.title.clone())
+            .subtitle(tile.subtitle.clone())
+            .artwork(tile.artwork.as_ref())
+            .size(width - px(32.))
+            .round(facet.round_tiles())
+            .placeholder(facet.placeholder())
+            .frame(Frame::Card)
+            .playing(tile.playing)
+            .selected(self.selection.contains(&tile.id))
+            .cursor(self.selection.cursor() == Some(index))
             .on_click(self.click_listener(tile.clone(), index, cx))
-            .child(
-                div()
-                    .relative()
-                    .child(
-                        Cover::new(tile.artwork.as_ref())
-                            .size(cover)
-                            .rounded(match facet.round_tiles() {
-                                true => cover / 2.,
-                                false => px(8.),
-                            })
-                            .zoom(motion::row_id("library-card-cover", index), hovered)
-                            .placeholder(facet.placeholder()),
-                    )
-                    // Nothing in a grid used to say what was playing; a tile of this album does.
-                    .when(tile.playing, |frame| {
-                        frame.child(
-                            div()
-                                .absolute()
-                                .bottom_2()
-                                .left_2()
-                                .size_6()
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .rounded_full()
-                                .bg(cx.theme().primary)
-                                .child(
-                                    icons::icon(icons::VOLUME)
-                                        .size(px(12.))
-                                        .text_color(cx.theme().primary_foreground),
-                                ),
-                        )
-                    }),
-            )
-            .child(
-                v_flex()
-                    .w_full()
-                    .mt_3()
-                    .when(facet.round_tiles(), |block| block.items_center())
-                    .child(
-                        div()
-                            .w_full()
-                            .truncate()
-                            .font_weight(FontWeight::MEDIUM)
-                            .h_6()
-                            .text_color(title_ink)
-                            .when(facet.round_tiles(), |line| line.text_center())
-                            .child(tile.title.clone()),
-                    )
-                    .child(
-                        div()
-                            .w_full()
-                            .truncate()
-                            .text_sm()
-                            .h_5()
-                            .text_color(cx.theme().muted_foreground)
-                            .when(facet.round_tiles(), |line| line.text_center())
-                            .child(tile.subtitle.clone()),
-                    ),
-            )
-            .child(
-                div()
-                    .id(("library-card-menu", index))
-                    .absolute()
-                    .bottom_3()
-                    .right_3()
-                    // A hidden element takes its own open popup with it, so the fade stops there.
-                    .opacity(dots)
-                    .on_click(|_, _, cx| cx.stop_propagation())
-                    .child(
-                        Button::new(("library-card-dots", index))
-                            .custom(style::button(
-                                style::black(0.4, cx),
-                                style::white(style::HOVER, cx),
-                                cx.theme().secondary_foreground,
-                                cx,
-                            ))
-                            .icon(icons::icon(icons::MORE))
-                            .rounded(cx.theme().radius_full())
-                            .dropdown_menu(menus::builder(tile.target.clone()))
-                            .on_open_change(cx.listener({
-                                let id = tile.id.clone();
-                                move |this: &mut Library, open: &bool, _, cx| {
-                                    this.menu_open = open.then(|| id.clone());
-                                    cx.notify();
-                                }
-                            })),
-                    ),
-            )
-            .context_menu(menus::builder(tile.target.clone()))
+            .menu(Some(tile.target.clone()))
             .into_any_element()
     }
 
@@ -381,107 +257,18 @@ impl Library {
         tile: &Tile,
         index: usize,
         facet: Facet,
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let hovered = self.hovered.as_ref() == Some(&tile.id);
-        let selected = self.selection.contains(&tile.id);
-        let wash = motion::color(
-            motion::row_id("library-grid-row", index),
-            match selected {
-                true => style::white(style::SELECTED, cx),
-                false => style::white(if hovered { style::HOVER } else { 0. }, cx),
-            },
-            window,
-            cx,
-        );
-        h_flex()
-            .id(("library-grid-row", index))
-            .w_full()
-            .gap_3()
-            .items_center()
-            .px_3()
-            .py_2()
-            .mb_1()
-            .rounded(style::radius_lg())
-            .bg(wash)
-            .on_hover(self.hover_listener(tile.id.clone(), cx))
+        TileRow::new(tile.id.clone(), tile.title.clone())
+            .subtitle(tile.subtitle.clone())
+            .artwork(tile.artwork.as_ref())
+            .round(facet.round_tiles())
+            .placeholder(facet.placeholder())
+            .playing(tile.playing)
+            .selected(self.selection.contains(&tile.id))
             .on_click(self.click_listener(tile.clone(), index, cx))
-            .when(
-                store::ConfigModel::global(cx).read(cx).row_images(),
-                |row| {
-                    row.child(
-                        Cover::new(tile.artwork.as_ref())
-                            .size(px(48.))
-                            .rounded(match facet.round_tiles() {
-                                true => px(24.),
-                                false => px(6.),
-                            })
-                            .placeholder(facet.placeholder()),
-                    )
-                },
-            )
-            .child(
-                v_flex()
-                    .flex_1()
-                    .min_w_0()
-                    .child(
-                        div()
-                            .truncate()
-                            .font_weight(FontWeight::MEDIUM)
-                            .h_6()
-                            .text_color(match tile.playing {
-                                true => cx.theme().primary,
-                                false => cx.theme().foreground,
-                            })
-                            .child(tile.title.clone()),
-                    )
-                    .child(
-                        div()
-                            .truncate()
-                            .text_sm()
-                            .h_5()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(tile.subtitle.clone()),
-                    ),
-            )
-            .when(tile.playing, |row| {
-                row.child(
-                    icons::icon(icons::VOLUME)
-                        .size(px(14.))
-                        .text_color(cx.theme().primary),
-                )
-            })
-            .child(
-                div()
-                    .id(("library-grid-row-menu", index))
-                    .ml_auto()
-                    .flex_shrink_0()
-                    .on_click(|_, _, cx| cx.stop_propagation())
-                    .child(
-                        Button::new(("library-grid-row-dots", index))
-                            .ghost()
-                            .icon(icons::icon(icons::MORE))
-                            .dropdown_menu(menus::builder(tile.target.clone())),
-                    ),
-            )
-            .context_menu(menus::builder(tile.target.clone()))
+            .menu(Some(tile.target.clone()))
             .into_any_element()
-    }
-
-    fn hover_listener(
-        &self,
-        id: SharedString,
-        cx: &mut Context<Self>,
-    ) -> impl Fn(&bool, &mut Window, &mut App) + 'static {
-        cx.listener(move |this: &mut Library, hovered: &bool, _, cx| {
-            // A leave for a tile that is no longer the hovered one would clear its successor.
-            if !*hovered && this.hovered.as_ref() != Some(&id) {
-                return;
-            }
-            this.hovered = hovered.then(|| id.clone());
-            cx.notify();
-        })
     }
 
     /// A plain click opens; ctrl and shift build a selection, the same as in the table.

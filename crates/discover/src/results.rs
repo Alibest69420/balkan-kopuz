@@ -1,13 +1,12 @@
 //! What a query turned up: the strips of albums and artists over the list of matching tracks.
 
 use api::{AlbumInfo, TrackInfo};
-use gpui_kit::component::menu::ContextMenuExt as _;
-use gpui_kit::component::{ActiveTheme as _, h_flex};
+use gpui_kit::component::h_flex;
 use gpui_kit::{
     AnyElement, App, InteractiveElement as _, IntoElement, ParentElement as _, Pixels,
-    SharedString, StatefulInteractiveElement as _, Styled, div, px,
+    SharedString, StatefulInteractiveElement as _, Styled, px,
 };
-use store::{Route, Target};
+use store::{Playing, Route, Target};
 use widgets::{Tile, icons};
 
 const ALBUM_TILE: Pixels = px(128.);
@@ -15,23 +14,6 @@ const ALBUM_TILE: Pixels = px(128.);
 const ARTIST_TILE: Pixels = px(88.);
 /// How many of each a strip is worth showing; the rest are one more word in the query away.
 const STRIP: usize = 16;
-
-/// What the player is on, in the terms a card can be marked by.
-#[derive(Default, PartialEq)]
-pub struct Playing {
-    pub album: Option<String>,
-    pub artist: Option<String>,
-}
-
-impl Playing {
-    pub fn is_album(&self, title: &str) -> bool {
-        matches!(self.album.as_deref(), Some(held) if held.eq_ignore_ascii_case(title.trim()))
-    }
-
-    pub fn is_artist(&self, name: &str) -> bool {
-        matches!(self.artist.as_deref(), Some(held) if held.eq_ignore_ascii_case(name.trim()))
-    }
-}
 
 /// Search answers with tracks and albums; the artists behind them are worth a row of their own.
 pub fn artists_of(tracks: &[TrackInfo], albums: &[AlbumInfo]) -> Vec<(String, SharedString)> {
@@ -60,30 +42,9 @@ pub fn artists_of(tracks: &[TrackInfo], albums: &[AlbumInfo]) -> Vec<(String, Sh
     artists
 }
 
-/// The badge the playing card wears, over its cover's top corner.
-fn badge(cx: &App) -> AnyElement {
-    div()
-        .absolute()
-        .top_2()
-        .left_2()
-        .size_5()
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded_full()
-        .bg(cx.theme().primary)
-        .text_color(cx.theme().primary_foreground)
-        .child(icons::icon(icons::VOLUME).size(px(11.)))
-        .into_any_element()
-}
-
 /// One album a query turned up: opens the album, right-clicks to the album's own menu.
-fn album_card(album: &AlbumInfo, playing: &Playing, cx: &App) -> AnyElement {
-    let target = Target::Album {
-        id: album.id.clone().into(),
-        title: album.title.clone().into(),
-    };
-    let tile = Tile::new(
+fn album_card(album: &AlbumInfo, playing: &Playing) -> AnyElement {
+    Tile::new(
         SharedString::from(format!("result-album-{}", album.id)),
         album.title.clone(),
     )
@@ -91,44 +52,31 @@ fn album_card(album: &AlbumInfo, playing: &Playing, cx: &App) -> AnyElement {
     .artwork(album.artwork.as_ref())
     .placeholder(icons::DISC)
     .size(ALBUM_TILE)
-    .route(Route::Album(album.id.clone().into()));
-    div()
-        .id(SharedString::from(format!(
-            "result-album-slot-{}",
-            album.id
-        )))
-        .flex_shrink_0()
-        .child(match playing.is_album(&album.title) {
-            true => tile.overlay(badge(cx)),
-            false => tile,
-        })
-        .context_menu(widgets::menus::builder(target))
-        .into_any_element()
+    .playing(playing.is_album(&album.id))
+    .route(Route::Album(album.id.clone().into()))
+    .menu(Some(Target::Album {
+        id: album.id.clone().into(),
+        title: album.title.clone().into(),
+    }))
+    .into_any_element()
 }
 
 /// One artist credited on what a query turned up.
-fn artist_card(key: &String, name: &SharedString, playing: &Playing, cx: &App) -> AnyElement {
-    let target = Target::Artist {
-        key: key.clone(),
-        name: name.clone(),
-    };
-    let tile = Tile::new(
+fn artist_card(key: &String, name: &SharedString, playing: &Playing) -> AnyElement {
+    Tile::new(
         SharedString::from(format!("result-artist-{key}")),
         name.clone(),
     )
     .placeholder(icons::MIC)
     .size(ARTIST_TILE)
     .round(true)
-    .route(Route::Artist(key.clone()));
-    div()
-        .id(SharedString::from(format!("result-artist-slot-{key}")))
-        .flex_shrink_0()
-        .child(match playing.is_artist(name) {
-            true => tile.overlay(badge(cx)),
-            false => tile,
-        })
-        .context_menu(widgets::menus::builder(target))
-        .into_any_element()
+    .playing(playing.is_artist(key))
+    .route(Route::Artist(key.clone()))
+    .menu(Some(Target::Artist {
+        key: key.clone(),
+        name: name.clone(),
+    }))
+    .into_any_element()
 }
 
 /// A band of cards that scrolls sideways, so the track list below keeps the page's one scroller.
@@ -167,7 +115,7 @@ pub fn album_strip(
     let cards = albums
         .iter()
         .take(STRIP)
-        .map(|album| album_card(album, playing, cx))
+        .map(|album| album_card(album, playing))
         .collect();
     Some(strip("result-albums", title, cards, cx))
 }
@@ -184,7 +132,7 @@ pub fn artist_strip(
     }
     let cards = artists
         .iter()
-        .map(|(key, name)| artist_card(key, name, playing, cx))
+        .map(|(key, name)| artist_card(key, name, playing))
         .collect();
     Some(strip("result-artists", title, cards, cx))
 }
@@ -233,16 +181,5 @@ mod tests {
             .map(|at| track(&format!("artist {at}"), &format!("key-{at}")))
             .collect();
         assert_eq!(artists_of(&tracks, &[]).len(), STRIP);
-    }
-
-    #[test]
-    fn the_playing_mark_ignores_case_and_padding() {
-        let playing = Playing {
-            album: Some("Geogaddi".into()),
-            artist: None,
-        };
-        assert!(playing.is_album(" geogaddi "));
-        assert!(!playing.is_album("Amber"));
-        assert!(!playing.is_artist("Geogaddi"));
     }
 }

@@ -155,9 +155,7 @@ pub struct Library {
     albums_meta: HashMap<String, AlbumMeta>,
     year_span: Option<(u16, u16)>,
     plays: HashMap<String, u64>,
-    playing_key: Option<String>,
-    // A grid tile has no key to match, so the playing artist and album are held beside it.
-    playing_title: Option<(String, String)>,
+    playing: store::Playing,
     pager: Pager,
     window_request: Option<Range<usize>>,
     whole: bool,
@@ -165,7 +163,6 @@ pub struct Library {
     visible_from: usize,
 
     selection: selection::Selection,
-    hovered: Option<SharedString>,
     menu_open: Option<SharedString>,
     header_hover: Option<String>,
     resizing: Option<(String, Pixels, f32)>,
@@ -297,14 +294,12 @@ impl Library {
             albums_meta: HashMap::new(),
             year_span: None,
             plays: HashMap::new(),
-            playing_key: None,
-            playing_title: None,
+            playing: store::Playing::default(),
             pager: Pager::new(),
             window_request: None,
             whole: false,
             visible_from: 0,
             selection: selection::Selection::new(),
-            hovered: None,
             menu_open: None,
             header_hover: None,
             resizing: None,
@@ -712,14 +707,15 @@ impl Library {
 
     fn adopt_playing(&mut self, cx: &mut Context<Self>) {
         let player = PlayerModel::global(cx);
-        let now = player.read(cx).track().cloned();
-        let key = now.as_ref().map(|track| track.key.clone());
-        let title = now.map(|track| (track.artist, track.album));
-        if key == self.playing_key && title == self.playing_title {
+        let playing = player
+            .read(cx)
+            .track()
+            .map(store::Playing::of)
+            .unwrap_or_default();
+        if playing == self.playing {
             return;
         }
-        self.playing_key = key;
-        self.playing_title = title;
+        self.playing = playing;
         self.rebuild(cx);
     }
 
@@ -824,7 +820,7 @@ impl Library {
     }
 
     pub(crate) fn is_playing(&self, key: &str) -> bool {
-        self.playing_key.as_deref() == Some(key)
+        self.playing.is_track(key)
     }
 
     /// Whether the first read has answered, whatever it answered with.

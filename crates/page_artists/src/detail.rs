@@ -11,25 +11,22 @@ use api::{
 use config::{AlbumSortField, AlbumViewMode, ArtistViewOrder, SortCriterion, SortDirection};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
-use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _};
 use gpui_kit::component::{
     ActiveTheme as _, Disableable as _, Selectable as _, Sizable as _, Size, h_flex, v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _,
-    IntoElement, ParentElement as _, PathPromptOptions, Pixels, Rems, Render, ScrollHandle,
-    SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Task, Window, div,
-    px, rems,
+    AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
+    ParentElement as _, PathPromptOptions, Pixels, Rems, Render, ScrollHandle, SharedString,
+    StatefulInteractiveElement as _, Styled as _, Subscription, Task, Window, div, px, rems,
 };
 use store::{
-    ConfigModel, DownloadsModel, JobsModel, Navigator, PlayerModel, Query, Route, SourcesModel,
-    Target, actions,
+    ConfigModel, DownloadsModel, JobsModel, Navigator, PlayerModel, Query, SourcesModel, actions,
 };
 use widgets::format::{t, t_with, total_duration};
 use widgets::{
     Cover, DetailHeader, EmptyState, Loading, TrackActions, TrackList, TrackListEvent,
-    TrackListOptions, columns, icons, menus, motion, playlist_picker, style,
+    TrackListOptions, columns, icons, motion, playlist_picker, style,
 };
 
 use crate::controls::{self, ViewModeKey};
@@ -705,8 +702,11 @@ impl ArtistDetail {
             let cards: Vec<AnyElement> = albums
                 .iter()
                 .map(|album| match mode {
-                    AlbumViewMode::Grid => album_card(album, window, cx),
-                    AlbumViewMode::List => album_row(album, cx),
+                    AlbumViewMode::Grid => widgets::album_tile(album)
+                        .size(px(CARD - 32.))
+                        .frame(widgets::Frame::Card)
+                        .into_any_element(),
+                    AlbumViewMode::List => widgets::album_row(album).into_any_element(),
                 })
                 .collect();
             div()
@@ -757,157 +757,6 @@ fn round_button(id: &'static str, icon: &'static str) -> Button {
         .size(HERO_BUTTON)
         .rounded_full()
         .icon(icons::icon(icon))
-}
-
-fn album_card(album: &AlbumInfo, window: &mut Window, cx: &mut App) -> AnyElement {
-    let menu = menus::builder(Target::Album {
-        id: album.id.clone().into(),
-        title: album.title.clone().into(),
-    });
-    let route = Route::Album(album.id.clone().into());
-    let group = SharedString::from(format!("album-card-{}", album.id));
-    let (hot, hover) = motion::hovered(
-        SharedString::from(format!("album-card-hover-{}", album.id)),
-        window,
-        cx,
-    );
-    let fill = motion::color(
-        SharedString::from(format!("album-card-fill-{}", album.id)),
-        style::white(if hot { style::HOVER } else { style::RAISED }, cx),
-        window,
-        cx,
-    );
-    let cover = motion::zoom(
-        SharedString::from(format!("album-card-cover-{}", album.id)),
-        px(CARD - 32.),
-        hot,
-        window,
-        cx,
-    );
-    div()
-        .id(SharedString::from(format!("album-card-{}", album.id)))
-        .group(group.clone())
-        .relative()
-        .w(px(CARD))
-        .p_4()
-        .rounded(style::radius_xl())
-        .bg(fill)
-        .cursor_pointer()
-        .on_hover(motion::track(hover))
-        .child(
-            v_flex()
-                .id(SharedString::from(format!("album-open-{}", album.id)))
-                .gap_3()
-                .child(
-                    // `group-hover:scale-105` reads as the cover growing inside a frame that clips it.
-                    div()
-                        .size(px(CARD - 32.))
-                        .rounded(px(8.))
-                        .overflow_hidden()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(
-                            Cover::new(album.artwork.as_ref())
-                                .size(cover)
-                                .rounded(px(8.))
-                                .placeholder(icons::DISC),
-                        ),
-                )
-                .child(
-                    v_flex()
-                        .child(
-                            div()
-                                .truncate()
-                                .font_weight(FontWeight::MEDIUM)
-                                .child(album.title.clone()),
-                        )
-                        .child(
-                            div()
-                                .truncate()
-                                .text_sm()
-                                .text_color(style::slate_400(cx))
-                                .child(album.artist.clone()),
-                        ),
-                )
-                .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx)),
-        )
-        .child(
-            div()
-                .absolute()
-                .bottom_3()
-                .right_3()
-                // A hidden element takes its own open menu with it, so the dots only dim.
-                .opacity(widgets::focus::RESTING)
-                .group_hover(group, |menu| menu.opacity(1.))
-                .child(
-                    Button::new(SharedString::from(format!("album-menu-{}", album.id)))
-                        .custom(style::button(
-                            style::black(0.4, cx),
-                            style::white(style::HOVER, cx),
-                            cx.theme().secondary_foreground,
-                            cx,
-                        ))
-                        .xsmall()
-                        .bg(style::black(0.4, cx))
-                        .icon(icons::icon(icons::MORE))
-                        .dropdown_menu(menu.clone()),
-                ),
-        )
-        .context_menu(menu)
-        .into_any_element()
-}
-
-fn album_row(album: &AlbumInfo, cx: &App) -> AnyElement {
-    let menu = menus::builder(Target::Album {
-        id: album.id.clone().into(),
-        title: album.title.clone().into(),
-    });
-    let route = Route::Album(album.id.clone().into());
-    h_flex()
-        .id(SharedString::from(format!("album-row-{}", album.id)))
-        .w_full()
-        .gap_3()
-        .px_3()
-        .py_2()
-        .rounded(style::radius_lg())
-        .bg(style::white(style::RAISED, cx))
-        .cursor_pointer()
-        .hover(|row| row.bg(style::white(style::HOVER, cx)))
-        .child(
-            Cover::new(album.artwork.as_ref())
-                .size(px(48.))
-                .rounded(px(6.))
-                .placeholder(icons::DISC),
-        )
-        .child(
-            v_flex()
-                .flex_1()
-                .min_w_0()
-                .child(
-                    div()
-                        .truncate()
-                        .font_weight(FontWeight::MEDIUM)
-                        .child(album.title.clone()),
-                )
-                .child(
-                    div()
-                        .truncate()
-                        .text_sm()
-                        .text_color(style::slate_400(cx))
-                        .child(album.artist.clone()),
-                ),
-        )
-        .child(
-            Button::new(SharedString::from(format!("album-row-menu-{}", album.id)))
-                .ghost()
-                .xsmall()
-                .icon(icons::icon(icons::MORE))
-                .dropdown_menu(menu.clone()),
-        )
-        .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
-        .context_menu(menu)
-        .into_any_element()
 }
 
 fn set_downloaded(keys: Vec<String>, download: bool, cx: &mut App) {

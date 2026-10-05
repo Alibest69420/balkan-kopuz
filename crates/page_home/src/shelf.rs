@@ -43,7 +43,7 @@ pub(crate) fn shelf(
     // The tiles out of view stand as one empty box each way, so the row keeps its true width.
     cards.push(spacer(stride * first as f32));
     for tile in &shelf.tiles[first..last] {
-        cards.push(card(tile, window, cx));
+        cards.push(card(tile, cx));
     }
     cards.push(spacer(stride * (shelf.tiles.len() - last) as f32));
 

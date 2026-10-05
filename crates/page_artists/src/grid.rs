@@ -5,15 +5,15 @@ use std::time::Duration;
 
 use api::{AlbumPage, ArtistInfo, ArtistPage, Table};
 use config::{AlbumViewMode, ArtistSortField};
-use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
+use gpui_kit::component::v_flex;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _,
-    IntoElement, ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _,
-    Styled as _, Subscription, Task, UniformListScrollHandle, Window, div, px, uniform_list,
+    AnyElement, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Pixels,
+    Render, Styled as _, Subscription, Task, UniformListScrollHandle, Window, div, px,
+    uniform_list,
 };
-use store::{ConfigModel, Link, Navigator, Query, Route};
+use store::{ConfigModel, Link, Query};
 use widgets::format::t;
-use widgets::{Cover, EmptyState, Loading, PageHeader, icons, motion, style};
+use widgets::{EmptyState, Loading, PageHeader, icons};
 
 use crate::controls::{self, ViewModeKey};
 use crate::names;
@@ -25,10 +25,6 @@ const TILE_GAP: gpui_kit::Pixels = px(32.);
 const TILE_COLUMNS_FALLBACK: usize = 5;
 // Bands land one after another while a list scrolls; their missing photos travel as one request.
 const PHOTO_BATCH: Duration = Duration::from_millis(150);
-/// `group-hover:scale-110` on the photo.
-const PHOTO_ZOOM: f32 = 1.10;
-/// `duration-500`, slower than anything `widgets::motion` names.
-const PHOTO_ZOOM_TIME: Duration = Duration::from_millis(500);
 
 /// The artists grid.
 pub struct Artists {
@@ -131,7 +127,6 @@ impl Artists {
         index: usize,
         columns: usize,
         mode: AlbumViewMode,
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let first = index * columns;
@@ -148,16 +143,12 @@ impl Artists {
                 .children(
                     entries
                         .iter()
-                        .map(|entry| tile(entry, window, cx).into_any_element()),
+                        .map(|entry| widgets::artist_tile(entry).size(px(TILE))),
                 )
                 .into_any_element(),
             AlbumViewMode::List => div()
                 .w_full()
-                .children(
-                    entries
-                        .iter()
-                        .map(|entry| row(entry, cx).into_any_element()),
-                )
+                .children(entries.iter().map(widgets::artist_row))
                 .into_any_element(),
         }
     }
@@ -225,9 +216,9 @@ impl Render for Artists {
                         uniform_list(
                             "artists-scroll",
                             rows,
-                            cx.processor(move |this, range: std::ops::Range<usize>, window, cx| {
+                            cx.processor(move |this, range: std::ops::Range<usize>, _, cx| {
                                 range
-                                    .map(|index| this.band(index, columns, mode, window, cx))
+                                    .map(|index| this.band(index, columns, mode, cx))
                                     .collect()
                             }),
                         )
@@ -237,88 +228,4 @@ impl Render for Artists {
                     .into_any_element(),
             })
     }
-}
-
-/// `rounded-full` photo that zooms under the pointer, and a centred label that goes accent.
-fn tile(entry: &ArtistInfo, window: &mut Window, cx: &mut App) -> impl IntoElement {
-    let name = SharedString::from(entry.name.clone());
-    let (hot, hover) = motion::hovered(
-        SharedString::from(format!("artist-tile-hover-{}", entry.key)),
-        window,
-        cx,
-    );
-    let photo = motion::length(
-        SharedString::from(format!("artist-photo-{}", entry.key)),
-        px(if hot { TILE * PHOTO_ZOOM } else { TILE }),
-        PHOTO_ZOOM_TIME,
-        window,
-        cx,
-    );
-    let label = motion::color(
-        SharedString::from(format!("artist-label-{}", entry.key)),
-        if hot {
-            cx.theme().primary_hover
-        } else {
-            cx.theme().foreground
-        },
-        window,
-        cx,
-    );
-    let route = Route::Artist(entry.key.clone());
-    v_flex()
-        .id(SharedString::from(format!("artist-tile-{}", entry.key)))
-        .w(px(TILE))
-        .gap_4()
-        .items_center()
-        .cursor_pointer()
-        .child(
-            // A transform is out of reach, so the photo grows inside a frame its own size that clips it.
-            div()
-                .size(px(TILE))
-                .rounded_full()
-                .overflow_hidden()
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(
-                    Cover::new(entry.artwork.as_ref())
-                        .size(photo)
-                        .rounded(photo / 2.)
-                        .placeholder(icons::MIC),
-                ),
-        )
-        .child(
-            div()
-                .w_full()
-                .truncate()
-                .text_center()
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(label)
-                .child(name),
-        )
-        .on_hover(motion::track(hover))
-        .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
-}
-
-/// One artist as a row, for the list view.
-fn row(entry: &ArtistInfo, cx: &App) -> impl IntoElement {
-    let name = SharedString::from(entry.name.clone());
-    let route = Route::Artist(entry.key.clone());
-    h_flex()
-        .id(SharedString::from(format!("artist-row-{}", entry.key)))
-        .gap_3()
-        .px_3()
-        .py_2()
-        .mb_2()
-        .rounded(style::radius_lg())
-        .bg(style::white(style::RAISED, cx))
-        .hover(|row| row.bg(style::white(style::HOVER, cx)))
-        .child(
-            Cover::new(entry.artwork.as_ref())
-                .size(px(48.))
-                .rounded(px(24.))
-                .placeholder(icons::MIC),
-        )
-        .child(div().flex_1().min_w_0().truncate().child(name.clone()))
-        .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
 }

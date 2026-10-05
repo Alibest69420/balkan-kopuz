@@ -10,7 +10,8 @@ use store::{Navigator, PlaylistsModel, Route};
 use widgets::format::t;
 use widgets::{EmptyState, Loading, icons, style};
 
-use crate::cards::{card_grid, playlist_card};
+use crate::cards::playlist_card;
+use widgets::tile_grid as card_grid;
 
 pub struct PlaylistFolder {
     id: SharedString,

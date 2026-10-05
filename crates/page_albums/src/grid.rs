@@ -5,17 +5,17 @@ use std::collections::HashSet;
 use api::{AlbumInfo, AlbumPage, JobKind, Table};
 use config::{AlbumSortField, AlbumViewMode, SortCriterion, SortDirection};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenuItem};
+use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _,
-    IntoElement, ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _,
-    Styled, Subscription, UniformListScrollHandle, Window, div, px, uniform_list,
+    AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
+    ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _, Styled,
+    Subscription, UniformListScrollHandle, Window, div, px, uniform_list,
 };
-use store::{ConfigModel, JobsModel, Navigator, Query, Route, SourcesModel, Target};
+use store::{ConfigModel, JobsModel, Query, SourcesModel};
 use widgets::format::t;
-use widgets::{Cover, Loading, PageHeader, icons, menus, motion, style};
+use widgets::{Frame, Loading, PageHeader, album_row, album_tile, icons, motion, style};
 
 use crate::clear_variant;
 use crate::sort;
@@ -26,7 +26,6 @@ use crate::sort;
 const TILE: gpui_kit::Pixels = px(180.);
 // The tile's cover fills it inside `p-4`.
 const TILE_COVER: gpui_kit::Pixels = px(148.);
-const ROW_COVER: gpui_kit::Pixels = px(48.);
 // `gap-6` between tiles, so a column costs this much width.
 const TILE_GAP: gpui_kit::Pixels = px(24.);
 // Until the list has been laid out once there is no measured width to divide.
@@ -43,9 +42,6 @@ pub struct Albums {
     visible: Vec<AlbumInfo>,
     sort_fields: Vec<AlbumSortField>,
     scroll: UniformListScrollHandle,
-    // Which card the pointer is over, and whose menu is open: both drive tweens.
-    hovered: Option<String>,
-    menu_open: Option<String>,
     control: Option<&'static str>,
     // A library sync is offered once per visit, not once per refetch.
     synced: bool,
@@ -80,8 +76,6 @@ impl Albums {
             visible: Vec::new(),
             sort_fields: Vec::new(),
             scroll: UniformListScrollHandle::new(),
-            hovered: None,
-            menu_open: None,
             control: None,
             synced: false,
             _subscriptions: subscriptions,
@@ -285,31 +279,17 @@ impl Albums {
     }
 
     /// One virtualized band: a row of tiles in grid mode, a single album in list mode.
-    fn band(
-        &self,
-        index: usize,
-        columns: usize,
-        grid: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    fn band(&self, index: usize, columns: usize, grid: bool) -> AnyElement {
         let first = index * columns;
         let last = (first + columns).min(self.visible.len());
         let mut cards: Vec<AnyElement> = Vec::with_capacity(last.saturating_sub(first));
-        for (offset, album) in self.visible[first..last].iter().enumerate() {
-            let slot = first + offset;
-            let target = Target::Album {
-                id: album.id.clone().into(),
-                title: album.title.clone().into(),
-            };
-            let hovered = self.hovered.as_deref() == Some(album.id.as_str());
-            profile::elements::built();
+        for album in &self.visible[first..last] {
             cards.push(match grid {
-                true => {
-                    let open = self.menu_open.as_deref() == Some(album.id.as_str());
-                    card(album, slot, target, hovered, open, window, cx).into_any_element()
-                }
-                false => row(album, slot, target, hovered, window, cx).into_any_element(),
+                true => album_tile(album)
+                    .size(TILE_COVER)
+                    .frame(Frame::Card)
+                    .into_any_element(),
+                false => album_row(album).into_any_element(),
             });
         }
         match grid {
@@ -367,10 +347,8 @@ impl Render for Albums {
                         uniform_list(
                             "albums-scroll",
                             rows,
-                            cx.processor(move |this, range: std::ops::Range<usize>, window, cx| {
-                                range
-                                    .map(|index| this.band(index, columns, grid, window, cx))
-                                    .collect()
+                            cx.processor(move |this, range: std::ops::Range<usize>, _, _| {
+                                range.map(|index| this.band(index, columns, grid)).collect()
                             }),
                         )
                         .track_scroll(&self.scroll)
@@ -379,198 +357,6 @@ impl Render for Albums {
                 }
             }))
     }
-}
-
-/// The `.vcard` grid tile: a padded raised card whose menu appears on hover.
-fn card(
-    album: &AlbumInfo,
-    slot: usize,
-    target: Target,
-    hovered: bool,
-    menu_open: bool,
-    window: &mut Window,
-    cx: &mut Context<Albums>,
-) -> impl IntoElement {
-    let menu_target = target.clone();
-    let route = Route::Album(album.id.clone().into());
-    let wash = style::white(if hovered { style::HOVER } else { style::RAISED }, cx);
-    let background = motion::color(motion::row_id("album-card-bg", slot), wash, window, cx);
-    let dots = motion::amount(
-        motion::row_id("album-card-menu", slot),
-        if hovered || menu_open { 1. } else { 0. },
-        motion::FAST,
-        window,
-        cx,
-    );
-    div()
-        .id(("album-card", slot))
-        .relative()
-        .w(TILE)
-        .p_4()
-        .rounded(style::radius_xl())
-        .bg(background)
-        .on_hover(cx.listener({
-            let id = album.id.clone();
-            move |this, hovered: &bool, _, cx| {
-                // A leave for a card that is no longer the hovered one would clear its successor.
-                if !*hovered && this.hovered.as_deref() != Some(id.as_str()) {
-                    return;
-                }
-                this.hovered = hovered.then(|| id.clone());
-                cx.notify();
-            }
-        }))
-        .child(
-            div()
-                .id(("album-card-open", slot))
-                .cursor_pointer()
-                .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
-                .child(
-                    Cover::new(album.artwork.as_ref())
-                        .size(TILE_COVER)
-                        .rounded(cx.theme().radius * 2.)
-                        .zoom(motion::row_id("album-card-cover", slot), hovered)
-                        .placeholder(icons::DISC),
-                )
-                .child(
-                    div()
-                        .mt_3()
-                        .child(
-                            div()
-                                .truncate()
-                                .font_weight(FontWeight::MEDIUM)
-                                .child(SharedString::from(album.title.clone())),
-                        )
-                        .child(
-                            div()
-                                .truncate()
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(SharedString::from(album.artist.clone())),
-                        ),
-                ),
-        )
-        .child(
-            div()
-                .id(SharedString::from(format!("album-menu-slot-{}", album.id)))
-                .absolute()
-                .bottom_3()
-                .right_3()
-                // A hidden element takes its own open popup with it, so the fade stops at an open menu.
-                .opacity(dots)
-                // The menu button sits inside the card, whose own click opens the album.
-                .on_click(|_, _, cx| cx.stop_propagation())
-                .child(
-                    Button::new(SharedString::from(format!("album-menu-{}", album.id)))
-                        .custom(style::button(
-                            style::black(0.4, cx),
-                            style::white(style::HOVER, cx),
-                            cx.theme().secondary_foreground,
-                            cx,
-                        ))
-                        .icon(icons::icon(icons::MORE))
-                        .rounded(cx.theme().radius_full())
-                        .bg(style::black(0.4, cx))
-                        .dropdown_menu(menus::builder(menu_target))
-                        .on_open_change(cx.listener({
-                            let id = album.id.clone();
-                            move |this: &mut Albums, open: &bool, _, cx| {
-                                this.menu_open = open.then(|| id.clone());
-                                cx.notify();
-                            }
-                        })),
-                ),
-        )
-        .context_menu(menus::builder(target))
-}
-
-/// The same card as `.view-list` restyles it: a compact row.
-fn row(
-    album: &AlbumInfo,
-    slot: usize,
-    target: Target,
-    hovered: bool,
-    window: &mut Window,
-    cx: &mut Context<Albums>,
-) -> impl IntoElement {
-    let menu_target = target.clone();
-    let route = Route::Album(album.id.clone().into());
-    let wash = style::white(if hovered { style::HOVER } else { style::RAISED }, cx);
-    let background = motion::color(motion::row_id("album-row-bg", slot), wash, window, cx);
-    h_flex()
-        .id(("album-row", slot))
-        .w_full()
-        .gap_3()
-        .items_center()
-        .px_3()
-        .py_2()
-        .rounded(style::radius_lg())
-        .bg(background)
-        .on_hover(cx.listener({
-            let id = album.id.clone();
-            move |this, hovered: &bool, _, cx| {
-                // A leave for a row that is no longer the hovered one would clear its successor.
-                if !*hovered && this.hovered.as_deref() != Some(id.as_str()) {
-                    return;
-                }
-                this.hovered = hovered.then(|| id.clone());
-                cx.notify();
-            }
-        }))
-        .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
-        .when(ConfigModel::global(cx).read(cx).row_images(), |row| {
-            row.child(
-                Cover::new(album.artwork.as_ref())
-                    .size(ROW_COVER)
-                    .rounded(cx.theme().radius * 1.5)
-                    .zoom(motion::row_id("album-row-cover", slot), hovered)
-                    .placeholder(icons::DISC),
-            )
-        })
-        .child(
-            v_flex()
-                .flex_1()
-                .min_w_0()
-                .child(
-                    div()
-                        .truncate()
-                        .font_weight(FontWeight::MEDIUM)
-                        .child(SharedString::from(album.title.clone())),
-                )
-                .child(
-                    div()
-                        .truncate()
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(SharedString::from(album.artist.clone())),
-                ),
-        )
-        .when(album.year > 0, |row| {
-            row.child(
-                div()
-                    .flex_shrink_0()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(album.year.to_string()),
-            )
-        })
-        .child(
-            div()
-                .id(SharedString::from(format!(
-                    "album-row-menu-slot-{}",
-                    album.id
-                )))
-                .ml_auto()
-                .flex_shrink_0()
-                .on_click(|_, _, cx| cx.stop_propagation())
-                .child(
-                    Button::new(SharedString::from(format!("album-row-menu-{}", album.id)))
-                        .ghost()
-                        .icon(icons::icon(icons::MORE))
-                        .dropdown_menu(menus::builder(menu_target)),
-                ),
-        )
-        .context_menu(menus::builder(target))
 }
 
 fn title_key(album: &AlbumInfo) -> String {

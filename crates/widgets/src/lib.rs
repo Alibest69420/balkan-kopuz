@@ -23,7 +23,10 @@ pub mod states;
 pub mod style;
 pub mod track_list;
 
-pub use cards::{Tile, album_tile, artist_tile, playlist_tile, tile_grid};
+pub use cards::{
+    Frame, PlayState, Tile, TileRow, album_row, album_tile, artist_row, artist_tile, playlist_tile,
+    tile_grid,
+};
 pub use cover::Cover;
 pub use focus::{Axis, Roving, Step};
 pub use format::{duration, t, t_with, text, total_duration};

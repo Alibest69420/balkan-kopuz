@@ -14,8 +14,9 @@ use store::{DownloadsModel, JobsModel, PlaylistsModel, SourcesModel, actions};
 use widgets::format::t;
 use widgets::{EmptyState, Loading, PageHeader, icons, motion, style};
 
-use crate::cards::{Card, card_grid, folder_card, playlist_card, tweened};
+use crate::cards::{folder_card, playlist_card, tweened};
 use crate::dialogs;
+use widgets::{Tile, tile_grid as card_grid};
 
 pub struct Playlists {
     requested_sync: bool,
@@ -218,7 +219,7 @@ impl Playlists {
         playlist: &PlaylistInfo,
         capabilities: SourceCapabilities,
         cx: &mut Context<Self>,
-    ) -> Card {
+    ) -> Tile {
         let downloads = DownloadsModel::global(cx);
         let keys = playlist.track_keys.clone();
         let active = keys.iter().any(|key| downloads.read(cx).is_active(key));
@@ -254,9 +255,8 @@ impl Playlists {
                     }
                 });
             })
-            .into_any_element()
         });
-        crate::cards::playlist_card(playlist)
+        playlist_card(playlist)
             .subtitle(format!(
                 "{} • {}",
                 t("server_playlist"),
