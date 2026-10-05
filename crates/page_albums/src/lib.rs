@@ -3,7 +3,6 @@
 mod detail;
 mod grid;
 mod ops;
-mod sort;
 
 pub use detail::AlbumDetail;
 pub use grid::Albums;

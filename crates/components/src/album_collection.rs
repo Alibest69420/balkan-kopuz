@@ -41,12 +41,14 @@ impl AlbumCollection {
                 albums.len(),
                 TILE,
                 mode,
-                move |_: &mut V, index, _, _| match mode {
+                move |_: &mut V, index, _, cx| match mode {
                     GridMode::Tiles => album_tile(&albums[index])
                         .size(TILE_COVER)
                         .frame(Frame::Card)
                         .into_any_element(),
-                    GridMode::Rows => album_row(&albums[index]).into_any_element(),
+                    GridMode::Rows => album_row(&albums[index])
+                        .thumb(store::ConfigModel::global(cx).read(cx).row_images())
+                        .into_any_element(),
                 },
             )
             .build(window, cx)

@@ -1,35 +1,30 @@
 //! One playlist's tracks, its cover, and what the source lets you do to it.
 
-use std::path::Path;
+use std::rc::Rc;
 
-use api::{ArtworkTarget, ArtworkUpload, PlaylistCapability, PlaylistReorder, Table, TrackInfo};
+use api::{ArtworkTarget, PlaylistCapability, PlaylistReorder, Table, TrackInfo};
 use components::format::{t, t_with};
 use components::track_list::{TrackActions, TrackList, TrackListEvent};
 use components::{
-    DetailHeader, EmptyState, IconButton, IconTone, TrackHeader, detail_header_skeleton, icons,
+    DetailActions, DetailHeader, EmptyState, TrackHeader, detail_header_skeleton, icons,
 };
 use gpui_kit::component::v_flex;
 use gpui_kit::{
-    AnyElement, AppContext as _, Context, Entity, IntoElement, ParentElement as _,
-    PathPromptOptions, Pixels, Render, SharedString, Styled as _, Subscription, Window, div, px,
+    AnyElement, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Pixels, Render,
+    SharedString, Styled as _, Subscription, Window, div, px,
 };
 use link::Link;
 use store::{
-    DownloadsModel, Navigator, Notices, PlaylistsModel, Query, Route, SourcesModel, actions,
+    DownloadsModel, Navigator, Offline, PlaylistsModel, Query, Route, SourcesModel, actions,
 };
 
 /// `w-64 h-64`: the showcase cover.
 const HERO: Pixels = px(256.);
-/// `w-14 h-14`: the round play and radio buttons beside it.
-const HERO_BUTTON: Pixels = px(56.);
-/// `w-12 h-12`: the outlined download and delete.
-const HERO_SECONDARY: Pixels = px(48.);
-/// `text-xl`, the showcase's glyph.
-const HERO_GLYPH: Pixels = px(20.);
 
 pub struct PlaylistDetail {
     id: SharedString,
-    keys: Vec<String>,
+    keys: Rc<[String]>,
+    offline: Offline,
     tracks: Entity<Query<Vec<TrackInfo>>>,
     list: Entity<TrackList>,
     refreshed: bool,
@@ -70,20 +65,29 @@ impl PlaylistDetail {
                 this.request_refresh(cx);
                 cx.notify();
             }),
-            cx.observe(&DownloadsModel::global(cx), |_, _, cx| cx.notify()),
+            cx.observe(&DownloadsModel::global(cx), |this, _, cx| {
+                this.refresh_offline(cx);
+                cx.notify();
+            }),
         ];
         let mut detail = Self {
             id,
-            keys,
+            keys: keys.into(),
+            offline: Offline::default(),
             tracks,
             list,
             refreshed: false,
             _subscriptions: subscriptions,
         };
+        detail.refresh_offline(cx);
         detail.apply_capabilities(cx);
         detail.request_refresh(cx);
         detail.adopt_rows(cx);
         detail
+    }
+
+    fn refresh_offline(&mut self, cx: &gpui_kit::App) {
+        self.offline = DownloadsModel::global(cx).read(cx).offline(&self.keys);
     }
 
     /// A server playlist's contents are filled in by the daemon; this only asks, once.
@@ -121,10 +125,11 @@ impl PlaylistDetail {
         else {
             return;
         };
-        if keys == self.keys {
+        if *keys == *self.keys {
             return;
         }
-        self.keys = keys.clone();
+        self.keys = keys.clone().into();
+        self.refresh_offline(cx);
         self.tracks.update(cx, |query, cx| {
             query.set_fetch(
                 move |api| {
@@ -210,45 +215,6 @@ impl PlaylistDetail {
         }
     }
 
-    /// The daemon decides what setting a cover means, so only the bytes travel.
-    fn upload_cover(&mut self, cx: &mut Context<Self>) {
-        let id = self.id.to_string();
-        let picked = cx.prompt_for_paths(PathPromptOptions {
-            files: true,
-            directories: false,
-            multiple: false,
-            prompt: None,
-        });
-        cx.spawn(async move |_, cx| {
-            let Ok(Ok(Some(paths))) = picked.await else {
-                return;
-            };
-            let Some(path) = paths.into_iter().next() else {
-                return;
-            };
-            let content_type = content_type_for(&path);
-            let read = cx
-                .background_executor()
-                .spawn(async move { std::fs::read(path) })
-                .await;
-            match read {
-                Ok(bytes) => cx.update(|cx| {
-                    actions::run(cx, move |api| async move {
-                        api.upload_artwork(ArtworkUpload {
-                            target: ArtworkTarget::Playlist(id),
-                            content_type,
-                            bytes,
-                        })
-                        .await
-                    })
-                }),
-                // Reading the picked file, not a daemon call: its own message is the one to show.
-                Err(error) => cx.update(|cx| Notices::error(error.to_string(), cx)),
-            }
-        })
-        .detach();
-    }
-
     fn delete(&mut self, window: &mut Window, cx: &mut Context<Self>, name: SharedString) {
         let id = self.id.to_string();
         components::dialogs::confirm(
@@ -282,96 +248,30 @@ impl Render for PlaylistDetail {
             });
         };
 
-        let capabilities = SourcesModel::global(cx).read(cx).capabilities();
-        let downloads = DownloadsModel::global(cx);
-        let keys = playlist.track_keys.clone();
-        let active = keys
-            .iter()
-            .any(|key| downloads.read(cx).is_active(key.as_str()));
-        let stored = !keys.is_empty()
-            && keys
-                .iter()
-                .all(|key| downloads.read(cx).is_stored(key.as_str()));
         let name = SharedString::from(playlist.name.clone());
-        let page = cx.entity().downgrade();
-        let mut header = DetailHeader::new(name.clone())
+        let (cover_id, radio_id) = (self.id.to_string(), self.id.to_string());
+        let header = DetailHeader::new(name.clone())
             .artwork(playlist.artwork.as_ref())
             .placeholder(icons::LIST)
             .on_cover("playlist-cover", None, move |_, cx| {
-                page.update(cx, |this, cx| this.upload_cover(cx)).ok();
+                store::pick_and_upload(ArtworkTarget::Playlist(cover_id.clone()), cx)
             })
             .meta(t_with(
                 "playlist_track_count",
-                &[("count", keys.len().to_string())],
+                &[("count", self.keys.len().to_string())],
             ))
             .action(
-                IconButton::new("play-playlist", icons::PLAY)
-                    .size(HERO_BUTTON)
-                    .glyph(HERO_GLYPH)
-                    .tone(IconTone::Accent)
-                    .tooltip(t("play"))
-                    .on_click({
-                        let keys = keys.clone();
-                        move |_, _, cx| actions::play_all(keys.clone(), cx)
-                    }),
-            );
-        if capabilities.playlist_radio {
-            let id = self.id.to_string();
-            header = header.action(
-                IconButton::new("playlist-radio", icons::RADIO)
-                    .size(HERO_BUTTON)
-                    .glyph(HERO_GLYPH)
-                    .tooltip(t("start_radio"))
-                    .on_click(move |_, _, cx| actions::start_playlist_radio(id.clone(), cx)),
-            );
-        }
-        if capabilities.downloads {
-            let keys = keys.clone();
-            header = header.action(
-                IconButton::new(
-                    "playlist-download",
-                    if stored {
-                        icons::TRASH
-                    } else {
-                        icons::DOWNLOAD
-                    },
-                )
-                .size(HERO_SECONDARY)
-                .tone(IconTone::Outline)
-                .tooltip(if stored {
-                    t("remove_from_cache")
-                } else {
-                    t("downloader_download")
-                })
-                .loading(active)
-                .on_click(move |_, _, cx| {
-                    let keys = keys.clone();
-                    DownloadsModel::global(cx).update(cx, |downloads, cx| {
-                        if stored {
-                            for key in keys {
-                                downloads.remove(key, cx);
-                            }
-                        } else {
-                            downloads.download(keys, cx);
-                        }
-                    });
-                }),
-            );
-        }
-        if capabilities.playlists != PlaylistCapability::None {
-            let name = name.clone();
-            header = header.action(
-                IconButton::new("playlist-delete", icons::TRASH)
-                    .size(HERO_SECONDARY)
-                    .tone(IconTone::Outline)
-                    .tooltip(t("delete_playlist"))
-                    .on_click(cx.listener(move |this, _, window, cx| {
+                DetailActions::new("playlist", self.keys.clone())
+                    .offline(self.offline)
+                    .play()
+                    .radio(move |_, _, cx| actions::start_playlist_radio(radio_id.clone(), cx))
+                    .download()
+                    .delete(cx.listener(move |this, _, window, cx| {
                         this.delete(window, cx, name.clone())
                     })),
             );
-        }
 
-        let body = self.body(keys.len(), window, cx);
+        let body = self.body(self.keys.len(), window, cx);
         components::page()
             .gap_8()
             .child(components::back_button("playlist-back", cx))
@@ -433,19 +333,4 @@ impl PlaylistDetail {
             .child(div().flex_1().min_h_0().child(self.list.clone()))
             .into_any_element()
     }
-}
-
-/// The upload's content type, by extension, the way §5.4 spells it out.
-fn content_type_for(path: &Path) -> String {
-    match path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .map(str::to_ascii_lowercase)
-        .as_deref()
-    {
-        Some("png") => "image/png",
-        Some("webp") => "image/webp",
-        _ => "image/jpeg",
-    }
-    .to_string()
 }

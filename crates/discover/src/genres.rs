@@ -1,21 +1,21 @@
 //! Genres: the tiles the library's own tags make, and the page one of them opens.
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use api::{AlbumInfo, ArtworkRef, Table, TrackPage};
 use components::format::{t, t_with};
 use components::{
-    Cover, EmptyState, Loading, PageHeader, Scrim, TrackActions, TrackList, TrackListEvent,
-    TrackListOptions, icons, motion, style,
+    Cover, DetailActions, EmptyState, Loading, Look, PageHeader, Scrim, TrackActions, TrackList,
+    TrackListEvent, TrackListOptions, icons, motion, style,
 };
-use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
     ParentElement as _, Pixels, Render, RenderOnce, SharedString, StatefulInteractiveElement as _,
     Styled, Subscription, Window, div, px,
 };
-use store::{Navigator, PlayerModel, Query, Route, SourcesModel, actions, all};
+use store::{Navigator, Query, Route, SourcesModel, actions, all};
 
 use crate::states;
 
@@ -164,7 +164,8 @@ pub struct Genre {
     name: SharedString,
     tracks: Entity<Query<TrackPage>>,
     list: Entity<TrackList>,
-    count: usize,
+    // The rows' keys, taken once per answer rather than per frame.
+    keys: Rc<[String]>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -196,7 +197,7 @@ impl Genre {
                     .value()
                     .map(|page| page.items.clone())
                     .unwrap_or_default();
-                this.count = rows.len();
+                this.keys = rows.iter().map(|row| row.key.clone()).collect();
                 this.list.update(cx, |list, cx| list.set_rows(rows, cx));
                 cx.notify();
             }),
@@ -219,34 +220,16 @@ impl Genre {
             name,
             tracks,
             list,
-            count: 0,
+            keys: Rc::from([]),
             _subscriptions: subscriptions,
         }
-    }
-
-    fn play(&mut self, cx: &mut Context<Self>) {
-        let keys = self.list.read(cx).keys();
-        if keys.is_empty() {
-            return;
-        }
-        actions::play_all(keys, cx);
-    }
-
-    /// Shuffle on, then play: `play_all` starts from a random row once it is.
-    fn shuffle(&mut self, cx: &mut Context<Self>) {
-        let keys = self.list.read(cx).keys();
-        if keys.is_empty() {
-            return;
-        }
-        PlayerModel::global(cx).update(cx, |player, cx| player.set_shuffle(true, cx));
-        actions::play_all(keys, cx);
     }
 }
 
 impl Render for Genre {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("genre");
-        let count = self.count;
+        let count = self.keys.len();
         let failure = self.tracks.read(cx).error().map(states::read_failure);
         let settled = self.tracks.read(cx).is_settled();
         let body = if let Some(message) = failure {
@@ -277,20 +260,12 @@ impl Render for Genre {
                 PageHeader::new(self.name.clone())
                     .subtitle(track_count(count))
                     .when(count > 0, |header| {
-                        header
-                            .action(
-                                Button::new("genre-play")
-                                    .primary()
-                                    .icon(icons::icon(icons::PLAY))
-                                    .label(t("play"))
-                                    .on_click(cx.listener(|this, _, _, cx| this.play(cx))),
-                            )
-                            .action(
-                                Button::new("genre-shuffle")
-                                    .icon(icons::icon(icons::SHUFFLE))
-                                    .label(t("shuffle"))
-                                    .on_click(cx.listener(|this, _, _, cx| this.shuffle(cx))),
-                            )
+                        header.action(
+                            DetailActions::new("genre", self.keys.clone())
+                                .look(Look::Compact)
+                                .play()
+                                .shuffle_play(),
+                        )
                     }),
             )
             .child(body)

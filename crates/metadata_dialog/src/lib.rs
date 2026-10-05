@@ -6,7 +6,7 @@ use api::{ArtworkChange, TrackInfo, TrackMetadataPatch};
 use components::ErrorBanner;
 use components::dialogs::{DialogSize, FormDialog, FormFooter};
 use components::format::{duration, t};
-use components::{Cover, Loading, icons, motion, style};
+use components::{EditableCover, Loading, icons, motion, style};
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::base::motion::{Easing, Presence, Transition};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -15,9 +15,8 @@ use gpui_kit::component::{ActiveTheme as _, Disableable as _, WindowExt as _, h_
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Div, Entity, InteractiveElement as _, IntoElement,
-    ObjectFit, ParentElement as _, PathPromptOptions, Pixels, Render, SharedString,
-    StatefulInteractiveElement as _, Styled, StyledImage as _, Subscription, Task, Window, div,
-    img, px,
+    ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _, Styled,
+    Subscription, Task, Window, div, px,
 };
 use store::{Link, Notices};
 
@@ -173,25 +172,14 @@ impl MetadataDialog {
     }
 
     fn pick_cover(&mut self, cx: &mut Context<Self>) {
-        let paths = cx.prompt_for_paths(PathPromptOptions {
-            files: true,
-            directories: false,
-            multiple: false,
-            prompt: None,
+        let this = cx.entity().downgrade();
+        store::pick_image(cx, move |path, cx| {
+            this.update(cx, |this, cx| {
+                this.cover = CoverEdit::Set(path);
+                cx.notify();
+            })
+            .ok();
         });
-        cx.spawn(async move |this, cx| {
-            if let Ok(Ok(Some(paths))) = paths.await
-                && let Some(path) = paths.first()
-            {
-                let path = path.clone();
-                this.update(cx, |this, cx| {
-                    this.cover = CoverEdit::Set(path);
-                    cx.notify();
-                })
-                .ok();
-            }
-        })
-        .detach();
     }
 
     fn cancel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -287,23 +275,39 @@ impl MetadataDialog {
         cx.notify();
     }
 
-    fn cover_preview(&self, _: &Context<Self>) -> AnyElement {
-        match &self.cover {
-            CoverEdit::Set(path) => img(path.clone())
-                .size(COVER_SIZE)
-                .rounded(style::cover_radius())
-                .object_fit(ObjectFit::Cover)
-                .into_any_element(),
-            CoverEdit::Remove => Cover::new(None)
-                .size(COVER_SIZE)
-                .rounded(style::cover_radius())
-                .into_any_element(),
-            CoverEdit::Keep => Cover::new(self.track.as_ref().and_then(|t| t.artwork.as_ref()))
-                .size(COVER_SIZE)
-                .rounded(style::cover_radius())
-                .hq(true)
-                .into_any_element(),
+    fn cover(&self, editing: bool, cx: &Context<Self>) -> EditableCover {
+        let (artwork, pending) = match &self.cover {
+            CoverEdit::Keep => (
+                self.track.as_ref().and_then(|track| track.artwork.clone()),
+                None,
+            ),
+            CoverEdit::Remove => (None, None),
+            CoverEdit::Set(path) => (None, Some(path.clone())),
+        };
+        let cover = EditableCover::new("metadata-cover", artwork.as_ref())
+            .size(COVER_SIZE)
+            .rounded(style::cover_radius())
+            .pending(pending);
+        if !editing {
+            return cover;
         }
+        let (page, removed) = (cx.entity().downgrade(), cx.entity().downgrade());
+        cover
+            .tooltip(match self.has_cover() {
+                true => t("change_photo"),
+                false => t("add_photo"),
+            })
+            .on_pick(move |_, cx| {
+                page.update(cx, |this, cx| this.pick_cover(cx)).ok();
+            })
+            .on_remove(t("remove_photo"), move |_, cx| {
+                removed
+                    .update(cx, |this, cx| {
+                        this.cover = CoverEdit::Remove;
+                        cx.notify();
+                    })
+                    .ok();
+            })
     }
 
     fn field(&self, label: SharedString, input: &Entity<InputState>, cx: &Context<Self>) -> Div {
@@ -454,7 +458,6 @@ impl Render for MetadataDialog {
         let editing = self.editing;
         let (bad_track, bad_disc) = self.unreadable(cx);
         let blocked = bad_track || bad_disc;
-        let has_cover = self.has_cover();
         // Keying the fade on the mode makes each switch a fresh entrance rather than a cut.
         let mode = if editing { "edit" } else { "read" };
         let switched = Presence::new(("metadata-mode", mode), true)
@@ -463,42 +466,7 @@ impl Render for MetadataDialog {
             .progress;
         v_flex()
             .gap_4()
-            .child(
-                h_flex()
-                    .gap_4()
-                    .items_center()
-                    .child(self.cover_preview(cx))
-                    .when(editing, |row| {
-                        row.child(
-                            v_flex()
-                                .gap_2()
-                                .child(
-                                    Button::new("metadata-cover")
-                                        .outline()
-                                        .label(if has_cover {
-                                            t("change_photo")
-                                        } else {
-                                            t("add_photo")
-                                        })
-                                        .on_click(
-                                            cx.listener(|this, _, _, cx| this.pick_cover(cx)),
-                                        ),
-                                )
-                                .when(has_cover, |column| {
-                                    column.child(
-                                        Button::new("metadata-cover-remove")
-                                            .ghost()
-                                            .icon(icons::icon(icons::TRASH))
-                                            .label(t("remove_photo"))
-                                            .on_click(cx.listener(|this, _, _, cx| {
-                                                this.cover = CoverEdit::Remove;
-                                                cx.notify();
-                                            })),
-                                    )
-                                }),
-                        )
-                    }),
-            )
+            .child(div().child(self.cover(editing, cx)))
             .child(
                 div()
                     .id("metadata-body")

@@ -1,42 +1,30 @@
 //! One artist: the tracks showcase, or their albums.
 
-use std::cmp::Ordering;
 use std::collections::HashSet;
-use std::path::Path;
+use std::rc::Rc;
 
-use api::{
-    AlbumInfo, ArtworkTarget, ArtworkUpload, JobKind, SourceCapabilities, Table, TrackInfo,
-    TrackPage,
-};
+use api::{AlbumInfo, ArtworkTarget, SourceCapabilities, Table, TrackInfo, TrackPage};
+use components::album_collection::{available_fields, compare_text, sort_albums};
 use components::format::{t, t_with, total_duration};
 use components::{
-    DetailHeader, EmptyState, IconButton, IconTone, Loading, TrackActions, TrackHeader, TrackList,
-    TrackListEvent, TrackListOptions, icons,
+    AlbumCollection, DetailActions, DetailHeader, EmptyState, GridMode, Loading, TrackActions,
+    TrackHeader, TrackList, TrackListEvent, TrackListOptions, icons,
 };
-use config::{AlbumSortField, AlbumViewMode, ArtistViewOrder, SortCriterion, SortDirection};
+use config::{AlbumSortField, AlbumViewMode, SortDirection};
 use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
-    ParentElement as _, PathPromptOptions, Pixels, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement as _, Styled as _, Subscription, Task, Window, div, px, rems,
+    AnyElement, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Pixels,
+    Render, SharedString, Styled as _, Subscription, Window, div, px, rems,
 };
 use store::{
-    ConfigModel, DownloadsModel, JobsModel, PlayerModel, Query, SourcesModel, Target, actions,
+    ConfigModel, DownloadsModel, Offline, PlayerModel, Query, SourcesModel, Target, actions,
 };
 
 use crate::controls::{self, ViewModeKey};
 
 /// `w-64 h-64`: the showcase photo.
-const PHOTO: f32 = 256.;
-/// `minmax(180px, 1fr)`: one album card.
-const CARD: f32 = 180.;
-/// `w-14 h-14`: the round shuffle and play buttons.
-const HERO_BUTTON: Pixels = px(56.);
-/// `w-12 h-12`: the outlined download beside them.
-const HERO_SECONDARY: Pixels = px(48.);
-/// `text-xl`, the showcase's glyph.
-const HERO_GLYPH: Pixels = px(20.);
+const PHOTO: Pixels = px(256.);
 
 /// A sortable column of the tracks view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,8 +60,13 @@ pub struct ArtistDetail {
     detail: Entity<Query<api::ArtistDetail>>,
     list: Entity<TrackList>,
     column: Option<(Column, SortDirection)>,
-    scroll: ScrollHandle,
-    _upload: Option<Task<()>>,
+    // Derived once per change, not once per frame.
+    keys: Rc<[String]>,
+    total_ms: u64,
+    offline: Offline,
+    albums: Rc<[AlbumInfo]>,
+    album_fields: Vec<AlbumSortField>,
+    collection: AlbumCollection,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -105,11 +98,16 @@ impl ArtistDetail {
         commands::bind_track_list(&list, cx);
         let subscriptions = vec![
             cx.observe(&tracks, |this, _, cx| this.sync_rows(cx)),
-            cx.observe(&detail, |_, _, cx| cx.notify()),
-            cx.observe(&ConfigModel::global(cx), |this, _, cx| this.sync_rows(cx)),
+            cx.observe(&detail, |this, _, cx| this.rebuild_albums(cx)),
+            cx.observe(&ConfigModel::global(cx), |this, _, cx| {
+                this.sync_rows(cx);
+                this.rebuild_albums(cx);
+            }),
             cx.observe(&SourcesModel::global(cx), |this, _, cx| this.sync_rows(cx)),
-            cx.observe(&DownloadsModel::global(cx), |_, _, cx| cx.notify()),
-            cx.observe(&JobsModel::global(cx), |_, _, cx| cx.notify()),
+            cx.observe(&DownloadsModel::global(cx), |this, _, cx| {
+                this.refresh_offline(cx);
+                cx.notify();
+            }),
             cx.observe(&PlayerModel::global(cx), |_, _, cx| cx.notify()),
             cx.subscribe(&list, Self::on_list_event),
         ];
@@ -119,8 +117,12 @@ impl ArtistDetail {
             detail,
             list,
             column: None,
-            scroll: ScrollHandle::new(),
-            _upload: None,
+            keys: Rc::from([]),
+            total_ms: 0,
+            offline: Offline::default(),
+            albums: Rc::from([]),
+            album_fields: Vec::new(),
+            collection: AlbumCollection::new("artist-albums-scroll"),
             _subscriptions: subscriptions,
         }
     }
@@ -155,11 +157,41 @@ impl ArtistDetail {
             reorder: false,
         };
         let rows = self.rows(cx);
+        self.keys = rows.iter().map(|row| row.key.clone()).collect();
+        self.total_ms = rows
+            .iter()
+            .map(|row| row.duration_ms.unwrap_or_default())
+            .sum();
+        self.refresh_offline(cx);
         self.list.update(cx, |list, cx| {
             list.set_options(options, cx);
             list.set_actions(row_actions, cx);
             list.set_rows(rows, cx);
         });
+        cx.notify();
+    }
+
+    fn refresh_offline(&mut self, cx: &App) {
+        self.offline = DownloadsModel::global(cx).read(cx).offline(&self.keys);
+    }
+
+    /// The artist's albums, deduped by id and sorted, on a change to the listing or the sort.
+    fn rebuild_albums(&mut self, cx: &mut Context<Self>) {
+        let mut albums: Vec<AlbumInfo> = match self.detail.read(cx).value() {
+            Some(detail) => {
+                let mut seen = HashSet::new();
+                detail
+                    .albums
+                    .iter()
+                    .filter(|album| seen.insert(album.id.as_str()))
+                    .cloned()
+                    .collect()
+            }
+            None => Vec::new(),
+        };
+        self.album_fields = available_fields(&albums, false);
+        sort_albums(&mut albums, &controls::criteria(cx));
+        self.albums = albums.into();
         cx.notify();
     }
 
@@ -200,64 +232,11 @@ impl ArtistDetail {
             .map(|detail| SharedString::from(detail.info.name.clone()))
             .unwrap_or_default()
     }
-
-    fn artist_albums(&self, cx: &App) -> Vec<AlbumInfo> {
-        let Some(detail) = self.detail.read(cx).value() else {
-            return Vec::new();
-        };
-        let mut albums = detail.albums.clone();
-        let criteria: Vec<SortCriterion<AlbumSortField>> = controls::criteria(cx);
-        sort_albums(&mut albums, &criteria);
-        let mut seen = HashSet::new();
-        albums.retain(|album| seen.insert(album.title.trim().to_lowercase()));
-        albums
-    }
-
-    fn pick_photo(&mut self, cx: &mut Context<Self>) {
-        let artist = self.key.clone();
-        let paths = cx.prompt_for_paths(PathPromptOptions {
-            files: true,
-            directories: false,
-            multiple: false,
-            prompt: None,
-        });
-        self._upload = Some(cx.spawn(async move |_, cx| {
-            let Ok(Ok(Some(paths))) = paths.await else {
-                return;
-            };
-            let Some(path) = paths.into_iter().next() else {
-                return;
-            };
-            let content_type = content_type_for(&path);
-            let read = cx
-                .background_executor()
-                .spawn(async move { std::fs::read(&path) });
-            let bytes = match read.await {
-                Ok(bytes) => bytes,
-                Err(error) => {
-                    tracing::warn!(%error, "could not read the picked picture");
-                    return;
-                }
-            };
-            cx.update(|cx| {
-                actions::run(cx, move |api| async move {
-                    api.upload_artwork(ArtworkUpload {
-                        target: ArtworkTarget::Artist(artist),
-                        content_type,
-                        bytes,
-                    })
-                    .await
-                })
-            });
-        }));
-    }
 }
 
 impl Render for ArtistDetail {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        components::scroll::smooth("artist-detail-scroll", &self.scroll, window, cx);
-        let config = controls::config(cx);
-        let albums_view = config.artist_view_order == ArtistViewOrder::Albums;
+        let albums_view = controls::albums_first(cx);
         let failed = {
             let detail = self.detail.read(cx);
             detail
@@ -276,9 +255,9 @@ impl Render for ArtistDetail {
             };
             EmptyState::new(message).icon(icons::MIC).into_any_element()
         } else if albums_view {
-            self.albums_view(cx)
+            self.albums_view(window, cx)
         } else {
-            self.tracks_view(window, cx)
+            self.tracks_view(cx)
         };
         components::page()
             .gap_6()
@@ -288,25 +267,16 @@ impl Render for ArtistDetail {
                     .justify_between()
                     .items_center()
                     .child(components::back_button("artist-back", cx))
-                    .child(controls::view_order_toggle(&config.artist_view_order)),
+                    .child(controls::view_order_toggle(albums_view)),
             )
             .child(body)
     }
 }
 
 impl ArtistDetail {
-    fn tracks_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let (keys, total, selecting) = {
-            let list = self.list.read(cx);
-            let keys: Vec<String> = list.keys();
-            let total: u64 = list
-                .rows()
-                .iter()
-                .map(|row| row.duration_ms.unwrap_or_default())
-                .sum();
-            (keys, total, list.is_selecting())
-        };
-        let count = keys.len();
+    fn tracks_view(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let count = self.keys.len();
+        let selecting = self.list.read(cx).is_selecting();
         let settled = self.tracks.read(cx).is_settled();
         let body = if !settled && count == 0 {
             Loading::new().into_any_element()
@@ -327,97 +297,38 @@ impl ArtistDetail {
             .flex_1()
             .min_h_0()
             .gap_12()
-            .child(self.hero(keys, total, window, cx))
+            .child(self.hero(cx))
             .child(body)
             .when(selecting, |view| view.child(self.selection_bar(cx)))
             .into_any_element()
     }
 
-    fn hero(
-        &mut self,
-        keys: Vec<String>,
-        total: u64,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    fn hero(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let capabilities = capabilities(cx);
         let artwork = self.artwork(cx);
-        let shuffle = PlayerModel::global(cx).read(cx).shuffle();
-        let stored = {
-            let downloads = DownloadsModel::global(cx);
-            let downloads = downloads.read(cx);
-            !keys.is_empty() && keys.iter().all(|key| downloads.is_stored(key))
-        };
-        let busy = JobsModel::global(cx).read(cx).is_running(JobKind::Download);
-        let playable = !keys.is_empty();
-        let downloadable = playable && !busy;
-        let page = cx.entity().downgrade();
-        let mut header = DetailHeader::new(self.name(cx))
+        let artist = self.key.clone();
+        DetailHeader::new(self.name(cx))
             .artwork(artwork.as_ref())
             .placeholder(icons::MIC)
-            .size(px(PHOTO))
+            .size(PHOTO)
             .when(capabilities.edit_tags, |header| {
                 header.on_cover("artist-photo", Some(t("change_photo")), move |_, cx| {
-                    page.update(cx, |this, cx| this.pick_photo(cx)).ok();
+                    store::pick_and_upload(ArtworkTarget::Artist(artist.clone()), cx)
                 })
             })
             .meta(t_with(
                 "showcase_song_count",
-                &[("count", keys.len().to_string())],
+                &[("count", self.keys.len().to_string())],
             ))
-            .meta(total_duration(total))
+            .meta(total_duration(self.total_ms))
             .action(
-                IconButton::new("artist-shuffle", icons::SHUFFLE)
-                    .size(HERO_BUTTON)
-                    .glyph(HERO_GLYPH)
-                    .lit(shuffle)
-                    .tooltip(if shuffle {
-                        t("shuffle_on")
-                    } else {
-                        t("shuffle_off")
-                    })
-                    .on_click(move |_, _, cx| {
-                        PlayerModel::global(cx)
-                            .update(cx, |player, cx| player.set_shuffle(!shuffle, cx))
-                    }),
+                DetailActions::new("artist", self.keys.clone())
+                    .offline(self.offline)
+                    .shuffle()
+                    .play()
+                    .download(),
             )
-            .action(
-                IconButton::new("artist-play", icons::PLAY)
-                    .size(HERO_BUTTON)
-                    .glyph(HERO_GLYPH)
-                    .tone(IconTone::Accent)
-                    .tooltip(t("play"))
-                    .disabled(!playable)
-                    .on_click({
-                        let keys = keys.clone();
-                        move |_, _, cx| actions::play_all(keys.clone(), cx)
-                    }),
-            );
-        if capabilities.downloads {
-            header = header.action(
-                IconButton::new(
-                    "artist-download-all",
-                    if stored {
-                        icons::TRASH
-                    } else {
-                        icons::DOWNLOAD
-                    },
-                )
-                .size(HERO_SECONDARY)
-                .tone(IconTone::Outline)
-                .tooltip(if stored {
-                    t("remove_download")
-                } else {
-                    t("download_offline")
-                })
-                .disabled(!downloadable)
-                .on_click({
-                    let keys = keys.clone();
-                    move |_, _, cx| set_downloaded(keys.clone(), !stored, cx)
-                }),
-            );
-        }
-        header.into_any_element()
+            .into_any_element()
     }
 
     fn column_header(&mut self, count: usize, cx: &mut Context<Self>) -> AnyElement {
@@ -488,47 +399,29 @@ impl ArtistDetail {
         bar.into_any_element()
     }
 
-    fn albums_view(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let albums = self.artist_albums(cx);
-        let mode = controls::config(cx).artist_album_view_mode;
+    fn albums_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let mode = match controls::view_mode(ViewModeKey::ArtistAlbums, cx) {
+            AlbumViewMode::Grid => GridMode::Tiles,
+            AlbumViewMode::List => GridMode::Rows,
+        };
         let settled = self.detail.read(cx).is_settled();
-        let fields = available_fields(&albums);
+        let empty = self.albums.is_empty();
 
-        let body = if !settled && albums.is_empty() {
+        let body = if !settled && empty {
             Loading::new().into_any_element()
-        } else if albums.is_empty() {
+        } else if empty {
             EmptyState::new(t("no_albums_found"))
                 .icon(icons::DISC)
                 .into_any_element()
         } else {
-            let cards: Vec<AnyElement> = albums
-                .iter()
-                .map(|album| match mode {
-                    AlbumViewMode::Grid => components::album_tile(album)
-                        .size(px(CARD - 32.))
-                        .frame(components::Frame::Card)
-                        .into_any_element(),
-                    AlbumViewMode::List => components::album_row(album)
-                        .thumb(store::ConfigModel::global(cx).read(cx).row_images())
-                        .into_any_element(),
-                })
-                .collect();
             div()
-                .id("artist-albums-scroll")
                 .flex_1()
                 .min_h_0()
                 .pb_20()
-                .overflow_y_scroll()
-                .track_scroll(&self.scroll)
-                .child(match mode {
-                    AlbumViewMode::Grid => div()
-                        .flex()
-                        .flex_wrap()
-                        .gap_6()
-                        .children(cards)
-                        .into_any_element(),
-                    AlbumViewMode::List => v_flex().gap_2().children(cards).into_any_element(),
-                })
+                .child(
+                    self.collection
+                        .bands::<Self>(self.albums.clone(), mode, window, cx),
+                )
                 .into_any_element()
         };
 
@@ -543,23 +436,15 @@ impl ArtistDetail {
                     .gap_2()
                     .items_center()
                     .child(controls::view_mode_toggle(ViewModeKey::ArtistAlbums, cx))
-                    .child(controls::sort_control("artist-album-sort", fields, cx)),
+                    .child(controls::sort_control(
+                        "artist-album-sort",
+                        self.album_fields.clone(),
+                        cx,
+                    )),
             )
             .child(body)
             .into_any_element()
     }
-}
-
-fn set_downloaded(keys: Vec<String>, download: bool, cx: &mut App) {
-    DownloadsModel::global(cx).update(cx, |downloads, cx| {
-        if download {
-            downloads.download(keys, cx);
-        } else {
-            for key in keys {
-                downloads.remove(key, cx);
-            }
-        }
-    });
 }
 
 fn delete_tracks(keys: Vec<String>, cx: &mut App) {
@@ -572,39 +457,6 @@ fn delete_tracks(keys: Vec<String>, cx: &mut App) {
 fn capabilities(cx: &App) -> SourceCapabilities {
     let model = SourcesModel::global(cx);
     model.read(cx).capabilities()
-}
-
-/// Every album here shares the artist, so that field would never break a tie.
-fn available_fields(albums: &[AlbumInfo]) -> Vec<AlbumSortField> {
-    let mut fields = vec![AlbumSortField::Title];
-    if albums.iter().any(|album| album.year > 0) {
-        fields.push(AlbumSortField::Year);
-    }
-    if albums.iter().any(|album| !album.genre.trim().is_empty()) {
-        fields.push(AlbumSortField::Genre);
-    }
-    fields
-}
-
-fn sort_albums(albums: &mut [AlbumInfo], criteria: &[SortCriterion<AlbumSortField>]) {
-    albums.sort_by(|left, right| {
-        for criterion in criteria {
-            let ordering = match criterion.field {
-                AlbumSortField::Title => compare_text(&left.title, &right.title),
-                AlbumSortField::Artist => compare_text(&left.artist, &right.artist),
-                AlbumSortField::Year => left.year.cmp(&right.year),
-                AlbumSortField::Genre => compare_text(&left.genre, &right.genre),
-            };
-            let ordering = match criterion.direction {
-                SortDirection::Asc => ordering,
-                SortDirection::Desc => ordering.reverse(),
-            };
-            if ordering != Ordering::Equal {
-                return ordering;
-            }
-        }
-        Ordering::Equal
-    });
 }
 
 fn sort_tracks(tracks: &mut [TrackInfo], column: Column, direction: SortDirection) {
@@ -635,23 +487,4 @@ fn sort_tracks(tracks: &mut [TrackInfo], column: Column, direction: SortDirectio
             _ => ordering,
         }
     });
-}
-
-fn compare_text(left: &str, right: &str) -> Ordering {
-    left.trim().to_lowercase().cmp(&right.trim().to_lowercase())
-}
-
-/// The daemon stores the bytes, so it needs to be told what they are.
-fn content_type_for(path: &Path) -> String {
-    let extension = path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    match extension.as_str() {
-        "png" => "image/png",
-        "webp" => "image/webp",
-        _ => "image/jpeg",
-    }
-    .to_string()
 }

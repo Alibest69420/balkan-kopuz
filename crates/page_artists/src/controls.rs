@@ -81,14 +81,19 @@ pub fn criteria<F: SortTarget>(cx: &App) -> Vec<SortCriterion<F>> {
     F::read(model.read(cx).config())
 }
 
-pub fn config(cx: &App) -> AppConfig {
-    let model = ConfigModel::global(cx);
-    model.read(cx).config().clone()
+/// How `key`'s listing is laid out, read off the config without copying it.
+pub fn view_mode(key: ViewModeKey, cx: &App) -> AlbumViewMode {
+    key.read(ConfigModel::global(cx).read(cx).config())
+}
+
+/// Whether an artist's page opens on their albums rather than their tracks.
+pub fn albums_first(cx: &App) -> bool {
+    ConfigModel::global(cx).read(cx).config().artist_view_order == ArtistViewOrder::Albums
 }
 
 /// Grid ⇄ list, writing `key`'s config field.
 pub fn view_mode_toggle(key: ViewModeKey, cx: &App) -> impl IntoElement {
-    let grid = key.read(&config(cx)) == AlbumViewMode::Grid;
+    let grid = view_mode(key, cx) == AlbumViewMode::Grid;
     let id = match key {
         ViewModeKey::Artists => "artists-view",
         ViewModeKey::ArtistAlbums => "artist-albums-view",
@@ -119,15 +124,12 @@ pub fn sort_control<F: SortTarget>(
 }
 
 /// Tracks ⇄ Albums for one artist, writing `cfg.artist_view_order`.
-pub fn view_order_toggle(order: &ArtistViewOrder) -> impl IntoElement {
+pub fn view_order_toggle(albums: bool) -> impl IntoElement {
     Segmented::new("artist-order")
         .pill(true)
         .segment(Segment::new("tracks").label(t("tracks")))
         .segment(Segment::new("albums").label(t("albums")))
-        .selected(Some(match order {
-            ArtistViewOrder::Tracks => 0,
-            ArtistViewOrder::Albums => 1,
-        }))
+        .selected(Some(usize::from(albums)))
         .on_select(|index, _, cx| {
             let order = match index {
                 0 => ArtistViewOrder::Tracks,

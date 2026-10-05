@@ -6,12 +6,12 @@ use api::{CatalogDetailRequest, CatalogItem, CatalogItemKind, CatalogShelf};
 use components::format::t;
 use components::{
     Arrows, Carousel, PlayState, SectionHeading, Tile, TrackActions, TrackList, TrackListEvent,
-    TrackListOptions, heading_link, icons, style,
+    TrackListOptions, TrackSection, heading_link, icons,
 };
 use gpui_kit::component::v_flex;
 use gpui_kit::{
     AnyElement, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Pixels, Render,
-    ScrollHandle, SharedString, Styled, Subscription, Task, Window, div, px,
+    ScrollHandle, SharedString, Styled, Subscription, Task, Window, px,
 };
 use store::{Link, Navigator, Notices, PlayerModel, Route, SourcesModel, Target, actions};
 
@@ -199,7 +199,7 @@ impl Shelves {
     fn section(&self, index: usize, cx: &mut Context<Self>) -> AnyElement {
         let view = &self.views[index];
         match &view.list {
-            Some(list) => self.list_section(index, list.clone(), cx),
+            Some(list) => self.list_section(index, list.clone()),
             None => self.carousel_section(index, cx),
         }
     }
@@ -226,18 +226,16 @@ impl Shelves {
         .into_any_element()
     }
 
-    fn list_section(
-        &self,
-        index: usize,
-        list: Entity<TrackList>,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    fn list_section(&self, index: usize, list: Entity<TrackList>) -> AnyElement {
         let view = &self.views[index];
         let title = SharedString::from(view.shelf.title.clone());
-        let rows = list.read(cx).rows().len();
-        let mut heading = SectionHeading::new(title.clone());
+        let mut section = TrackSection::new(
+            SharedString::from(format!("catalog-shelf-list-{index}")),
+            list,
+        )
+        .heading(SectionHeading::new(title.clone()));
         if let Some(more) = view.shelf.more_ref.clone() {
-            heading = heading.trailing(
+            section = section.trailing(
                 heading_link(("show-all", index), t("discover_show_all")).on_click(
                     move |_, _, cx| {
                         Navigator::navigate(
@@ -251,17 +249,7 @@ impl Shelves {
                 ),
             );
         }
-        v_flex()
-            .w_full()
-            .gap_6()
-            .child(heading)
-            .child(
-                div()
-                    .w_full()
-                    .h(style::media_row() * rows as f32)
-                    .child(list),
-            )
-            .into_any_element()
+        section.into_any_element()
     }
 
     fn tile(&self, shelf: usize, item: &CatalogItem, cx: &mut Context<Self>) -> AnyElement {

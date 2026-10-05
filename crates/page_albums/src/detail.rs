@@ -1,22 +1,24 @@
 //! One album: the standard detail, and the catalog-styled one a remote source presents.
 
+use std::rc::Rc;
+
 use api::{
-    AlbumInfo, AlbumPresentation, ArtworkRef, CatalogDetail, CatalogDetailRequest, CatalogItemKind,
-    SourceCapabilities, Table, TrackInfo,
+    AlbumInfo, AlbumPresentation, ArtworkRef, ArtworkTarget, CatalogDetail, CatalogDetailRequest,
+    CatalogItemKind, SourceCapabilities, Table, TrackInfo,
 };
 use components::format::{t, t_with};
 use components::{
-    DetailHeader, EditableCover, EmptyState, Heading, IconButton, IconTone, Link, Loading,
-    SectionHeading, Tone, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons, style,
+    DetailActions, DetailHeader, EditableCover, EmptyState, HeaderLayout, Heading, IconButton,
+    IconTone, Link, Loading, Look, SectionHeading, Tone, TrackActions, TrackList, TrackListEvent,
+    TrackListOptions, TrackSection, icons,
 };
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
-use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
     ParentElement as _, Pixels, Render, ScrollHandle, SharedString,
     StatefulInteractiveElement as _, Styled, Subscription, Window, div, px, rems,
 };
-use store::{DownloadsModel, Navigator, PlayerModel, Query, Route, SourcesModel, Target, actions};
+use store::{DownloadsModel, Offline, PlayerModel, Query, Route, SourcesModel, Target, actions};
 
 use crate::ops;
 
@@ -25,19 +27,13 @@ use crate::ops;
 // `w-64 h-64` on the showcase, `max-w-[300px]` on the catalog-styled page.
 const HERO_COVER: Pixels = px(256.);
 const REMOTE_COVER: Pixels = px(300.);
-// `w-14`/`w-16`/`w-12`/`w-11`, with the glyph sizes the Dioxus buttons set on them.
-const HERO_ACTION: Pixels = px(56.);
+// `w-12 h-12`, the outlined select-all beside the hero's play.
 const HERO_SECONDARY: Pixels = px(48.);
-const REMOTE_ACTION: Pixels = px(64.);
-const REMOTE_SECONDARY: Pixels = px(44.);
 const COVER: &str = "album-cover";
-/// `border-white/15 hover:border-white/30`: the catalog-styled page's quieter ring.
-const REMOTE_RING: (f32, f32) = (0.15, 0.30);
 
 /// One disc's rows; its list reports a play by the album-wide index its subscription carries.
 struct DiscGroup {
     disc: Option<u32>,
-    count: usize,
     list: Entity<TrackList>,
 }
 
@@ -47,6 +43,10 @@ pub struct AlbumDetail {
     tracks: Entity<Query<Vec<TrackInfo>>>,
     remote: Entity<Query<Option<CatalogDetail>>>,
     rows: Vec<TrackInfo>,
+    // Derived from the rows and the downloads once per change, not once per frame.
+    keys: Rc<[String]>,
+    total_ms: u64,
+    offline: Offline,
     groups: Vec<DiscGroup>,
     // The album ids the track query is pointed at, and the id the remote one is.
     aggregated: Vec<String>,
@@ -92,14 +92,17 @@ impl AlbumDetail {
 
         let sources = SourcesModel::global(cx);
         let downloads = DownloadsModel::global(cx);
-        let player = PlayerModel::global(cx);
         let subscriptions = vec![
             cx.observe(&album, |this, _, cx| this.sync(cx)),
             cx.observe(&sources, |this, _, cx| this.sync(cx)),
             cx.observe(&tracks, |this, _, cx| this.refresh_rows(cx)),
             cx.observe(&remote, |this, _, cx| this.refresh_rows(cx)),
-            cx.observe(&downloads, |_, _, cx| cx.notify()),
-            cx.observe(&player, |_, _, cx| cx.notify()),
+            cx.observe(&downloads, |this, _, cx| {
+                this.refresh_offline(cx);
+                cx.notify();
+            }),
+            // The shuffle button in the actions bar reads the player at render.
+            cx.observe(&PlayerModel::global(cx), |_, _, cx| cx.notify()),
         ];
 
         Self {
@@ -108,6 +111,9 @@ impl AlbumDetail {
             tracks,
             remote,
             rows: Vec::new(),
+            keys: Rc::from([]),
+            total_ms: 0,
+            offline: Offline::default(),
             groups: Vec::new(),
             aggregated: vec![album_id],
             remote_id: None,
@@ -166,10 +172,21 @@ impl AlbumDetail {
         };
         ops::in_album_order(&mut rows);
         if rows != self.rows {
+            self.keys = ops::keys_of(&rows).into();
+            self.total_ms = rows
+                .iter()
+                .filter_map(|row| row.duration_secs())
+                .sum::<u64>()
+                * 1000;
             self.rows = rows;
+            self.refresh_offline(cx);
             self.rebuild_groups(cx);
         }
         cx.notify();
+    }
+
+    fn refresh_offline(&mut self, cx: &App) {
+        self.offline = DownloadsModel::global(cx).read(cx).offline(&self.keys);
     }
 
     fn rebuild_groups(&mut self, cx: &mut Context<Self>) {
@@ -204,7 +221,7 @@ impl AlbumDetail {
                     this.on_list_event(offset, event, cx)
                 }),
             );
-            groups.push(DiscGroup { disc, count, list });
+            groups.push(DiscGroup { disc, list });
             offset += count;
         }
         self.groups = groups;
@@ -247,83 +264,6 @@ impl AlbumDetail {
         }
     }
 
-    fn keys(&self) -> Vec<String> {
-        ops::keys_of(&self.rows)
-    }
-
-    fn total_ms(&self) -> u64 {
-        self.rows
-            .iter()
-            .filter_map(|row| row.duration_secs())
-            .sum::<u64>()
-            * 1000
-    }
-
-    /// `bg-indigo-500 hover:bg-indigo-400 text-black`, the one filled action on the page.
-    fn play_button(&self, size: Pixels) -> IconButton {
-        let keys = self.keys();
-        IconButton::new("album-play", icons::PLAY)
-            .size(size)
-            .tone(IconTone::Accent)
-            .tooltip(t("play"))
-            .disabled(keys.is_empty())
-            .on_click(move |_, _, cx| actions::play_all(keys.clone(), cx))
-    }
-
-    /// The shuffle toggle: accent-coloured while on, muted while off.
-    fn shuffle_button(&self, size: Pixels, outlined: bool, cx: &App) -> IconButton {
-        let shuffled = PlayerModel::global(cx).read(cx).shuffle();
-        let button = IconButton::new("album-shuffle", icons::SHUFFLE)
-            .size(size)
-            .lit(shuffled)
-            .tooltip(t("shuffle"))
-            .on_click(move |_, _, cx| {
-                PlayerModel::global(cx).update(cx, |player, cx| player.set_shuffle(!shuffled, cx))
-            });
-        match outlined {
-            true => button.ring(REMOTE_RING.0, REMOTE_RING.1),
-            false => button,
-        }
-    }
-
-    /// Download the whole album, or give its offline copies back; disabled while a download runs.
-    fn download_all_button(&self, size: Pixels, cx: &App) -> Option<IconButton> {
-        if !self.capabilities.downloads {
-            return None;
-        }
-        let keys = self.keys();
-        if keys.is_empty() {
-            return None;
-        }
-        let downloads = DownloadsModel::global(cx).read(cx);
-        let stored = keys.iter().all(|key| downloads.is_stored(key));
-        let busy = keys.iter().any(|key| downloads.is_active(key));
-        let (icon, label) = match stored {
-            true => (icons::TRASH, t("remove_download")),
-            false => (icons::DOWNLOAD, t("download_offline")),
-        };
-        Some(
-            IconButton::new("album-download-all", icon)
-                .size(size)
-                .glyph(size * 0.33)
-                .tone(IconTone::Outline)
-                .tooltip(label)
-                .disabled(busy)
-                .on_click(move |_, _, cx| {
-                    let keys = keys.clone();
-                    DownloadsModel::global(cx).update(cx, |downloads, cx| {
-                        if stored {
-                            for key in keys {
-                                downloads.remove(key, cx);
-                            }
-                        } else {
-                            downloads.download(keys, cx);
-                        }
-                    })
-                }),
-        )
-    }
-
     fn cover(&self, album: &AlbumInfo, size: Pixels, radius: Pixels) -> EditableCover {
         let cover = EditableCover::new(COVER, album.artwork.as_ref())
             .size(size)
@@ -334,9 +274,9 @@ impl AlbumDetail {
         }
         let (id, remove_id) = (album.id.clone(), album.id.clone());
         cover
-            .on_pick(move |_, cx| ops::pick_album_cover(id.clone(), cx))
+            .on_pick(move |_, cx| store::pick_and_upload(ArtworkTarget::Album(id.clone()), cx))
             .on_remove(t("remove_cover"), move |_, cx| {
-                ops::remove_album_cover(remove_id.clone(), cx)
+                store::remove_artwork(ArtworkTarget::Album(remove_id.clone()), cx)
             })
     }
 
@@ -353,11 +293,10 @@ impl AlbumDetail {
             .font_weight(gpui_kit::FontWeight::BOLD)
     }
 
-    fn tracks_body(&self, cx: &Context<Self>) -> AnyElement {
+    fn tracks_body(&self) -> AnyElement {
         if self.rows.is_empty() {
             return EmptyState::new(t("no_tracks_found")).into_any_element();
         }
-        let hover = style::white(style::RAISED, cx);
         div()
             .id("album-tracks")
             .flex_1()
@@ -365,30 +304,22 @@ impl AlbumDetail {
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
             .children(self.groups.iter().map(|group| {
-                v_flex()
-                    .w_full()
-                    .when_some(group.disc, |column, disc| {
-                        column.child(
-                            div()
-                                .id(("album-disc", disc as usize))
-                                .w_full()
-                                .p_2()
-                                .rounded(style::radius_lg())
-                                .hover(move |heading| heading.bg(hover))
-                                .child(
-                                    // TODO(i18n): en.ftl has no disc-heading key.
-                                    SectionHeading::new(format!("Disc {disc}"))
-                                        .heading(Heading::Group)
-                                        .icon(icons::DISC),
-                                ),
+                let section = TrackSection::new(
+                    format!("album-disc-{}", group.disc.unwrap_or(0)),
+                    group.list.clone(),
+                )
+                .gap(px(0.));
+                match group.disc {
+                    // TODO(i18n): en.ftl has no disc-heading key.
+                    Some(disc) => section
+                        .heading(
+                            SectionHeading::new(format!("Disc {disc}"))
+                                .heading(Heading::Group)
+                                .icon(icons::DISC),
                         )
-                    })
-                    .child(
-                        div()
-                            .w_full()
-                            .h(style::media_row() * group.count as f32)
-                            .child(group.list.clone()),
-                    )
+                        .wash(true),
+                    None => section,
+                }
             }))
             .into_any_element()
     }
@@ -430,17 +361,29 @@ impl AlbumDetail {
         Some(bar.into_any_element())
     }
 
+    fn count(&self) -> SharedString {
+        t_with(
+            "showcase_song_count",
+            &[("count", self.rows.len().to_string())],
+        )
+    }
+
+    fn minutes(&self) -> String {
+        format!("{} {}", self.total_ms / 60_000, t("min"))
+    }
+
     fn standard_detail(
         &self,
         album: AlbumInfo,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let count = t_with(
-            "showcase_song_count",
-            &[("count", self.rows.len().to_string())],
-        );
         let radius = cx.theme().radius * 3.;
+        let select_all = IconButton::new("album-select-all", icons::CHECK)
+            .size(HERO_SECONDARY)
+            .tone(IconTone::Outline)
+            .tooltip(t("select_all"))
+            .on_click(cx.listener(|this, _, _, cx| this.select_all(cx)));
         let mut header = DetailHeader::new(SharedString::from(album.title.clone()))
             .cover(self.cover(&album, HERO_COVER, radius))
             .eyebrow(Self::artist_link(
@@ -448,23 +391,18 @@ impl AlbumDetail {
                 album.artist_key.clone(),
                 "album-artist",
             ))
-            .meta(count)
-            .meta(format!("{} {}", self.total_ms() / 60_000, t("min")))
-            .action(self.shuffle_button(HERO_ACTION, false, cx))
-            .action(self.play_button(HERO_ACTION))
+            .meta(self.count())
+            .meta(self.minutes())
             .action(
-                IconButton::new("album-select-all", icons::CHECK)
-                    .size(HERO_SECONDARY)
-                    .glyph(HERO_SECONDARY * 0.33)
-                    .tone(IconTone::Outline)
-                    .tooltip(t("select_all"))
-                    .on_click(cx.listener(|this, _, _, cx| this.select_all(cx))),
+                DetailActions::new("album", self.keys.clone())
+                    .offline(self.offline)
+                    .shuffle()
+                    .play()
+                    .extra(select_all)
+                    .download(),
             );
         if album.year > 0 {
             header = header.meta(album.year.to_string());
-        }
-        if let Some(download) = self.download_all_button(HERO_SECONDARY, cx) {
-            header = header.action(download);
         }
         components::page()
             .relative()
@@ -478,7 +416,7 @@ impl AlbumDetail {
                     .child(components::back_button("album-back", cx)),
             )
             .child(div().flex_shrink_0().mb_12().child(header))
-            .child(self.tracks_body(cx))
+            .child(self.tracks_body())
             .children(self.selection_bar(cx))
             .into_any_element()
     }
@@ -489,15 +427,6 @@ impl AlbumDetail {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let minutes = self.total_ms() / 60_000;
-        let count = t_with(
-            "showcase_song_count",
-            &[("count", self.rows.len().to_string())],
-        );
-        let dot = {
-            let faint = style::white(0.3, cx);
-            move || div().text_color(faint).child("•")
-        };
         let cover = AlbumInfo {
             id: view.id.clone(),
             title: view.title.to_string(),
@@ -505,14 +434,35 @@ impl AlbumDetail {
             artwork: view.artwork.clone(),
             ..AlbumInfo::default()
         };
-        let artist_route = view.artist_key.clone().map(Route::Artist);
         let browse_id = view.browse_id.clone();
         let first_key = self.rows.first().map(|row| row.key.clone());
-        let outlined = |id: &'static str, icon: &'static str| {
-            IconButton::new(id, icon)
-                .size(REMOTE_SECONDARY)
-                .ring(REMOTE_RING.0, REMOTE_RING.1)
-        };
+        let radius = cx.theme().radius * 2.;
+        let mut header = DetailHeader::new(view.title.clone())
+            .layout(HeaderLayout::Column)
+            .cover(self.cover(&cover, REMOTE_COVER, radius))
+            .eyebrow(Self::artist_link(
+                &view.artist,
+                view.artist_key.clone(),
+                "album-remote-artist",
+            ))
+            .kind(t("album"))
+            .meta(self.count())
+            .meta(self.minutes())
+            .action(
+                DetailActions::new("album-remote", self.keys.clone())
+                    .look(Look::Catalog)
+                    .offline(self.offline)
+                    .download()
+                    .artist(view.artist_key.clone())
+                    .play()
+                    .shuffle()
+                    .share(move |_, _, cx| {
+                        ops::share_album(browse_id.clone(), first_key.clone(), cx)
+                    }),
+            );
+        if let Some(year) = view.year.clone() {
+            header = header.meta(year);
+        }
 
         components::page()
             .relative()
@@ -531,92 +481,13 @@ impl AlbumDetail {
                     .min_h_0()
                     .gap_10()
                     .items_start()
-                    .child(
-                        v_flex()
-                            .w(px(320.))
-                            .flex_shrink_0()
-                            .items_start()
-                            .gap_5()
-                            .pt_2()
-                            .child(div().shadow_2xl().child({
-                                let radius = cx.theme().radius * 2.;
-                                self.cover(&cover, REMOTE_COVER, radius)
-                            }))
-                            .child(
-                                v_flex()
-                                    .w_full()
-                                    .gap_2()
-                                    .child(Self::artist_link(
-                                        &view.artist,
-                                        view.artist_key.clone(),
-                                        "album-remote-artist",
-                                    ))
-                                    .child(
-                                        div()
-                                            .text_3xl()
-                                            .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                                            .child(view.title.clone()),
-                                    )
-                                    .child(
-                                        h_flex()
-                                            .flex_wrap()
-                                            .items_center()
-                                            .gap_x_2()
-                                            .text_sm()
-                                            .text_color(style::slate_400(cx))
-                                            .when_some(view.year.clone(), |line, _| {
-                                                line.child(
-                                                    div()
-                                                        .text_xs()
-                                                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                                                        .text_color(style::white(0.4, cx))
-                                                        .child(t("album")),
-                                                )
-                                                .child(dot())
-                                            })
-                                            .child(div().child(count))
-                                            .child(dot())
-                                            .child(div().child(format!("{minutes} {}", t("min"))))
-                                            .when_some(view.year.clone(), |line, year| {
-                                                line.child(dot()).child(div().child(year))
-                                            }),
-                                    ),
-                            )
-                            .child(
-                                h_flex()
-                                    .mt_1()
-                                    .gap_3()
-                                    .items_center()
-                                    .flex_wrap()
-                                    .children(self.download_all_button(REMOTE_SECONDARY, cx))
-                                    .children(artist_route.map(|artist_route| {
-                                        outlined("album-remote-artist", icons::MIC)
-                                            .tooltip(t("go_to_artist"))
-                                            .on_click(move |_, _, cx| {
-                                                Navigator::navigate(artist_route.clone(), cx)
-                                            })
-                                    }))
-                                    .child(self.play_button(REMOTE_ACTION))
-                                    .child(self.shuffle_button(REMOTE_SECONDARY, true, cx))
-                                    .child(
-                                        outlined("album-remote-share", icons::SHARE)
-                                            .tooltip(t("share"))
-                                            .on_click(move |_, _, cx| {
-                                                ops::share_album(
-                                                    browse_id.clone(),
-                                                    first_key.clone(),
-                                                    cx,
-                                                )
-                                            }),
-                                    ),
-                            ),
-                    )
+                    .child(header)
                     .child(
                         v_flex()
                             .flex_1()
                             .min_w_0()
                             .pb_24()
-                            .child(self.tracks_body(cx)),
+                            .child(self.tracks_body()),
                     ),
             )
             .into_any_element()

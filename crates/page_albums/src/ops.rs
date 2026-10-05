@@ -1,9 +1,7 @@
 //! The album commands a card menu or a detail button issues.
 
-use std::path::Path;
-
-use api::{ArtworkTarget, ArtworkUpload, TrackInfo};
-use gpui_kit::{App, ClipboardItem, PathPromptOptions};
+use api::TrackInfo;
+use gpui_kit::{App, ClipboardItem};
 use link::Link;
 use store::{Notices, actions};
 
@@ -36,53 +34,6 @@ pub fn delete_tracks(keys: Vec<String>, cx: &mut App) {
     );
 }
 
-/// Pick a picture and store it as the album's cover.
-pub fn pick_album_cover(id: String, cx: &mut App) {
-    let picked = cx.prompt_for_paths(PathPromptOptions {
-        files: true,
-        directories: false,
-        multiple: false,
-        prompt: None,
-    });
-    cx.spawn(async move |cx| {
-        let Ok(Ok(Some(paths))) = picked.await else {
-            return;
-        };
-        let Some(path) = paths.into_iter().next() else {
-            return;
-        };
-        let read = cx.background_executor().spawn(async move {
-            let content_type = content_type_for(&path);
-            std::fs::read(&path).map(|bytes| (content_type, bytes))
-        });
-        match read.await {
-            Ok((content_type, bytes)) => {
-                cx.update(|cx| {
-                    actions::run(cx, move |api| async move {
-                        api.upload_artwork(ArtworkUpload {
-                            target: ArtworkTarget::Album(id),
-                            content_type,
-                            bytes,
-                        })
-                        .await
-                    })
-                });
-            }
-            // Reading the picked file, not a daemon call: its own message is the one to show.
-            Err(error) => {
-                cx.update(|cx| Notices::error(error.to_string(), cx));
-            }
-        }
-    })
-    .detach();
-}
-
-pub fn remove_album_cover(id: String, cx: &mut App) {
-    actions::run(cx, move |api| async move {
-        api.remove_artwork(ArtworkTarget::Album(id)).await
-    });
-}
-
 /// The album's public page, falling back to its first track's; the daemon knows which sources have one.
 pub fn share_album(browse_id: Option<String>, first_key: Option<String>, cx: &mut App) {
     let call = Link::global(cx).call(move |api| async move {
@@ -109,18 +60,4 @@ pub fn share_album(browse_id: Option<String>, first_key: Option<String>, cx: &mu
         });
     })
     .detach();
-}
-
-fn content_type_for(path: &Path) -> String {
-    let extension = path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    match extension.as_str() {
-        "png" => "image/png",
-        "webp" => "image/webp",
-        _ => "image/jpeg",
-    }
-    .to_string()
 }

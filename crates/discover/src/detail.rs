@@ -1,40 +1,38 @@
 //! What the catalog opens onto: one browsed playlist, and a source's own page for an artist.
 
+use std::rc::Rc;
+
 use api::{CatalogDetail, CatalogDetailRequest, CatalogItemKind};
 use components::format::t;
 use components::{
-    Cover, EmptyState, Loading, PageHeader, Scrim, TrackActions, TrackList, TrackListEvent,
-    TrackListOptions, icons, style,
+    DetailActions, DetailHeader, EmptyState, HeaderLayout, Loading, Look, PageHeader, TrackActions,
+    TrackList, TrackListEvent, TrackListOptions, icons,
 };
-use gpui_kit::component::button::Button;
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
     ParentElement as _, Render, ScrollHandle, SharedString, StatefulInteractiveElement as _,
-    Styled, Subscription, Task, Window, div, px, rems,
+    Styled, Subscription, Task, Window, div,
 };
-use store::{Link, Route, actions};
+use store::{Link, PlayerModel, Route, actions};
 
 use crate::shelves::Shelves;
 use crate::states;
-
-/// The artist banner's `min-height: 360px`.
-fn banner_height() -> gpui_kit::Rems {
-    rems(22.5)
-}
 
 /// One catalog playlist opened from the feed, read-only: a browsed list never becomes a saved one.
 pub struct CatalogPlaylist {
     id: SharedString,
     title: SharedString,
     list: Entity<TrackList>,
+    // The rows' keys, taken once per answer rather than per frame.
+    keys: Rc<[String]>,
     loading: bool,
     error: Option<SharedString>,
     // Bumped per load; a slow answer for one id must not land after the user moved to another.
     generation: u64,
     _load: Option<Task<()>>,
-    _subscription: Subscription,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl CatalogPlaylist {
@@ -53,21 +51,26 @@ impl CatalogPlaylist {
                 .with_actions(TrackActions::default())
         });
         commands::bind_track_list(&list, cx);
-        let subscription = cx.subscribe(&list, |_, list, event: &TrackListEvent, cx| {
-            if let TrackListEvent::Play(index) = event {
-                let keys = list.read(cx).keys();
-                actions::play_tracks(keys, Some(*index as u32), cx);
-            }
-        });
+        let subscriptions = vec![
+            cx.subscribe(&list, |_, list, event: &TrackListEvent, cx| {
+                if let TrackListEvent::Play(index) = event {
+                    let keys = list.read(cx).keys();
+                    actions::play_tracks(keys, Some(*index as u32), cx);
+                }
+            }),
+            // The shuffle button reads the player at render.
+            cx.observe(&PlayerModel::global(cx), |_, _, cx| cx.notify()),
+        ];
         let mut page = Self {
             id,
             title,
             list,
+            keys: Rc::from([]),
             loading: false,
             error: None,
             generation: 0,
             _load: None,
-            _subscription: subscription,
+            _subscriptions: subscriptions,
         };
         page.load(cx);
         page
@@ -100,6 +103,7 @@ impl CatalogPlaylist {
                 this.loading = false;
                 match result {
                     Ok(detail) => {
+                        this.keys = detail.tracks.iter().map(|row| row.key.clone()).collect();
                         this.list
                             .update(cx, |list, cx| list.set_rows(detail.tracks, cx));
                     }
@@ -115,10 +119,21 @@ impl CatalogPlaylist {
 impl Render for CatalogPlaylist {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("catalog-playlist");
-        let empty = !self.loading && self.error.is_none() && self.list.read(cx).rows().is_empty();
+        let empty = !self.loading && self.error.is_none() && self.keys.is_empty();
         components::page()
             .pb_8()
-            .child(PageHeader::new(self.title.clone()).back(Route::Discover))
+            .child(
+                PageHeader::new(self.title.clone())
+                    .back(Route::Discover)
+                    .when(!self.keys.is_empty(), |header| {
+                        header.action(
+                            DetailActions::new("catalog-playlist", self.keys.clone())
+                                .look(Look::Compact)
+                                .play()
+                                .shuffle(),
+                        )
+                    }),
+            )
             .map(|page| {
                 if self.loading {
                     page.child(Loading::new())
@@ -202,73 +217,25 @@ impl CatalogArtist {
         }));
     }
 
-    fn banner(&self, detail: &CatalogDetail, _: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        div()
-            .relative()
-            .w_full()
-            .h(banner_height())
-            .overflow_hidden()
-            .bg(cx.theme().secondary)
-            .child(
-                Cover::new(detail.artwork.as_ref())
-                    .fill()
-                    .hq(true)
-                    .scrim(Scrim {
-                        foot: 0.95,
-                        top: 0.2,
-                        reach: 1.,
-                    }),
-            )
-            .child(
-                v_flex()
-                    .absolute()
-                    .size_full()
-                    .justify_end()
-                    .gap_4()
-                    .px_10()
-                    .pt_16()
-                    .pb_10()
-                    .child(
-                        div()
-                            .text_size(rems(3.75))
-                            .font_weight(gpui_kit::FontWeight::BLACK)
-                            .child(detail.title.clone()),
-                    )
-                    .when_some(detail.subtitle.clone(), |banner, subtitle| {
-                        banner.child(
-                            div()
-                                .text_sm()
-                                .text_color(style::white(0.7, cx))
-                                .child(subtitle),
-                        )
-                    })
-                    .when_some(detail.description.clone(), |banner, description| {
-                        banner.child(
-                            div()
-                                .max_w(rems(48.))
-                                .text_sm()
-                                .line_clamp(3)
-                                .text_color(style::white(style::TEXT_SECONDARY, cx))
-                                .child(description),
-                        )
-                    })
-                    .when_some(detail.playback_id.clone(), |banner, id| {
-                        banner.child(
-                            h_flex().mt_2().child(
-                                style::inverted(Button::new("artist-shuffle"), cx)
-                                    .rounded(px(999.))
-                                    .icon(icons::icon(icons::SHUFFLE).xsmall())
-                                    .label(t("shuffle"))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        let id = id.clone();
-                                        this.shelves.update(cx, |shelves, cx| {
-                                            shelves.play(CatalogItemKind::Playlist, id, cx)
-                                        });
-                                    })),
-                            ),
-                        )
-                    }),
-            )
+    fn banner(&self, detail: &CatalogDetail, cx: &mut Context<Self>) -> AnyElement {
+        let bar = detail.playback_id.clone().map(|id| {
+            DetailActions::new("catalog-artist", Rc::<[String]>::from([]))
+                .look(Look::Banner)
+                .shuffle_with(cx.listener(move |this, _, _, cx| {
+                    let id = id.clone();
+                    this.shelves.update(cx, |shelves, cx| {
+                        shelves.play(CatalogItemKind::Playlist, id, cx)
+                    });
+                }))
+        });
+        DetailHeader::new(detail.title.clone())
+            .layout(HeaderLayout::Banner)
+            .artwork(detail.artwork.as_ref())
+            .when_some(detail.subtitle.clone(), |header, subtitle| {
+                header.meta(subtitle)
+            })
+            .description(detail.description.clone())
+            .when_some(bar, |header, bar| header.action(bar))
             .into_any_element()
     }
 }
@@ -277,10 +244,7 @@ impl Render for CatalogArtist {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("catalog-artist");
         components::scroll::smooth("catalog-artist-scroll", &self.scroll, window, cx);
-        let banner = self
-            .detail
-            .clone()
-            .map(|detail| self.banner(&detail, window, cx));
+        let banner = self.detail.clone().map(|detail| self.banner(&detail, cx));
         div()
             .id("catalog-artist")
             .size_full()

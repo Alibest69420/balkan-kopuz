@@ -133,7 +133,7 @@ impl Render for Artists {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("artists");
         let settled = self.is_settled(cx);
-        let mode = match controls::config(cx).artists_view_mode {
+        let mode = match controls::view_mode(ViewModeKey::Artists, cx) {
             AlbumViewMode::Grid => GridMode::Tiles,
             AlbumViewMode::List => GridMode::Rows,
         };

@@ -1,20 +1,23 @@
 //! The playlists page: folders and playlists, or the flat remote layout.
 
+use std::collections::HashMap;
+use std::rc::Rc;
+
 use api::{AlbumPresentation, JobKind, PlaylistInfo, SourceCapabilities};
 use components::format::t;
 use components::{
-    EmptyState, Heading, IconButton, IconTone, Loading, PageHeader, SectionHeading, icons, style,
+    DownloadToggle, EmptyState, Heading, IconButton, Loading, PageHeader, SectionHeading,
+    ToggleSize, icons, style,
 };
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, ClickEvent, Context, InteractiveElement as _, IntoElement, ParentElement as _,
-    Pixels, Render, SharedString, StatefulInteractiveElement as _, Styled as _, Subscription,
-    Window, px,
+    AnyElement, App, ClickEvent, Context, InteractiveElement as _, IntoElement, ParentElement as _,
+    Render, SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Window, px,
 };
-use store::{DownloadsModel, JobsModel, PlaylistsModel, SourcesModel, actions};
+use store::{DownloadsModel, JobsModel, Offline, PlaylistsModel, SourcesModel, actions};
 
 use crate::cards::{folder_card, playlist_card};
 use crate::dialogs;
@@ -22,29 +25,61 @@ use components::{Tile, tile_grid as card_grid};
 
 pub struct Playlists {
     requested_sync: bool,
+    // Each playlist's keys and what the downloads say of them, rebuilt on a change, not per card per frame.
+    offline: HashMap<String, (Rc<[String]>, Offline)>,
     _subscriptions: Vec<Subscription>,
 }
-
-/// `w-8 h-8`: the download riding on a remote playlist's cover.
-const CORNER: Pixels = px(32.);
 
 impl Playlists {
     pub fn new(_: &mut Window, cx: &mut Context<Self>) -> Self {
         let subscriptions = vec![
-            cx.observe(&PlaylistsModel::global(cx), |_, _, cx| cx.notify()),
+            cx.observe(&PlaylistsModel::global(cx), |this, _, cx| {
+                this.rekey_offline(cx);
+                cx.notify();
+            }),
             cx.observe(&JobsModel::global(cx), |_, _, cx| cx.notify()),
-            cx.observe(&DownloadsModel::global(cx), |_, _, cx| cx.notify()),
+            cx.observe(&DownloadsModel::global(cx), |this, _, cx| {
+                this.restate_offline(cx);
+                cx.notify();
+            }),
             cx.observe(&SourcesModel::global(cx), |this: &mut Self, _, cx| {
                 this.request_sync(cx);
+                this.rekey_offline(cx);
                 cx.notify();
             }),
         ];
         let mut page = Self {
             requested_sync: false,
+            offline: HashMap::new(),
             _subscriptions: subscriptions,
         };
         page.request_sync(cx);
+        page.rekey_offline(cx);
         page
+    }
+
+    /// The playlists or the source changed: take every playlist's keys afresh.
+    fn rekey_offline(&mut self, cx: &App) {
+        self.offline.clear();
+        if !SourcesModel::global(cx).read(cx).capabilities().downloads {
+            return;
+        }
+        let downloads = DownloadsModel::global(cx).read(cx);
+        for playlist in PlaylistsModel::global(cx).read(cx).playlists() {
+            let offline = downloads.offline(&playlist.track_keys);
+            self.offline.insert(
+                playlist.id.clone(),
+                (playlist.track_keys.clone().into(), offline),
+            );
+        }
+    }
+
+    /// A download moved: the keys stand, only what the downloads say of them is asked again.
+    fn restate_offline(&mut self, cx: &App) {
+        let downloads = DownloadsModel::global(cx).read(cx);
+        for (keys, offline) in self.offline.values_mut() {
+            *offline = downloads.offline(keys);
+        }
     }
 
     /// The pull runs in the daemon, single-flight, so this only has to ask once per visit.
@@ -147,48 +182,23 @@ impl Playlists {
             } else {
                 let mut cards = Vec::with_capacity(playlists.len());
                 for playlist in &playlists {
-                    cards.push(self.remote_card(playlist, capabilities, cx));
+                    cards.push(self.remote_card(playlist, capabilities));
                 }
                 card_grid().children(cards).into_any_element()
             })
             .into_any_element()
     }
 
-    fn remote_card(
-        &self,
-        playlist: &PlaylistInfo,
-        capabilities: SourceCapabilities,
-        cx: &mut Context<Self>,
-    ) -> Tile {
-        let downloads = DownloadsModel::global(cx);
-        let keys = playlist.track_keys.clone();
-        let active = keys.iter().any(|key| downloads.read(cx).is_active(key));
-        let stored = !keys.is_empty() && keys.iter().all(|key| downloads.read(cx).is_stored(key));
-        let corner = capabilities.downloads.then(|| {
-            IconButton::new(
-                format!("download-{}", playlist.id),
-                if stored {
-                    icons::TRASH
-                } else {
-                    icons::DOWNLOAD
-                },
-            )
-            .size(CORNER)
-            .tone(IconTone::Scrim)
-            .loading(active)
-            .on_click(move |_, _, cx| {
-                let keys = keys.clone();
-                DownloadsModel::global(cx).update(cx, |downloads, cx| {
-                    if stored {
-                        for key in keys {
-                            downloads.remove(key, cx);
-                        }
-                    } else {
-                        downloads.download(keys, cx);
-                    }
-                });
-            })
-        });
+    fn remote_card(&self, playlist: &PlaylistInfo, capabilities: SourceCapabilities) -> Tile {
+        let corner = capabilities
+            .downloads
+            .then(|| self.offline.get(&playlist.id))
+            .flatten()
+            .map(|(keys, offline)| {
+                DownloadToggle::new(format!("download-{}", playlist.id), keys.clone())
+                    .size(ToggleSize::Corner)
+                    .offline(*offline)
+            });
         playlist_card(playlist)
             .subtitle(format!(
                 "{} • {}",

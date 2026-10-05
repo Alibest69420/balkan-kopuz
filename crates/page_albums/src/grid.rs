@@ -1,36 +1,29 @@
 //! The albums grid: every album the library holds; two albums sharing a title are two tiles.
 
+use std::rc::Rc;
+
 use api::{AlbumInfo, AlbumPage, JobKind, Table};
+use components::album_collection::{available_fields, field_label, sort_albums};
 use components::format::t;
-use components::{
-    EmptyState, Frame, GridMode, Loading, PageHeader, SortControl, TileGrid, album_row, album_tile,
-    icons,
-};
+use components::{AlbumCollection, EmptyState, GridMode, Loading, PageHeader, SortControl, icons};
 use config::{AlbumSortField, AlbumViewMode, SortCriterion};
 use gpui_kit::component::h_flex;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled,
-    Subscription, Window, div, px,
+    Subscription, Window, div,
 };
 use store::{ConfigModel, JobsModel, Query, SourcesModel};
 
-use crate::sort;
-
 // TODO(offline): filtering the grid to downloaded albums waits on an offline seam the checklist flags as wrong.
-
-// `grid-cols-[repeat(auto-fill,minmax(180px,1fr))]`: GPUI wraps flex children instead, at the column's minimum.
-const TILE: gpui_kit::Pixels = px(180.);
-// The tile's cover fills it inside `p-4`.
-const TILE_COVER: gpui_kit::Pixels = px(148.);
 
 /// Every album, as tiles or as rows.
 pub struct Albums {
     albums: Entity<Query<AlbumPage>>,
     // Sorted once per change, since a card hover notifies and render would re-sort the library.
-    visible: Vec<AlbumInfo>,
+    visible: Rc<[AlbumInfo]>,
     sort_fields: Vec<AlbumSortField>,
-    grid: TileGrid,
+    grid: AlbumCollection,
     // A library sync is offered once per visit, not once per refetch.
     synced: bool,
     _subscriptions: Vec<Subscription>,
@@ -61,9 +54,9 @@ impl Albums {
         ];
         Self {
             albums,
-            visible: Vec::new(),
+            visible: Rc::from([]),
             sort_fields: Vec::new(),
-            grid: TileGrid::new("albums-scroll"),
+            grid: AlbumCollection::new("albums-scroll"),
             synced: false,
             _subscriptions: subscriptions,
         }
@@ -71,10 +64,10 @@ impl Albums {
 
     /// Sort, and note which fields are worth offering — on change, not per frame.
     fn rebuild(&mut self, cx: &mut Context<Self>) {
-        let all = self.all_albums(cx);
-        self.visible = all.clone();
-        sort::sort(&mut self.visible, &criteria(cx));
-        self.sort_fields = sort::available_fields(&all);
+        let mut sorted = self.all_albums(cx);
+        self.sort_fields = available_fields(&sorted, true);
+        sort_albums(&mut sorted, &criteria(cx));
+        self.visible = sorted.into();
         cx.notify();
     }
 
@@ -120,7 +113,7 @@ impl Albums {
             .fields(
                 self.sort_fields
                     .iter()
-                    .map(|field| (*field, sort::label(*field))),
+                    .map(|field| (*field, field_label(*field))),
             )
             .on_change(|sorted, cx| ConfigModel::edit(cx, |config| config.album_sort = sorted))
     }
@@ -137,24 +130,7 @@ impl Render for Albums {
         let empty = self.visible.is_empty();
         let bands = (!empty).then(|| {
             self.grid
-                .bands(
-                    self.visible.len(),
-                    TILE,
-                    mode,
-                    move |this: &mut Albums, index, _, cx| {
-                        let album = &this.visible[index];
-                        match mode {
-                            GridMode::Tiles => album_tile(album)
-                                .size(TILE_COVER)
-                                .frame(Frame::Card)
-                                .into_any_element(),
-                            GridMode::Rows => album_row(album)
-                                .thumb(store::ConfigModel::global(cx).read(cx).row_images())
-                                .into_any_element(),
-                        }
-                    },
-                )
-                .build(window, cx)
+                .bands::<Albums>(self.visible.clone(), mode, window, cx)
         });
 
         components::page()
