@@ -8,7 +8,7 @@ use gpui_kit::{
     SharedString, StatefulInteractiveElement as _, Styled, div, px,
 };
 use store::{Route, Target};
-use widgets::{Tile, icons, style};
+use widgets::{Tile, icons};
 
 const ALBUM_TILE: Pixels = px(128.);
 // An artist strip has no artwork to show off, so its tiles only have to be legible.
@@ -138,13 +138,7 @@ fn strip(id: &'static str, title: SharedString, cards: Vec<AnyElement>, cx: &App
         .flex_shrink_0()
         .gap_4()
         .mb_6()
-        .child(
-            div()
-                .text_xl()
-                .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                .text_color(style::white(0.8, cx))
-                .child(title),
-        )
+        .child(crate::band_label(title, cx))
         .child(
             h_flex()
                 .id(id)

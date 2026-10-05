@@ -33,7 +33,7 @@ pub(crate) fn shelf(
 ) -> AnyElement {
     let name = SharedString::new_static(shelf.name);
     let lead = shelf.form == Form::Mosaic;
-    let stride = step(lead);
+    let stride = step();
     scroll::smooth_x(shelf.name, handle, stride, window, cx);
     let (over, pointer) = motion::hovered(motion::channel(&name, HOVER), window, cx);
     let (back, forward) = scroll::room_x(handle);
@@ -43,7 +43,7 @@ pub(crate) fn shelf(
     // The tiles out of view stand as one empty box each way, so the row keeps its true width.
     cards.push(spacer(stride * first as f32));
     for tile in &shelf.tiles[first..last] {
-        cards.push(card(tile, lead, window, cx));
+        cards.push(card(tile, window, cx));
     }
     cards.push(spacer(stride * (shelf.tiles.len() - last) as f32));
 

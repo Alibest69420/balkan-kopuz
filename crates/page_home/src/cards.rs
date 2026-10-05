@@ -27,23 +27,16 @@ const WASH: u64 = 6;
 pub(crate) const GAP: f32 = 20.;
 
 /// `md:w-48`, which every shelf upstream settles on at desktop width.
-pub(crate) fn tile_size(_lead: bool) -> Pixels {
-    px(192.)
-}
+pub(crate) const TILE: Pixels = px(192.);
 
 /// What one card occupies, which is what a row snaps to and steps by.
-pub(crate) fn step(lead: bool) -> Pixels {
-    tile_size(lead) + px(GAP)
+pub(crate) fn step() -> Pixels {
+    TILE + px(GAP)
 }
 
-pub(crate) fn card(
-    tile: &Tile,
-    lead: bool,
-    window: &mut Window,
-    cx: &mut Context<Home>,
-) -> AnyElement {
+pub(crate) fn card(tile: &Tile, window: &mut Window, cx: &mut Context<Home>) -> AnyElement {
     profile::elements::built();
-    let size = tile_size(lead);
+    let size = TILE;
     let radius = match tile.round {
         true => size / 2.,
         false => style::to_px(style::radius_xl(), window),

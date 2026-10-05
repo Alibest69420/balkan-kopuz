@@ -58,7 +58,7 @@ fn search_fetch(query: String) -> impl Fn(Arc<dyn KopuzApi>) -> Answer + 'static
 }
 
 /// `text-xl font-semibold text-white/80`: the heading over a band of results.
-fn band_label(title: SharedString, cx: &App) -> Div {
+pub(crate) fn band_label(title: SharedString, cx: &App) -> Div {
     div()
         .flex_shrink_0()
         .text_xl()
