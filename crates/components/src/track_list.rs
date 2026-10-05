@@ -14,6 +14,7 @@ use store::{ConfigModel, FavoritesModel, PlayerModel, Target};
 use crate::columns::{self, Layout};
 use crate::format::t;
 use crate::menus;
+use crate::selection::Selection;
 use crate::style;
 use crate::track_row::TrackRow;
 
@@ -131,12 +132,7 @@ pub struct TrackList {
     rows: Vec<TrackInfo>,
     options: TrackListOptions,
     row_actions: TrackActions,
-    selected: HashSet<String>,
-    selecting: bool,
-    // Where a shift-click extends from: the row picked last.
-    anchor: Option<usize>,
-    // The row the arrow keys are on, drawn with a ring so it can be seen.
-    cursor: Option<usize>,
+    selection: Selection,
     focus: FocusHandle,
     scroll: UniformListScrollHandle,
     // The one setting a row reads, held so another config change does not redraw every list.
@@ -173,10 +169,7 @@ impl TrackList {
             rows: Vec::new(),
             options: TrackListOptions::default(),
             row_actions: TrackActions::default(),
-            selected: HashSet::new(),
-            selecting: false,
-            anchor: None,
-            cursor: None,
+            selection: Selection::new(),
             focus: cx.focus_handle(),
             scroll: UniformListScrollHandle::new(),
             row_images: ConfigModel::global(cx).read(cx).row_images(),
@@ -211,14 +204,16 @@ impl TrackList {
     }
 
     pub fn set_rows(&mut self, rows: Vec<TrackInfo>, cx: &mut Context<Self>) {
-        let keys: HashSet<&String> = rows.iter().map(|row| &row.key).collect();
-        let was_selecting = self.selecting;
-        self.selected.retain(|key| keys.contains(key));
-        // Selection mode outliving a re-sort's emptied selection would leave a "0 selected" pill eating clicks.
-        self.selecting = !self.selected.is_empty();
+        let keys: HashSet<String> = rows.iter().map(|row| row.key.clone()).collect();
+        let was_selecting = self.selection.is_active();
+        self.selection.retain_loaded(&keys, true);
+        // Select-all over a list that emptied would leave a "0 selected" pill eating clicks.
+        if rows.is_empty() {
+            self.selection.clear();
+        }
         self.rows = rows;
         cx.notify();
-        if was_selecting != self.selecting {
+        if was_selecting != self.selection.is_active() {
             cx.emit(TrackListEvent::SelectionChanged);
         }
     }
@@ -234,13 +229,13 @@ impl TrackList {
     pub fn selected_keys(&self) -> Vec<String> {
         self.rows
             .iter()
-            .filter(|row| self.selected.contains(&row.key))
+            .filter(|row| self.selection.contains(&row.key))
             .map(|row| row.key.clone())
             .collect()
     }
 
     pub fn is_selecting(&self) -> bool {
-        self.selecting
+        self.selection.is_active()
     }
 
     /// What a row's menu acts on: the whole selection when the row is in it, else the row alone.
@@ -248,14 +243,13 @@ impl TrackList {
         let Some(row) = self.rows.get(index) else {
             return Target::None;
         };
-        if !self.selected.contains(&row.key) {
+        if !self.selection.contains(&row.key) {
             return Target::track(row.key.clone(), row.title.clone());
         }
         let keys: Vec<SharedString> = self
-            .rows
-            .iter()
-            .filter(|candidate| self.selected.contains(&candidate.key))
-            .map(|candidate| SharedString::from(candidate.key.clone()))
+            .selected_keys()
+            .into_iter()
+            .map(SharedString::from)
             .collect();
         Target::selection(keys, row.title.clone())
     }
@@ -265,16 +259,17 @@ impl TrackList {
         let index = self
             .rows
             .iter()
-            .position(|row| self.selected.contains(&row.key))
-            .or(self.cursor);
+            .position(|row| self.selection.contains(&row.key))
+            .or(self.selection.cursor());
         index.map_or(Target::None, |index| self.row_target(index))
     }
 
     fn action_keys(&self) -> Vec<String> {
-        match self.selected.is_empty() {
-            false => self.selected_keys(),
-            true => self
-                .cursor
+        match self.selection.is_active() {
+            true => self.selected_keys(),
+            false => self
+                .selection
+                .cursor()
                 .and_then(|index| self.rows.get(index))
                 .map(|row| vec![row.key.clone()])
                 .unwrap_or_default(),
@@ -289,7 +284,7 @@ impl TrackList {
             return;
         }
         if self.row_actions.remove_from_playlist {
-            if let Some(index) = self.cursor {
+            if let Some(index) = self.selection.cursor() {
                 cx.emit(TrackListEvent::RemoveFromPlaylist(index));
             }
             return;
@@ -315,19 +310,20 @@ impl TrackList {
 
     /// How many rows are selected, without the per-row allocation `selected_keys` pays.
     pub fn selected_count(&self) -> usize {
-        self.selected.len()
+        self.selection.count(self.rows.len())
     }
 
     pub fn clear_selection(&mut self, cx: &mut Context<Self>) {
-        self.selected.clear();
-        self.selecting = false;
+        self.selection.clear();
         cx.notify();
         cx.emit(TrackListEvent::SelectionChanged);
     }
 
     pub fn select_all(&mut self, cx: &mut Context<Self>) {
-        self.selected = self.rows.iter().map(|row| row.key.clone()).collect();
-        self.selecting = true;
+        if self.rows.is_empty() {
+            return;
+        }
+        self.selection.select_everything();
         cx.notify();
         cx.emit(TrackListEvent::SelectionChanged);
     }
@@ -337,12 +333,18 @@ impl TrackList {
             .scroll_to_item(index, gpui_kit::ScrollStrategy::Center);
     }
 
-    fn toggle_selected(&mut self, key: String, cx: &mut Context<Self>) {
-        if !self.selected.remove(&key) {
-            self.selected.insert(key.clone());
-            self.anchor = self.rows.iter().position(|row| row.key == key);
-        }
-        self.selecting = !self.selected.is_empty();
+    // Select-all is held as a flag, so a single pick needs it spelled out first.
+    fn resolve_everything(&mut self) {
+        let keys = self.keys();
+        self.selection.resolve(keys);
+    }
+
+    fn toggle_selected(&mut self, index: usize, cx: &mut Context<Self>) {
+        let Some(key) = self.rows.get(index).map(|row| row.key.clone()) else {
+            return;
+        };
+        self.resolve_everything();
+        self.selection.toggle(&key, index);
         cx.notify();
         cx.emit(TrackListEvent::SelectionChanged);
     }
@@ -353,27 +355,26 @@ impl TrackList {
             return;
         }
         let last = self.rows.len() - 1;
-        let next = match self.cursor {
+        let next = match self.selection.cursor() {
             Some(current) => current.saturating_add_signed(step).min(last),
             None if step < 0 => last,
             None => 0,
         };
-        self.cursor = Some(next);
+        self.selection.set_cursor(Some(next));
         self.scroll_to(next);
         cx.notify();
     }
 
     /// Enter on the cursor row: play it, or tick it when a selection is being built.
     fn activate_cursor(&mut self, cx: &mut Context<Self>) {
-        let Some(index) = self.cursor else {
+        let Some(index) = self.selection.cursor() else {
             return;
         };
-        let Some(row) = self.rows.get(index) else {
+        if index >= self.rows.len() {
             return;
-        };
-        if self.selecting {
-            let key = row.key.clone();
-            self.toggle_selected(key, cx);
+        }
+        if self.selection.is_active() {
+            self.toggle_selected(index, cx);
         } else {
             cx.emit(TrackListEvent::Play(index));
         }
@@ -381,12 +382,10 @@ impl TrackList {
 
     /// Select every row between the last one picked and `index`, the way a shift-click reads.
     fn select_through(&mut self, index: usize, cx: &mut Context<Self>) {
-        let anchor = self.anchor.unwrap_or(index);
-        let (first, last) = (anchor.min(index), anchor.max(index));
-        for row in self.rows.get(first..=last).unwrap_or_default() {
-            self.selected.insert(row.key.clone());
-        }
-        self.selecting = !self.selected.is_empty();
+        self.resolve_everything();
+        let rows = &self.rows;
+        self.selection
+            .extend_to(index, |slot| rows.get(slot).map(|row| row.key.clone()));
         cx.notify();
         cx.emit(TrackListEvent::SelectionChanged);
     }
@@ -405,7 +404,7 @@ impl TrackList {
             .read(cx)
             .track()
             .is_some_and(|now| now.key == key);
-        let selected = self.selected.contains(&key);
+        let selected = self.selection.contains(&key);
         let lead = self.options.show_index.then(|| {
             let number = match self.options.track_numbers {
                 true => track.track_number.unwrap_or(index as u32 + 1),
@@ -413,18 +412,14 @@ impl TrackList {
             };
             SharedString::from(number.to_string())
         });
+        let target = self.row_target(index);
         // A row inside a selection drags the selection; the queue is where it lands.
-        let keys = match selected {
-            true => self.selected_keys(),
+        let keys: Vec<String> = match selected {
+            true => target.keys().iter().map(ToString::to_string).collect(),
             false => vec![key.clone()],
         };
-        // "Title +3" rather than a count, which would need a plural form per locale.
-        let label = match keys.len() {
-            0 | 1 => SharedString::from(track.title.clone()),
-            many => SharedString::from(format!("{} +{}", track.title, many - 1)),
-        };
+        let label = target.label();
         let menu = {
-            let target = self.row_target(index);
             let scope = RowScope {
                 list: cx.entity().downgrade(),
                 index,
@@ -445,29 +440,26 @@ impl TrackList {
             .cover(self.options.show_cover && self.row_images)
             .playing(playing)
             .selected(selected)
-            .picking(self.options.selectable && self.selecting)
-            .cursor(self.cursor == Some(index))
+            .picking(self.options.selectable && self.selection.is_active())
+            .cursor(self.selection.cursor() == Some(index))
             .drag(TrackDrag { keys, label })
             .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                 // A click is also where the arrows should carry on from.
-                this.cursor = Some(index);
+                this.selection.set_cursor(Some(index));
                 window.focus(&this.focus, cx);
                 let modifiers = event.modifiers();
                 // Ctrl/cmd picks one, shift extends from the last pick.
                 if modifiers.secondary() {
-                    this.toggle_selected(key.clone(), cx);
-                } else if modifiers.shift && this.selecting {
+                    this.toggle_selected(index, cx);
+                } else if modifiers.shift && this.selection.is_active() {
                     this.select_through(index, cx);
-                } else if this.selecting {
-                    this.toggle_selected(key.clone(), cx);
+                } else if this.selection.is_active() {
+                    this.toggle_selected(index, cx);
                 } else {
                     cx.emit(TrackListEvent::Play(index));
                 }
             }))
-            .on_pick(cx.listener({
-                let key = track.key.clone();
-                move |this, _: &bool, _, cx| this.toggle_selected(key.clone(), cx)
-            }))
+            .on_pick(cx.listener(move |this, _: &bool, _, cx| this.toggle_selected(index, cx)))
             .menu(menu)
             .into_any_element()
     }
@@ -502,7 +494,7 @@ impl Render for TrackList {
                 this.remove_selection(window, cx)
             }))
             .on_action(cx.listener(|this, _: &ClearSelection, _, cx| {
-                if this.selecting {
+                if this.selection.is_active() {
                     this.clear_selection(cx);
                 } else {
                     cx.propagate();

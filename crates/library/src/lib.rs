@@ -5,7 +5,6 @@ mod columns;
 mod facet;
 mod filters;
 mod grid;
-mod selection;
 mod settings;
 mod states;
 mod tracks;
@@ -162,7 +161,7 @@ pub struct Library {
     // Where the viewport starts, for the pinned group heading.
     visible_from: usize,
 
-    selection: selection::Selection,
+    selection: components::selection::Selection,
     type_ahead: String,
     type_ahead_at: Option<Instant>,
 
@@ -297,7 +296,7 @@ impl Library {
             window_request: None,
             whole: false,
             visible_from: 0,
-            selection: selection::Selection::new(),
+            selection: components::selection::Selection::new(),
             type_ahead: String::new(),
             type_ahead_at: None,
             _filter_delay: None,
