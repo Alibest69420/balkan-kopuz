@@ -1,16 +1,22 @@
 //! The sheet: the bar grown to fill the page, with the cover travelling out of its bar slot.
 
+#[cfg(test)]
+#[path = "sheet_tests.rs"]
+mod tests;
+
 use std::path::PathBuf;
 
 use gpui_kit::base::ElementExt as _;
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::menu::DropdownMenu as _;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{
+    ActiveTheme as _, Disableable as _, FocusTrapElement as _, Sizable as _, h_flex, v_flex,
+};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, Context, FontWeight, Hsla, ImageSource, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, SharedString, StatefulInteractiveElement as _, Styled, Window, div,
-    point, px, relative, rems,
+    AnyElement, App, Context, FocusHandle, FontWeight, Hsla, ImageSource, InteractiveElement as _,
+    IntoElement, ParentElement as _, Pixels, SharedString, StatefulInteractiveElement as _, Styled,
+    Window, div, point, px, relative, rems,
 };
 use store::layout::{Backdrop, Side};
 use store::{Chrome, ConfigModel, FavoritesModel, Navigator, Route, SourcesModel};
@@ -30,6 +36,50 @@ const CLOSE: Pixels = px(40.);
 const CLOSE_GLYPH: Pixels = px(22.);
 // The hero cover never grows past this, however tall the window is.
 const HERO_MAX: Pixels = px(420.);
+
+pub(crate) struct ModalFocus {
+    handle: FocusHandle,
+    previous: Option<FocusHandle>,
+    open: bool,
+}
+
+impl ModalFocus {
+    pub(crate) fn new(cx: &mut App) -> Self {
+        Self {
+            handle: cx.focus_handle(),
+            previous: None,
+            open: false,
+        }
+    }
+
+    pub(crate) fn set_open(&mut self, open: bool, window: &mut Window, cx: &mut App) {
+        if self.open == open {
+            return;
+        }
+        self.open = open;
+        if open {
+            self.previous = window.focused(cx);
+            self.handle.focus(window, cx);
+        } else if let Some(previous) = self.previous.take()
+            && self.handle.contains_focused(window, cx)
+        {
+            previous.focus(window, cx);
+        }
+    }
+}
+
+fn surface() -> gpui_kit::Stateful<gpui_kit::Div> {
+    div()
+        .id("sheet")
+        .size_full()
+        .relative()
+        .occlude()
+        .on_any_mouse_down(|_, _, cx| cx.stop_propagation())
+        .on_mouse_up(gpui_kit::MouseButton::Left, |_, _, cx| {
+            cx.stop_propagation()
+        })
+        .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
+}
 
 impl NowPlaying {
     pub(crate) fn render_sheet(
@@ -69,10 +119,17 @@ impl NowPlaying {
                     .child(self.tab_body(showing)),
             );
 
-        div()
-            .id("sheet")
-            .size_full()
-            .relative()
+        surface()
+            .key_context("NowPlaying")
+            .on_key_down(
+                cx.listener(|this, event: &gpui_kit::KeyDownEvent, window, cx| {
+                    if event.keystroke.key == "space" && this.sheet_focus.handle.is_focused(window)
+                    {
+                        store::PlayerModel::global(cx).update(cx, |player, cx| player.toggle(cx));
+                        cx.stop_propagation();
+                    }
+                }),
+            )
             .overflow_hidden()
             .opacity(entered)
             .bg(cx.theme().background)
@@ -98,6 +155,7 @@ impl NowPlaying {
                     }),
             )
             .children(self.flying_cover(window, cx))
+            .focus_trap("now-playing-focus", &self.sheet_focus.handle)
             .into_any_element()
     }
 

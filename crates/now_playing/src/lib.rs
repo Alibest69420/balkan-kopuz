@@ -64,6 +64,7 @@ fn cover_slot(cx: &App) -> Option<Bounds<Pixels>> {
 /// The player, in whichever size it was built for. Every part is written once and drawn by each.
 pub struct NowPlaying {
     presentation: Presentation,
+    sheet_focus: sheet::ModalFocus,
     seek: Entity<SliderState>,
     volume: Entity<SliderState>,
     /// The fraction under the pointer while a drag runs; the release commits it.
@@ -129,7 +130,13 @@ impl NowPlaying {
             cx.observe_in(&PlayerModel::global(cx), window, |this, _, window, cx| {
                 this.sync(window, cx);
             }),
-            cx.observe(&Chrome::global(cx), |_, _, cx| cx.notify()),
+            cx.observe_in(&Chrome::global(cx), window, |this, chrome, window, cx| {
+                if this.presentation == Presentation::Sheet {
+                    this.sheet_focus
+                        .set_open(chrome.read(cx).is_sheet_open(), window, cx);
+                }
+                cx.notify();
+            }),
             cx.observe(&QueueModel::global(cx), |_, _, cx| cx.notify()),
             cx.observe(&FavoritesModel::global(cx), |_, _, cx| cx.notify()),
             cx.observe(&ConfigModel::global(cx), |_, _, cx| cx.notify()),
@@ -145,6 +152,7 @@ impl NowPlaying {
 
         Self {
             presentation,
+            sheet_focus: sheet::ModalFocus::new(cx),
             seek,
             volume,
             scrubbing: None,
