@@ -3,9 +3,8 @@
 use api::TrackFilter;
 use commands::Command;
 use components::format::{t, t_with};
-use components::{PageHeader, icons, menus, style};
+use components::{PageHeader, SearchField, icons, menus, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::Input;
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -105,11 +104,10 @@ impl Library {
             .flex_wrap()
             .child(
                 // `max-w-2xl`: the filter never runs the width of the page.
-                div().w_full().max_w(rems(26.)).child(
-                    Input::new(&self.search)
-                        .cleanable(true)
-                        .prefix(icons::icon(icons::SEARCH).small()),
-                ),
+                div()
+                    .w_full()
+                    .max_w(rems(26.))
+                    .child(SearchField::new(&self.search).cleanable(true)),
             )
             .children(chips)
             .when(filters.is_narrowed(), |bar| {

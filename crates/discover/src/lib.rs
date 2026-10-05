@@ -13,10 +13,9 @@ use std::sync::Arc;
 use api::{AlbumInfo, AlbumPage, ApiError, KopuzApi, SearchResults, Table};
 use components::format::{t, t_with};
 use components::{
-    EmptyState, GridMode, Heading, Loading, PageHeader, SectionHeading, TileGrid, TrackList,
-    TrackListEvent, heading_link, icons, style,
+    EmptyState, GridMode, Heading, Loading, PageHeader, SearchTrigger, SectionHeading, TileGrid,
+    TrackList, TrackListEvent, TriggerSize, heading_link, icons, style,
 };
-use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -268,29 +267,11 @@ impl Discover {
 impl Discover {
     /// The chip that says where typing goes: the same palette the top bar's box opens.
     fn search_hint(&self, cx: &App) -> impl IntoElement {
-        let keystroke = commands::keystroke_for("app.palette", cx)
-            .and_then(|held| Keystroke::parse(&held).ok())
-            .map(|held| Kbd::new(held).text_size(style::text_10()));
-        h_flex()
-            .id("discover-search-hint")
-            .gap_2()
-            .items_center()
-            .h_8()
-            .px_3()
-            .rounded(style::radius_lg())
-            .bg(style::white(style::RAISED, cx))
-            .border_1()
-            .border_color(style::white(style::BORDER_SOFT, cx))
-            .cursor_pointer()
-            .hover(|chip| chip.bg(style::white(style::HOVER, cx)))
-            .text_xs()
-            .text_color(style::white(style::TEXT_SECONDARY, cx))
-            .child(icons::icon(icons::SEARCH).with_size(style::text_11()))
-            .child(t("discover_search_hint"))
-            .children(keystroke)
-            .on_click(|_, _, cx| {
-                Chrome::global(cx).update(cx, |chrome, cx| chrome.set_quick_search(true, cx))
-            })
+        let shortcut = commands::keystroke_for("app.palette", cx)
+            .and_then(|held| Keystroke::parse(&held).ok());
+        SearchTrigger::new("discover-search-hint", t("discover_search_hint"))
+            .size(TriggerSize::Compact)
+            .shortcut(shortcut)
     }
 
     /// The genres the landing offers, and the link to the rest of them.

@@ -8,17 +8,17 @@ mod tabs;
 use components::focus::{Axis, Roving, Step};
 use components::format::t;
 use components::marker::Along;
-use components::{Bar, Tab, TabStrip, icons, style};
+use components::{Bar, SearchTrigger, Tab, TabStrip, icons, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{Disableable as _, Icon, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AnyView, App, Context, FocusHandle, InteractiveElement as _, IntoElement,
-    KeyDownEvent, MouseButton, MouseDownEvent, NavigationDirection, ParentElement as _, Pixels,
-    Render, SharedString, StatefulInteractiveElement as _, Styled, Subscription, Window, div, px,
+    AnyElement, AnyView, App, Context, InteractiveElement as _, IntoElement, KeyDownEvent,
+    MouseButton, MouseDownEvent, NavigationDirection, ParentElement as _, Pixels, Render,
+    SharedString, Styled, Subscription, Window, div, px,
 };
 use store::layout::NavPosition;
-use store::{Chrome, ConfigModel, LayoutModel, Navigator, Route, SourcesModel};
+use store::{ConfigModel, LayoutModel, Navigator, Route, SourcesModel};
 
 pub use bounds::{remember as remember_bounds, saved_bounds};
 pub use settings::register as register_settings;
@@ -30,7 +30,6 @@ pub const COMPACT_BELOW: Pixels = px(700.);
 pub const CONTENT_MAX: Pixels = px(1400.);
 
 const CHROME_GLYPH: Pixels = px(15.);
-const SEARCH_MAX: Pixels = px(440.);
 // `bg-black/40` and `border-white/5`: the chrome's own scrim, as the rail wore it.
 const SCRIM: f32 = 0.40;
 
@@ -61,7 +60,6 @@ pub struct TopBar {
     position: NavPosition,
     activity: Option<AnyView>,
     tabs: Roving,
-    search_focus: FocusHandle,
     // A ring belongs to the keyboard; a click already says where it landed.
     ringing: bool,
     compact: bool,
@@ -94,7 +92,6 @@ impl TopBar {
             position: NavPosition::Top,
             activity: None,
             tabs: Roving::new(Axis::Row, cx),
-            search_focus: components::focus::stop_handle(cx),
             ringing: false,
             compact: window.viewport_size().width < COMPACT_BELOW,
             _subscriptions: subscriptions,
@@ -190,47 +187,12 @@ impl TopBar {
     }
 
     /// The palette's doorway: it looks like a field, and clicking it opens the palette.
-    fn search(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let focused = self.search_focus.is_focused(window);
-        components::focus::stop(h_flex().id("nav-search"), &self.search_focus, |_, cx| {
-            Chrome::global(cx).update(cx, |chrome, cx| chrome.set_quick_search(true, cx));
-        })
-        .relative()
-        .w_full()
-        .max_w(SEARCH_MAX)
-        .h(style::chrome().search_height)
-        .px_2()
-        .gap_2()
-        .rounded(style::radius_lg())
-        .border_1()
-        .border_color(style::white(style::BORDER, cx))
-        .bg(style::white(style::RAISED, cx))
-        .cursor_pointer()
-        .hover(|field| field.bg(style::white(style::HOVER, cx)))
-        .on_click(cx.listener(|_, _, _, cx| {
-            Chrome::global(cx).update(cx, |chrome, cx| chrome.set_quick_search(true, cx));
-        }))
-        .child(
-            Icon::default()
-                .path(icons::SEARCH)
-                .size(px(14.))
-                .flex_shrink_0()
-                .text_color(style::white(style::TEXT_MUTED, cx)),
-        )
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .truncate()
-                .text_sm()
-                .text_color(style::white(style::TEXT_MUTED, cx))
-                .child(t("search_placeholder")),
-        )
-        .child(hint(cx))
-        .when(focused, |field| {
-            field.child(components::focus::ring(style::radius_lg(), cx))
-        })
-        .into_any_element()
+    fn search(&self, cx: &App) -> AnyElement {
+        let shortcut = commands::keystroke_for("app.palette", cx)
+            .and_then(|held| gpui_kit::Keystroke::parse(&held).ok());
+        SearchTrigger::new("nav-search", t("search_placeholder"))
+            .shortcut(shortcut)
+            .into_any_element()
     }
 
     fn history(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -306,7 +268,7 @@ impl Render for TopBar {
             .current()
             .destination_of(artists_remote);
         let strip = self.strip(current, window, cx);
-        let search = self.search(window, cx);
+        let search = self.search(cx);
         let history = self.history(cx);
         let cluster = self.cluster(cx);
 
@@ -356,19 +318,6 @@ impl Render for TopBar {
                 .into_any_element(),
         }
     }
-}
-
-/// `ctrl-k`, said the way a keycap says it.
-fn hint(cx: &App) -> AnyElement {
-    div()
-        .flex_shrink_0()
-        .px_1()
-        .rounded(style::radius(cx))
-        .bg(style::white(style::HOVER, cx))
-        .text_size(style::text_10())
-        .text_color(style::white(style::TEXT_MUTED, cx))
-        .child(SharedString::new_static("Ctrl K"))
-        .into_any_element()
 }
 
 /// The bar's own icon buttons: no fill of their own, a wash under the pointer.

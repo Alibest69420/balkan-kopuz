@@ -3,8 +3,8 @@
 use components::focus::{Axis, Roving, Step};
 use components::format::{t, t_with};
 use components::marker::Along;
-use components::{Bar, EmptyState, PageHeader, Tab, TabStrip, icons, style};
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use components::{Bar, EmptyState, PageHeader, SearchField, Tab, TabStrip, icons, style};
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -282,23 +282,11 @@ impl Settings {
     }
 
     /// The box that filters every category at once.
-    fn search_box(&self, cx: &App) -> impl IntoElement {
-        h_flex()
+    fn search_box(&self) -> impl IntoElement {
+        div()
             .w_full()
-            .gap_2()
-            .items_center()
             .mb_4()
-            .px_3()
-            .rounded(style::radius_xl())
-            .border_1()
-            .border_color(style::white(style::BORDER, cx))
-            .bg(style::white(style::RAISED, cx))
-            .child(
-                icons::icon(icons::SEARCH)
-                    .with_size(style::text_11())
-                    .text_color(style::white(style::TEXT_MUTED, cx)),
-            )
-            .child(div().flex_1().min_w_0().child(Input::new(&self.search)))
+            .child(SearchField::new(&self.search).cleanable(true))
     }
 
     /// Nothing to edit until the daemon has answered; dead controls would save nothing.
@@ -370,7 +358,7 @@ impl Render for Settings {
                         if !loaded {
                             return page.child(self.unavailable(cx));
                         }
-                        page.child(self.search_box(cx))
+                        page.child(self.search_box())
                             .when(locked, |page| page.child(self.managed_notice(cx)))
                             .child(self.rail(window, cx))
                             .when(empty, |page| {

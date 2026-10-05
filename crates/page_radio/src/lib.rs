@@ -5,11 +5,13 @@ use std::time::Duration;
 
 use api::{QueueContext, RadioStationInfo, Table};
 use components::format::t;
-use components::{Cover, EmptyState, Heading, PageHeader, SectionHeading, icons, motion, style};
+use components::{
+    Cover, EmptyState, Heading, PageHeader, SearchField, SectionHeading, icons, motion, style,
+};
 use gpui_kit::component::button::{
     Button, ButtonCustomVariant, ButtonRounded, ButtonVariants as _,
 };
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -690,9 +692,12 @@ impl Render for Radio {
                         .icon(icons::RADIO)
                         .subtitle(t("radio_subtitle"))
                         .flush()
-                        .action(div().w(search_width()).flex_shrink_0().child(
-                            Input::new(&self.filter).prefix(icons::icon(icons::SEARCH).small()),
-                        )),
+                        .action(
+                            div()
+                                .w(search_width())
+                                .flex_shrink_0()
+                                .child(SearchField::new(&self.filter).cleanable(true)),
+                        ),
                 ),
             )
             .child(

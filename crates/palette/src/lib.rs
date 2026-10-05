@@ -12,11 +12,9 @@ use std::time::Duration;
 
 use api::{AlbumPage, ApiError, ArtistPage, KopuzApi, SearchResults, Table};
 use components::format::{t, t_with};
-use components::{icons, motion, style};
+use components::{SearchField, icons, motion, style};
 use gpui_kit::base::motion::{Easing, Presence, Transition};
-use gpui_kit::component::input::{
-    Escape, IndentInline, Input, InputEvent, InputState, MoveDown, MoveUp,
-};
+use gpui_kit::component::input::{Escape, IndentInline, InputEvent, InputState, MoveDown, MoveUp};
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -1072,15 +1070,10 @@ impl Render for Palette {
                             .border_b_1()
                             .border_color(style::white(style::BORDER_SOFT, cx))
                             .child(
-                                icons::icon(icons::SEARCH)
-                                    .with_size(style::text_11())
-                                    .text_color(style::white(style::TEXT_MUTED, cx)),
-                            )
-                            .children(narrowed.map(|label| self.chip(label, cx)))
-                            .child(
                                 div().flex_1().min_w_0().child(
-                                    Input::new(&self.input)
-                                        .appearance(false)
+                                    SearchField::new(&self.input)
+                                        .bare(true)
+                                        .chip(narrowed.map(|label| self.chip(label, cx)))
                                         .px_0()
                                         .py_3p5()
                                         .text_base(),
