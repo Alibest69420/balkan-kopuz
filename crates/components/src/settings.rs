@@ -1,6 +1,5 @@
 //! The settings card and the rows inside it, as `docs/STYLING.md` maps `.settings-section`.
 
-use std::cell::RefCell;
 use std::rc::Rc;
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -15,105 +14,49 @@ use gpui_kit::{
     Styled, Window, div, px, rems,
 };
 use store::layout::Ordered;
-use store::{Layout, LayoutModel};
+use store::{Layout, LayoutModel, SettingsFilter};
 
 use crate::format::t;
 use crate::{icons, motion, style};
 
-/// What the Settings search box is filtering by, and every row title it has seen while filtering.
-#[derive(Default)]
-struct Search {
-    query: RefCell<Option<SharedString>>,
-    index: RefCell<Vec<SharedString>>,
-}
-
-impl Global for Search {}
-
-/// The row the palette sent someone to, so the page can say which one it meant.
-#[derive(Default)]
-struct Highlight(RefCell<Option<SharedString>>);
-
-impl Global for Highlight {}
-
 /// Mark one row by its title; the next jump, or typing in the filter, replaces it.
 pub fn set_highlight(title: Option<SharedString>, cx: &mut App) {
-    if cx.try_global::<Highlight>().is_none() {
-        cx.set_global(Highlight::default());
-    }
-    *cx.global::<Highlight>().0.borrow_mut() = title;
+    SettingsFilter::global(cx).update(cx, |filter, cx| filter.set_highlight(title, cx));
 }
 
 /// Which row is marked, if any.
 pub fn highlighted(cx: &App) -> Option<SharedString> {
-    cx.try_global::<Highlight>()
-        .and_then(|held| held.0.borrow().clone())
+    SettingsFilter::global(cx).read(cx).highlight().cloned()
 }
 
 /// Filter every settings row by `query`; an empty one puts them all back.
 pub fn set_query(query: &str, cx: &mut App) {
-    let trimmed = query.trim().to_lowercase();
-    if !trimmed.is_empty() {
-        set_highlight(None, cx);
-    }
-    if cx.try_global::<Search>().is_none() {
-        cx.set_global(Search::default());
-    }
-    let search = cx.global::<Search>();
-    let empty = trimmed.is_empty();
-    *search.query.borrow_mut() = (!empty).then(|| SharedString::from(trimmed));
-    if empty {
-        search.index.borrow_mut().clear();
-    }
+    SettingsFilter::global(cx).update(cx, |filter, cx| filter.set_query(query, cx));
 }
 
 /// What Settings is filtering by, lowercased, or nothing when the box is empty.
 pub fn query(cx: &App) -> Option<SharedString> {
-    cx.try_global::<Search>()
-        .and_then(|search| search.query.borrow().clone())
-}
-
-/// The whole of what the filter asks of one line: `query` is already lowercased and trimmed.
-fn hit(field: &str, query: &str) -> bool {
-    field.to_lowercase().contains(query)
+    SettingsFilter::global(cx).read(cx).query().cloned()
 }
 
 /// Whether a row carrying this text survives the filter. Everything survives an empty box.
 pub fn matches(fields: &[&str], cx: &App) -> bool {
-    let Some(query) = query(cx) else {
-        return true;
-    };
-    fields.iter().any(|field| hit(field, query.as_str()))
-}
-
-/// Remember a searchable line, so "nothing matched" can tell itself from "nothing drawn yet".
-fn index(text: &SharedString, cx: &App) {
-    let Some(search) = cx.try_global::<Search>() else {
-        return;
-    };
-    if search.query.borrow().is_none() {
-        return;
-    }
-    let mut index = search.index.borrow_mut();
-    if !index.iter().any(|held| held == text) {
-        index.push(text.clone());
-    }
+    SettingsFilter::global(cx).read(cx).matches(fields)
 }
 
 /// True only once a filtered pass has drawn: before that, an empty page means "not drawn yet".
 pub fn nothing_matched(cx: &App) -> bool {
-    let Some(query) = query(cx) else {
-        return false;
-    };
-    let Some(search) = cx.try_global::<Search>() else {
-        return false;
-    };
-    let index = search.index.borrow();
-    !index.is_empty() && !index.iter().any(|held| hit(held, query.as_str()))
+    SettingsFilter::global(cx).read(cx).nothing_matched()
 }
 
 /// Content that is not a searchable row, so a filtered page leaves it out.
 pub fn when_unfiltered<E: IntoElement>(element: E, cx: &App) -> Option<E> {
     query(cx).is_none().then_some(element)
+}
+
+/// Remember a searchable line, so "nothing matched" can tell itself from "nothing drawn yet".
+fn note(text: &SharedString, cx: &App) {
+    SettingsFilter::global(cx).read(cx).note(text);
 }
 
 /// `w-55`, the width every enumerated setting's trigger shares.
@@ -482,9 +425,9 @@ impl ParentElement for Section {
 
 impl RenderOnce for Section {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        index(&self.title, cx);
-        if let Some(query) = query(cx) {
-            let named = hit(&self.title, query.as_str());
+        note(&self.title, cx);
+        if query(cx).is_some() {
+            let named = matches(&[self.title.as_str()], cx);
             let keep = if self.opaque {
                 named
             } else {
@@ -625,10 +568,10 @@ impl SettingRow {
     /// Nothing when the Settings search box is filtering this row out.
     pub fn shown(self, cx: &App) -> Option<Self> {
         let hit = {
-            index(&self.title, cx);
+            note(&self.title, cx);
             let mut fields = vec![self.title.as_str()];
             if let Some(description) = self.description.as_ref() {
-                index(description, cx);
+                note(description, cx);
                 fields.push(description.as_str());
             }
             matches(&fields, cx)
@@ -915,7 +858,7 @@ impl RenderOnce for Toggle {
 
 #[cfg(test)]
 mod tests {
-    use super::{hit, nearest};
+    use super::nearest;
 
     #[test]
     fn a_saved_value_lights_the_step_it_is_closest_to() {
@@ -925,12 +868,5 @@ mod tests {
         assert_eq!(nearest(&widths, 0.), Some(200.));
         assert_eq!(nearest(&[0.8, 0.9, 1.0, 1.1], 1.12), Some(1.1));
         assert_eq!(nearest(&[], 1.), None);
-    }
-
-    #[test]
-    fn the_filter_ignores_case_and_matches_anywhere_in_a_line() {
-        assert!(hit("Volume Scroll Step", "scroll"));
-        assert!(hit("Crossfade", "CROSS".to_lowercase().as_str()));
-        assert!(!hit("Crossfade", "lyrics"));
     }
 }

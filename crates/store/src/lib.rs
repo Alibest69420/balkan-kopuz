@@ -20,6 +20,7 @@ mod playing;
 mod playlists;
 mod query;
 mod queue;
+mod settings_filter;
 mod signin;
 mod sources;
 mod target;
@@ -45,6 +46,7 @@ pub use playing::Playing;
 pub use playlists::PlaylistsModel;
 pub use query::Query;
 pub use queue::{QueueModel, QueueSummary};
+pub use settings_filter::SettingsFilter;
 pub use signin::{
     browser as browser_sign_in, is_waiting_for_browser, register_password_form, start_sign_in,
 };
@@ -116,4 +118,5 @@ pub fn init(cx: &mut App) {
     register(cx, DownloadsModel::new);
     register(cx, Navigator::new);
     register(cx, Chrome::new);
+    register(cx, SettingsFilter::new);
 }
