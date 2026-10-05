@@ -1,14 +1,17 @@
 //! Every shared component, each defined once: a page composes these and never draws its own copy.
 
+pub mod album_collection;
 pub mod cards;
 pub mod carousel;
 pub mod chip;
 pub mod columns;
 pub mod cover;
 pub mod cover_overlay;
+pub mod detail_actions;
 pub mod device_row;
 pub mod dialogs;
 pub mod dock_panel;
+pub mod download_toggle;
 pub mod drag;
 pub mod grid;
 pub mod header;
@@ -45,6 +48,7 @@ pub mod track_header;
 pub mod track_list;
 pub mod track_meta;
 pub mod track_row;
+pub mod track_section;
 pub mod transport;
 pub mod volume_control;
 
@@ -53,6 +57,7 @@ pub use primitives::{
     skin, style, t, t_with, text, total_duration,
 };
 
+pub use album_collection::AlbumCollection;
 pub use cards::{
     Frame, PlayState, Tile, TileRow, album_row, album_tile, artist_row, artist_tile, playlist_tile,
     tile_grid,
@@ -61,11 +66,15 @@ pub use carousel::{Arrows, Carousel};
 pub use chip::{Badge, BadgeTone, Chip, ChipSize, ChipTone};
 pub use cover::{Cover, EditableCover, Scrim};
 pub use cover_overlay::{CoverOverlay, TilePlayButton, playing_badge};
+pub use detail_actions::{DetailActions, Look};
 pub use device_row::DeviceRow;
 pub use dock_panel::{DockPanel, DockSize};
+pub use download_toggle::{DownloadToggle, ToggleSize};
 pub use drag::DragChip;
 pub use grid::{GridMode, JumpRail, TileGrid, rail_letter};
-pub use header::{DetailHeader, PageHeader, TitleSize, detail_header_skeleton};
+pub use header::{
+    DetailHeader, HeaderLayout, MetaLine, PageHeader, TitleSize, detail_header_skeleton,
+};
 pub use heading::{Heading, SectionHeading};
 pub use icon_button::{FollowButton, IconButton, IconTone, back_button};
 pub use job::{JobStop, ProgressBar};
@@ -97,6 +106,7 @@ pub use track_header::TrackHeader;
 pub use track_list::{TrackActions, TrackDrag, TrackList, TrackListEvent, TrackListOptions};
 pub use track_meta::{MarqueeText, MetaLayout, NowPlayingMeta, PlayingFromLink, TrackMarks};
 pub use track_row::TrackRow;
+pub use track_section::TrackSection;
 pub use transport::{
     PlayPauseButton, RepeatButton, Transport, TransportMetrics, TransportOverflow, lit_accent,
 };

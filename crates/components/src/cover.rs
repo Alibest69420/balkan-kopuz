@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -232,6 +233,7 @@ const EDIT_VEIL: u64 = 2;
 pub struct EditableCover {
     id: SharedString,
     artwork: Option<ArtworkRef>,
+    pending: Option<PathBuf>,
     size: Pixels,
     radius: Pixels,
     placeholder: &'static str,
@@ -245,6 +247,7 @@ impl EditableCover {
         Self {
             id: id.into(),
             artwork: artwork.cloned(),
+            pending: None,
             size: px(256.),
             radius: px(12.),
             placeholder: icons::DISC,
@@ -252,6 +255,12 @@ impl EditableCover {
             pick: None,
             remove: None,
         }
+    }
+
+    /// A picked local file not yet sent anywhere, shown in place of the artwork.
+    pub fn pending(mut self, path: Option<PathBuf>) -> Self {
+        self.pending = path;
+        self
     }
 
     pub fn size(mut self, size: Pixels) -> Self {
@@ -303,19 +312,26 @@ impl RenderOnce for EditableCover {
             cx,
         );
         let radius = self.radius;
-        let has_artwork = self.artwork.is_some();
+        let has_artwork = self.artwork.is_some() || self.pending.is_some();
+        let picture = match self.pending {
+            Some(path) => img(path)
+                .size(self.size)
+                .rounded(radius)
+                .object_fit(ObjectFit::Cover)
+                .into_any_element(),
+            None => Cover::new(self.artwork.as_ref())
+                .size(self.size)
+                .hq(true)
+                .rounded(radius)
+                .placeholder(self.placeholder)
+                .into_any_element(),
+        };
         div()
             .id(motion::channel(&id, EDIT_FRAME))
             .relative()
             .flex_shrink_0()
             .on_hover(motion::track(pointer))
-            .child(
-                Cover::new(self.artwork.as_ref())
-                    .size(self.size)
-                    .hq(true)
-                    .rounded(radius)
-                    .placeholder(self.placeholder),
-            )
+            .child(picture)
             .when_some(self.pick, |frame, pick| {
                 frame
                     .cursor_pointer()

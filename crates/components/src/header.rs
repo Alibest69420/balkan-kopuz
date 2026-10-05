@@ -4,12 +4,12 @@ use api::ArtworkRef;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, FontWeight, IntoElement, ParentElement as _, Pixels, RenderOnce, SharedString,
-    Styled, Window, div, px, rems,
+    AnyElement, App, FontWeight, Hsla, IntoElement, ParentElement as _, Pixels, RenderOnce,
+    SharedString, Styled, Window, div, px, rems,
 };
 use store::Route;
 
-use crate::cover::{Cover, EditableCover};
+use crate::cover::{Cover, EditableCover, Scrim};
 use crate::{icons, style};
 
 /// How big a page's title is drawn.
@@ -139,6 +139,102 @@ pub const HERO: Pixels = px(256.);
 /// What a page does when its cover is clicked; only it knows what a new picture means.
 type CoverAction = Rc<dyn Fn(&mut Window, &mut App)>;
 
+/// Facts joined with a dot, such as an album's song count, length and year.
+#[derive(IntoElement)]
+pub struct MetaLine {
+    facts: Vec<AnyElement>,
+    kind: Option<SharedString>,
+    compact: bool,
+    color: Option<Hsla>,
+}
+
+impl MetaLine {
+    pub fn new(facts: impl IntoIterator<Item = impl IntoElement>) -> Self {
+        Self {
+            facts: facts
+                .into_iter()
+                .map(IntoElement::into_any_element)
+                .collect(),
+            kind: None,
+            compact: false,
+            color: None,
+        }
+    }
+
+    /// What it is, set before the first fact in a smaller bold type.
+    pub fn kind(mut self, kind: impl Into<SharedString>) -> Self {
+        self.kind = Some(kind.into());
+        self
+    }
+
+    /// Small type, tight gaps and faint dots, for a column beside a list.
+    pub fn compact(mut self, compact: bool) -> Self {
+        self.compact = compact;
+        self
+    }
+
+    /// The ink of the facts, `text-slate-400` unless set.
+    pub fn color(mut self, color: Hsla) -> Self {
+        self.color = Some(color);
+        self
+    }
+}
+
+impl RenderOnce for MetaLine {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let compact = self.compact;
+        let faint = style::white(0.3, cx);
+        let dot = move || match compact {
+            true => div().text_color(faint).child("•"),
+            false => div().child("•"),
+        };
+        let kind = self.kind.map(|kind| {
+            div()
+                .text_xs()
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(style::white(0.4, cx))
+                .child(kind)
+        });
+        let leading = kind.is_some();
+        h_flex()
+            .items_center()
+            .flex_wrap()
+            .map(|line| match compact {
+                true => line.gap_x_2().text_sm(),
+                false => line.gap_6(),
+            })
+            .text_color(self.color.unwrap_or_else(|| style::slate_400(cx)))
+            .children(kind)
+            .children(
+                self.facts
+                    .into_iter()
+                    .enumerate()
+                    .flat_map(move |(at, fact)| {
+                        let dotted = at > 0 || leading;
+                        dotted
+                            .then(|| dot().into_any_element())
+                            .into_iter()
+                            .chain(std::iter::once(fact))
+                    }),
+            )
+    }
+}
+
+/// How a detail header lays its cover and words out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum HeaderLayout {
+    /// The cover, then the words, then the actions, along one row.
+    #[default]
+    Row,
+    /// A narrow column for a page that puts its list beside it.
+    Column,
+    /// The artwork behind the words, edge to edge.
+    Banner,
+}
+
+/// `w-80`: the column layout's width, a cover and a little air.
+const COLUMN: Pixels = px(320.);
+
 /// The block every detail page opens with: the cover, what it is, and what you can do to it.
 #[derive(IntoElement)]
 pub struct DetailHeader {
@@ -147,8 +243,11 @@ pub struct DetailHeader {
     placeholder: &'static str,
     round: bool,
     size: Pixels,
+    layout: HeaderLayout,
     eyebrow: Option<AnyElement>,
+    kind: Option<SharedString>,
     meta: Vec<SharedString>,
+    description: Option<SharedString>,
     actions: Vec<AnyElement>,
     cover_id: Option<SharedString>,
     cover_tooltip: Option<SharedString>,
@@ -165,14 +264,22 @@ impl DetailHeader {
             placeholder: crate::icons::DISC,
             round: false,
             size: HERO,
+            layout: HeaderLayout::Row,
             eyebrow: None,
+            kind: None,
             meta: Vec::new(),
+            description: None,
             actions: Vec::new(),
             cover_id: None,
             cover_tooltip: None,
             on_cover: None,
             custom_cover: None,
         }
+    }
+
+    pub fn layout(mut self, layout: HeaderLayout) -> Self {
+        self.layout = layout;
+        self
     }
 
     /// Draw this instead of the plain cover, for a page whose cover is also an upload target.
@@ -208,9 +315,21 @@ impl DetailHeader {
         self
     }
 
+    /// What it is, set before the facts under the title.
+    pub fn kind(mut self, kind: impl Into<SharedString>) -> Self {
+        self.kind = Some(kind.into());
+        self
+    }
+
     /// One more fact for the line under the title; they are joined with a dot.
     pub fn meta(mut self, fact: impl Into<SharedString>) -> Self {
         self.meta.push(fact.into());
+        self
+    }
+
+    /// A few lines about it, under the facts.
+    pub fn description(mut self, description: Option<impl Into<SharedString>>) -> Self {
+        self.description = description.map(Into::into);
         self
     }
 
@@ -231,21 +350,23 @@ impl DetailHeader {
         self.on_cover = Some(Rc::new(act));
         self
     }
-}
 
-impl RenderOnce for DetailHeader {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn cover_element(&mut self) -> AnyElement {
         let radius = match self.round {
             true => self.size / 2.,
             false => px(12.),
         };
-        let cover = match (self.custom_cover, self.cover_id, self.on_cover) {
+        match (
+            self.custom_cover.take(),
+            self.cover_id.take(),
+            self.on_cover.take(),
+        ) {
             (Some(custom), _, _) => custom,
             (None, Some(id), Some(act)) => EditableCover::new(id, self.artwork.as_ref())
                 .size(self.size)
                 .rounded(radius)
                 .placeholder(self.placeholder)
-                .when_some(self.cover_tooltip, |cover, tip| cover.tooltip(tip))
+                .when_some(self.cover_tooltip.take(), |cover, tip| cover.tooltip(tip))
                 .on_pick(move |window, cx| act(window, cx))
                 .into_any_element(),
             (None, _, _) => Cover::new(self.artwork.as_ref())
@@ -254,8 +375,25 @@ impl RenderOnce for DetailHeader {
                 .rounded(radius)
                 .placeholder(self.placeholder)
                 .into_any_element(),
-        };
-        let meta = self.meta.clone();
+        }
+    }
+
+    fn facts(&mut self, compact: bool, color: Option<Hsla>) -> Option<MetaLine> {
+        if self.meta.is_empty() && self.kind.is_none() {
+            return None;
+        }
+        let line = MetaLine::new(std::mem::take(&mut self.meta))
+            .compact(compact)
+            .when_some(color, |line, color| line.color(color));
+        Some(match self.kind.take() {
+            Some(kind) => line.kind(kind),
+            None => line,
+        })
+    }
+
+    fn row(mut self, cx: &App) -> AnyElement {
+        let cover = self.cover_element();
+        let facts = self.facts(false, None);
         h_flex()
             .w_full()
             .gap_8()
@@ -274,21 +412,8 @@ impl RenderOnce for DetailHeader {
                             .font_weight(FontWeight::SEMIBOLD)
                             .child(self.title),
                     )
-                    .when(!meta.is_empty(), |block| {
-                        block.child(
-                            h_flex()
-                                .gap_6()
-                                .items_center()
-                                .flex_wrap()
-                                .text_color(style::slate_400(cx))
-                                .children(meta.into_iter().enumerate().flat_map(|(at, fact)| {
-                                    let dot = (at > 0).then(|| div().child("•").into_any_element());
-                                    dot.into_iter().chain(std::iter::once(
-                                        div().child(fact).into_any_element(),
-                                    ))
-                                })),
-                        )
-                    }),
+                    .children(facts)
+                    .children(self.description.map(|text| description(text, cx))),
             )
             // Upstream the actions are the row's third column, at its bottom-right, not under the facts.
             .when(!self.actions.is_empty(), |row| {
@@ -300,6 +425,112 @@ impl RenderOnce for DetailHeader {
                         .children(self.actions),
                 )
             })
+            .into_any_element()
+    }
+
+    fn column(mut self, cx: &App) -> AnyElement {
+        let cover = self.cover_element();
+        let facts = self.facts(true, None);
+        v_flex()
+            .w(COLUMN)
+            .flex_shrink_0()
+            .items_start()
+            .gap_5()
+            .pt_2()
+            .child(div().shadow_2xl().child(cover))
+            .child(
+                v_flex()
+                    .w_full()
+                    .gap_2()
+                    .children(self.eyebrow)
+                    .child(
+                        div()
+                            .text_3xl()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(self.title),
+                    )
+                    .children(facts)
+                    .children(self.description.map(|text| description(text, cx))),
+            )
+            .when(!self.actions.is_empty(), |column| {
+                column.child(
+                    h_flex()
+                        .mt_1()
+                        .gap_3()
+                        .items_center()
+                        .flex_wrap()
+                        .children(self.actions),
+                )
+            })
+            .into_any_element()
+    }
+
+    fn banner(mut self, cx: &App) -> AnyElement {
+        let facts = self.facts(true, Some(style::white(0.7, cx)));
+        div()
+            .relative()
+            .w_full()
+            .h(rems(22.5))
+            .overflow_hidden()
+            .bg(cx.theme().secondary)
+            .child(
+                Cover::new(self.artwork.as_ref())
+                    .fill()
+                    .hq(true)
+                    .scrim(Scrim {
+                        foot: 0.95,
+                        top: 0.2,
+                        reach: 1.,
+                    }),
+            )
+            .child(
+                v_flex()
+                    .absolute()
+                    .size_full()
+                    .justify_end()
+                    .gap_4()
+                    .px_10()
+                    .pt_16()
+                    .pb_10()
+                    .children(self.eyebrow)
+                    .child(
+                        div()
+                            .text_size(rems(3.75))
+                            .font_weight(FontWeight::BLACK)
+                            .child(self.title),
+                    )
+                    .children(facts)
+                    .children(self.description.map(|text| description(text, cx)))
+                    .when(!self.actions.is_empty(), |banner| {
+                        banner.child(
+                            h_flex()
+                                .mt_2()
+                                .gap_3()
+                                .items_center()
+                                .children(self.actions),
+                        )
+                    }),
+            )
+            .into_any_element()
+    }
+}
+
+fn description(text: SharedString, cx: &App) -> impl IntoElement {
+    div()
+        .max_w(rems(48.))
+        .text_sm()
+        .line_clamp(3)
+        .text_color(style::white(style::TEXT_SECONDARY, cx))
+        .child(text)
+}
+
+impl RenderOnce for DetailHeader {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        match self.layout {
+            HeaderLayout::Row => self.row(cx),
+            HeaderLayout::Column => self.column(cx),
+            HeaderLayout::Banner => self.banner(cx),
+        }
     }
 }
 
