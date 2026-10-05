@@ -2,6 +2,8 @@ mod backdrop;
 mod router;
 mod shell;
 
+use std::time::Duration;
+
 use gpui_kit::component::Root;
 use gpui_kit::{
     App, AppContext as _, Bounds, KeyBinding, TitlebarOptions, WindowBounds, WindowOptions, px,
@@ -126,26 +128,40 @@ fn main() -> anyhow::Result<()> {
             commands::init(cx);
             theme::apply_named("default", None, cx);
             keymap(cx);
-            // After store::init, since the registry reads the saved keystroke overrides.
-            commands::keymap(cx);
-
-            let options = WindowOptions {
-                window_bounds: Some(topbar::saved_bounds(cx).unwrap_or_else(|| {
-                    WindowBounds::Windowed(Bounds::centered(None, size(px(1350.), px(800.)), cx))
-                })),
-                window_background: gpui_kit::WindowBackgroundAppearance::Opaque,
-                app_id: Some("kopuz-gpui".into()),
-                titlebar: Some(TitlebarOptions {
-                    title: Some("Kopuz".into()),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            };
-            cx.open_window(options, |window, cx| {
-                let shell = cx.new(|cx| Shell::new(window, cx));
-                cx.new(|cx| Root::new(shell, window, cx))
+            let ready = store::LayoutModel::global(cx).update(cx, |layout, _| layout.take_ready());
+            cx.spawn(async move |cx| {
+                let timer = cx.background_executor().timer(PREFS_WAIT);
+                if let Some(ready) = ready {
+                    futures::future::select(Box::pin(ready), Box::pin(timer)).await;
+                }
+                cx.update(open_main_window);
             })
-            .expect("failed to open the main window");
+            .detach();
         });
     Ok(())
+}
+
+/// How long the window waits for the daemon to say where it was left before opening anyway.
+const PREFS_WAIT: Duration = Duration::from_millis(1500);
+
+fn open_main_window(cx: &mut App) {
+    // After the preferences load, since the registry reads the saved keystroke overrides.
+    commands::keymap(cx);
+    let options = WindowOptions {
+        window_bounds: Some(topbar::saved_bounds(cx).unwrap_or_else(|| {
+            WindowBounds::Windowed(Bounds::centered(None, size(px(1350.), px(800.)), cx))
+        })),
+        window_background: gpui_kit::WindowBackgroundAppearance::Opaque,
+        app_id: Some("kopuz-gpui".into()),
+        titlebar: Some(TitlebarOptions {
+            title: Some("Kopuz".into()),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    cx.open_window(options, |window, cx| {
+        let shell = cx.new(|cx| Shell::new(window, cx));
+        cx.new(|cx| Root::new(shell, window, cx))
+    })
+    .expect("failed to open the main window");
 }

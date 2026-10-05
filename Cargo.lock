@@ -3864,6 +3864,7 @@ dependencies = [
  "components",
  "debug_overlay",
  "discover",
+ "futures",
  "gpui-kit",
  "kopuz-api",
  "kopuz-config",
@@ -7268,6 +7269,7 @@ dependencies = [
  "link",
  "profile",
  "serde",
+ "serde_json",
  "toml 0.8.23",
  "tracing",
 ]

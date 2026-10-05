@@ -1,7 +1,9 @@
 //! Bindings and the handlers behind them: one keymap generated from the registry, overrides applied.
 
+use std::collections::BTreeMap;
+
 use gpui_kit::{
-    App, DummyKeyboardMapper, KeyBinding, KeyBindingContextPredicate, NoAction, actions,
+    App, DummyKeyboardMapper, Global, KeyBinding, KeyBindingContextPredicate, NoAction, actions,
 };
 use store::Target;
 
@@ -103,8 +105,26 @@ fn bind(keystroke: &str, action: Box<dyn gpui_kit::Action>, context: &str) -> Op
     }
 }
 
-/// Install every default binding, with `Layout::shortcuts` overriding a command's first keystroke.
+/// The overrides the keymap was last installed with.
+struct Installed(BTreeMap<String, String>);
+
+impl Global for Installed {}
+
+/// Install the keymap, then again whenever the saved overrides change, here or in another window.
 pub fn keymap(cx: &mut App) {
+    install(cx);
+    cx.observe(&store::LayoutModel::global(cx), |_, cx| {
+        let stale = cx.try_global::<Installed>().map(|installed| &installed.0)
+            != Some(&store::layout(cx).shortcuts);
+        if stale {
+            install(cx);
+        }
+    })
+    .detach();
+}
+
+/// Every default binding, with `Layout::shortcuts` overriding a command's first keystroke.
+fn install(cx: &mut App) {
     let overrides = store::layout(cx).shortcuts.clone();
     let mut bindings = Vec::new();
     for command in all() {
@@ -138,6 +158,7 @@ pub fn keymap(cx: &mut App) {
         }
     }
     cx.bind_keys(bindings);
+    cx.set_global(Installed(overrides));
 }
 
 /// The keystroke a command answers to now, for a row that shows its shortcut.
@@ -174,7 +195,7 @@ pub fn conflict(id: &str, keystroke: &str, cx: &App) -> Option<&'static crate::C
     })
 }
 
-/// Point `id` at `keystroke`, or back at its default when `None`, and reinstall the keymap.
+/// Point `id` at `keystroke`, or back at its default when `None`; the keymap follows the layout.
 pub fn rebind(id: &str, keystroke: Option<String>, cx: &mut App) {
     let id = id.to_string();
     store::LayoutModel::edit(cx, move |layout| match keystroke.clone() {
@@ -185,7 +206,6 @@ pub fn rebind(id: &str, keystroke: Option<String>, cx: &mut App) {
             layout.shortcuts.remove(&id);
         }
     });
-    keymap(cx);
 }
 
 /// A pressed keystroke in the form the keymap parses back, so a recording round-trips.

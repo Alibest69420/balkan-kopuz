@@ -1,14 +1,23 @@
-//! Presentation preferences: what the app looks like, kept beside the app rather than in the daemon.
+//! Presentation preferences: what the app looks like, kept in the daemon's per-frontend store.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use gpui_kit::{App, Context, Entity, Task};
+use api::{ApiEvent, FrontendPref, PrefEntry};
+use futures::channel::oneshot;
+use gpui_kit::{App, Context, Entity, Subscription, Task};
+use link::Link;
 use serde::{Deserialize, Serialize};
 
-// Dragging a width or nudging a slider settles before the file is rewritten.
+// Dragging a width or nudging a slider settles before the daemon is written to.
 const SAVE_DELAY: Duration = Duration::from_millis(600);
+
+/// The name this app's preferences are kept under in the daemon.
+pub const FRONTEND: &str = "gpui";
+
+// Stored once `layout.toml` has been carried over, so the file is never read again.
+const IMPORTED: &str = "layout_toml_imported";
 
 /// How big the UI may be scaled, either way of 100%.
 pub const SCALE_RANGE: std::ops::RangeInclusive<f32> = 0.8..=1.4;
@@ -503,7 +512,7 @@ pub struct WindowState {
     pub maximized: bool,
 }
 
-/// Every presentation preference, as it sits in `layout.toml`.
+/// Every presentation preference; each top-level field is one stored key holding its JSON.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Layout {
@@ -606,7 +615,7 @@ fn yes() -> bool {
     true
 }
 
-/// Where `layout.toml` lives; `KOPUZ_GPUI_LAYOUT` moves it, so a smoke run cannot clobber it.
+/// Where the old `layout.toml` lived, read once to carry it into the daemon; `KOPUZ_GPUI_LAYOUT` moves it.
 pub fn layout_path() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("KOPUZ_GPUI_LAYOUT") {
         return Some(PathBuf::from(path));
@@ -615,11 +624,56 @@ pub fn layout_path() -> Option<PathBuf> {
     Some(base.config_dir().join("kopuz-gpui").join("layout.toml"))
 }
 
-/// The app's own look, loaded at startup and written back debounced.
+type Fields = BTreeMap<String, String>;
+
+/// One stored key per top-level field, each holding that field as JSON.
+fn fields(layout: &Layout) -> Fields {
+    match serde_json::to_value(layout) {
+        Ok(serde_json::Value::Object(object)) => object
+            .into_iter()
+            .map(|(key, value)| (key, value.to_string()))
+            .collect(),
+        _ => Fields::new(),
+    }
+}
+
+/// `base` with every stored field laid over it; a value that no longer reads drops only itself.
+fn overlay(base: &Layout, stored: &Fields) -> Layout {
+    let Ok(serde_json::Value::Object(mut object)) = serde_json::to_value(base) else {
+        return base.clone();
+    };
+    for (key, text) in stored {
+        if !object.contains_key(key) {
+            continue;
+        }
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(text) else {
+            tracing::warn!(key, "stored preference is not JSON");
+            continue;
+        };
+        let previous = object.insert(key.clone(), value);
+        if serde_json::from_value::<Layout>(serde_json::Value::Object(object.clone())).is_err() {
+            tracing::warn!(key, "stored preference ignored");
+            if let Some(previous) = previous {
+                object.insert(key.clone(), previous);
+            }
+        }
+    }
+    serde_json::from_value(serde_json::Value::Object(object)).unwrap_or_else(|_| base.clone())
+}
+
+/// The app's own look, mirrored from the daemon's preference store and written back debounced.
 pub struct LayoutModel {
     layout: Layout,
-    path: Option<PathBuf>,
+    /// What the daemon is known to hold, per field; a field that differs is waiting to be sent.
+    synced: Fields,
+    generation: u64,
+    import_checked: bool,
+    send_imported: bool,
+    ready: Option<oneshot::Sender<()>>,
+    waiter: Option<oneshot::Receiver<()>>,
+    _load: Option<Task<()>>,
     _save: Option<Task<()>>,
+    _subscription: Subscription,
 }
 
 impl LayoutModel {
@@ -627,13 +681,28 @@ impl LayoutModel {
         crate::handle(cx)
     }
 
-    pub(crate) fn new(_: &mut Context<Self>) -> Self {
-        let path = layout_path();
-        let layout = path.as_deref().map(read).unwrap_or_default();
+    pub(crate) fn new(cx: &mut Context<Self>) -> Self {
+        let connection = Link::connection(cx);
+        let subscription = cx.subscribe(&connection, |this, _, event: &ApiEvent, cx| match event {
+            ApiEvent::FrontendPrefsChanged { frontend, .. } if frontend == FRONTEND => {
+                this.reload(cx)
+            }
+            ApiEvent::Resync => this.reload(cx),
+            _ => {}
+        });
+        let layout = Layout::default();
+        let (ready, waiter) = oneshot::channel();
         Self {
+            synced: fields(&layout),
             layout,
-            path,
+            generation: 0,
+            import_checked: false,
+            send_imported: false,
+            ready: Some(ready),
+            waiter: Some(waiter),
+            _load: None,
             _save: None,
+            _subscription: subscription,
         }
     }
 
@@ -641,7 +710,12 @@ impl LayoutModel {
         &self.layout
     }
 
-    /// Change a preference; the file catches up once edits settle.
+    /// Resolves once the daemon's preferences have been read the first time; taken once.
+    pub fn take_ready(&mut self) -> Option<oneshot::Receiver<()>> {
+        self.waiter.take()
+    }
+
+    /// Change a preference; the daemon catches up once edits settle.
     pub fn update(&mut self, cx: &mut Context<Self>, edit: impl FnOnce(&mut Layout)) {
         let before = self.layout.clone();
         edit(&mut self.layout);
@@ -662,24 +736,128 @@ impl LayoutModel {
         Self::global(cx).update(cx, |this, cx| this.update(cx, edit));
     }
 
+    fn reload(&mut self, cx: &mut Context<Self>) {
+        self.generation += 1;
+        let generation = self.generation;
+        let may_import = !self.import_checked;
+        let call = Link::global(cx)
+            .call(|api| async move { api.frontend_prefs(FRONTEND.to_string()).await });
+        self._load = Some(cx.spawn(async move |this, cx| {
+            let stored = match call.await {
+                Ok(stored) => stored,
+                Err(error) => {
+                    tracing::warn!(%error, "could not read the layout from the daemon");
+                    return;
+                }
+            };
+            let imported = match stored.is_empty() && may_import {
+                true => cx.background_executor().spawn(async { import() }).await,
+                false => None,
+            };
+            this.update(cx, |this, cx| {
+                if this.generation == generation {
+                    this.adopt(stored, imported, cx);
+                }
+            })
+            .ok();
+        }));
+    }
+
+    /// Take what the daemon holds, keeping any local edit that has not been sent yet.
+    fn adopt(
+        &mut self,
+        stored: Vec<FrontendPref>,
+        imported: Option<Layout>,
+        cx: &mut Context<Self>,
+    ) {
+        let current = fields(&self.layout);
+        let stored: Fields = stored
+            .into_iter()
+            .map(|pref| (pref.key, pref.value))
+            .collect();
+        let remote = overlay(&Layout::default(), &stored);
+        let mut merged = fields(imported.as_ref().unwrap_or(&remote));
+        for (key, value) in &current {
+            if self.synced.get(key) != Some(value) {
+                merged.insert(key.clone(), value.clone());
+            }
+        }
+        self.synced = fields(&remote);
+        self.import_checked = true;
+        self.send_imported |= imported.is_some();
+        let layout = overlay(&Layout::default(), &merged);
+        if layout != self.layout {
+            self.layout = layout;
+            cx.notify();
+        }
+        if let Some(ready) = self.ready.take() {
+            ready.send(()).ok();
+        }
+        if !self.unsent().is_empty() {
+            self.schedule_save(cx);
+        }
+    }
+
+    /// Every field the daemon does not hold yet, as the entries that would store it.
+    fn unsent(&self) -> Vec<PrefEntry> {
+        let mut entries: Vec<PrefEntry> = fields(&self.layout)
+            .into_iter()
+            .filter(|(key, value)| self.synced.get(key) != Some(value))
+            .map(|(key, value)| PrefEntry {
+                key,
+                value: Some(value),
+            })
+            .collect();
+        if self.send_imported {
+            entries.push(PrefEntry {
+                key: IMPORTED.into(),
+                value: Some("1".into()),
+            });
+        }
+        entries
+    }
+
     fn schedule_save(&mut self, cx: &mut Context<Self>) {
-        let Some(path) = self.path.clone() else {
-            return;
-        };
+        let link = Link::global(cx).clone();
         self._save = Some(cx.spawn(async move |this, cx| {
             cx.background_executor().timer(SAVE_DELAY).await;
-            let Ok(layout) = this.read_with(cx, |this, _| this.layout.clone()) else {
+            let Ok(entries) = this.read_with(cx, |this, _| this.unsent()) else {
                 return;
             };
-            cx.background_executor()
-                .spawn(async move { write(&path, &layout) })
-                .await;
-            this.update(cx, |this, _| this._save = None).ok();
+            if entries.is_empty() {
+                return;
+            }
+            let sent = entries.clone();
+            let call = link.call(move |api| async move {
+                api.set_frontend_prefs(FRONTEND.to_string(), entries).await
+            });
+            if let Err(error) = call.await {
+                tracing::warn!(%error, "could not store the layout in the daemon");
+                return;
+            }
+            this.update(cx, |this, _| {
+                for entry in sent {
+                    match (entry.key.as_str(), entry.value) {
+                        (IMPORTED, _) => this.send_imported = false,
+                        (_, Some(value)) => {
+                            this.synced.insert(entry.key, value);
+                        }
+                        (_, None) => {}
+                    }
+                }
+            })
+            .ok();
         }));
     }
 }
 
-/// A missing or unreadable file is the default look, not a failure worth stopping for.
+/// The old file's look, if there is one; it is left where it is.
+fn import() -> Option<Layout> {
+    let path = layout_path()?;
+    path.exists().then(|| read(&path))
+}
+
+/// An unreadable file is the default look, not a failure worth stopping for.
 fn read(path: &std::path::Path) -> Layout {
     let Ok(text) = std::fs::read_to_string(path) else {
         return Layout::default();
@@ -690,31 +868,6 @@ fn read(path: &std::path::Path) -> Layout {
             tracing::warn!(%error, path = %path.display(), "layout file ignored");
             Layout::default()
         }
-    }
-}
-
-fn write(path: &std::path::Path, layout: &Layout) {
-    let text = match toml::to_string_pretty(layout) {
-        Ok(text) => text,
-        Err(error) => {
-            tracing::warn!(%error, "could not serialise the layout");
-            return;
-        }
-    };
-    if let Some(parent) = path.parent()
-        && let Err(error) = std::fs::create_dir_all(parent)
-    {
-        tracing::warn!(%error, path = %parent.display(), "could not make the config directory");
-        return;
-    }
-    // Through a neighbour, so a crash mid-write cannot leave half a file behind.
-    let temporary = path.with_extension("toml.new");
-    if let Err(error) = std::fs::write(&temporary, text) {
-        tracing::warn!(%error, path = %temporary.display(), "could not write the layout");
-        return;
-    }
-    if let Err(error) = std::fs::rename(&temporary, path) {
-        tracing::warn!(%error, path = %path.display(), "could not replace the layout");
     }
 }
 
@@ -885,9 +1038,7 @@ mod tests {
     }
 
     #[test]
-    fn what_is_written_is_what_comes_back() {
-        let dir = std::env::temp_dir().join(format!("kopuz-layout-{}", std::process::id()));
-        let path = dir.join("nested").join("layout.toml");
+    fn what_is_stored_is_what_comes_back() {
         let mut layout = Layout::default();
         layout.panel.shown = true;
         layout.interface.scale = 1.25;
@@ -895,15 +1046,40 @@ mod tests {
         layout
             .shortcuts
             .insert("play.toggle".into(), "ctrl-space".into());
-        write(&path, &layout);
-        assert_eq!(read(&path), layout);
-        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(overlay(&Layout::default(), &fields(&layout)), layout);
     }
 
     #[test]
-    fn a_file_that_is_not_there_is_the_default_look() {
-        let path = std::env::temp_dir().join("kopuz-layout-that-does-not-exist.toml");
-        std::fs::remove_file(&path).ok();
-        assert_eq!(read(&path), Layout::default());
+    fn every_top_level_field_is_its_own_key() {
+        let keys: Vec<String> = fields(&Layout::default()).into_keys().collect();
+        assert!(keys.contains(&"nav".to_string()));
+        assert!(keys.contains(&"window".to_string()));
+        assert!(!keys.contains(&IMPORTED.to_string()));
+    }
+
+    #[test]
+    fn a_value_that_no_longer_reads_drops_only_itself() {
+        let stored = Fields::from([
+            ("skin".to_string(), "\"neon\"".to_string()),
+            ("panel".to_string(), "{\"shown\": \"yes\"}".to_string()),
+            ("motion".to_string(), "not json".to_string()),
+            (IMPORTED.to_string(), "1".to_string()),
+        ]);
+        let layout = overlay(&Layout::default(), &stored);
+        assert_eq!(layout.skin, "neon");
+        assert_eq!(layout.panel, Panel::default());
+        assert_eq!(layout.motion, Motion::default());
+    }
+
+    #[test]
+    fn the_old_file_still_reads_for_its_import() {
+        let dir = std::env::temp_dir().join(format!("kopuz-layout-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("layout.toml");
+        std::fs::write(&path, "skin = \"neon\"\n[panel]\nshown = true\n").expect("write");
+        let layout = read(&path);
+        assert_eq!(layout.skin, "neon");
+        assert!(layout.panel.shown);
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
