@@ -52,6 +52,9 @@ impl Library {
                 }
             });
         }
+        self.rail_letters = self
+            .whole
+            .then(|| tiles.iter().map(|tile| bucket(&tile.sort_key)).collect());
         self.tiles = tiles;
     }
 
@@ -522,11 +525,7 @@ impl Library {
         if self.total() < RAIL_FROM || self.sort().field != "title" {
             return None;
         }
-        let present: std::collections::HashSet<char> = self
-            .tiles
-            .iter()
-            .map(|tile| bucket(&tile.sort_key))
-            .collect();
+        let present = self.rail_letters.as_ref()?;
         Some(
             v_flex()
                 .w(RAIL)

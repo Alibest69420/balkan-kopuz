@@ -150,6 +150,8 @@ pub struct Library {
     rows: Vec<TrackInfo>,
     lines: Vec<Line>,
     tiles: Vec<Tile>,
+    // The letters the tiles start with, only while every tile is held: a paged window cannot say.
+    rail_letters: Option<std::collections::HashSet<char>>,
     albums_meta: HashMap<String, AlbumMeta>,
     year_span: Option<(u16, u16)>,
     plays: HashMap<String, u64>,
@@ -291,6 +293,7 @@ impl Library {
             rows: Vec::new(),
             lines: Vec::new(),
             tiles: Vec::new(),
+            rail_letters: None,
             albums_meta: HashMap::new(),
             year_span: None,
             plays: HashMap::new(),
