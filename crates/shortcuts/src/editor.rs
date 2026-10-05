@@ -2,20 +2,14 @@
 
 use components::focus::{Axis, Roving, Step};
 use components::format::{t, t_with};
-use components::{icons, style};
+use components::shortcut::{KeyRecorder, Recorded, ShortcutRow};
+use components::style;
 use gpui_kit::base::StyledExt as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
-use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::{
-    AnyElement, Context, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _,
-    Render, SharedString, StatefulInteractiveElement as _, Styled, Subscription, Window, div,
+    AnyElement, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
+    KeyDownEvent, ParentElement as _, Render, SharedString, Styled, Subscription, Window, div,
 };
-
-/// A lone modifier is not a shortcut, so a recording waits for a real key.
-const MODIFIERS: &[&str] = &[
-    "shift", "control", "ctrl", "alt", "platform", "cmd", "function",
-];
 
 /// One listed command, flattened out of its group so the arrows walk the whole panel.
 struct Row {
@@ -29,7 +23,8 @@ pub(crate) struct Shortcuts {
     roving: Roving,
     recording: Option<usize>,
     refused: Option<SharedString>,
-    _capture: Option<Subscription>,
+    recorder: Entity<KeyRecorder>,
+    _recorded: Subscription,
 }
 
 impl Shortcuts {
@@ -47,43 +42,37 @@ impl Shortcuts {
         }
         let mut roving = Roving::new(Axis::Column, cx);
         roving.set_len(rows.len());
+        let recorder = cx.new(|_| KeyRecorder::new());
+        let recorded = cx.subscribe(&recorder, |this, _, event: &Recorded, cx| match event {
+            Recorded::Pressed(keystroke) => this.pressed(commands::written(keystroke), cx),
+            Recorded::Cancelled => this.stop(cx),
+        });
         Self {
             rows,
             roving,
             recording: None,
             refused: None,
-            _capture: None,
+            recorder,
+            _recorded: recorded,
         }
     }
 
-    /// Take the next keystroke for `index`; the interceptor runs before any binding claims it.
+    /// Take the next keystroke for `index`.
     fn record(&mut self, index: usize, cx: &mut Context<Self>) {
         self.recording = Some(index);
         self.refused = None;
-        let this = cx.entity().downgrade();
-        self._capture = Some(cx.intercept_keystrokes(move |event, _, cx| {
-            let key = event.keystroke.key.clone();
-            if MODIFIERS.contains(&key.as_str()) {
-                return;
-            }
-            cx.stop_propagation();
-            let written = commands::written(&event.keystroke);
-            let Some(this) = this.upgrade() else {
-                return;
-            };
-            this.update(cx, |this, cx| this.pressed(&key, written, cx));
-        }));
+        self.recorder.update(cx, |recorder, cx| recorder.start(cx));
         cx.notify();
     }
 
     fn stop(&mut self, cx: &mut Context<Self>) {
         self.recording = None;
-        self._capture = None;
+        self.recorder.update(cx, |recorder, cx| recorder.stop(cx));
         cx.notify();
     }
 
-    /// What a recorded keystroke does: escape abandons, a collision is refused, anything else binds.
-    fn pressed(&mut self, key: &str, written: String, cx: &mut Context<Self>) {
+    /// What a recorded keystroke does: a collision is refused, anything else binds.
+    fn pressed(&mut self, written: String, cx: &mut Context<Self>) {
         let Some(index) = self.recording else {
             return;
         };
@@ -91,10 +80,6 @@ impl Shortcuts {
             self.stop(cx);
             return;
         };
-        if key == "escape" {
-            self.stop(cx);
-            return;
-        }
         if let Some(held) = commands::conflict(id, &written, cx) {
             let label = held.label(&store::Target::None, cx);
             self.refused = Some(t_with(
@@ -135,38 +120,12 @@ impl Shortcuts {
         if !components::settings::matches(&[row.label.as_str()], cx) {
             return None;
         }
-        let recording = self.recording == Some(index);
-        let ringed = self.roving.is_active(index, window);
-        let keystroke = commands::keystroke_for(row.id, cx);
-        let changed = store::layout(cx).shortcuts.contains_key(row.id);
-        let chip = match (recording, keystroke.as_deref()) {
-            (true, _) => div()
-                .px_2()
-                .rounded(style::radius(cx))
-                .bg(style::accent(style::ACTIVE, cx))
-                .text_size(style::text_10())
-                .text_color(cx.theme().foreground)
-                .child(t("shortcuts_recording"))
-                .into_any_element(),
-            (false, Some(keystroke)) => components::Keycap::new(keystroke).into_any_element(),
-            (false, None) => div()
-                .text_size(style::text_10())
-                .text_color(style::white(style::TEXT_SUBTLE, cx))
-                .child(t("shortcuts_unbound"))
-                .into_any_element(),
-        };
         Some(
-            h_flex()
-                .id(("shortcut-row", index))
-                .relative()
-                .w_full()
-                .gap_3()
-                .px_3()
-                .py_1p5()
-                .items_center()
-                .rounded(style::radius_lg())
-                .cursor_pointer()
-                .hover(|row| row.bg(style::white(style::RAISED, cx)))
+            ShortcutRow::new(row.id, row.label.clone())
+                .keystroke(commands::keystroke_for(row.id, cx))
+                .recording(self.recording == Some(index))
+                .changed(store::layout(cx).shortcuts.contains_key(row.id))
+                .ringed(self.roving.is_active(index, window))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.roving.set_cursor(index);
                     match this.recording == Some(index) {
@@ -174,39 +133,7 @@ impl Shortcuts {
                         false => this.record(index, cx),
                     }
                 }))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .truncate()
-                        .text_sm()
-                        .text_color(cx.theme().foreground)
-                        .child(row.label.clone()),
-                )
-                // The dot a changed key wears, so a rebind is visible without opening the file.
-                .when(changed, |row| {
-                    row.child(
-                        div()
-                            .size_1p5()
-                            .rounded_full()
-                            .flex_shrink_0()
-                            .bg(cx.theme().primary),
-                    )
-                })
-                .child(chip)
-                .when(changed, |row| {
-                    row.child(
-                        Button::new(("shortcut-reset", index))
-                            .ghost()
-                            .xsmall()
-                            .icon(icons::icon(icons::REFRESH))
-                            .tooltip(t("reset_home"))
-                            .on_click(cx.listener(move |this, _, _, cx| this.reset(index, cx))),
-                    )
-                })
-                .when(ringed, |row| {
-                    row.child(components::focus::ring(style::radius_lg(), cx))
-                })
+                .on_reset(cx.listener(move |this, _, _, cx| this.reset(index, cx)))
                 .into_any_element(),
         )
     }

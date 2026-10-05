@@ -3,24 +3,17 @@
 use std::collections::HashMap;
 
 use components::format::t;
-use components::{icons, motion, style};
+use components::{ColorChanged, ColorField, Panel, ThemePreview, icons, style};
 use config::CustomTheme;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
-use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::component::{
-    ActiveTheme as _, Colorize as _, Selectable as _, Sizable as _, h_flex, v_flex,
-};
+use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::{ActiveTheme as _, Selectable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, AppContext as _, Context, Div, ElementId, Entity, FontWeight, Hsla,
-    InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled,
-    Subscription, Window, div, rems,
+    AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
+    Styled, Subscription, Window, rems,
 };
 use store::ConfigModel;
-
-/// `text-white/70`, what a color's name reads in.
-const LABEL: f32 = 0.70;
 
 /// The thirteen palette tokens, in the order the editor lists them.
 pub const VAR_KEYS: &[&str] = &[
@@ -61,41 +54,6 @@ fn default_vars() -> HashMap<String, String> {
         .map(|(key, value)| (key.to_string(), value.to_string()))
         .collect()
 }
-
-/// Keeps only hex digits, at most six, and the leading `#` if the user typed one.
-fn sanitize_hex(value: &str) -> String {
-    let trimmed = value.trim();
-    let digits: String = trimmed
-        .chars()
-        .filter(char::is_ascii_hexdigit)
-        .take(6)
-        .collect();
-    if trimmed.starts_with('#') {
-        format!("#{digits}")
-    } else {
-        digits
-    }
-}
-
-/// `#abc` and `abcdef` both normalize to `#aabbcc` / `#abcdef`; anything else is not a color yet.
-fn normalize_hex(value: &str) -> Option<String> {
-    let sanitized = sanitize_hex(value);
-    let hex = sanitized.strip_prefix('#').unwrap_or(&sanitized);
-    match hex.len() {
-        3 => Some(format!(
-            "#{}",
-            hex.chars().flat_map(|c| [c, c]).collect::<String>()
-        )),
-        6 => Some(format!("#{hex}")),
-        _ => None,
-    }
-    .map(|hex| hex.to_lowercase())
-}
-
-fn parse_color(value: &str) -> Option<Hsla> {
-    normalize_hex(value).and_then(|hex| Hsla::parse_hex(&hex).ok())
-}
-
 /// `custom-<slug>`, with `-n` appended until the id is free.
 fn theme_id(name: &str, taken: &HashMap<String, CustomTheme>) -> String {
     let slug: String = name
@@ -113,16 +71,10 @@ fn theme_id(name: &str, taken: &HashMap<String, CustomTheme>) -> String {
         .unwrap_or(base)
 }
 
-struct ColorRow {
-    key: &'static str,
-    picker: Entity<ColorPickerState>,
-    hex: Entity<InputState>,
-}
-
 pub struct ThemeEditor {
     selected: Option<String>,
     name: Entity<InputState>,
-    rows: Vec<ColorRow>,
+    rows: Vec<(&'static str, Entity<ColorField>)>,
     vars: HashMap<String, String>,
     // What was last loaded or saved; anything else on screen is an edit nobody has kept yet.
     baseline: (String, HashMap<String, String>),
@@ -137,40 +89,13 @@ impl ThemeEditor {
         let mut rows = Vec::new();
         for key in VAR_KEYS {
             let value = vars.get(*key).cloned().unwrap_or_default();
-            let color = parse_color(&value);
-            let picker = cx.new(|cx| {
-                let mut state = ColorPickerState::new(window, cx);
-                if let Some(color) = color {
-                    state.set_value(color, window, cx);
-                }
-                state
-            });
-            let hex = cx.new(|cx| InputState::new(window, cx).default_value(value));
-            subscriptions.push(cx.subscribe_in(
-                &picker,
-                window,
-                move |this, _, event: &ColorPickerEvent, window, cx| {
-                    let ColorPickerEvent::Change(Some(color)) = event else {
-                        return;
-                    };
-                    this.set_var(key, color.to_hex().to_lowercase(), false, window, cx);
-                },
-            ));
-            subscriptions.push(cx.subscribe_in(
-                &hex,
-                window,
-                move |this, input, event: &InputEvent, window, cx| match event {
-                    InputEvent::Change => {
-                        let typed = input.read(cx).value().to_string();
-                        if let Some(hex) = normalize_hex(&typed) {
-                            this.set_var(key, hex, true, window, cx);
-                        }
-                    }
-                    InputEvent::Blur => this.revert_hex(key, window, cx),
-                    _ => {}
-                },
-            ));
-            rows.push(ColorRow { key, picker, hex });
+            let field = cx.new(|cx| ColorField::new(t(key), &value, window, cx));
+            subscriptions.push(
+                cx.subscribe(&field, move |this, _, event: &ColorChanged, cx| {
+                    this.set_var(key, event.0.clone(), cx)
+                }),
+            );
+            rows.push((*key, field));
         }
         Self {
             selected: None,
@@ -209,41 +134,12 @@ impl ThemeEditor {
         );
     }
 
-    fn row(&self, key: &str) -> Option<&ColorRow> {
-        self.rows.iter().find(|row| row.key == key)
-    }
-
-    /// `from_hex` says the hex field is the one that changed, so it is left alone while typing.
-    fn set_var(
-        &mut self,
-        key: &str,
-        value: String,
-        from_hex: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    fn set_var(&mut self, key: &str, value: String, cx: &mut Context<Self>) {
         if self.vars.get(key).is_some_and(|held| held == &value) {
             return;
         }
-        self.vars.insert(key.to_string(), value.clone());
-        if let Some(row) = self.row(key) {
-            let (picker, hex) = (row.picker.clone(), row.hex.clone());
-            if let Some(color) = parse_color(&value) {
-                picker.update(cx, |state, cx| state.set_value(color, window, cx));
-            }
-            if !from_hex {
-                hex.update(cx, |state, cx| state.set_value(value, window, cx));
-            }
-        }
+        self.vars.insert(key.to_string(), value);
         cx.notify();
-    }
-
-    fn revert_hex(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let value = self.vars.get(key).cloned().unwrap_or_default();
-        if let Some(row) = self.row(key) {
-            let hex = row.hex.clone();
-            hex.update(cx, |state, cx| state.set_value(value, window, cx));
-        }
     }
 
     fn load(&mut self, id: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
@@ -260,14 +156,14 @@ impl ThemeEditor {
         self.selected = id;
         let input = self.name.clone();
         input.update(cx, |state, cx| state.set_value(name, window, cx));
-        for key in VAR_KEYS {
+        for (key, field) in &self.rows {
             let value = vars
                 .get(*key)
                 .cloned()
                 .or_else(|| default_vars().get(*key).cloned())
                 .unwrap_or_default();
-            self.vars.remove(*key);
-            self.set_var(key, value, false, window, cx);
+            self.vars.insert(key.to_string(), value.clone());
+            field.update(cx, |field, cx| field.set(&value, window, cx));
         }
         self.baseline = (
             self.name.read(cx).value().trim().to_string(),
@@ -334,167 +230,21 @@ impl ThemeEditor {
         themes.sort_by(|left, right| left.1.cmp(&right.1));
         themes
     }
-
-    fn color(&self, key: &str, fallback: Hsla) -> Hsla {
-        self.vars
-            .get(key)
-            .and_then(|value| parse_color(value))
-            .unwrap_or(fallback)
-    }
-
-    /// Loading a saved theme swaps thirteen colors at once; the swatches cross-fade rather than cut.
-    fn swatch(&self, key: &'static str, fallback: Hsla, window: &mut Window, cx: &mut App) -> Hsla {
-        let target = self.color(key, fallback);
-        motion::color_over(
-            (ElementId::from("swatch"), key),
-            target,
-            motion::MEDIUM,
-            window,
-            cx,
-        )
-    }
-
-    fn preview(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let theme = cx.theme();
-        let (background, muted, border, foreground, muted_foreground, primary, danger) = (
-            theme.background,
-            theme.muted,
-            theme.border,
-            theme.foreground,
-            theme.muted_foreground,
-            theme.primary,
-            theme.danger,
-        );
-        let bg = self.swatch("bg", background, window, cx);
-        let raised = self.swatch("raised", muted, window, cx);
-        let surface = self.swatch("surface", border, window, cx);
-        let text = self.swatch("text", foreground, window, cx);
-        let muted = self.swatch("text-muted", muted_foreground, window, cx);
-        let progress = self.swatch("progress", primary, window, cx);
-        let accent = self.swatch("accent", primary, window, cx);
-        let highlight = self.swatch("highlight", primary, window, cx);
-        let danger = self.swatch("danger", danger, window, cx);
-        let chip = |key: &'static str, label: SharedString, color: Hsla| {
-            div()
-                .px_2()
-                .py_0p5()
-                .id(key)
-                .rounded_full()
-                .bg(raised)
-                .text_xs()
-                .text_color(color)
-                .child(label)
-        };
-        v_flex()
-            .w_full()
-            .gap_2()
-            .p_4()
-            .rounded(style::radius_lg())
-            .bg(bg)
-            .child(
-                h_flex()
-                    .items_center()
-                    .justify_between()
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(text)
-                            .child(t("track_title")),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(muted)
-                            .child(SharedString::from("3:42")),
-                    ),
-            )
-            .child(
-                div().w_full().h_1().rounded_full().bg(surface).child(
-                    div()
-                        .w(gpui_kit::relative(0.66))
-                        .h_1()
-                        .rounded_full()
-                        .bg(progress),
-                ),
-            )
-            .child(
-                h_flex()
-                    .gap_2()
-                    .mt_1()
-                    .child(chip("preview-accent", t("accent"), accent))
-                    .child(chip("preview-highlight", t("highlight"), highlight))
-                    .child(chip("preview-danger", t("danger"), danger)),
-            )
-    }
-
-    fn color_row(&self, row: &ColorRow, cx: &Context<Self>) -> impl IntoElement {
-        h_flex()
-            .w_full()
-            .gap_4()
-            .items_center()
-            .justify_between()
-            .child(
-                div()
-                    .min_w_0()
-                    .text_sm()
-                    .text_color(style::white(LABEL, cx))
-                    .child(t(row.key)),
-            )
-            .child(
-                h_flex()
-                    .flex_shrink_0()
-                    .gap_2()
-                    .items_center()
-                    .child(ColorPicker::new(&row.picker).small())
-                    .child(div().w(rems(6.)).child(Input::new(&row.hex).small())),
-            )
-    }
-
-    /// `bg-white/5 rounded-xl p-5`: one block of the editor's right column.
-    fn block(&self, label: SharedString, cx: &Context<Self>) -> Div {
-        v_flex()
-            .w_full()
-            .gap_3()
-            .p_5()
-            .rounded(style::radius_xl())
-            .bg(style::white(style::RAISED, cx))
-            .child(
-                h_flex()
-                    .gap_2()
-                    .items_center()
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(style::slate_400(cx))
-                            .child(label),
-                    )
-                    .when(self.dirty(cx), |head| {
-                        head.child(
-                            div()
-                                .size_1p5()
-                                .rounded_full()
-                                .bg(cx.theme().primary)
-                                .flex_shrink_0(),
-                        )
-                    }),
-            )
-    }
 }
 
 impl Render for ThemeEditor {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let preview = self.preview(window, cx);
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let saved = self.saved_themes(cx);
         let selected = self.selected.clone();
         let danger = cx.theme().danger;
+        let dirty = self.dirty(cx);
         // The original laid the thirteen colors out in a two-column grid; GPUI has no grid.
         let columns = |parity: usize| {
             self.rows
                 .iter()
                 .enumerate()
                 .filter(move |(index, _)| index % 2 == parity)
-                .map(|(_, row)| self.color_row(row, cx))
+                .map(|(_, (_, field))| field.clone())
         };
         h_flex()
             .w_full()
@@ -538,11 +288,12 @@ impl Render for ThemeEditor {
                     .min_w_0()
                     .gap_5()
                     .child(
-                        self.block(t("theme_name"), cx)
+                        Panel::new(t("theme_name"))
+                            .dirty(dirty)
                             .child(Input::new(&self.name)),
                     )
                     .child(
-                        self.block(t("colors"), cx).child(
+                        Panel::new(t("colors")).dirty(dirty).child(
                             h_flex()
                                 .w_full()
                                 .gap_10()
@@ -551,7 +302,11 @@ impl Render for ThemeEditor {
                                 .child(v_flex().flex_1().min_w_0().gap_3().children(columns(1))),
                         ),
                     )
-                    .child(self.block(t("preview"), cx).child(preview))
+                    .child(
+                        Panel::new(t("preview"))
+                            .dirty(dirty)
+                            .child(ThemePreview::new(self.vars.clone())),
+                    )
                     .child(
                         h_flex()
                             .gap_3()
