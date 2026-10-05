@@ -7,8 +7,9 @@ use gpui_kit::component::popover::Popover;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Anchor, App, Context, ElementId, InteractiveElement as _, IntoElement, ParentElement as _,
-    SharedString, StatefulInteractiveElement as _, Styled, WeakEntity, Window, div, px,
+    Anchor, App, Context, ElementId, Hsla, InteractiveElement as _, IntoElement,
+    ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled, WeakEntity, Window,
+    div, px,
 };
 use store::{Chrome, Link, Notices, PlayerModel, SourcesModel};
 
@@ -31,7 +32,7 @@ fn device_source(cx: &App) -> Option<String> {
 impl NowPlaying {
     pub(crate) fn devices_button(
         &self,
-        window: &mut Window,
+        accent: Hsla,
         cx: &mut Context<Self>,
     ) -> Option<impl IntoElement + use<>> {
         device_source(cx)?;
@@ -39,32 +40,29 @@ impl NowPlaying {
             .read(cx)
             .external()
             .is_some_and(|external| external.device.is_some());
-        // Lit with the accent the queue and lyrics glyphs wear, not a colour of its own.
-        let accent = motion::accent(theme::Surface::Chrome, cx.theme().primary, window, cx);
-        let tint = self.control_glyph(
-            "devices",
-            if elsewhere {
-                accent
-            } else {
-                style::slate_400(cx)
-            },
-            elsewhere,
-            window,
-            cx,
-        );
         let devices = self.devices.clone();
         let owner = cx.entity().downgrade();
+        let open = self.devices_open;
+        let changed = cx.listener(|this, open: &bool, _, cx| this.set_devices_open(*open, cx));
 
-        // The popover wants a `Selectable` trigger, so the frame goes around the whole of it.
-        let popover = Popover::new("external-devices")
-            .anchor(Anchor::BottomRight)
-            .open(self.devices_open)
-            .on_open_change(
-                cx.listener(|this, open: &bool, _, cx| this.set_devices_open(*open, cx)),
-            )
-            .trigger(utility("devices", icons::SPEAKER, tint, cx).tooltip(t("external_play_on")))
-            .content(move |_, window, cx| device_list(devices.clone(), owner.clone(), window, cx));
-        Some(self.framed("devices", popover, window, cx))
+        // The popover wants a `Selectable` trigger, so the button is handed to it inside its frame.
+        Some(
+            utility("devices", icons::SPEAKER)
+                .lit(elsewhere)
+                .accent(accent)
+                .tooltip(t("external_play_on"))
+                .host(move |button| {
+                    Popover::new("external-devices")
+                        .anchor(Anchor::BottomRight)
+                        .open(open)
+                        .on_open_change(changed)
+                        .trigger(button)
+                        .content(move |_, window, cx| {
+                            device_list(devices.clone(), owner.clone(), window, cx)
+                        })
+                        .into_any_element()
+                }),
+        )
     }
 
     fn set_devices_open(&mut self, open: bool, cx: &mut Context<Self>) {

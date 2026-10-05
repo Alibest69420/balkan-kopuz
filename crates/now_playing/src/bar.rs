@@ -1,24 +1,20 @@
 //! The bar across the bottom: the one presentation that is always there.
 
 use components::format::t;
-use components::{focus, icons, motion, style};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use components::{IconButton, TransportMetrics, icons, lit_accent, style};
+use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, Context, Hsla, IntoElement, ParentElement as _, Pixels, Styled, Window, px,
-    relative,
+    AnyElement, Context, IntoElement, ParentElement as _, Pixels, Styled, Window, px, relative,
 };
 use store::{Chrome, ConfigModel, SidePanel};
 
 use crate::NowPlaying;
-use crate::transport::Metrics;
 
 const UTILITY_GLYPH: Pixels = px(12.);
 const TRANSPORT_WIDTH: Pixels = px(640.);
 
-/// What the right end still affords. The title is what pays for it, so as the window narrows the
-/// least useful goes first: the level's track, then share, then the mini window.
+/// What the right end still affords; the title pays, so the least useful goes first as it narrows.
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Affords {
     level: bool,
@@ -87,8 +83,8 @@ impl NowPlaying {
                     .items_center()
                     .justify_center()
                     .gap_2()
-                    .child(self.transport(Metrics::COMPACT, true, window, cx))
-                    .child(self.seek_row(window, cx)),
+                    .child(self.transport(TransportMetrics::COMPACT, true, cx))
+                    .children(self.seek.clone()),
             )
             .child(self.utilities(window, cx))
             .into_any_element()
@@ -96,7 +92,8 @@ impl NowPlaying {
 
     /// The right end of the bar: level, the two panels, where else it can play, and the two sizes.
     fn utilities(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let panel = if self.presentation == crate::Presentation::SheetBar {
+        let sheet_bar = self.presentation == crate::Presentation::SheetBar;
+        let panel = if sheet_bar {
             match self.tab {
                 store::layout::SheetTab::Lyrics => Some(SidePanel::Lyrics),
                 store::layout::SheetTab::Queue => Some(SidePanel::Queue),
@@ -107,24 +104,9 @@ impl NowPlaying {
         };
         let wanted = store::layout(cx).player.clone();
         let room = affords(window.viewport_size().width);
-        let muted = style::slate_400(cx);
-        let accent = motion::accent(theme::Surface::Chrome, cx.theme().primary, window, cx);
+        let accent = lit_accent(window, cx);
         let queued = panel == Some(SidePanel::Queue);
         let lyrical = panel == Some(SidePanel::Lyrics);
-        let queue_tint = self.control_glyph(
-            "bar-queue",
-            if queued { accent } else { muted },
-            queued,
-            window,
-            cx,
-        );
-        let lyrics_tint = self.control_glyph(
-            "bar-lyrics",
-            if lyrical { accent } else { muted },
-            lyrical,
-            window,
-            cx,
-        );
 
         h_flex()
             // The same weight the meta block carries, so the transport between them is centred.
@@ -133,106 +115,72 @@ impl NowPlaying {
             .gap_4()
             .justify_end()
             .when(wanted.volume, |row| {
-                row.child(self.volume_control(room.level, window, cx))
+                row.child(self.volume_control(room.level, cx))
             })
             .when(wanted.queue, |row| {
                 row.child(
-                    self.framed(
-                        "bar-queue",
-                        utility("bar-queue", icons::LIST, queue_tint, cx)
-                            .tooltip(t("up_next"))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.devices_open = false;
-                                if this.presentation == crate::Presentation::SheetBar {
-                                    this.set_tab(store::layout::SheetTab::Queue, cx);
-                                    return;
-                                }
-                                Chrome::global(cx).update(cx, |chrome, cx| {
-                                    chrome.toggle_panel(SidePanel::Queue, cx)
-                                });
-                            })),
-                        window,
-                        cx,
-                    ),
+                    utility("bar-queue", icons::LIST)
+                        .lit(queued)
+                        .accent(accent)
+                        .tooltip(t("up_next"))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.devices_open = false;
+                            if this.presentation == crate::Presentation::SheetBar {
+                                this.set_tab(store::layout::SheetTab::Queue, cx);
+                                return;
+                            }
+                            Chrome::global(cx)
+                                .update(cx, |chrome, cx| chrome.toggle_panel(SidePanel::Queue, cx));
+                        })),
                 )
             })
             .when(wanted.lyrics, |row| {
                 row.child(
-                    self.framed(
-                        "bar-lyrics",
-                        utility("bar-lyrics", icons::LYRICS, lyrics_tint, cx)
-                            .tooltip(t("lyrics"))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.devices_open = false;
-                                if this.presentation == crate::Presentation::SheetBar {
-                                    this.set_tab(store::layout::SheetTab::Lyrics, cx);
-                                    return;
-                                }
-                                Chrome::global(cx).update(cx, |chrome, cx| {
-                                    chrome.toggle_panel(SidePanel::Lyrics, cx)
-                                });
-                            })),
-                        window,
-                        cx,
-                    ),
+                    utility("bar-lyrics", icons::LYRICS)
+                        .lit(lyrical)
+                        .accent(accent)
+                        .tooltip(t("lyrics"))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.devices_open = false;
+                            if this.presentation == crate::Presentation::SheetBar {
+                                this.set_tab(store::layout::SheetTab::Lyrics, cx);
+                                return;
+                            }
+                            Chrome::global(cx).update(cx, |chrome, cx| {
+                                chrome.toggle_panel(SidePanel::Lyrics, cx)
+                            });
+                        })),
                 )
             })
-            .children(self.devices_button(window, cx))
+            .children(self.devices_button(accent, cx))
             .when(room.share, |row| {
-                row.child(self.share_button(
-                    style::chrome().round_button,
-                    UTILITY_GLYPH,
-                    window,
-                    cx,
-                ))
+                row.child(
+                    self.share_mark("bar-share", cx)
+                        .size(style::chrome().round_button, UTILITY_GLYPH),
+                )
             })
             .when(room.mini, |row| {
                 row.child(
-                    self.framed(
-                        "bar-mini",
-                        utility(
-                            "bar-mini",
-                            icons::COLLAPSE,
-                            self.control_glyph("bar-mini", muted, false, window, cx),
-                            cx,
-                        )
+                    utility("bar-mini", icons::COLLAPSE)
                         .tooltip(t("mini_player"))
                         .on_click(|_, _, cx| crate::open_mini(cx)),
-                        window,
-                        cx,
-                    ),
                 )
             })
             .child(
-                self.framed(
-                    "bar-sheet",
-                    utility(
-                        "bar-sheet",
-                        icons::EXPAND,
-                        self.control_glyph("bar-sheet", muted, false, window, cx),
-                        cx,
-                    )
+                utility("bar-sheet", icons::EXPAND)
                     .tooltip(t("now_playing"))
                     .on_click(|_, _, cx| {
                         Chrome::global(cx).update(cx, |chrome, cx| chrome.toggle_sheet(cx))
                     }),
-                    window,
-                    cx,
-                ),
             )
     }
 }
 
 /// The shape every button at the right end of the bar takes.
-pub(crate) fn utility(id: &'static str, glyph: &'static str, tint: Hsla, cx: &App) -> Button {
-    let button = Button::new(id)
-        .ghost()
-        .with_size(UTILITY_GLYPH * (4. / 3.))
+pub(crate) fn utility(id: &'static str, glyph: &'static str) -> IconButton {
+    IconButton::new(id, glyph)
         .size(style::chrome().round_button)
-        .rounded(style::chrome().round_button / 2.)
-        .icon(icons::icon(glyph))
-        .custom(style::bare_button(tint, cx));
-    focus::quiet(button, cx)
+        .glyph(UTILITY_GLYPH)
 }
 
 /// Whether the title's own dots button still fits, which the meta block has to ask.

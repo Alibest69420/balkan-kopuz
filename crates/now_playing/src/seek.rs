@@ -1,76 +1,63 @@
-//! The seek bar: a hair-thin paint in a hit area you can actually hit, with the buffer under it.
+//! The one entity that follows the playhead: scrubbing, the clocks and the bar, so a tick redraws only them.
 
-use components::format::duration;
-use components::{motion, style};
-use gpui_kit::base::slider::{Slider as BareSlider, SliderIndicator, SliderTrack};
-use gpui_kit::component::{ActiveTheme as _, h_flex};
-use gpui_kit::prelude::FluentBuilder as _;
+use components::{SeekBar, TrackClock};
+use gpui_kit::base::slider::{SliderEvent, SliderState};
+use gpui_kit::component::h_flex;
 use gpui_kit::{
-    Animation, AnimationExt as _, Axis, Context, Hsla, InteractiveElement as _, IntoElement,
-    MouseMoveEvent, ParentElement as _, Pixels, SharedString, StatefulInteractiveElement as _,
-    Styled, Window, div, px, relative,
+    AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
+    Subscription, Window, div,
 };
-use store::PlayerModel;
+use store::{PlayerModel, Playhead};
 
-use crate::{NowPlaying, buffer, clock, played_fraction, track_duration_ms};
+use crate::{fraction_state, played_fraction, seekable_duration_ms, track_duration_ms};
 
-// The paint, and the hit area around it: a 3px target is not a target.
-const BAR: Pixels = px(3.);
-const HIT: Pixels = px(18.);
-const KNOB: Pixels = px(12.);
-// The floating time that follows the pointer, and how far above the bar it sits.
-const PREVIEW_LIFT: Pixels = px(26.);
-const PREVIEW_WIDTH: Pixels = px(56.);
-const SCAN_PERIOD: std::time::Duration = std::time::Duration::from_millis(1_400);
-/// How much of the track the sweep covers; the rest is how far it has to travel.
-const SCAN_WIDTH: f32 = 0.25;
+/// A thousandth of the track is finer than one pixel of bar in any window this app opens in.
+const SEEK_STEP: f32 = 0.001;
 
-impl NowPlaying {
-    /// The clocks either side of the bar; the right one toggles between the length and what is left.
-    pub(crate) fn seek_row(
-        &self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement + use<> {
-        let (position_ms, total_ms) = {
-            let player = PlayerModel::global(cx);
-            let player = player.read(cx);
-            (player.position_ms(), track_duration_ms(player))
-        };
-        let shown_ms = self.shown_ms(position_ms, total_ms);
-        let dim = style::slate_500(cx);
-        let width = clock::width(total_ms);
+/// What one surface draws of the playhead.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Layout {
+    /// The clock either side of the bar, with the right one toggling to what is left.
+    Clocked,
+    /// The bar alone, for a surface that shows the reading elsewhere.
+    BarOnly,
+}
 
-        h_flex()
-            .w_full()
-            .gap_2()
-            .items_center()
-            .child(
-                div()
-                    .w(width)
-                    .flex_shrink_0()
-                    .text_right()
-                    .text_size(style::text_10())
-                    .font_features(clock::tabular())
-                    .text_color(dim)
-                    .child(duration(shown_ms)),
-            )
-            .child(div().flex_1().min_w_0().child(self.seek_bar(window, cx)))
-            .child(
-                div()
-                    .id("seek-trailing-clock")
-                    .w(width)
-                    .flex_shrink_0()
-                    .cursor_pointer()
-                    .text_size(style::text_10())
-                    .font_features(clock::tabular())
-                    .text_color(dim)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.remaining = !this.remaining;
-                        cx.notify();
-                    }))
-                    .child(clock::trailing(shown_ms, total_ms, self.remaining)),
-            )
+/// The seek slider and everything that moves with the playhead; the only observer of it.
+pub(crate) struct SeekRow {
+    state: Entity<SliderState>,
+    layout: Layout,
+    /// The fraction under the pointer while a drag runs; the release commits it.
+    scrubbing: Option<f32>,
+    _subscriptions: Vec<Subscription>,
+}
+
+impl SeekRow {
+    pub(crate) fn new(layout: Layout, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let start = played_fraction(PlayerModel::global(cx).read(cx));
+        let state = cx.new(|_| fraction_state(SEEK_STEP, start));
+        let subscriptions = vec![
+            cx.subscribe_in(&state, window, Self::on_seek),
+            cx.observe_in(&Playhead::global(cx), window, |this, _, window, cx| {
+                this.sync(window, cx);
+            }),
+        ];
+        Self {
+            state,
+            layout,
+            scrubbing: None,
+            _subscriptions: subscriptions,
+        }
+    }
+
+    /// Carry the daemon's position into the slider the pointer is not holding.
+    fn sync(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.scrubbing.is_none() {
+            let played = played_fraction(PlayerModel::global(cx).read(cx));
+            self.state
+                .update(cx, |state, cx| state.set_value(played, window, cx));
+        }
+        cx.notify();
     }
 
     /// What the clocks read: where the pointer is holding the bar, else where the daemon is.
@@ -81,176 +68,95 @@ impl NowPlaying {
         }
     }
 
-    pub(crate) fn seek_bar(
-        &self,
-        window: &mut Window,
+    fn on_seek(
+        &mut self,
+        _: &Entity<SliderState>,
+        event: &SliderEvent,
+        _: &mut Window,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement + use<> {
-        let (played, total_ms, loading, ranges, seekable) = {
+    ) {
+        match event {
+            SliderEvent::Change(value) => self.scrubbing = Some(value.end()),
+            SliderEvent::Release(value) => {
+                let fraction = value.end();
+                self.scrubbing = None;
+                if let Some(total) = seekable_duration_ms(cx) {
+                    let position = (f64::from(fraction) * total as f64).round() as u64;
+                    PlayerModel::global(cx)
+                        .update(cx, |player, cx| player.seek(position.min(total), cx));
+                }
+            }
+        }
+        cx.notify();
+    }
+}
+
+impl Render for SeekRow {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let (position_ms, total_ms, played, loading, ranges, seekable) = {
             let player = PlayerModel::global(cx);
             let player = player.read(cx);
             (
-                played_fraction(player),
+                player.position_ms(),
                 track_duration_ms(player),
+                played_fraction(player),
                 player.is_loading(),
                 player.buffered().to_vec(),
                 player.track().is_none_or(|track| track.seekable),
             )
         };
-        let played = self.scrubbing.unwrap_or(played);
-        let live = total_ms.is_some() && !loading && seekable;
-        let bars = buffer::visual_ranges(&ranges, played * 100.);
-        let scanning = loading && bars.is_empty();
+        let shown_ms = self.shown_ms(position_ms, total_ms);
+        let bar = SeekBar::new("seek", &self.state)
+            .played(self.scrubbing.unwrap_or(played))
+            .total(total_ms)
+            .buffered(&ranges)
+            .loading(loading)
+            .seekable(seekable)
+            .scrubbing(self.scrubbing.is_some())
+            .preview(true);
 
-        let fill = motion::accent(theme::Surface::Chrome, cx.theme().foreground, window, cx);
-        let track = style::white(style::ACTIVE, cx);
-        let buffered = style::white(style::TEXT_DIM, cx);
-        let held = self.scrubbing.is_some() || self.preview.is_some();
-        let knob = motion::length(
-            "seek-knob",
-            if held && live { KNOB } else { px(0.) },
-            motion::FAST,
-            window,
-            cx,
-        );
-
-        div()
-            .id("seek")
-            .relative()
-            .w_full()
-            .h(HIT)
-            .when(live, |hit| {
-                hit.on_mouse_move(cx.listener(Self::preview_seek))
-                    .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
-                        if !*hovered && this.preview.take().is_some() {
-                            cx.notify();
-                        }
-                    }))
-            })
-            .child(
-                BareSlider::new(&self.seek)
-                    .axis(Axis::Horizontal)
-                    .disabled(!live)
-                    .w_full()
-                    .child(
-                        SliderTrack::new(&self.seek)
-                            .axis(Axis::Horizontal)
-                            .disabled(!live)
-                            .w_full()
-                            .h(HIT)
-                            .flex()
-                            .items_center()
-                            .child(
-                                SliderIndicator::new(&self.seek)
-                                    .relative()
-                                    .w_full()
-                                    .h(BAR)
-                                    .rounded_full()
-                                    .bg(track)
-                                    .children(
-                                        bars.into_iter()
-                                            .map(|(left, right)| span(left, right, buffered)),
-                                    )
-                                    .when(scanning, |bar| bar.child(scan(fill)))
-                                    .child(
-                                        div()
-                                            .absolute()
-                                            .top_0()
-                                            .left_0()
-                                            .h_full()
-                                            .w(relative(played))
-                                            .rounded_full()
-                                            .bg(fill),
-                                    )
-                                    .child(
-                                        div()
-                                            .absolute()
-                                            .top(-(knob - BAR) / 2.)
-                                            .left(relative(played))
-                                            .ml(-knob / 2.)
-                                            .size(knob)
-                                            .rounded_full()
-                                            .bg(fill),
-                                    ),
-                            ),
-                    ),
-            )
-            .children(self.preview_label(total_ms, cx))
-    }
-
-    /// The time under the pointer, floating where the pointer is rather than parked on the bar.
-    fn preview_label(
-        &self,
-        total_ms: Option<u64>,
-        cx: &Context<Self>,
-    ) -> Option<impl IntoElement + use<>> {
-        let (fraction, x) = self.preview?;
-        let total = total_ms?;
-        let at: SharedString = duration((f64::from(fraction) * total as f64) as u64);
-        Some(
-            div()
-                .absolute()
-                .bottom(PREVIEW_LIFT)
-                .left(x)
-                .ml(-PREVIEW_WIDTH / 2.)
-                .w(PREVIEW_WIDTH)
-                .text_center()
-                .text_size(style::text_10())
-                .font_features(clock::tabular())
-                .px_1()
-                .py_0p5()
-                .rounded(style::radius(cx))
-                .bg(cx.theme().popover)
-                .text_color(cx.theme().popover_foreground)
-                .shadow_md()
-                .child(at),
-        )
-    }
-
-    fn preview_seek(&mut self, event: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
-        let bounds = self.seek.read(cx).bounds();
-        if bounds.size.width <= px(0.) {
-            return;
-        }
-        let local = (event.position.x - bounds.left()).clamp(px(0.), bounds.size.width);
-        let fraction = f32::from(local) / f32::from(bounds.size.width);
-        let next = Some((fraction, local));
-        if self.preview != next {
-            self.preview = next;
-            cx.notify();
+        match self.layout {
+            Layout::BarOnly => div().w_full().child(bar).into_any_element(),
+            Layout::Clocked => h_flex()
+                .w_full()
+                .gap_2()
+                .items_center()
+                .child(TrackClock::new(shown_ms, total_ms))
+                .child(div().flex_1().min_w_0().child(bar))
+                .child(
+                    TrackClock::new(shown_ms, total_ms)
+                        .id("seek-trailing")
+                        .trailing()
+                        .remaining_toggle(true),
+                )
+                .into_any_element(),
         }
     }
 }
 
-/// One buffered range, as a fraction of the track it covers.
-fn span(left: f32, right: f32, color: Hsla) -> impl IntoElement {
-    div()
-        .absolute()
-        .top_0()
-        .h_full()
-        .left(relative(left / 100.))
-        .w(relative((right - left).max(0.) / 100.))
-        .rounded_full()
-        .bg(color)
+/// The reading the mini surface keeps beside the title, following the bar it belongs to.
+pub(crate) struct PlayheadClock {
+    seek: Entity<SeekRow>,
+    _observe: Subscription,
 }
 
-/// Before any range arrives, a sweep says the fetch is live rather than stalled.
-fn scan(color: Hsla) -> impl IntoElement {
-    div()
-        .absolute()
-        .top_0()
-        .h_full()
-        .rounded_full()
-        .bg(color)
-        .with_animation(
-            "seek-scan",
-            Animation::new(SCAN_PERIOD).repeat(),
-            |bar, progress| {
-                // Both edges are held inside the track, so it grows in and out of the round ends
-                // rather than being cut square against them: an overflow clip is a rectangle here.
-                let lead = progress * (1. + SCAN_WIDTH);
-                let (left, right) = ((lead - SCAN_WIDTH).max(0.), lead.min(1.));
-                bar.left(relative(left)).w(relative(right - left))
-            },
-        )
+impl PlayheadClock {
+    pub(crate) fn new(seek: &Entity<SeekRow>, cx: &mut Context<Self>) -> Self {
+        Self {
+            seek: seek.clone(),
+            _observe: cx.observe(seek, |_, _, cx| cx.notify()),
+        }
+    }
+}
+
+impl Render for PlayheadClock {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let (position_ms, total_ms) = {
+            let player = PlayerModel::global(cx);
+            let player = player.read(cx);
+            (player.position_ms(), track_duration_ms(player))
+        };
+        let shown_ms = self.seek.read(cx).shown_ms(position_ms, total_ms);
+        TrackClock::new(shown_ms, total_ms).summary()
+    }
 }

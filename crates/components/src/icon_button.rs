@@ -3,11 +3,12 @@
 use std::rc::Rc;
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu};
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, ClickEvent, Hsla, IntoElement, ParentElement as _, Pixels, RenderOnce, SharedString,
-    Styled as _, Window, div, px,
+    AnyElement, App, ClickEvent, Context, Hsla, IntoElement, ParentElement as _, Pixels,
+    RenderOnce, SharedString, Styled as _, Window, div, px,
 };
 
 use crate::{focus, hover, icons, motion, style};
@@ -34,14 +35,22 @@ pub enum IconTone {
     Outline,
     /// `bg-black/40 hover:bg-black/60` over a cover or a list, ringed in white/10.
     Scrim,
+    /// `bg-white/10 hover:bg-white/15` with a white/70 glyph: the buttons beside a hero title.
+    Soft,
 }
 
 impl IconTone {
     /// The fill, the glyph, and the ring, for a pointer over it or not.
-    fn colours(self, hot: bool, lit: bool, cx: &App) -> (Hsla, Hsla, Option<(f32, f32)>) {
+    fn colours(
+        self,
+        hot: bool,
+        lit: bool,
+        accent: Option<Hsla>,
+        cx: &App,
+    ) -> (Hsla, Hsla, Option<(f32, f32)>) {
         let wash = style::white(if hot { style::HOVER } else { 0. }, cx);
         let ink = |rest: Hsla| match (lit, hot) {
-            (true, _) => cx.theme().primary,
+            (true, _) => accent.unwrap_or(cx.theme().primary),
             (false, true) => cx.theme().foreground,
             (false, false) => rest,
         };
@@ -56,6 +65,11 @@ impl IconTone {
             ),
             IconTone::Quiet => (wash, ink(style::slate_400(cx)), None),
             IconTone::Outline => (wash, ink(style::white(0.7, cx)), Some(OUTLINE)),
+            IconTone::Soft => (
+                style::white(if hot { 0.15 } else { style::HOVER }, cx),
+                ink(style::white(0.7, cx)),
+                None,
+            ),
             IconTone::Scrim => (
                 style::black(if hot { 0.6 } else { 0.4 }, cx),
                 ink(style::white(style::TEXT_STRONG, cx)),
@@ -66,6 +80,7 @@ impl IconTone {
 }
 
 type OnClick = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
+type Host = Box<dyn FnOnce(Button) -> AnyElement>;
 
 /// A circle holding one glyph; its frame owns the hover, so the colours tween and a tooltip still fits.
 #[derive(IntoElement)]
@@ -77,12 +92,14 @@ pub struct IconButton {
     tone: IconTone,
     ring: Option<(f32, f32)>,
     lit: bool,
+    accent: Option<Hsla>,
     disabled: bool,
     loading: bool,
     stop: bool,
     shadow: bool,
     tooltip: Option<SharedString>,
     click: Option<OnClick>,
+    host: Option<Host>,
 }
 
 impl IconButton {
@@ -95,12 +112,14 @@ impl IconButton {
             tone: IconTone::Quiet,
             ring: None,
             lit: false,
+            accent: None,
             disabled: false,
             loading: false,
             stop: false,
             shadow: false,
             tooltip: None,
             click: None,
+            host: None,
         }
     }
 
@@ -129,6 +148,26 @@ impl IconButton {
     /// Already on, such as shuffle: the glyph takes the accent.
     pub fn lit(mut self, lit: bool) -> Self {
         self.lit = lit;
+        self
+    }
+
+    /// The colour a lit glyph takes in place of the theme's primary, such as the cover-tinted accent.
+    pub fn accent(mut self, accent: Hsla) -> Self {
+        self.accent = Some(accent);
+        self
+    }
+
+    /// A dropdown menu on the button, its frame still owning the hover.
+    pub fn menu(
+        self,
+        build: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static,
+    ) -> Self {
+        self.host(move |button| button.dropdown_menu(build).into_any_element())
+    }
+
+    /// Wrap the inner button in something that needs it as a trigger, such as a popover.
+    pub fn host(mut self, host: impl FnOnce(Button) -> AnyElement + 'static) -> Self {
+        self.host = Some(Box::new(host));
         self
     }
 
@@ -222,7 +261,7 @@ impl RenderOnce for IconButton {
         let id = self.id;
         let (hovered, pointer) = motion::hovered(motion::channel(&id, HOVER), window, cx);
         let hot = hovered && !self.disabled;
-        let (fill, ink, ring) = self.tone.colours(hot, self.lit, cx);
+        let (fill, ink, ring) = self.tone.colours(hot, self.lit, self.accent, cx);
         let fill = motion::color(motion::channel(&id, WASH), fill, window, cx);
         let ink = motion::color(motion::channel(&id, INK), ink, window, cx);
         let edge = self.ring.or(ring).map(|(rest, lifted)| {
@@ -253,7 +292,12 @@ impl RenderOnce for IconButton {
                     click(event, window, cx);
                 })
             });
-        hover::framed(&id, pointer, focus::quiet(button, cx))
+        let button = focus::quiet(button, cx);
+        let control = match self.host {
+            Some(host) => host(button),
+            None => button.into_any_element(),
+        };
+        hover::framed(&id, pointer, control)
             .flex_shrink_0()
             .size(self.size)
             .rounded_full()

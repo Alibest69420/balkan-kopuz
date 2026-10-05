@@ -1,54 +1,22 @@
 //! The mini surface: cover, title, transport and a hair of seek bar, in ~380×148.
 
 use components::format::t;
-use components::{Cover, icons, style};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use components::{Cover, IconButton, MetaLayout, NowPlayingMeta, TransportMetrics, icons, style};
+use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::{
-    AnyElement, Context, FontWeight, IntoElement, ParentElement as _, Pixels, SharedString, Styled,
-    Window, div, px,
+    AnyElement, Context, IntoElement, ParentElement as _, Pixels, Styled, Window, div, px,
 };
-use store::PlayerModel;
 
 use crate::NowPlaying;
-use crate::transport::Metrics;
-use crate::{clock, track_duration_ms};
 
 const COVER: Pixels = px(56.);
 const RESTORE: Pixels = px(28.);
 const RESTORE_GLYPH: Pixels = px(12.);
 
 impl NowPlaying {
-    pub(crate) fn render_mini(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let (track, position_ms, total_ms) = {
-            let player = PlayerModel::global(cx);
-            let player = player.read(cx);
-            (
-                player.track().cloned(),
-                player.position_ms(),
-                track_duration_ms(player),
-            )
-        };
-        let title = track
-            .as_ref()
-            .map(|track| SharedString::from(track.title.clone()))
-            .unwrap_or_default();
-        let artist = track
-            .as_ref()
-            .map(|track| SharedString::from(track.artist.clone()))
-            .unwrap_or_default();
+    pub(crate) fn render_mini(&mut self, _: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let track = self.track(cx);
         let artwork = track.as_ref().and_then(|track| track.artwork.clone());
-        let shown_ms = self.shown_ms(position_ms, total_ms);
-        let reading: SharedString = format!(
-            "{} {}",
-            components::format::duration(shown_ms),
-            clock::trailing(shown_ms, total_ms, true)
-        )
-        .into();
 
         v_flex()
             .size_full()
@@ -68,43 +36,17 @@ impl NowPlaying {
                             .size(COVER)
                             .rounded(style::cover_radius()),
                     )
+                    .child(match track.as_ref() {
+                        Some(track) => NowPlayingMeta::new("mini", track)
+                            .layout(MetaLayout::Mini)
+                            .footer(div().children(self.clock.clone()))
+                            .into_any_element(),
+                        None => div().flex_1().into_any_element(),
+                    })
                     .child(
-                        v_flex()
-                            .flex_1()
-                            .min_w_0()
-                            .justify_center()
-                            .gap_0p5()
-                            .child(
-                                div()
-                                    .truncate()
-                                    .text_sm()
-                                    .font_weight(FontWeight::BOLD)
-                                    .text_color(style::white(0.95, cx))
-                                    .child(title),
-                            )
-                            .child(
-                                div()
-                                    .truncate()
-                                    .text_size(style::text_11())
-                                    .text_color(style::white(0.55, cx))
-                                    .child(artist),
-                            )
-                            .child(
-                                div()
-                                    .text_size(style::text_9())
-                                    .font_features(clock::tabular())
-                                    .text_color(style::white(0.35, cx))
-                                    .child(reading),
-                            ),
-                    )
-                    .child(
-                        Button::new("mini-restore")
-                            .ghost()
-                            .with_size(RESTORE_GLYPH * (4. / 3.))
+                        IconButton::new("mini-restore", icons::EXPAND)
                             .size(RESTORE)
-                            .rounded(RESTORE / 2.)
-                            .icon(icons::icon(icons::EXPAND))
-                            .custom(style::bare_button(style::slate_400(cx), cx))
+                            .glyph(RESTORE_GLYPH)
                             .tooltip(t("restore_full_player"))
                             .on_click(|_, _, cx| crate::close_mini(cx)),
                     ),
@@ -116,14 +58,14 @@ impl NowPlaying {
                     .justify_center()
                     .px_3()
                     .pb_1()
-                    .child(self.transport(Metrics::COMPACT, false, window, cx)),
+                    .child(self.transport(TransportMetrics::COMPACT, false, cx)),
             )
             .child(
                 div()
                     .flex_shrink_0()
                     .px_3()
                     .pb_2()
-                    .child(self.seek_bar(window, cx)),
+                    .children(self.seek.clone()),
             )
             .into_any_element()
     }

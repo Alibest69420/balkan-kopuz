@@ -22,8 +22,10 @@ pub mod menus;
 pub mod page;
 pub mod pick_list;
 pub mod resizer;
+pub mod resume_card;
 pub mod schema_form;
 pub mod search;
+pub mod seek_bar;
 pub mod segmented;
 pub mod selection;
 pub mod settings;
@@ -32,9 +34,13 @@ pub mod sort;
 pub mod source_mark;
 pub mod states;
 pub mod tabs;
+pub mod thin_slider;
 pub mod track_header;
 pub mod track_list;
+pub mod track_meta;
 pub mod track_row;
+pub mod transport;
+pub mod volume_control;
 
 pub use primitives::{
     Axis, Roving, Step, backdrop, duration, focus, format, hover, icons, marker, motion, scroll,
@@ -63,8 +69,10 @@ pub use menus::{Menu, WithContextMenu};
 pub use page::page;
 pub use pick_list::{PickItem, PickList, QuickCreate};
 pub use resizer::{Edge, EdgeResizer};
+pub use resume_card::ResumeCard;
 pub use schema_form::{FieldChanged, SchemaForm};
 pub use search::{SearchField, SearchTrigger, TriggerSize};
+pub use seek_bar::{SeekBar, TrackClock};
 pub use segmented::{Segment, Segmented, view_toggle};
 pub use selection::{SelectionBar, Verb};
 pub use settings::{Choice, Lockable, Section, SettingRow, SliderRow, Toggle, section};
@@ -72,6 +80,12 @@ pub use sort::SortControl;
 pub use source_mark::SourceMark;
 pub use states::{EmptyState, ErrorBanner, FieldProblem, Loading, StateSize};
 pub use tabs::{Bar, Tab, TabStrip};
+pub use thin_slider::ThinSlider;
 pub use track_header::TrackHeader;
 pub use track_list::{TrackActions, TrackDrag, TrackList, TrackListEvent, TrackListOptions};
+pub use track_meta::{MarqueeText, MetaLayout, NowPlayingMeta, PlayingFromLink, TrackMarks};
 pub use track_row::TrackRow;
+pub use transport::{
+    PlayPauseButton, RepeatButton, Transport, TransportMetrics, TransportOverflow, lit_accent,
+};
+pub use volume_control::VolumeControl;

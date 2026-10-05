@@ -176,7 +176,7 @@ impl Render for Home {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("home");
         components::scroll::smooth("home-scroll", &self.page, window, cx);
-        let banner = resume::banner(window, cx);
+        let banner = resume::banner(cx);
         let drawn = self.drawn(cx);
         let mut rows: Vec<AnyElement> = Vec::with_capacity(drawn.len());
         for index in drawn {

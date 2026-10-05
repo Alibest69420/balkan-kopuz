@@ -1,8 +1,6 @@
 //! One now-playing entity, drawn at three sizes: the bar, the sheet that grows out of it, and the mini window.
 
 mod bar;
-mod buffer;
-mod clock;
 mod devices;
 mod lyrics_view;
 mod meta;
@@ -16,13 +14,14 @@ mod transport;
 mod volume;
 mod window;
 
+use components::volume_control::to_ui;
 use gpui_kit::base::slider::{SliderEvent, SliderState};
 use gpui_kit::{
     App, AppContext as _, Bounds, Context, ElementId, Entity, Global, IntoElement, Pixels, Render,
     Subscription, Task, Window,
 };
 use store::layout::SheetTab;
-use store::{Chrome, ConfigModel, FavoritesModel, PlayerModel, Playhead, QueueModel, SourcesModel};
+use store::{Chrome, ConfigModel, FavoritesModel, PlayerModel, QueueModel, SourcesModel};
 
 pub use bar::{bar_height, utility_metrics};
 pub use lyrics_view::LyricsView;
@@ -30,9 +29,12 @@ pub use queue_view::QueueView;
 pub use settings::register as register_settings;
 pub use window::{MiniWindow, close_mini, is_open as mini_is_open, open_mini, toggle_mini};
 
-/// A thousandth of the track is finer than one pixel of bar in any window this app opens in.
-const SEEK_STEP: f32 = 0.001;
+use seek::{Layout, PlayheadClock, SeekRow};
+
 const VOLUME_STEP: f32 = 0.001;
+
+#[cfg(test)]
+mod playhead_tests;
 
 /// Which of the sizes one entity is drawn at.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,21 +68,12 @@ fn cover_slot(cx: &App) -> Option<Bounds<Pixels>> {
 pub struct NowPlaying {
     presentation: Presentation,
     sheet_focus: sheet::ModalFocus,
-    seek: Entity<SliderState>,
+    /// Follows the playhead on its own, so a tick never rebuilds this entity.
+    seek: Option<Entity<SeekRow>>,
+    clock: Option<Entity<PlayheadClock>>,
     volume: Entity<SliderState>,
-    /// The fraction under the pointer while a drag runs; the release commits it.
-    scrubbing: Option<f32>,
     /// Whether the pointer is holding the level, which the daemon's own echo must not undo.
     volume_held: bool,
-    /// How wide the bar's title column last measured, which is what a title has to fit.
-    title_room: Pixels,
-    /// What the pointer is hovering the seek bar at, and how far along the track that is.
-    preview: Option<(f32, Pixels)>,
-    /// The right-hand clock counts down rather than naming the length.
-    remaining: bool,
-    /// Wheel travel that has not yet added up to a volume step.
-    wheel: f32,
-    hovered: Option<&'static str>,
     tab: SheetTab,
     /// What the docked column has been dragged to, once it has been.
     panel_width: Option<Pixels>,
@@ -119,16 +112,24 @@ impl NowPlaying {
 
     fn new(presentation: Presentation, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let level = PlayerModel::global(cx).read(cx).volume();
-        let seek = cx.new(|_| fraction_state(SEEK_STEP, 0.));
-        let volume = cx.new(|_| fraction_state(VOLUME_STEP, volume::to_ui(level)));
+        let volume = cx.new(|_| fraction_state(VOLUME_STEP, to_ui(level)));
         let holds_tabs = matches!(presentation, Presentation::Sheet | Presentation::Panel);
+        let mini = presentation == Presentation::Mini;
+        let seek = (presentation != Presentation::Panel).then(|| {
+            let layout = if mini {
+                Layout::BarOnly
+            } else {
+                Layout::Clocked
+            };
+            cx.new(|cx| SeekRow::new(layout, window, cx))
+        });
+        let clock = seek
+            .as_ref()
+            .filter(|_| mini)
+            .map(|seek| cx.new(|cx| PlayheadClock::new(seek, cx)));
 
         let subscriptions = vec![
-            cx.subscribe_in(&seek, window, Self::on_seek),
             cx.subscribe_in(&volume, window, Self::on_volume),
-            cx.observe_in(&Playhead::global(cx), window, |this, _, window, cx| {
-                this.sync(window, cx);
-            }),
             cx.observe_in(&PlayerModel::global(cx), window, |this, _, window, cx| {
                 this.sync(window, cx);
             }),
@@ -156,14 +157,9 @@ impl NowPlaying {
             presentation,
             sheet_focus: sheet::ModalFocus::new(cx),
             seek,
+            clock,
             volume,
-            scrubbing: None,
             volume_held: false,
-            title_room: Pixels::ZERO,
-            preview: None,
-            remaining: false,
-            wheel: 0.,
-            hovered: None,
             tab: store::layout(cx).sheet.tab,
             panel_width: None,
             root: None,
@@ -179,40 +175,14 @@ impl NowPlaying {
         }
     }
 
-    /// Carry the daemon's position and level into the sliders the pointer is not holding.
+    /// Carry the daemon's level into the slider the pointer is not holding.
     fn sync(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let (played, level) = {
-            let player = PlayerModel::global(cx);
-            let player = player.read(cx);
-            (played_fraction(player), player.volume())
-        };
-        if self.scrubbing.is_none() {
-            self.seek
-                .update(cx, |state, cx| state.set_value(played, window, cx));
-        }
         if !self.volume_held {
-            let shown = volume::to_ui(level);
+            let shown = to_ui(PlayerModel::global(cx).read(cx).volume());
             self.volume
                 .update(cx, |state, cx| state.set_value(shown, window, cx));
         }
         cx.notify();
-    }
-
-    /// Prepaint runs every frame, so a width that has not moved must not dirty the window.
-    fn set_title_room(&mut self, room: Pixels, cx: &mut Context<Self>) {
-        if self.title_room != room {
-            self.title_room = room;
-            cx.notify();
-        }
-    }
-
-    /// A leave only clears the control it belongs to; the enter of the next one has already landed.
-    fn set_hovered(&mut self, id: &'static str, hovered: bool, cx: &mut Context<Self>) {
-        let next = if hovered { Some(id) } else { None };
-        if (hovered || self.hovered == Some(id)) && self.hovered != next {
-            self.hovered = next;
-            cx.notify();
-        }
     }
 
     fn track(&self, cx: &App) -> Option<api::TrackInfo> {
@@ -257,28 +227,6 @@ impl Render for NowPlaying {
 }
 
 impl NowPlaying {
-    fn on_seek(
-        &mut self,
-        _: &Entity<SliderState>,
-        event: &SliderEvent,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        match event {
-            SliderEvent::Change(value) => self.scrubbing = Some(value.end()),
-            SliderEvent::Release(value) => {
-                let fraction = value.end();
-                self.scrubbing = None;
-                if let Some(total) = seekable_duration_ms(cx) {
-                    let position = (f64::from(fraction) * total as f64).round() as u64;
-                    PlayerModel::global(cx)
-                        .update(cx, |player, cx| player.seek(position.min(total), cx));
-                }
-            }
-        }
-        cx.notify();
-    }
-
     fn on_volume(
         &mut self,
         _: &Entity<SliderState>,
@@ -296,7 +244,7 @@ impl NowPlaying {
                 (value.end(), true)
             }
         };
-        let level = volume::to_wire(shown);
+        let level = components::volume_control::to_wire(shown);
         PlayerModel::global(cx).update(cx, |player, cx| {
             if save {
                 player.set_volume_saved(level, cx)

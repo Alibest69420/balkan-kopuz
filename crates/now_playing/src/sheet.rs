@@ -5,24 +5,22 @@
 mod tests;
 
 use components::format::t;
-use components::{Cover, Link, Tone, icons, menus, motion, style};
-use gpui_kit::base::ElementExt as _;
-use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
-use gpui_kit::component::menu::DropdownMenu as _;
-use gpui_kit::component::{
-    ActiveTheme as _, Disableable as _, FocusTrapElement as _, Sizable as _, h_flex, v_flex,
+use components::{
+    Cover, IconButton, IconTone, MetaLayout, NowPlayingMeta, TransportMetrics, TransportOverflow,
+    icons, motion, style,
 };
+use gpui_kit::base::ElementExt as _;
+use gpui_kit::component::{ActiveTheme as _, FocusTrapElement as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, Context, FocusHandle, FontWeight, Hsla, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, SharedString, Styled, Window, div, point, px, relative, rems,
+    AnyElement, App, Context, FocusHandle, InteractiveElement as _, IntoElement,
+    ParentElement as _, Pixels, Styled, Window, div, point, px, relative, rems,
 };
 use store::layout::{Backdrop, Side};
-use store::{Chrome, ConfigModel, FavoritesModel, Route, SourcesModel};
+use store::{Chrome, ConfigModel, actions};
 
 use crate::NowPlaying;
-use crate::meta::{cover_size, playing_from, track_target};
-use crate::transport::Metrics;
+use crate::meta::{cover_size, playing_from};
 
 // The column the title, the clocks and the transport share, and the panel beside them.
 const COLUMN: f32 = 40.;
@@ -178,13 +176,6 @@ impl NowPlaying {
             .fullscreen_use_player_bar;
         let track = self.track(cx);
         let owner = cx.entity().downgrade();
-        let close = self.control_glyph(
-            "sheet-close",
-            style::white(style::TEXT_STRONG, cx),
-            false,
-            window,
-            cx,
-        );
 
         v_flex()
             .relative()
@@ -196,29 +187,17 @@ impl NowPlaying {
             .gap_6()
             .p_10()
             .child(
-                // Over a bright cover a bare glyph disappears, so the slot sits on a scrim of its own.
-                div()
-                    .absolute()
-                    .top_6()
-                    .left_6()
-                    .rounded(CLOSE / 2.)
-                    .bg(style::black(0.35, cx))
-                    .child(
-                        self.control_slot("sheet-close", CLOSE, window, cx).child(
-                            Button::new("sheet-close")
-                                .ghost()
-                                .with_size(CLOSE_GLYPH * (4. / 3.))
-                                .size(CLOSE)
-                                .rounded(CLOSE / 2.)
-                                .icon(icons::icon(icons::CHEVRON_DOWN))
-                                .custom(style::bare_button(close, cx))
-                                .tooltip(t("close"))
-                                .on_click(|_, _, cx| {
-                                    Chrome::global(cx)
-                                        .update(cx, |chrome, cx| chrome.set_sheet(false, cx))
-                                }),
-                        ),
-                    ),
+                div().absolute().top_6().left_6().child(
+                    IconButton::new("sheet-close", icons::CHEVRON_DOWN)
+                        .size(CLOSE)
+                        .glyph(CLOSE_GLYPH)
+                        // Over a bright cover a bare glyph disappears, so the button carries a scrim of its own.
+                        .tone(IconTone::Scrim)
+                        .tooltip(t("close"))
+                        .on_click(|_, _, cx| {
+                            Chrome::global(cx).update(cx, |chrome, cx| chrome.set_sheet(false, cx))
+                        }),
+                ),
             )
             .child(
                 // The hero cover is drawn by the flying layer; this only says where it lands.
@@ -246,16 +225,20 @@ impl NowPlaying {
                         .max_w(rems(COLUMN))
                         .items_center()
                         .gap_4()
-                        .child(self.seek_row(window, cx))
+                        .children(self.seek.clone())
                         .child(
                             h_flex()
                                 .items_center()
                                 .gap_4()
                                 .child(div().w(ACTION).flex_shrink_0())
-                                .child(self.transport(Metrics::HERO, true, window, cx))
-                                .child(self.transport_overflow(ACTION, ACTION_GLYPH, cx)),
+                                .child(self.transport(TransportMetrics::HERO, true, cx))
+                                .child(TransportOverflow::new(
+                                    "transport-overflow",
+                                    ACTION,
+                                    ACTION_GLYPH,
+                                )),
                         )
-                        .child(self.volume_control(true, window, cx)),
+                        .child(self.volume_control(true, cx)),
                 )
             })
             .into_any_element()
@@ -265,28 +248,18 @@ impl NowPlaying {
     fn title_block(
         &self,
         track: &api::TrackInfo,
-        window: &mut Window,
+        _: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        let capabilities = SourcesModel::global(cx).read(cx).capabilities();
-        let favorite = FavoritesModel::global(cx).read(cx).is_favorite(&track.key);
-        let key = track.key.clone();
-        let artist = track.artist.clone();
-        let artist_route = Route::artist_of(track);
-        let album = SharedString::from(track.album.clone());
-        let album_route =
-            (!track.album_id.is_empty()).then(|| Route::Album(track.album_id.clone().into()));
-        let heart = motion::color(
-            "sheet-heart",
-            if favorite {
-                cx.theme().danger
-            } else {
-                style::white(0.7, cx)
-            },
-            window,
-            cx,
-        );
-        let origin = playing_from(cx);
+        let marks = self
+            .marks("sheet", true, Some(track), cx)
+            .size(ACTION, ACTION_GLYPH)
+            .tone(IconTone::Soft)
+            .share(true)
+            .on_share({
+                let key = track.key.clone();
+                move |_, cx| actions::share_track(key.clone(), cx)
+            });
 
         v_flex()
             .w_full()
@@ -294,104 +267,12 @@ impl NowPlaying {
             .items_center()
             .gap_1()
             .child(
-                div()
-                    .w_full()
-                    .text_center()
-                    .text_size(rems(1.75))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .line_clamp(2)
-                    .child(SharedString::from(track.title.clone())),
+                NowPlayingMeta::new("sheet", track)
+                    .layout(MetaLayout::Hero)
+                    .origin(playing_from(cx))
+                    .on_before_navigate(close_sheet),
             )
-            .child(
-                h_flex()
-                    .max_w_full()
-                    .gap_2()
-                    .items_center()
-                    .justify_center()
-                    .text_lg()
-                    .text_color(style::white(0.7, cx))
-                    .child(
-                        Link::new("sheet-artist")
-                            .label(artist.clone())
-                            .route(artist_route)
-                            .underline(true)
-                            .on_before_navigate(close_sheet),
-                    )
-                    .when(!album.is_empty(), |row| {
-                        row.child(
-                            div()
-                                .flex_shrink_0()
-                                .text_color(style::white(style::TEXT_DIM, cx))
-                                .child("•"),
-                        )
-                        .child(
-                            Link::new("sheet-album")
-                                .label(album.clone())
-                                .route(album_route)
-                                .tone(Tone::Faint)
-                                .underline(true)
-                                .on_before_navigate(close_sheet),
-                        )
-                    }),
-            )
-            .children(origin.map(|(label, route)| {
-                Link::new("sheet-playing-from")
-                    .route(Some(route))
-                    .tone(Tone::Faint)
-                    .brighten(false)
-                    .underline(true)
-                    .on_before_navigate(close_sheet)
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .max_w_full()
-                    .text_xs()
-                    .child(div().flex_shrink_0().child(t("playing_from")))
-                    .child(div().truncate().child(label))
-            }))
-            .child(
-                h_flex()
-                    .gap_2()
-                    .items_center()
-                    .pt_2()
-                    .child(
-                        round("sheet-favorite", icons::HEART, heart, cx)
-                            .tooltip(if favorite {
-                                t("remove_from_favorites")
-                            } else {
-                                t("add_to_favorites")
-                            })
-                            .on_click({
-                                let key = key.clone();
-                                move |_, _, cx| {
-                                    FavoritesModel::global(cx).update(cx, |favorites, cx| {
-                                        favorites.toggle(key.clone(), cx)
-                                    })
-                                }
-                            }),
-                    )
-                    .when(capabilities.dont_recommend, |row| {
-                        row.child(
-                            round(
-                                "sheet-dont-recommend",
-                                icons::THUMBS_DOWN,
-                                style::white(0.5, cx),
-                                cx,
-                            )
-                            .tooltip(t("dont_recommend"))
-                            .disabled(favorite)
-                            .on_click(cx.listener({
-                                let key = key.clone();
-                                move |this, _, _, cx| this.dont_recommend(key.clone(), cx)
-                            })),
-                        )
-                    })
-                    .child(self.share_button(ACTION, ACTION_GLYPH, window, cx))
-                    .child(
-                        round("sheet-actions", icons::MORE, style::white(0.7, cx), cx)
-                            .dropdown_menu(menus::builder(track_target(track))),
-                    ),
-            )
+            .child(div().pt_2().child(marks))
     }
 
     /// The cover itself, drawn once, travelling between the bar's slot and the hero's.
@@ -472,19 +353,4 @@ impl NowPlaying {
 /// A link out of the sheet folds it away first, so the page it opens is not hidden behind it.
 fn close_sheet(_: &mut Window, cx: &mut App) {
     Chrome::global(cx).update(cx, |chrome, cx| chrome.set_sheet(false, cx));
-}
-
-/// `w-11 h-11 rounded-full bg-white/10`: the shape every button beside the title takes.
-fn round(id: &'static str, glyph: &'static str, tint: Hsla, cx: &gpui_kit::App) -> Button {
-    Button::new(id)
-        .custom(
-            ButtonCustomVariant::new(cx)
-                .color(style::rest(style::white(style::HOVER, cx)))
-                .foreground(tint)
-                .hover(style::white(0.15, cx))
-                .active(style::white(style::ACTIVE, cx)),
-        )
-        .rounded(px(999.))
-        .with_size(ACTION)
-        .icon(icons::icon(glyph))
 }
