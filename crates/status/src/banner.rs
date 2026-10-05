@@ -125,8 +125,7 @@ impl Render for ConnectionBanner {
                                 link::Address::Socket(path) => Some(path.clone()),
                                 link::Address::Tcp(_) => None,
                             };
-                            // Silently logging this left the button looking broken, so it got
-                            // pressed again, spawning another daemon each time.
+                            // Only logging this made users press again, spawning another daemon each time.
                             if let Err(error) = link::spawn_daemon(socket) {
                                 tracing::error!(%error, "could not start the daemon");
                                 this.starting = false;
