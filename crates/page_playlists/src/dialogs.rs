@@ -3,18 +3,17 @@
 use std::rc::Rc;
 
 use api::PlaylistCapability;
-use components::ErrorBanner;
 use components::dialogs::{DialogSize, FormDialog, FormFooter};
 use components::format::t;
+use components::{ErrorBanner, PickItem, PickList, QuickCreate};
 use components::{icons, motion, style};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::component::{ActiveTheme as _, WindowExt as _, h_flex, v_flex};
+use gpui_kit::component::{WindowExt as _, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
-    ParentElement as _, PathPromptOptions, Render, SharedString, StatefulInteractiveElement as _,
-    Styled as _, Subscription, Window, div, px,
+    App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, PathPromptOptions,
+    Render, SharedString, Styled as _, Subscription, Window, div, px,
 };
 use store::{PlaylistsModel, SourcesModel, actions};
 
@@ -217,8 +216,14 @@ impl FolderPicker {
 }
 
 impl Render for FolderPicker {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let folders = PlaylistsModel::global(cx).read(cx).folders().to_vec();
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let folders: Vec<PickItem> = PlaylistsModel::global(cx)
+            .read(cx)
+            .folders()
+            .iter()
+            .map(|folder| PickItem::new(folder.id.clone(), folder.name.clone()).icon(icons::FOLDER))
+            .collect();
+        let (on_pick, on_create) = (cx.weak_entity(), cx.weak_entity());
         v_flex()
             .gap_3()
             .w_full()
@@ -231,59 +236,20 @@ impl Render for FolderPicker {
                 )
             })
             .child(
-                v_flex()
-                    .id("folder-list")
-                    .gap_1()
-                    .max_h_48()
-                    .overflow_y_scroll()
-                    .children(folders.into_iter().map(|folder| {
-                        let id = folder.id.clone();
-                        let (hot, hover) = motion::hovered(
-                            SharedString::from(format!("folder-row-hover-{}", folder.id)),
-                            window,
-                            cx,
-                        );
-                        let fill = motion::color(
-                            SharedString::from(format!("folder-row-fill-{}", folder.id)),
-                            style::white(if hot { style::HOVER } else { 0. }, cx),
-                            window,
-                            cx,
-                        );
-                        h_flex()
-                            .id(SharedString::from(format!("folder-{}", folder.id)))
-                            .gap_2()
-                            .px_3()
-                            .py_2()
-                            .text_sm()
-                            .rounded(style::radius_lg())
-                            .bg(fill)
-                            .on_hover(motion::track(hover))
-                            .child(
-                                icons::icon(icons::FOLDER)
-                                    .size(px(12.))
-                                    .text_color(cx.theme().warning),
-                            )
-                            .child(folder.name.clone())
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.move_into(id.clone(), window, cx)
-                            }))
-                    })),
+                PickList::new("folder-list", folders)
+                    .max_height(px(192.))
+                    .on_pick(move |id, window, cx| {
+                        on_pick
+                            .update(cx, |this, cx| this.move_into(id.to_string(), window, cx))
+                            .ok();
+                    }),
             )
             .when(self.creating, |column| {
-                column.child(
-                    h_flex()
-                        .gap_2()
-                        .child(div().flex_1().child(Input::new(&self.name)))
-                        .child(
-                            Button::new("create-folder")
-                                .primary()
-                                .text_sm()
-                                .label(t("create"))
-                                .on_click(
-                                    cx.listener(|this, _, window, cx| this.create(window, cx)),
-                                ),
-                        ),
-                )
+                column.child(QuickCreate::new(&self.name).on_create(move |window, cx| {
+                    on_create
+                        .update(cx, |this, cx| this.create(window, cx))
+                        .ok();
+                }))
             })
             .child(
                 Button::new("new-folder")

@@ -2,6 +2,7 @@
 
 mod keys;
 mod ops;
+mod playlist_picker;
 mod registry;
 mod track_list;
 

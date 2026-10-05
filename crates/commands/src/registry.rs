@@ -114,7 +114,7 @@ static COMMANDS: &[Command] = &[
             has_tracks(target, cx) && ops::caps(cx).playlists != PlaylistCapability::None
         },
         run: |target, window, cx| {
-            components::playlist_picker::open(ops::track_keys(&target), window, cx)
+            crate::playlist_picker::open(ops::track_keys(&target), window, cx)
         },
         action: None,
     },
@@ -392,7 +392,7 @@ static COMMANDS: &[Command] = &[
             ops::with_album_keys(id, cx, move |keys, cx| {
                 handle
                     .update(cx, |_, window, cx| {
-                        components::playlist_picker::open(keys, window, cx)
+                        crate::playlist_picker::open(keys, window, cx)
                     })
                     .ok();
             });
