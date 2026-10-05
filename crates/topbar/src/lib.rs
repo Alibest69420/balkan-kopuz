@@ -7,17 +7,15 @@ mod tabs;
 
 use components::focus::{Axis, Roving, Step};
 use components::format::t;
-use components::{icons, motion, style};
-use gpui_kit::base::StyledExt as _;
+use components::marker::Along;
+use components::{Bar, Tab, TabStrip, icons, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::tooltip::Tooltip;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Icon, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{Disableable as _, Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AnyView, App, Context, ElementId, Entity, FocusHandle, Hsla,
-    InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent,
-    NavigationDirection, ParentElement as _, Pixels, Render, SharedString,
-    StatefulInteractiveElement as _, Styled, Subscription, Window, div, px, rems,
+    AnyElement, AnyView, App, Context, FocusHandle, InteractiveElement as _, IntoElement,
+    KeyDownEvent, MouseButton, MouseDownEvent, NavigationDirection, ParentElement as _, Pixels,
+    Render, SharedString, StatefulInteractiveElement as _, Styled, Subscription, Window, div, px,
 };
 use store::layout::NavPosition;
 use store::{Chrome, ConfigModel, LayoutModel, Navigator, Route, SourcesModel};
@@ -31,13 +29,8 @@ pub const COMPACT_BELOW: Pixels = px(700.);
 /// The width past which a table stops stretching and a grid starts centring.
 pub const CONTENT_MAX: Pixels = px(1400.);
 
-const GLYPH: Pixels = px(16.);
 const CHROME_GLYPH: Pixels = px(15.);
 const SEARCH_MAX: Pixels = px(440.);
-const UNDERLINE: Pixels = px(2.);
-const RAIL_MARKER: Pixels = px(3.);
-/// `left-2 right-2`: the inset the underline keeps from a tab's own corners.
-const INSET: Pixels = px(8.);
 // `bg-black/40` and `border-white/5`: the chrome's own scrim, as the rail wore it.
 const SCRIM: f32 = 0.40;
 
@@ -62,14 +55,6 @@ pub fn mouse_history(root: gpui_kit::Div) -> gpui_kit::Div {
     )
 }
 
-/// One tab's place in the strip: where it sits, and what the pointer and keyboard make of it.
-struct Seat {
-    index: usize,
-    name: &'static str,
-    active: bool,
-    focused: bool,
-}
-
 /// The bar. Same entity either way up: `layout.nav.position` picks the axis.
 pub struct TopBar {
     destinations: Vec<&'static str>,
@@ -77,7 +62,6 @@ pub struct TopBar {
     activity: Option<AnyView>,
     tabs: Roving,
     search_focus: FocusHandle,
-    hovered: Option<&'static str>,
     // A ring belongs to the keyboard; a click already says where it landed.
     ringing: bool,
     compact: bool,
@@ -111,7 +95,6 @@ impl TopBar {
             activity: None,
             tabs: Roving::new(Axis::Row, cx),
             search_focus: components::focus::stop_handle(cx),
-            hovered: None,
             ringing: false,
             compact: window.viewport_size().width < COMPACT_BELOW,
             _subscriptions: subscriptions,
@@ -161,118 +144,6 @@ impl TopBar {
         }
     }
 
-    fn ink(&self, active: bool, hovered: bool, cx: &App) -> Hsla {
-        if active {
-            cx.theme().foreground
-        } else if hovered {
-            style::white(style::TEXT_STRONG, cx)
-        } else {
-            style::slate_400(cx)
-        }
-    }
-
-    fn tab(
-        &self,
-        at: Seat,
-        marks: Entity<components::marker::Marks>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let Seat {
-            index,
-            name,
-            active,
-            focused,
-        } = at;
-        let vertical = self.position == NavPosition::Left;
-        let along = match vertical {
-            true => components::marker::Along::Column,
-            false => components::marker::Along::Row,
-        };
-        let hovered = self.hovered == Some(name);
-        let ink = motion::color_over(
-            ElementId::from((ElementId::from("nav-tab-ink"), name)),
-            self.ink(active, hovered, cx),
-            motion::FAST,
-            window,
-            cx,
-        );
-        let wash = motion::color_over(
-            ElementId::from((ElementId::from("nav-tab-wash"), name)),
-            // Upstream the active tab is `bg-white/10` and a hovered one only `bg-white/5`.
-            match (active, hovered) {
-                (true, _) => style::white(style::HOVER, cx),
-                (false, true) => style::white(style::RAISED, cx),
-                (false, false) => style::white(0., cx),
-            },
-            motion::FAST,
-            window,
-            cx,
-        );
-        let label = t(tabs::label(name));
-        let tooltip = commands::tooltip(tabs::command(name), label.clone(), cx);
-        // The tab carries no padding of its own: an absolute probe measures against the content
-        // box, so a padded tab reports itself inset and the mark would track that instead.
-        let pad = match self.compact && !vertical {
-            true => 2.,
-            false => 3.,
-        };
-        h_flex()
-            .id(ElementId::from((ElementId::from("nav-tab"), name)))
-            .relative()
-            .rounded(style::radius_lg())
-            .cursor_pointer()
-            .bg(wash)
-            .text_color(ink)
-            .map(|tab| match vertical {
-                true => tab.w_full().py_2(),
-                false => tab.h_full().py_1(),
-            })
-            .child(components::marker::probe(name, along, marks))
-            .when(self.compact && !vertical, |tab| {
-                tab.tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
-            })
-            .on_hover(cx.listener(move |this, over: &bool, _, cx| {
-                let held = over.then_some(name);
-                if this.hovered != held && (*over || this.hovered == Some(name)) {
-                    this.hovered = held;
-                    cx.notify();
-                }
-            }))
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.tabs.set_cursor(index);
-                this.open(index, cx);
-            }))
-            .child(
-                h_flex()
-                    .size_full()
-                    .gap_2()
-                    .items_center()
-                    .px(rems(pad * 0.25))
-                    .child(
-                        Icon::default()
-                            .path(tabs::icon(name))
-                            .size(GLYPH)
-                            .flex_shrink_0(),
-                    )
-                    .when(vertical || !self.compact, |row| {
-                        row.child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .truncate()
-                                .text_sm()
-                                .font_medium()
-                                .child(label),
-                        )
-                    }),
-            )
-            .when(focused, |tab| {
-                tab.child(components::focus::ring(style::radius_lg(), cx))
-            })
-            .into_any_element()
-    }
-
     fn strip(
         &self,
         current: Option<&str>,
@@ -281,82 +152,41 @@ impl TopBar {
     ) -> AnyElement {
         let vertical = self.position == NavPosition::Left;
         let along = match vertical {
-            true => components::marker::Along::Column,
-            false => components::marker::Along::Row,
+            true => Along::Column,
+            false => Along::Row,
         };
-        let marks = components::marker::marks("nav-strip-marks", window, cx);
-        let tabs = self
+        let compact = self.compact && !vertical;
+        let tabs: Vec<Tab> = self
             .destinations
-            .clone()
-            .into_iter()
+            .iter()
             .enumerate()
             .map(|(index, name)| {
-                let at = Seat {
-                    index,
-                    name,
-                    active: current == Some(name),
+                let label = t(tabs::label(name));
+                let tooltip =
+                    compact.then(|| commands::tooltip(tabs::command(name), label.clone(), cx));
+                Tab::new(*name, tabs::icon(name))
+                    .label((!compact).then_some(label))
+                    .tooltip(tooltip)
                     // A click already says where it landed; only the keyboard needs a ring.
-                    focused: self.tabs.is_active(index, window) && self.ringing,
-                };
-                self.tab(at, marks.clone(), window, cx)
+                    .ringed(self.tabs.is_active(index, window) && self.ringing)
             })
-            .collect::<Vec<_>>();
-        let (start, extent) = match current {
-            Some(name) => components::marker::slide("nav-mark", &marks, name, window, cx),
-            None => (px(0.), px(0.)),
-        };
-        let strip = match vertical {
-            true => v_flex().w_full().gap_1(),
-            false => h_flex().h_full().gap_1(),
-        };
-        let lane = match vertical {
-            true => v_flex()
-                .flex_none()
-                .w(RAIL_MARKER)
-                .child(div().flex_none().h(start))
-                .child(
-                    div()
-                        .flex_none()
-                        .h(extent)
-                        .w_full()
-                        .rounded_full()
-                        .bg(cx.theme().foreground),
-                ),
-            false => h_flex()
-                .flex_none()
-                .h(UNDERLINE)
-                .child(div().flex_none().w(start + INSET))
-                .child(
-                    div()
-                        .flex_none()
-                        .w((extent - INSET - INSET).max(px(0.)))
-                        .h_full()
-                        .rounded_full()
-                        .bg(cx.theme().foreground),
-                ),
-        };
-        let group = self
-            .tabs
-            .group(strip.id("nav-strip"), "NavBar")
+            .collect();
+        let strip = TabStrip::new("nav-strip", along, Bar::Pill)
+            .current(current.map(|name| SharedString::from(name.to_string())))
+            .tabs(tabs)
+            .on_select(cx.listener(|this, index: &usize, _, cx| {
+                this.tabs.set_cursor(*index);
+                this.open(*index, cx);
+            }));
+        self.tabs
+            .group(div().id("nav-group"), "NavBar")
+            .map(|group| match vertical {
+                true => group.w_full(),
+                false => group.h_full(),
+            })
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| this.key(event, cx)))
-            .child(components::marker::origin(along, marks))
-            .children(tabs);
-        // The mark rides beside the tabs rather than over one of them, so it can travel.
-        match vertical {
-            true => h_flex()
-                .w_full()
-                .items_start()
-                .child(lane)
-                .child(group)
-                .into_any_element(),
-            false => v_flex()
-                .h_full()
-                .items_start()
-                .justify_center()
-                .child(group)
-                .child(lane)
-                .into_any_element(),
-        }
+            .child(strip)
+            .into_any_element()
     }
 
     /// The palette's doorway: it looks like a field, and clicking it opens the palette.

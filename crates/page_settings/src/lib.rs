@@ -2,14 +2,15 @@
 
 use components::focus::{Axis, Roving, Step};
 use components::format::{t, t_with};
-use components::{EmptyState, PageHeader, icons, marker, motion, style};
+use components::marker::Along;
+use components::{Bar, EmptyState, PageHeader, Tab, TabStrip, icons, style};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, ElementId, Entity, FontWeight,
-    InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render, SharedString,
-    StatefulInteractiveElement as _, Styled, Subscription, Window, div, px, rems,
+    AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
+    KeyDownEvent, ParentElement as _, Render, SharedString, StatefulInteractiveElement as _,
+    Styled, Subscription, Window, div, rems,
 };
 use settings_appearance::AppearanceSettings;
 use settings_interface::InterfaceSettings;
@@ -20,20 +21,9 @@ use store::ConfigModel;
 /// `border-white/9` under the fan, over `bg-black/92`.
 const FAN_BORDER: f32 = 0.09;
 const FAN_BG: f32 = 0.92;
-/// `text-white/52` on a resting fan item, `bg-white/4` and `text-white/78` under the pointer.
-const ITEM: f32 = 0.52;
-const ITEM_HOVER: f32 = 0.04;
-const ITEM_HOVER_TEXT: f32 = 0.78;
-/// `bg-white/3` on the chosen one.
-const ITEM_SELECTED: f32 = 0.03;
 /// `text-white/40` on the lock, `text-white/70` on the line beside it.
 const LOCK: f32 = 0.40;
 const NOTICE: f32 = 0.70;
-
-/// `prefix` over a category's slug: one stable tween channel per rail item.
-fn channel(prefix: &'static str, slug: &'static str) -> ElementId {
-    (ElementId::from(prefix), slug).into()
-}
 
 /// Which panel the rail is showing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,7 +108,6 @@ pub struct Settings {
     rail: Roving,
     // A ring belongs to the keyboard; a click already says where it landed.
     ringing: bool,
-    hovered: Option<Category>,
     scroll: gpui_kit::ScrollHandle,
     search: Entity<InputState>,
     searching: bool,
@@ -158,7 +147,6 @@ impl Settings {
             category,
             rail,
             ringing: false,
-            hovered: None,
             scroll: gpui_kit::ScrollHandle::new(),
             search,
             searching: false,
@@ -247,52 +235,22 @@ impl Settings {
 impl Settings {
     /// The category fan, as its top-bar branch: the CD disc is rotated clip-paths GPUI cannot draw.
     fn rail(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let underline = cx.theme().primary_hover;
-        let items: Vec<_> = Category::ALL
-            .iter()
-            .copied()
-            .enumerate()
-            .map(|(index, category)| {
-                let selected = category == self.category;
-                let hovered = self.hovered == Some(category);
-                let surface = style::white(
-                    match (selected, hovered) {
-                        (true, _) => ITEM_SELECTED,
-                        (false, true) => ITEM_HOVER,
-                        (false, false) => 0.,
-                    },
-                    cx,
-                );
-                let ink = style::white(
-                    match (selected, hovered) {
-                        (true, _) => 1.,
-                        (false, true) => ITEM_HOVER_TEXT,
-                        (false, false) => ITEM,
-                    },
-                    cx,
-                );
-                (
-                    index,
-                    category,
-                    self.rail.is_active(index, window) && self.ringing,
-                    motion::color(channel("fan-bg", category.slug()), surface, window, cx),
-                    motion::color(channel("fan-ink", category.slug()), ink, window, cx),
-                )
-            })
-            .collect();
-        // The mark travels to the chosen tab, so it has to know where the tabs actually are.
-        let marks = marker::marks("settings-fan-marks", window, cx);
-        let (start, width) =
-            marker::slide("settings-fan", &marks, self.category.slug(), window, cx);
-        // The mark rides in the flow beside the tabs rather than absolutely over them: an
-        // absolute child does not scroll with the rail, so it drifted by the scroll offset.
-        let mark = h_flex()
-            .flex_none()
-            .h(px(2.))
-            .mt(px(-2.))
-            .child(div().flex_none().w(start))
-            .child(div().flex_none().w(width).h_full().bg(underline));
-        let track = h_flex().h_full().flex_none().gap_0p5();
+        let tabs = Category::ALL.iter().enumerate().map(|(index, category)| {
+            Tab::new(category.slug(), category.icon())
+                .label(Some(category.label()))
+                .ringed(self.rail.is_active(index, window) && self.ringing)
+        });
+        let strip = TabStrip::new("settings-fan", Along::Row, Bar::Rule)
+            .current(Some(self.category.slug()))
+            .tabs(tabs)
+            .on_select(cx.listener(|this, index: &usize, window, cx| {
+                let Some(category) = Category::ALL.get(*index).copied() else {
+                    return;
+                };
+                this.rail.set_cursor(*index);
+                this.ringing = false;
+                this.choose(category, window, cx);
+            }));
         self.rail
             .group(h_flex().id("settings-fan"), "SettingsRail")
             .on_key_down(
@@ -306,56 +264,7 @@ impl Settings {
             .border_b_1()
             .border_color(style::white(FAN_BORDER, cx))
             .bg(components::settings::panel_background(FAN_BG, cx))
-            .child(
-                v_flex()
-                    .flex_none()
-                    .h_full()
-                    // A column centres what it holds, which would push the narrower mark right.
-                    .items_start()
-                    .child(marker::origin(marker::Along::Row, marks.clone()))
-                    .child(track.children(items.into_iter().map(
-                        |(index, category, ringed, surface, ink)| {
-                            let marks = marks.clone();
-                            h_flex()
-                                .id(category.slug())
-                                .relative()
-                                .flex_none()
-                                .h_11()
-                                .items_center()
-                                .bg(surface)
-                                .text_xs()
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(ink)
-                                .cursor_pointer()
-                                .child(marker::probe(category.slug(), marker::Along::Row, marks))
-                                .child(
-                                    h_flex()
-                                        .h_full()
-                                        .px_3()
-                                        .gap_2()
-                                        .items_center()
-                                        .child(icons::icon(category.icon()))
-                                        .child(category.label()),
-                                )
-                                .on_hover(cx.listener(move |this, over: &bool, _, cx| {
-                                    let held = over.then_some(category);
-                                    if this.hovered != held {
-                                        this.hovered = held;
-                                        cx.notify();
-                                    }
-                                }))
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.rail.set_cursor(index);
-                                    this.ringing = false;
-                                    this.choose(category, window, cx);
-                                }))
-                                .when(ringed, |item| {
-                                    item.child(components::focus::ring(style::radius_md(), cx))
-                                })
-                        },
-                    )))
-                    .child(mark),
-            )
+            .child(strip)
     }
 
     /// Left and right walk the fan; enter shows whatever the walk landed on.
