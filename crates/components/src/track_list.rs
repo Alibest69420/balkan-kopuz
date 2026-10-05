@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use api::TrackInfo;
 use gpui_kit::component::menu::PopupMenu;
-use gpui_kit::component::{ActiveTheme as _, v_flex};
+use gpui_kit::component::v_flex;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Context, EventEmitter, FocusHandle, Focusable, Global,
     InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled,
@@ -68,17 +68,9 @@ pub struct TrackDrag {
     pub label: SharedString,
 }
 
-/// What follows the pointer during the drag: a chip naming what is being carried.
 impl Render for TrackDrag {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .px_2()
-            .py_1()
-            .rounded(cx.theme().radius)
-            .bg(cx.theme().popover)
-            .text_color(cx.theme().popover_foreground)
-            .text_sm()
-            .child(self.label.clone())
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        crate::drag::DragChip::new(self.label.clone())
     }
 }
 

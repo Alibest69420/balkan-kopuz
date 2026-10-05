@@ -24,7 +24,6 @@ const REORDER_BUTTON: Pixels = px(14.);
 const REORDER_GLYPH: Pixels = px(9.);
 const ROW_SUBTITLE: f32 = 0.65;
 const ROW_GROUP: &str = "queue-row";
-const JUMP_GLYPH: Pixels = px(20.);
 const TOOL_GLYPH: Pixels = px(13.);
 
 const CLEAR: &str = "icons/list-x.svg";
@@ -47,15 +46,8 @@ struct QueueRowDrag {
 }
 
 impl Render for QueueRowDrag {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .px_2()
-            .py_1()
-            .rounded(cx.theme().radius)
-            .bg(cx.theme().popover)
-            .text_color(cx.theme().popover_foreground)
-            .text_sm()
-            .child(self.label.clone())
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        components::DragChip::new(self.label.clone())
     }
 }
 
@@ -531,24 +523,8 @@ impl Render for QueueView {
             )
             .when(!self.auto_follow, |panel| {
                 panel.child(
-                    div().absolute().bottom_4().right_4().child(
-                        style::dress(
-                            Button::new("queue-jump-to-current"),
-                            style::black(0.4, cx),
-                            style::black(0.6, cx),
-                            style::white(style::TEXT_STRONG, cx),
-                            style::white(style::BORDER, cx),
-                            cx,
-                        )
-                        .with_size(JUMP_GLYPH * (4. / 3.))
-                        .size(style::chrome().round_button)
-                        .rounded(style::chrome().round_button / 2.)
-                        .icon(icons::icon(icons::REFRESH))
-                        .border_1()
-                        .shadow_lg()
-                        .tooltip(t("jump_to_current_song"))
+                    components::FollowButton::new("queue-jump-to-current")
                         .on_click(cx.listener(|this, _, _, cx| this.rearm(cx))),
-                    ),
                 )
             })
             .into_any_element()

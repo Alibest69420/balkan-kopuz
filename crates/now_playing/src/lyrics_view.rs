@@ -7,8 +7,7 @@ use api::{LyricLineView, LyricsView as LyricsSource};
 use components::format::t;
 use components::{KaraokeText, icons, style};
 use gpui_kit::base::StyledExt as _;
-use gpui_kit::component::button::Button;
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
+use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, Context, Entity, Hsla, InteractiveElement as _, IntoElement, ParentElement as _,
@@ -47,9 +46,6 @@ const TURN_WIDTH: f32 = 18.;
 // `leading-snug` on the small print of a background line, `leading-relaxed` on unsynced words.
 const SNUG: f32 = 1.375;
 const RELAXED: f32 = 1.625;
-// `absolute bottom-4 right-4 w-9 h-9 rounded-full bg-black/40` with a `w-5 h-5` glyph.
-const SYNC_GLYPH: Pixels = px(20.);
-const SYNC_SCRIM: f32 = 0.4;
 
 /// A word or syllable of a line, with the byte range it occupies in the line's text.
 #[derive(Clone, Debug, PartialEq)]
@@ -685,24 +681,8 @@ impl Render for LyricsView {
             .child(body)
             .when(synced && !self.auto_sync, |panel| {
                 panel.child(
-                    div().absolute().bottom_4().right_4().child(
-                        style::dress(
-                            Button::new("lyrics-sync"),
-                            style::black(SYNC_SCRIM, cx),
-                            style::black(SYNC_SCRIM + style::ACTIVE, cx),
-                            style::white(style::TEXT_STRONG, cx),
-                            style::white(style::BORDER, cx),
-                            cx,
-                        )
-                        .with_size(SYNC_GLYPH * (4. / 3.))
-                        .size(style::chrome().round_button)
-                        .rounded(style::chrome().round_button / 2.)
-                        .icon(icons::icon(icons::REFRESH))
-                        .border_1()
-                        .shadow_lg()
-                        .tooltip(t("jump_to_current_song"))
+                    components::FollowButton::new("lyrics-sync")
                         .on_click(cx.listener(|this, _, _, cx| this.rearm(cx))),
-                    ),
                 )
             })
     }

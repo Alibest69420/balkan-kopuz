@@ -5,17 +5,17 @@ mod settings;
 
 use components::focus::{Axis, Roving, Step};
 use components::format::t;
-use components::{EmptyState, TrackDrag, icons, menus, motion, style};
+use components::{Edge, EdgeResizer, EmptyState, TrackDrag, icons, menus, motion, style};
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::ContextMenuExt as _;
 use gpui_kit::component::{ActiveTheme as _, Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Div, DragMoveEvent, ElementId,
-    InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Pixels, Render,
-    SharedString, Stateful, StatefulInteractiveElement as _, Styled, Subscription,
-    UniformListScrollHandle, Window, div, px, uniform_list,
+    AnyElement, App, AppContext as _, Context, Div, ElementId, InteractiveElement as _,
+    IntoElement, KeyDownEvent, ParentElement as _, Pixels, Render, SharedString, Stateful,
+    StatefulInteractiveElement as _, Styled, Subscription, UniformListScrollHandle, Window, div,
+    px, uniform_list,
 };
 use store::{LayoutModel, Navigator, PlaylistsModel, Route, Target};
 
@@ -29,7 +29,6 @@ const MAX_WIDTH: Pixels = px(420.);
 /// A window narrower than this opens with the panel closed.
 pub const NARROW_WINDOW: Pixels = px(1100.);
 
-const HANDLE_WIDTH: Pixels = px(6.);
 const GLYPH: Pixels = px(14.);
 const CLOSE_BUTTON: Pixels = px(24.);
 const CLOSE_GLYPH: Pixels = px(12.);
@@ -49,25 +48,8 @@ struct RowDrag {
 }
 
 impl Render for RowDrag {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .px_2()
-            .py_1()
-            .rounded(cx.theme().radius)
-            .bg(cx.theme().popover)
-            .text_color(cx.theme().popover_foreground)
-            .text_sm()
-            .child(self.label.clone())
-    }
-}
-
-/// Carried by the right-edge handle; nothing is dropped, so it paints nothing.
-#[derive(Clone)]
-struct ResizePanel;
-
-impl Render for ResizePanel {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        gpui_kit::Empty
+        components::DragChip::new(self.label.clone())
     }
 }
 
@@ -108,7 +90,6 @@ pub struct PlaylistsPanel {
     width: Pixels,
     roving: Roving,
     hovered: Option<SharedString>,
-    handle_hovered: bool,
     // The window was too narrow to spare a column at launch; asking for the panel clears it.
     suppressed: bool,
     shown: bool,
@@ -143,7 +124,6 @@ impl PlaylistsPanel {
             width: px(store::layout(cx).panel.width),
             roving: Roving::new(Axis::Column, cx),
             hovered: None,
-            handle_hovered: false,
             suppressed: shown && window.viewport_size().width < NARROW_WINDOW,
             shown,
             scroll: UniformListScrollHandle::new(),
@@ -386,48 +366,24 @@ impl PlaylistsPanel {
             )
     }
 
-    /// The right edge drags the panel between 180 and 420 px; the panel is flush with the window.
-    fn resize_handle(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let line = motion::color(
-            "playlists-panel-handle",
-            match self.handle_hovered {
-                true => style::white(style::HOVER, cx),
-                false => style::white(0., cx),
-            },
-            window,
-            cx,
-        );
-        div()
-            .id("playlists-panel-resize")
-            .absolute()
-            .right_0()
-            .top_0()
-            .h_full()
-            .w(HANDLE_WIDTH)
-            .occlude()
-            .cursor_col_resize()
-            .on_hover(cx.listener(|this, over: &bool, _, cx| {
-                if this.handle_hovered != *over {
-                    this.handle_hovered = *over;
-                    cx.notify();
-                }
-            }))
-            .on_drag(ResizePanel, |drag, _, _, cx| {
-                cx.stop_propagation();
-                cx.new(|_| drag.clone())
+    /// The right edge drags the panel between 180 and 420 px.
+    fn resize_handle(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let panel = cx.entity().downgrade();
+        EdgeResizer::new("playlists-panel-resize", Edge::Right, self.width)
+            .range(MIN_WIDTH, MAX_WIDTH)
+            .on_resize(move |width, _, cx| {
+                panel
+                    .update(cx, |this, cx| {
+                        if width != this.width {
+                            this.width = width;
+                            LayoutModel::edit(cx, move |layout| {
+                                layout.panel.width = width.as_f32()
+                            });
+                            cx.notify();
+                        }
+                    })
+                    .ok();
             })
-            .on_drag_move(
-                cx.listener(|this, event: &DragMoveEvent<ResizePanel>, _, cx| {
-                    let width = (event.event.position.x - event.bounds.left() + this.width)
-                        .clamp(MIN_WIDTH, MAX_WIDTH);
-                    if width != this.width {
-                        this.width = width;
-                        LayoutModel::edit(cx, move |layout| layout.panel.width = width.as_f32());
-                        cx.notify();
-                    }
-                }),
-            )
-            .child(div().absolute().inset_0().bg(line))
     }
 }
 
@@ -468,6 +424,6 @@ impl Render for PlaylistsPanel {
             .border_color(style::white(style::BORDER_SOFT, cx))
             .child(self.header(cx))
             .child(body)
-            .child(self.resize_handle(window, cx))
+            .child(self.resize_handle(cx))
     }
 }

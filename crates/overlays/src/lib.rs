@@ -2,11 +2,10 @@
 
 use api::{JobKind, JobProgress};
 use components::format::t;
-use components::{Badge, BadgeTone, Chip, ChipTone, icons, motion, style};
+use components::{JobStop, ProgressBar, icons, motion, style};
 use gpui_kit::base::motion::{Easing, Presence, Transition};
-use gpui_kit::component::progress::Progress;
 use gpui_kit::component::tooltip::Tooltip;
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
@@ -16,8 +15,7 @@ use gpui_kit::{
 use status::{ConnectionBanner, Toasts};
 use store::{JobsModel, PlayerModel};
 
-// TODO(parity): the offline banner needs a connectivity probe this client does not have (§3.1).
-// TODO(parity): the update banner checks GitHub, which is outside the daemon seam (§3.1).
+// TODO(parity): the offline and update banners need a connectivity probe and GitHub, both outside the daemon seam (§3.1).
 
 const SCAN_BAR: Pixels = px(2.);
 const SCAN_ROW_PY: Pixels = px(3.);
@@ -75,10 +73,7 @@ impl Overlays {
         Some(message.into())
     }
 
-    /// What a dismissal is remembered by: the failure *and* the track it happened on.
-    ///
-    /// Keyed on the message alone, dismissing "Couldn't decode this stream" silenced it for every
-    /// later track that failed the same way — playback simply stopped, with no banner to say why.
+    /// A dismissal is keyed on the failure and its track, so dismissing one never silences the next.
     fn occurrence(cx: &App) -> Option<String> {
         let player = PlayerModel::global(cx);
         let player = player.read(cx);
@@ -120,21 +115,12 @@ impl Overlays {
             true => t("scanning_library"),
             false => SharedString::from(progress.phase.clone()),
         };
-        let stopping = JobsModel::global(cx).read(cx).is_stopping(&progress.id);
-        let id = progress.id.clone();
-        let danger = cx.theme().danger;
         v_flex()
             .w_full()
             .flex_shrink_0()
             .occlude()
             .opacity(appear("scan-banner", window, cx))
-            .child(
-                Progress::new("scan-progress")
-                    .xsmall()
-                    .loading(true)
-                    .color(cx.theme().primary)
-                    .h(SCAN_BAR),
-            )
+            .child(ProgressBar::new("scan-progress", None).height(SCAN_BAR))
             .child(
                 h_flex()
                     .w_full()
@@ -158,19 +144,7 @@ impl Overlays {
                     })
                     .child(div().flex_1().min_w_0())
                     // A scan could not be stopped, though a download could, and both are jobs.
-                    .child(match stopping {
-                        true => Badge::new(t("stopping"))
-                            .tone(BadgeTone::Muted)
-                            .into_any_element(),
-                        false => Chip::new("stop-scan")
-                            .label(t("stop"))
-                            .tone(ChipTone::Ink(danger))
-                            .on_click(move |_, _, cx| {
-                                let id = id.clone();
-                                JobsModel::global(cx).update(cx, |jobs, cx| jobs.cancel(id, cx));
-                            })
-                            .into_any_element(),
-                    }),
+                    .child(JobStop::new(progress.id.clone())),
             )
             .into_any_element()
     }

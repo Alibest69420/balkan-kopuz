@@ -100,7 +100,7 @@ impl Shortcuts {
             self.refused = Some(t_with(
                 "shortcuts_conflict",
                 &[
-                    ("key", commands::keycap(&written).to_string()),
+                    ("key", components::keycap::written(&written).to_string()),
                     ("command", label.to_string()),
                 ],
             ));
@@ -148,7 +148,7 @@ impl Shortcuts {
                 .text_color(cx.theme().foreground)
                 .child(t("shortcuts_recording"))
                 .into_any_element(),
-            (false, Some(keystroke)) => crate::sheet::keycap(keystroke, cx).into_any_element(),
+            (false, Some(keystroke)) => components::Keycap::new(keystroke).into_any_element(),
             (false, None) => div()
                 .text_size(style::text_10())
                 .text_color(style::white(style::TEXT_SUBTLE, cx))

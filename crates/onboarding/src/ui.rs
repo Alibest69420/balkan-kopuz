@@ -10,8 +10,6 @@ use gpui_kit::{
 };
 
 /// Lucide paths this flow needs that `components::icons` has no name for yet.
-pub(crate) const SERVER: &str = "icons/server.svg";
-pub(crate) const CLOUD: &str = "icons/cloud.svg";
 pub(crate) const SPARKLES: &str = "icons/sparkles.svg";
 pub(crate) const ARROW_LEFT: &str = "icons/arrow-left.svg";
 
@@ -87,7 +85,7 @@ pub(crate) fn rail(labels: [SharedString; 3], current: usize, cx: &App) -> impl 
 /// A big pressable card: a tinted glyph, a title, a line saying what it gets you.
 pub(crate) fn choice_card(
     id: impl Into<ElementId>,
-    glyph: &'static str,
+    glyph: impl IntoElement,
     accent: Hsla,
     title: SharedString,
     detail: Option<SharedString>,
@@ -125,7 +123,7 @@ pub(crate) fn choice_card(
                 .size(badge())
                 .rounded(style::radius_lg())
                 .bg(accent.opacity(BADGE_BG))
-                .child(icons::icon(glyph).size(px(18.)).text_color(accent)),
+                .child(glyph),
         )
         .child(
             v_flex()

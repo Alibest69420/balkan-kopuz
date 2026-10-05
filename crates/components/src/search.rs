@@ -2,7 +2,6 @@
 
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::{Sizable as _, h_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -171,7 +170,7 @@ impl RenderOnce for SearchTrigger {
             )
             .children(
                 self.shortcut
-                    .map(|keys| Kbd::new(keys).text_size(style::text_10())),
+                    .map(|keys| crate::keycap::Keycap::stroke(&keys)),
             )
             .when(focused, |trigger| {
                 trigger.child(focus::ring(style::radius_lg(), cx))

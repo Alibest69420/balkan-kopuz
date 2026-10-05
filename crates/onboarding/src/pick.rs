@@ -4,12 +4,13 @@ use api::ServiceInfo;
 use components::EmptyState;
 use components::dialogs::{DialogSize, FormDialog};
 use components::format::{t, text};
-use components::{Heading, SectionHeading, icons};
-use gpui_kit::component::{ActiveTheme as _, v_flex};
+use components::source_mark::{self, SourceMark};
+use components::{Heading, SectionHeading};
+use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, Context, Hsla, IntoElement, ParentElement as _, Rgba, SharedString,
-    StatefulInteractiveElement as _, Styled, Window,
+    AnyElement, Context, IntoElement, ParentElement as _, SharedString,
+    StatefulInteractiveElement as _, Styled, Window, px,
 };
 
 use crate::{FirstRun, ui};
@@ -26,11 +27,11 @@ impl FirstRun {
                 step.child(EmptyState::new(t("first_run_no_services")).compact())
             })
             .children(services.into_iter().map(|service| {
-                let accent = accent_of(&service, cx);
+                let accent = source_mark::accent(Some(&service), cx);
                 let detail = service.experimental.then(|| t("experimental"));
                 ui::choice_card(
                     SharedString::from(format!("first-run-service-{}", service.id)),
-                    glyph_of(&service),
+                    SourceMark::new(&service).size(px(18.)),
                     accent,
                     text(&service.name),
                     detail,
@@ -56,20 +57,4 @@ impl FirstRun {
             .on_submit(move |window, cx| form.update(cx, |form, cx| form.save(window, cx)))
             .open(self.add.clone(), window, cx);
     }
-}
-
-/// The daemon names its icon by class; a bundled glyph of the same shape stands in for it.
-fn glyph_of(service: &ServiceInfo) -> &'static str {
-    match &service.icon {
-        api::Icon::Class(class) if class.contains("folder") => icons::FOLDER,
-        api::Icon::Class(class) if class.contains("cloud") => ui::CLOUD,
-        _ => ui::SERVER,
-    }
-}
-
-fn accent_of(service: &ServiceInfo, cx: &App) -> Hsla {
-    Rgba::try_from(service.accent.as_str())
-        .ok()
-        .map(Hsla::from)
-        .unwrap_or(cx.theme().primary)
 }

@@ -45,6 +45,34 @@ pub fn wallpaper(source: ImageSource, darkening: u8, blur: u8, cx: &App) -> AnyE
         .into_any_element()
 }
 
+/// A chosen picture outranks `artwork`, and either outranks its light: the order the settings promise.
+pub fn layer(
+    artwork: Option<&api::ArtworkRef>,
+    min_darkening: u8,
+    window: &mut Window,
+    cx: &mut App,
+) -> Option<AnyElement> {
+    let (custom, cover, darkening, blur) = {
+        let config = store::ConfigModel::global(cx);
+        let config = config.read(cx).config();
+        (
+            config.custom_background_path.clone(),
+            config.cover_art_background,
+            config.cover_art_darkening.max(min_darkening),
+            config.cover_art_blur,
+        )
+    };
+    if !custom.is_empty() {
+        let source: ImageSource = std::path::PathBuf::from(custom).into();
+        return Some(wallpaper(source, darkening, blur, cx));
+    }
+    if cover {
+        let source = store::artwork_source(artwork?, true);
+        return Some(wallpaper(source, darkening, blur, cx));
+    }
+    ambient(window, cx)
+}
+
 /// Slow on purpose: light that changes quickly reads as a fault, not as a new song.
 const CROSSFADE: Duration = Duration::from_millis(1_200);
 

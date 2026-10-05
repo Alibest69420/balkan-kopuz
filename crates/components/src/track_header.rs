@@ -7,26 +7,24 @@ use gpui_kit::component::menu::{ContextMenuExt as _, PopupMenu};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, DragMoveEvent, ElementId, Entity, FontWeight,
-    InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement as _, Pixels,
-    Render, RenderOnce, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
-    px,
+    AnyElement, App, AppContext as _, Context, ElementId, FontWeight, InteractiveElement as _,
+    IntoElement, ParentElement as _, Render, RenderOnce, SharedString,
+    StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
 
 use crate::columns::{self, Layout, Shown, Spec};
 use crate::format::t;
 use crate::icons;
 use crate::motion;
+use crate::resizer::{Edge, EdgeResizer};
 use crate::style;
 
 // A column's channels, keyed off its spec id.
 const CELL: u64 = 0;
 const HOVER: u64 = 1;
 const INK: u64 = 2;
-const GRIP: u64 = 3;
 // The header's own channels, keyed off its id.
-const RESIZE: u64 = 0;
-const SELECT_ALL: u64 = 1;
+const SELECT_ALL: u64 = 0;
 
 /// What a press on a sortable heading does: re-order by that column.
 pub type OnSort = Rc<dyn Fn(&str, &mut Window, &mut App)>;
@@ -61,34 +59,9 @@ struct ColumnDrag {
 }
 
 impl Render for ColumnDrag {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .px_2()
-            .py_1()
-            .rounded(cx.theme().radius)
-            .bg(cx.theme().popover)
-            .text_color(cx.theme().popover_foreground)
-            .text_xs()
-            .child(self.label.clone())
-    }
-}
-
-/// A heading's edge being dragged, which resizes rather than reorders.
-#[derive(Clone)]
-struct EdgeDrag;
-
-impl Render for EdgeDrag {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div()
+        crate::drag::DragChip::new(self.label.clone())
     }
-}
-
-/// Where a resize started: which column, the pointer, and the width it had.
-#[derive(Clone, Copy)]
-struct Resizing {
-    id: &'static str,
-    from: Pixels,
-    base: f32,
 }
 
 #[derive(Clone)]
@@ -185,12 +158,6 @@ fn key(spec: &Spec, channel: u64) -> ElementId {
 
 impl RenderOnce for TrackHeader {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let resizing =
-            window.use_keyed_state(
-                motion::channel(&self.id, RESIZE),
-                cx,
-                |_, _| None::<Resizing>,
-            );
         let select_id = motion::channel(&self.id, SELECT_ALL);
         let mut header = columns::frame()
             .id(self.id.clone())
@@ -215,7 +182,7 @@ impl RenderOnce for TrackHeader {
                 shown,
                 self.sort.as_ref(),
                 self.reorder.clone(),
-                self.resize.clone().map(|resize| (resize, resizing.clone())),
+                self.resize.clone(),
                 window,
                 cx,
             ));
@@ -234,7 +201,7 @@ fn heading(
     shown: &Shown,
     sort: Option<&Sorting>,
     reorder: Option<OnMove>,
-    resize: Option<(OnResize, Entity<Option<Resizing>>)>,
+    resize: Option<OnResize>,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
@@ -296,62 +263,19 @@ fn heading(
                     .child(icons::icon(glyph).size(style::text_10())),
             )
         })
-        .when_some(resize, |cell, (on_resize, resizing)| {
-            cell.child(grip(shown, on_resize, resizing, cx))
-        })
-        .into_any_element()
-}
-
-/// The edge of a heading: drag it and the column takes the width it is left at.
-fn grip(
-    shown: &Shown,
-    on_resize: OnResize,
-    resizing: Entity<Option<Resizing>>,
-    cx: &App,
-) -> AnyElement {
-    let spec = shown.spec;
-    let base = shown.width.unwrap_or(spec.base);
-    let hover = style::white(style::HOVER, cx);
-    div()
-        .id(key(spec, GRIP))
-        .absolute()
-        .top_0()
-        .bottom_0()
-        .right(px(-3.))
-        .w(px(6.))
-        .cursor_col_resize()
-        .hover(move |grip| grip.bg(hover))
-        .on_drag(EdgeDrag, |drag, _, _, cx| {
-            cx.stop_propagation();
-            cx.new(|_| drag.clone())
-        })
-        .on_mouse_down(MouseButton::Left, {
-            let resizing = resizing.clone();
-            move |event: &MouseDownEvent, _, cx| {
-                let from = event.position.x;
-                resizing.update(cx, |held, _| {
-                    *held = Some(Resizing {
-                        id: spec.id,
-                        from,
-                        base,
-                    })
-                });
-                cx.stop_propagation();
-            }
-        })
-        // Every grip hears every edge drag; only the one it started on answers.
-        .on_drag_move(move |event: &DragMoveEvent<EdgeDrag>, window, cx| {
-            let Some(held) = *resizing.read(cx) else {
-                return;
-            };
-            if held.id != spec.id {
-                return;
-            }
-            let resize = ColumnResize {
-                id: spec.id,
-                width: held.base + f32::from(event.event.position.x - held.from),
-            };
-            on_resize(&resize, window, cx)
+        .when_some(resize, |cell, on_resize| {
+            let base = px(shown.width.unwrap_or(spec.base));
+            cell.child(
+                EdgeResizer::new(format!("column-grip-{}", spec.id), Edge::Right, base)
+                    .straddle(true)
+                    .on_resize(move |width, window, cx| {
+                        let resize = ColumnResize {
+                            id: spec.id,
+                            width: width.as_f32(),
+                        };
+                        on_resize(&resize, window, cx)
+                    }),
+            )
         })
         .into_any_element()
 }

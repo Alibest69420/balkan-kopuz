@@ -5,9 +5,8 @@ use std::ops::Range;
 use api::schema::ChoiceOption;
 use api::{DownloadHistoryEntry, DownloadState, JobKind};
 use components::format::{t, t_with, text};
-use components::{Badge, BadgeTone, Chip, ChipTone, icons, style};
-use gpui_kit::component::progress::Progress;
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use components::{Chip, ChipTone, JobStop, ProgressBar, icons, style};
+use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, AppContext as _, Context, Entity, EventEmitter, IntoElement, ParentElement as _,
@@ -23,7 +22,6 @@ use components::EmptyState;
 fn row_height() -> Pixels {
     style::list_row()
 }
-const BAR: Pixels = px(3.);
 /// `LIST_HEIGHT` as a number, so a short queue can size its list to itself.
 const LIST: f32 = 260.;
 /// The history shares the popover with the queue, so it gets the shorter half.
@@ -240,33 +238,10 @@ impl Render for DownloadsList {
             .filter(|item| item.state == ItemState::Failed)
             .count();
         let count = items.len();
-        let stopping = running
-            .as_ref()
-            .is_some_and(|job| JobsModel::global(cx).read(cx).is_stopping(&job.id));
-        let job_id = running.as_ref().map(|job| job.id.clone());
-        let percent = running.as_ref().and_then(|job| {
-            let total = job.total.unwrap_or(0);
-            (total > 0).then(|| job.current.unwrap_or(0) as f32 / total as f32 * 100.)
-        });
-        let danger = cx.theme().danger;
 
-        let action = match (running.is_some(), stopping, count > 0) {
-            (true, true, _) => Some(
-                Badge::new(t("stopping"))
-                    .tone(BadgeTone::Muted)
-                    .into_any_element(),
-            ),
-            (true, false, _) => Some(
-                Chip::new("stop-downloads")
-                    .label(t("stop"))
-                    .tone(ChipTone::Ink(danger))
-                    .on_click(move |_, _, cx| {
-                        let Some(id) = job_id.clone() else { return };
-                        JobsModel::global(cx).update(cx, |jobs, cx| jobs.cancel(id, cx));
-                    })
-                    .into_any_element(),
-            ),
-            (false, _, true) => Some(
+        let action = match (running.as_ref(), count > 0) {
+            (Some(job), _) => Some(JobStop::new(job.id.clone()).into_any_element()),
+            (None, true) => Some(
                 Chip::new("clear-downloads")
                     .label(t("clear"))
                     .tone(ChipTone::Ink(style::slate_400(cx)))
@@ -291,17 +266,8 @@ impl Render for DownloadsList {
         v_flex()
             .w_full()
             .child(header(t("downloads"), Some(heading), cx))
-            .when_some(running.as_ref(), |body, _| {
-                body.child(
-                    Progress::new("downloads-progress")
-                        .xsmall()
-                        .h(BAR)
-                        .map(|bar| match percent {
-                            Some(percent) => bar.value(percent),
-                            None => bar.loading(true),
-                        })
-                        .color(cx.theme().primary),
-                )
+            .when_some(running.as_ref(), |body, job| {
+                body.child(ProgressBar::job(job))
             })
             .when_some(batch, |body, batch| {
                 body.child(

@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use api::{SourceInfo, SourceState};
 use components::format::{t, text};
+use components::source_mark::{self, SourceMark};
 use components::{icons, style};
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::button::Button;
@@ -9,8 +10,8 @@ use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::{ActiveTheme as _, Icon, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Anchor, Animation, AnimationExt as _, AnyElement, App, Hsla, IntoElement, ParentElement as _,
-    Pixels, RenderOnce, Rgba, SharedString, Styled, Window, div, pulsating_between, px, svg,
+    Anchor, Animation, AnimationExt as _, AnyElement, App, IntoElement, ParentElement as _, Pixels,
+    RenderOnce, SharedString, Styled, Window, div, pulsating_between, px,
 };
 use store::{Navigator, Route, SourcesModel};
 
@@ -27,10 +28,6 @@ const SUBLINE_GAP: Pixels = px(2.);
 const HEAD_COUNT: f32 = 0.38;
 const ROW_NAME: f32 = 0.85;
 
-const DRIVE_ICON: &str = "icons/hard-drive.svg";
-const LIBRARY_ICON: &str = "icons/folder-tree.svg";
-const SERVICE_ICON: &str = "icons/server.svg";
-const CLOUD_ICON: &str = "icons/cloud.svg";
 const MANAGE_ICON: &str = "icons/sliders-horizontal.svg";
 
 /// Whether the active source answered the daemon's probe.
@@ -50,13 +47,6 @@ pub fn status(cx: &App) -> Status {
         Some(SourceState::AuthExpired | SourceState::Offline) => Status::Offline,
         Some(SourceState::Checking) | None => Status::Connecting,
     }
-}
-
-/// How a source is drawn: the daemon's own SVG path, or a bundled icon standing in for its class.
-#[derive(Clone)]
-enum Mark {
-    Path(String),
-    Bundled(&'static str),
 }
 
 /// The active source, and a popover to pick another.
@@ -96,8 +86,9 @@ impl RenderOnce for SourceSwitcher {
         let label: SharedString = active
             .map(|source| SharedString::from(source.name.clone()))
             .unwrap_or_default();
-        let mark = active.map_or(Mark::Bundled(SERVICE_ICON), mark_of);
-        let accent = accent_of(active, cx);
+        let mark = active.map_or(SourceMark::none(), |source| {
+            SourceMark::new(&source.service)
+        });
         let collapsed = self.collapsed;
         let bare = self.bare;
         let count = self.sources.len();
@@ -116,7 +107,7 @@ impl RenderOnce for SourceSwitcher {
                 (false, false) => frame.px_3().pt_3().pb_2(),
             })
             .child(
-                trigger(label, mark, accent, status, collapsed, cx)
+                trigger(label, mark, status, collapsed, cx)
                     .dropdown_menu_with_anchor(Anchor::TopLeft, move |menu, _, cx| {
                         build(&sources, count, menu, cx)
                     }),
@@ -150,12 +141,12 @@ fn build(sources: &[SourceInfo], count: usize, mut menu: PopupMenu, cx: &App) ->
 }
 
 fn row(source: &SourceInfo, cx: &App) -> PopupMenuItem {
-    let accent = accent_of(Some(source), cx);
+    let accent = source_mark::accent(Some(&source.service), cx);
     let active = source.active;
     let id = source.id.clone();
     let name = SharedString::from(source.name.clone());
     let subline = subline(source);
-    let mark = mark_of(source);
+    let mark = SourceMark::new(&source.service).size(GLYPH);
     let ink = match active {
         true => cx.theme().foreground,
         false => style::white(ROW_NAME, cx),
@@ -165,7 +156,7 @@ fn row(source: &SourceInfo, cx: &App) -> PopupMenuItem {
         h_flex()
             .w_full()
             .gap_2p5()
-            .child(glyph(&mark, GLYPH, accent))
+            .child(mark.clone())
             .child(
                 v_flex()
                     .flex_1()
@@ -207,8 +198,7 @@ fn row(source: &SourceInfo, cx: &App) -> PopupMenuItem {
 /// The trigger tile: glyph, name, status dot and chevron, on the Button the menu hangs off.
 fn trigger(
     label: SharedString,
-    mark: Mark,
-    accent: Hsla,
+    mark: SourceMark,
     status: Status,
     collapsed: bool,
     cx: &App,
@@ -217,7 +207,7 @@ fn trigger(
     let tile = h_flex()
         .w_full()
         .gap_2p5()
-        .child(glyph(&mark, GLYPH, accent))
+        .child(mark)
         .when(!collapsed, |trigger| {
             trigger
                 .child(
@@ -275,79 +265,6 @@ fn dot(status: Status, cx: &App) -> AnyElement {
     }
 }
 
-fn glyph(mark: &Mark, size: Pixels, color: Hsla) -> AnyElement {
-    match mark {
-        Mark::Path(path) => svg()
-            .size(size)
-            .flex_shrink_0()
-            .text_color(color)
-            .data(document(path).as_bytes())
-            .into_any_element(),
-        Mark::Bundled(path) => Icon::default()
-            .path(*path)
-            .size(size)
-            .flex_shrink_0()
-            .text_color(color)
-            .into_any_element(),
-    }
-}
-
-// The renderer keeps only the alpha of what it rasterizes, so the fill just has to be opaque.
-fn document(path: &str) -> String {
-    format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="black"><path d="{path}"/></svg>"#
-    )
-}
-
-fn mark_of(source: &SourceInfo) -> Mark {
-    match &source.service.icon {
-        api::Icon::Svg(path) => Mark::Path(path.clone()),
-        api::Icon::Class(class) => Mark::Bundled(bundled(class)),
-    }
-}
-
-/// A FontAwesome class cannot be drawn here; every brand shares one mark, the rest map by shape.
-fn bundled(class: &str) -> &'static str {
-    if class.contains("fa-brands") {
-        icons::MUSIC
-    } else if class.contains("compact-disc") {
-        icons::DISC
-    } else if class.contains("cloud") {
-        CLOUD_ICON
-    } else if class.contains("folder") {
-        LIBRARY_ICON
-    } else if class.contains("hard-drive") {
-        DRIVE_ICON
-    } else {
-        SERVICE_ICON
-    }
-}
-
 fn subline(source: &SourceInfo) -> SharedString {
     text(&source.service.name).to_uppercase().into()
-}
-
-/// A service's brand colour; one without a colour wears the app's own accent.
-fn accent_of(source: Option<&SourceInfo>, cx: &App) -> Hsla {
-    source
-        .and_then(|source| Rgba::try_from(source.service.accent.as_str()).ok())
-        .map(Hsla::from)
-        .unwrap_or(cx.theme().primary)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn an_unknown_class_still_draws_something() {
-        assert_eq!(bundled("fa-solid fa-server"), SERVICE_ICON);
-        assert_eq!(bundled("fa-brands fa-soundcloud"), icons::MUSIC);
-        assert_eq!(bundled("fa-solid fa-cloud"), CLOUD_ICON);
-    }
-
-    #[test]
-    fn a_path_becomes_a_standalone_document() {
-        assert!(document("M0 0").contains(r#"<path d="M0 0"/>"#));
-    }
 }

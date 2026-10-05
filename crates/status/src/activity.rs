@@ -2,21 +2,18 @@
 
 use api::{JobKind, JobProgress};
 use components::format::t;
-use components::{Badge, BadgeTone, Chip, ChipTone, icons, style};
+use components::{Chip, ChipTone, JobStop, ProgressBar, icons, style};
 use gpui_kit::base::StyledExt as _;
-use gpui_kit::component::progress::Progress;
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, Context, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Render,
-    SharedString, StatefulInteractiveElement as _, Styled, Subscription, Window, div, px,
+    AnyElement, Context, InteractiveElement as _, IntoElement, ParentElement as _, Render,
+    SharedString, StatefulInteractiveElement as _, Styled, Subscription, Window, div,
 };
 use store::{Finished, JobsModel};
 
 use crate::{DONE, FAILED, ROW_GLYPH, header, row};
 use components::EmptyState;
-
-const BAR: Pixels = px(3.);
 
 /// The activity popover's body.
 pub struct ActivityList {
@@ -32,14 +29,8 @@ impl ActivityList {
     }
 
     fn job(&self, progress: &JobProgress, cx: &mut Context<Self>) -> AnyElement {
-        let jobs = JobsModel::global(cx);
-        let stopping = jobs.read(cx).is_stopping(&progress.id);
         let done = progress.current.unwrap_or(0);
         let total = progress.total.unwrap_or(0);
-        let percent = match total {
-            0 => None,
-            total => Some(done as f32 / total as f32 * 100.),
-        };
         let detail = progress
             .message
             .clone()
@@ -47,8 +38,6 @@ impl ActivityList {
             .or_else(|| (!progress.phase.is_empty()).then(|| progress.phase.clone()))
             .map(SharedString::from);
         let counted = (total > 0).then(|| SharedString::from(format!("{done} / {total}")));
-        let id = progress.id.clone();
-        let danger = cx.theme().danger;
         v_flex()
             .w_full()
             .gap_1()
@@ -77,30 +66,9 @@ impl ActivityList {
                             .child(counted)
                             .into_any_element()
                     }))
-                    .child(match stopping {
-                        true => Badge::new(t("stopping"))
-                            .tone(BadgeTone::Muted)
-                            .into_any_element(),
-                        false => Chip::new("stop-job")
-                            .label(t("stop"))
-                            .tone(ChipTone::Ink(danger))
-                            .on_click(move |_, _, cx| {
-                                let id = id.clone();
-                                JobsModel::global(cx).update(cx, |jobs, cx| jobs.cancel(id, cx));
-                            })
-                            .into_any_element(),
-                    }),
+                    .child(JobStop::new(progress.id.clone())),
             )
-            .child(
-                Progress::new(SharedString::from(format!("job-progress-{}", progress.id)))
-                    .xsmall()
-                    .h(BAR)
-                    .map(|bar| match percent {
-                        Some(percent) => bar.value(percent),
-                        None => bar.loading(true),
-                    })
-                    .color(cx.theme().primary),
-            )
+            .child(ProgressBar::job(progress))
             .children(detail.map(|detail| {
                 div()
                     .w_full()

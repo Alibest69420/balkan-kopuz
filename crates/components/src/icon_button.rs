@@ -6,7 +6,8 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, ClickEvent, Hsla, IntoElement, Pixels, RenderOnce, SharedString, Styled as _, Window, px,
+    App, ClickEvent, Hsla, IntoElement, ParentElement as _, Pixels, RenderOnce, SharedString,
+    Styled as _, Window, div, px,
 };
 
 use crate::{focus, hover, icons, motion, style};
@@ -31,7 +32,7 @@ pub enum IconTone {
     Quiet,
     /// A ringed button whose white/70 glyph whitens, washing under the pointer.
     Outline,
-    /// `bg-black/40` over a cover, ringed in white/10.
+    /// `bg-black/40 hover:bg-black/60` over a cover or a list, ringed in white/10.
     Scrim,
 }
 
@@ -56,8 +57,8 @@ impl IconTone {
             IconTone::Quiet => (wash, ink(style::slate_400(cx)), None),
             IconTone::Outline => (wash, ink(style::white(0.7, cx)), Some(OUTLINE)),
             IconTone::Scrim => (
-                style::black(0.4, cx),
-                ink(style::white(style::TEXT_SECONDARY, cx)),
+                style::black(if hot { 0.6 } else { 0.4 }, cx),
+                ink(style::white(style::TEXT_STRONG, cx)),
                 Some((style::BORDER, style::BORDER)),
             ),
         }
@@ -164,6 +165,43 @@ impl IconButton {
     ) -> Self {
         self.click = Some(Rc::new(click));
         self
+    }
+}
+
+/// The button floating over a list scrolled away from what is playing, taking it back there.
+#[derive(IntoElement)]
+pub struct FollowButton {
+    id: SharedString,
+    click: Option<OnClick>,
+}
+
+impl FollowButton {
+    pub fn new(id: impl Into<SharedString>) -> Self {
+        Self {
+            id: id.into(),
+            click: None,
+        }
+    }
+
+    pub fn on_click(
+        mut self,
+        click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.click = Some(Rc::new(click));
+        self
+    }
+}
+
+impl RenderOnce for FollowButton {
+    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+        let mut button = IconButton::new(self.id, icons::REFRESH)
+            .size(style::chrome().round_button)
+            .glyph(px(20.))
+            .tone(IconTone::Scrim)
+            .shadow(true)
+            .tooltip(crate::format::t("jump_to_current_song"));
+        button.click = self.click;
+        div().absolute().bottom_4().right_4().child(button)
     }
 }
 

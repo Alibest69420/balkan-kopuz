@@ -12,15 +12,14 @@ use std::time::Duration;
 
 use api::{AlbumPage, ApiError, ArtistPage, KopuzApi, SearchResults, Table};
 use components::format::{t, t_with};
-use components::{Badge, EmptyState, SearchField, icons, motion, style};
+use components::{Badge, EmptyState, KeyHint, SearchField, icons, motion, style};
 use gpui_kit::base::motion::{Easing, Presence, Transition};
 use gpui_kit::component::input::{Escape, IndentInline, InputEvent, InputState, MoveDown, MoveUp};
-use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AppContext as _, Context, Entity, FocusHandle, FontWeight, InteractiveElement as _,
-    IntoElement, Keystroke, ParentElement as _, Pixels, Render, ScrollStrategy, SharedString,
+    IntoElement, ParentElement as _, Pixels, Render, ScrollStrategy, SharedString,
     StatefulInteractiveElement as _, Styled, Subscription, Task, UniformListScrollHandle, Window,
     div, px, uniform_list,
 };
@@ -839,12 +838,6 @@ fn list_height(count: usize, window: &Window) -> Pixels {
     }
 }
 
-fn kbd(keystroke: &str) -> Option<Kbd> {
-    Keystroke::parse(keystroke)
-        .ok()
-        .map(|stroke| Kbd::new(stroke).text_size(style::text_10()))
-}
-
 impl Palette {
     fn head(&self, title: SharedString, cx: &gpui_kit::App) -> impl IntoElement {
         h_flex().h(ROW).w_full().px_5().items_end().pb_1p5().child(
@@ -920,7 +913,7 @@ impl Palette {
                                     .child(subtitle)
                             })),
                     )
-                    .children(item.hint.as_deref().and_then(kbd)),
+                    .children(item.hint.as_deref().map(components::Keycap::new)),
             )
             .on_hover(cx.listener(move |this, over: &bool, _, cx| {
                 if *over && this.selected != index {
@@ -953,18 +946,11 @@ impl Palette {
             .border_t_1()
             .border_color(style::white(style::BORDER_SOFT, cx))
             .bg(style::black(style::HOVER, cx))
-            .children(hints.into_iter().map(|(keystrokes, label)| {
-                h_flex()
-                    .gap_1p5()
-                    .items_center()
-                    .children(keystrokes.iter().filter_map(|held| kbd(held)))
-                    .child(
-                        div()
-                            .text_size(style::text_10())
-                            .text_color(style::white(style::TEXT_MUTED, cx))
-                            .child(t(label)),
-                    )
-            }))
+            .children(
+                hints
+                    .into_iter()
+                    .map(|(keystrokes, label)| KeyHint::new(keystrokes.iter().copied(), t(label))),
+            )
     }
 
     fn empty(&self) -> EmptyState {

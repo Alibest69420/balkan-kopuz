@@ -2,7 +2,7 @@
 
 use components::dialogs::{DialogSize, FormDialog, FormFooter};
 use components::format::t;
-use components::style;
+use components::{Keycap, style};
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::{
@@ -73,23 +73,5 @@ fn line(entry: crate::Entry, cx: &App) -> impl IntoElement {
                 .text_color(cx.theme().foreground)
                 .child(entry.label),
         )
-        .children(
-            entry
-                .keystroke
-                .map(|keystroke| keycap(&keystroke, cx).into_any_element()),
-        )
-}
-
-/// One keystroke, drawn as the keycap the palette's footer already uses.
-pub(crate) fn keycap(keystroke: &str, cx: &App) -> impl IntoElement {
-    div()
-        .flex_shrink_0()
-        .px_1p5()
-        .rounded(style::radius(cx))
-        .border_1()
-        .border_color(style::white(style::BORDER, cx))
-        .bg(style::white(style::RAISED, cx))
-        .text_size(style::text_10())
-        .text_color(style::white(style::TEXT_SECONDARY, cx))
-        .child(commands::keycap(keystroke))
+        .children(entry.keystroke.map(|keystroke| Keycap::new(&keystroke)))
 }

@@ -1,11 +1,10 @@
 //! The docked column beside the content: the same queue and lyrics the sheet draws, in a narrower slot.
 
 use components::format::t;
-use components::{IconButton, Segment, Segmented, icons, style};
+use components::{Edge, EdgeResizer, IconButton, Segment, Segmented, icons, style};
 use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::{
-    AnyElement, AppContext as _, Context, DragMoveEvent, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, Render, StatefulInteractiveElement as _, Styled, Window, div, px,
+    AnyElement, Context, IntoElement, ParentElement as _, Pixels, Styled, Window, div, px,
 };
 use store::layout::SheetTab;
 use store::{Chrome, SidePanel};
@@ -19,16 +18,6 @@ const DEFAULT_WIDTH: Pixels = px(320.);
 // `bg-black/40`: the column darkens whatever the window paints behind it.
 const SCRIM: f32 = 0.4;
 const CLOSE_GLYPH: Pixels = px(14.);
-
-/// Carried by the left-edge handle; nothing is dropped, so it paints nothing.
-#[derive(Clone)]
-pub(crate) struct ResizePanel;
-
-impl Render for ResizePanel {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        gpui_kit::Empty
-    }
-}
 
 impl NowPlaying {
     /// What the docked column has been dragged to; the shell sizes the slot it puts it in.
@@ -140,31 +129,20 @@ impl NowPlaying {
         }
     }
 
-    /// The left edge drags the column between 280 and 600 px; it is flush with the window.
+    /// The left edge drags the column between 280 and 600 px.
     fn resize_handle(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        div()
-            .id("panel-resize")
-            .absolute()
-            .left_0()
-            .top_0()
-            .h_full()
-            .w(px(6.))
-            .occlude()
-            .cursor_col_resize()
-            .hover(|handle| handle.bg(style::white(style::ACTIVE, cx)))
-            .on_drag(ResizePanel, |drag, _, _, cx| {
-                cx.stop_propagation();
-                cx.new(|_| drag.clone())
+        let panel = cx.entity().downgrade();
+        EdgeResizer::new("panel-resize", Edge::Left, self.panel_width())
+            .range(MIN_WIDTH, MAX_WIDTH)
+            .on_resize(move |width, _, cx| {
+                panel
+                    .update(cx, |this, cx| {
+                        if this.panel_width != Some(width) {
+                            this.panel_width = Some(width);
+                            cx.notify();
+                        }
+                    })
+                    .ok();
             })
-            .on_drag_move(
-                cx.listener(|this, event: &DragMoveEvent<ResizePanel>, window, cx| {
-                    let edge = window.viewport_size().width;
-                    let width = (edge - event.event.position.x).clamp(MIN_WIDTH, MAX_WIDTH);
-                    if this.panel_width != Some(width) {
-                        this.panel_width = Some(width);
-                        cx.notify();
-                    }
-                }),
-            )
     }
 }

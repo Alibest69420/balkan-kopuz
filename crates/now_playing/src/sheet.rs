@@ -4,8 +4,6 @@
 #[path = "sheet_tests.rs"]
 mod tests;
 
-use std::path::PathBuf;
-
 use components::format::t;
 use components::{Cover, Link, Tone, icons, menus, motion, style};
 use gpui_kit::base::ElementExt as _;
@@ -16,9 +14,8 @@ use gpui_kit::component::{
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, Context, FocusHandle, FontWeight, Hsla, ImageSource, InteractiveElement as _,
-    IntoElement, ParentElement as _, Pixels, SharedString, Styled, Window, div, point, px,
-    relative, rems,
+    AnyElement, App, Context, FocusHandle, FontWeight, Hsla, InteractiveElement as _, IntoElement,
+    ParentElement as _, Pixels, SharedString, Styled, Window, div, point, px, relative, rems,
 };
 use store::layout::{Backdrop, Side};
 use store::{Chrome, ConfigModel, FavoritesModel, Route, SourcesModel};
@@ -36,6 +33,8 @@ const CLOSE: Pixels = px(40.);
 const CLOSE_GLYPH: Pixels = px(22.);
 // The hero cover never grows past this, however tall the window is.
 const HERO_MAX: Pixels = px(420.);
+// `bg-black/72` at the least: the sheet is read over, never a bright wallpaper.
+const SHEET_DARKENING: u8 = 72;
 
 pub(crate) struct ModalFocus {
     handle: FocusHandle,
@@ -465,22 +464,7 @@ impl NowPlaying {
                         .into_any_element(),
                 )
             }
-            Backdrop::Artwork => {
-                let config = ConfigModel::global(cx);
-                let config = config.read(cx);
-                let source: ImageSource = if !config.config().custom_background_path.is_empty() {
-                    PathBuf::from(&config.config().custom_background_path).into()
-                } else if config.config().cover_art_background {
-                    store::artwork_source(artwork?, true)
-                } else {
-                    // No picture was asked for, so the sheet takes the same light the window does.
-                    return components::backdrop::ambient(window, cx);
-                };
-                // The sheet is read over, so the art never gets to be as bright as a wallpaper.
-                let darkening = config.config().cover_art_darkening.max(72);
-                let blur = config.config().cover_art_blur;
-                Some(components::backdrop::wallpaper(source, darkening, blur, cx))
-            }
+            Backdrop::Artwork => components::backdrop::layer(artwork, SHEET_DARKENING, window, cx),
         }
     }
 }

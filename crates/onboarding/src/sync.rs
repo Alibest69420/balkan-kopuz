@@ -2,10 +2,9 @@
 
 use api::JobProgress;
 use components::format::{t, t_with};
-use components::{Heading, SectionHeading, style};
+use components::{Heading, ProgressBar, SectionHeading, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::progress::Progress;
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, Context, IntoElement, ParentElement as _, SharedString, Styled, Window, div,
@@ -28,7 +27,7 @@ impl FirstRun {
             .iter()
             .find(|job| matches!(job.kind, api::JobKind::Scan | api::JobKind::LibrarySync))
             .cloned();
-        let share = progress.as_ref().and_then(percent);
+        let share = progress.as_ref().and_then(components::job::fraction);
         v_flex()
             .w_full()
             .gap_3()
@@ -48,14 +47,7 @@ impl FirstRun {
             })
             .when(!waiting, |step| {
                 step.child(crate::ui::hint(t("first_run_sync_hint"), cx))
-                    .child(
-                        Progress::new("first-run-progress")
-                            .xsmall()
-                            .loading(share.is_none())
-                            .value(share.unwrap_or_default())
-                            .color(cx.theme().primary)
-                            .h(BAR),
-                    )
+                    .child(ProgressBar::new("first-run-progress", share).height(BAR))
             })
             .when_some(progress.filter(|_| !waiting), |step, progress| {
                 step.child(line(&progress, cx))
@@ -117,42 +109,4 @@ fn line(progress: &JobProgress, cx: &Context<FirstRun>) -> impl IntoElement {
                     .child(counted),
             )
         })
-}
-
-/// A job's progress as a percentage, where it reports one it can be drawn from.
-fn percent(progress: &JobProgress) -> Option<f32> {
-    let total = progress.total.filter(|total| *total > 0)?;
-    let current = progress.current?.min(total);
-    Some(current as f32 / total as f32 * 100.)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use api::JobKind;
-
-    fn progress(current: Option<u64>, total: Option<u64>) -> JobProgress {
-        JobProgress {
-            id: "job".into(),
-            kind: JobKind::Scan,
-            phase: String::new(),
-            current,
-            total,
-            message: None,
-        }
-    }
-
-    #[test]
-    fn a_job_without_a_total_has_no_percentage_to_draw() {
-        assert_eq!(percent(&progress(Some(3), None)), None);
-        assert_eq!(percent(&progress(None, Some(10))), None);
-        assert_eq!(percent(&progress(Some(3), Some(0))), None);
-    }
-
-    #[test]
-    fn a_counted_job_is_a_share_of_a_hundred() {
-        assert_eq!(percent(&progress(Some(5), Some(10))), Some(50.));
-        // A count past the total is the daemon's business, not a bar past its end.
-        assert_eq!(percent(&progress(Some(30), Some(10))), Some(100.));
-    }
 }
