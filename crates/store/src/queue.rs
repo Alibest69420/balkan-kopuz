@@ -1,4 +1,4 @@
-use api::{ApiError, ApiEvent, QueueEdit, QueueSnapshot, TrackInfo};
+use api::{ApiEvent, QueueEdit, QueueSnapshot, TrackInfo};
 use gpui_kit::{App, Context, Entity, Subscription, Task};
 use link::Link;
 
@@ -172,21 +172,29 @@ impl QueueModel {
         self.snapshot.items.get(from..).unwrap_or_default()
     }
 
-    /// Replace everything after the current row with `keys`; empty clears it.
-    pub fn set_upcoming(&mut self, keys: Vec<String>, cx: &mut Context<Self>) {
-        let first = self.snapshot.position.map_or(0, |at| at + 1);
-        let count = self.snapshot.items.len() as u32;
-        if first >= count && keys.is_empty() {
+    /// Drop everything after the current row, locally first, in one daemon edit.
+    pub fn clear_upcoming(&mut self, cx: &mut Context<Self>) {
+        if self.upcoming().is_empty() {
             return;
         }
         let before = self.snapshot.clone();
-        let generation = self.generation;
-        let held: Vec<TrackInfo> = self
-            .snapshot
-            .items
-            .drain(first as usize..)
-            .filter(|track| keys.contains(&track.key))
-            .collect();
+        let first = self.snapshot.position.map_or(0, |at| at as usize + 1);
+        self.snapshot.items.truncate(first);
+        self.resummarize();
+        crate::notify(cx);
+        self.commit(QueueEdit::ClearUpcoming, before, cx);
+    }
+
+    /// Replace everything after the current row with `keys`, in one daemon edit; empty clears it.
+    pub fn replace_upcoming(&mut self, keys: Vec<String>, cx: &mut Context<Self>) {
+        if keys.is_empty() {
+            self.clear_upcoming(cx);
+            return;
+        }
+        // Rows not already held arrive with the daemon's snapshot; the ones held move now.
+        let before = self.snapshot.clone();
+        let first = self.snapshot.position.map_or(0, |at| at as usize + 1);
+        let held: Vec<TrackInfo> = self.snapshot.items.drain(first.min(self.len())..).collect();
         for key in &keys {
             if let Some(track) = held.iter().find(|track| &track.key == key) {
                 self.snapshot.items.push(track.clone());
@@ -194,25 +202,16 @@ impl QueueModel {
         }
         self.resummarize();
         crate::notify(cx);
+        self.commit(QueueEdit::ReplaceUpcoming { keys }, before, cx);
+    }
 
-        let link = Link::global(cx);
-        let call = link.call(move |api| async move {
-            for index in (first..count).rev() {
-                api.queue_edit(QueueEdit::Remove { index }).await?;
-            }
-            if !keys.is_empty() {
-                api.queue_edit(QueueEdit::Insert { index: first, keys })
-                    .await?;
-            }
-            Ok::<(), ApiError>(())
-        });
-        cx.spawn(async move |this, cx| {
-            let Err(error) = call.await else { return };
-            this.update(cx, |this, cx| this.roll_back(generation, before, cx))
-                .ok();
-            cx.update(|cx| crate::Notices::error(crate::human(&error), cx));
-        })
-        .detach();
+    /// Randomise what plays after the current row; the daemon draws the order.
+    pub fn shuffle_upcoming(&mut self, cx: &mut Context<Self>) {
+        if self.upcoming().len() < 2 {
+            return;
+        }
+        let before = self.snapshot.clone();
+        self.commit(QueueEdit::ShuffleUpcoming, before, cx);
     }
 
     /// Send an edit the local snapshot has already taken, restoring it if the daemon refuses.

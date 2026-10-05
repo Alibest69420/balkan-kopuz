@@ -148,43 +148,29 @@ impl QueueView {
 
     fn clear_upcoming(&mut self, cx: &mut Context<Self>) {
         let model = QueueModel::global(cx);
-        let (at, keys) = {
-            let queue = model.read(cx);
-            let at = queue.position().map_or(0, |at| at + 1);
-            (
-                at,
-                queue
-                    .upcoming()
-                    .iter()
-                    .map(|track| track.key.clone())
-                    .collect::<Vec<_>>(),
-            )
-        };
-        if keys.is_empty() {
-            return;
-        }
-        let count = keys.len();
-        model.update(cx, |queue, cx| queue.set_upcoming(Vec::new(), cx));
-        store::Notices::undo(
-            components::format::t_with("cleared_upcoming", &[("count", count.to_string())]),
-            move |cx| insert_at(at, keys.clone(), cx),
-            cx,
-        );
-    }
-
-    fn shuffle_upcoming(&mut self, cx: &mut Context<Self>) {
-        let model = QueueModel::global(cx);
-        let mut keys: Vec<String> = model
+        let keys: Vec<String> = model
             .read(cx)
             .upcoming()
             .iter()
             .map(|track| track.key.clone())
             .collect();
-        if keys.len() < 2 {
+        if keys.is_empty() {
             return;
         }
-        shuffle(&mut keys);
-        model.update(cx, |queue, cx| queue.set_upcoming(keys, cx));
+        let count = keys.len();
+        model.update(cx, |queue, cx| queue.clear_upcoming(cx));
+        store::Notices::undo(
+            components::format::t_with("cleared_upcoming", &[("count", count.to_string())]),
+            move |cx| {
+                let keys = keys.clone();
+                QueueModel::global(cx).update(cx, |queue, cx| queue.replace_upcoming(keys, cx));
+            },
+            cx,
+        );
+    }
+
+    fn shuffle_upcoming(&mut self, cx: &mut Context<Self>) {
+        QueueModel::global(cx).update(cx, |queue, cx| queue.shuffle_upcoming(cx));
     }
 
     fn save_as_playlist(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -426,21 +412,9 @@ fn tool(id: &'static str, glyph: &'static str, cx: &App) -> Button {
         .icon(icons::icon(glyph))
 }
 
-/// A Fisher-Yates walk off the hasher's per-process seed; nothing here needs a real RNG.
-fn shuffle(keys: &mut [String]) {
-    use std::hash::{BuildHasher, Hasher};
-    let state = std::collections::hash_map::RandomState::new();
-    for index in (1..keys.len()).rev() {
-        let mut hasher = state.build_hasher();
-        hasher.write_usize(index);
-        let pick = (hasher.finish() % (index as u64 + 1)) as usize;
-        keys.swap(index, pick);
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{move_target, shuffle};
+    use super::move_target;
 
     #[test]
     fn an_insertion_point_below_the_row_loses_the_row_itself() {
@@ -453,16 +427,5 @@ mod tests {
         assert_eq!(move_target(2, 2, 5), None);
         assert_eq!(move_target(2, 3, 5), None);
         assert_eq!(move_target(5, 1, 5), None);
-    }
-
-    #[test]
-    fn shuffling_keeps_every_row_it_was_given() {
-        let mut keys: Vec<String> = (0..20).map(|n| n.to_string()).collect();
-        let before = keys.clone();
-        shuffle(&mut keys);
-        keys.sort();
-        let mut before = before;
-        before.sort();
-        assert_eq!(keys, before);
     }
 }
