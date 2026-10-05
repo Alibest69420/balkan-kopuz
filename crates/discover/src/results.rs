@@ -1,12 +1,10 @@
 //! What a query turned up: the strips of albums and artists over the list of matching tracks.
 
+use std::rc::Rc;
+
 use api::{AlbumInfo, TrackInfo};
-use components::{Tile, icons};
-use gpui_kit::component::h_flex;
-use gpui_kit::{
-    AnyElement, App, InteractiveElement as _, IntoElement, ParentElement as _, Pixels,
-    SharedString, StatefulInteractiveElement as _, Styled, px,
-};
+use components::{Carousel, Heading, Tile, icons};
+use gpui_kit::{AnyElement, IntoElement, Pixels, SharedString, px};
 use store::{Playing, Route, Target};
 
 const ALBUM_TILE: Pixels = px(128.);
@@ -79,26 +77,17 @@ fn artist_card(key: &String, name: &SharedString, playing: &Playing) -> AnyEleme
     .into_any_element()
 }
 
-/// A band of cards that scrolls sideways, so the track list below keeps the page's one scroller.
-fn strip(id: &'static str, title: SharedString, cards: Vec<AnyElement>, cx: &App) -> AnyElement {
-    gpui_kit::component::v_flex()
-        .w_full()
-        .flex_shrink_0()
-        .gap_4()
-        .mb_6()
-        .child(crate::band_label(title, cx))
-        .child(
-            h_flex()
-                .id(id)
-                .w_full()
-                .items_start()
-                .gap_4()
-                .pb_2()
-                .overflow_x_scroll()
-                // A bare wheel notch belongs to the page, not to the strip under the pointer.
-                .restrict_scroll_to_axis()
-                .children(cards),
-        )
+/// A band of cards that slides sideways, so the track list below keeps the page's one scroller.
+fn strip(
+    id: &'static str,
+    title: SharedString,
+    count: usize,
+    tile: Pixels,
+    build: impl Fn(usize) -> AnyElement + 'static,
+) -> AnyElement {
+    Carousel::new(id, title, count, tile, move |index, _, _| build(index))
+        .gap(px(16.))
+        .heading(Heading::Band)
         .into_any_element()
 }
 
@@ -107,17 +96,19 @@ pub fn album_strip(
     albums: &[AlbumInfo],
     title: SharedString,
     playing: &Playing,
-    cx: &App,
 ) -> Option<AnyElement> {
     if albums.is_empty() {
         return None;
     }
-    let cards = albums
-        .iter()
-        .take(STRIP)
-        .map(|album| album_card(album, playing))
-        .collect();
-    Some(strip("result-albums", title, cards, cx))
+    let albums: Rc<[AlbumInfo]> = albums.iter().take(STRIP).cloned().collect();
+    let playing = playing.clone();
+    Some(strip(
+        "result-albums",
+        title,
+        albums.len(),
+        ALBUM_TILE,
+        move |index| album_card(&albums[index], &playing),
+    ))
 }
 
 /// The artists credited on what a query turned up.
@@ -125,16 +116,22 @@ pub fn artist_strip(
     artists: &[(String, SharedString)],
     title: SharedString,
     playing: &Playing,
-    cx: &App,
 ) -> Option<AnyElement> {
     if artists.is_empty() {
         return None;
     }
-    let cards = artists
-        .iter()
-        .map(|(key, name)| artist_card(key, name, playing))
-        .collect();
-    Some(strip("result-artists", title, cards, cx))
+    let artists: Rc<[(String, SharedString)]> = artists.into();
+    let playing = playing.clone();
+    Some(strip(
+        "result-artists",
+        title,
+        artists.len(),
+        ARTIST_TILE,
+        move |index| {
+            let (key, name) = &artists[index];
+            artist_card(key, name, &playing)
+        },
+    ))
 }
 
 #[cfg(test)]

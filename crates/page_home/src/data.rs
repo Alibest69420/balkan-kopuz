@@ -1,6 +1,7 @@
 //! What the shelves hold: every tile derived once per data change, never per frame.
 
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use api::{AlbumInfo, AlbumPage, ArtistPage, ArtworkRef, PlaylistInfo, TrackInfo, TrackPage};
 use components::format::t_with;
@@ -52,7 +53,8 @@ pub(crate) enum Form {
 /// One row of the page, under the name the layout orders it by.
 pub(crate) struct Shelf {
     pub name: &'static str,
-    pub tiles: Vec<Tile>,
+    // Shared with the carousel, which builds its cards after the page has rendered.
+    pub tiles: Rc<[Tile]>,
     pub form: Form,
 }
 
@@ -63,7 +65,11 @@ impl Shelf {
             "top_artists" => Form::Ranked,
             _ => Form::Row,
         };
-        Self { name, tiles, form }
+        Self {
+            name,
+            tiles: tiles.into(),
+            form,
+        }
     }
 }
 

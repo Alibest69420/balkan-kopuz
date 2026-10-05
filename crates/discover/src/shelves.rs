@@ -5,27 +5,20 @@ use std::collections::HashSet;
 use api::{CatalogDetailRequest, CatalogItem, CatalogItemKind, CatalogShelf};
 use components::format::t;
 use components::{
-    PlayState, Tile, TrackActions, TrackList, TrackListEvent, TrackListOptions, icons, motion,
-    style,
+    Arrows, Carousel, PlayState, ShelfHeading, Tile, TrackActions, TrackList, TrackListEvent,
+    TrackListOptions, heading_link, icons, style,
 };
-use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
-use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::component::v_flex;
 use gpui_kit::{
-    AnyElement, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, Render, ScrollHandle, ScrollWheelEvent, SharedString,
-    StatefulInteractiveElement as _, Styled, Subscription, Task, Window, div, point, px,
+    AnyElement, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Pixels, Render,
+    ScrollHandle, SharedString, StatefulInteractiveElement as _, Styled, Subscription, Task,
+    Window, div, px,
 };
 use store::{Link, Navigator, Notices, PlayerModel, Route, SourcesModel, Target, actions};
 
 use crate::states::catalog_failure;
 
 const TILE: Pixels = px(176.);
-// One ‹ or › press, matching the Dioxus frontend's 800 px nudge.
-const STEP: Pixels = px(800.);
-// `w-8 h-8` on a carousel arrow, and its `hover:scale-105`.
-const NUDGE: Pixels = px(32.);
-const NUDGE_HOVER: Pixels = px(33.6);
 
 struct ShelfView {
     shelf: CatalogShelf,
@@ -39,8 +32,6 @@ pub struct Shelves {
     // The catalog id or track key whose tile owns the pause overlay.
     now_playing: Option<String>,
     pending: Option<String>,
-    // The carousel arrow under the pointer, which its tween reacts to.
-    hovered_nudge: Option<SharedString>,
     _play: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
@@ -52,19 +43,9 @@ impl Shelves {
             views: Vec::new(),
             now_playing: None,
             pending: None,
-            hovered_nudge: None,
             _play: None,
             _subscriptions: vec![cx.observe(&player, |_, _, cx| cx.notify())],
         }
-    }
-
-    fn set_nudge_hover(&mut self, id: SharedString, hovered: bool, cx: &mut Context<Self>) {
-        if hovered {
-            self.hovered_nudge = Some(id);
-        } else if self.hovered_nudge.as_ref() == Some(&id) {
-            self.hovered_nudge = None;
-        }
-        cx.notify();
     }
 
     pub fn is_empty(&self) -> bool {
@@ -215,90 +196,34 @@ impl Shelves {
         self.play(kind, id, cx);
     }
 
-    fn section(&self, index: usize, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn section(&self, index: usize, cx: &mut Context<Self>) -> AnyElement {
         let view = &self.views[index];
         match &view.list {
             Some(list) => self.list_section(index, list.clone(), cx),
-            None => self.carousel_section(index, window, cx),
+            None => self.carousel_section(index, cx),
         }
     }
 
-    fn carousel_section(
-        &self,
-        index: usize,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    fn carousel_section(&self, index: usize, cx: &mut Context<Self>) -> AnyElement {
         let view = &self.views[index];
-        let tiles: Vec<AnyElement> = view
-            .shelf
-            .items
-            .iter()
-            .map(|item| self.tile(index, item, cx))
-            .collect();
-        let arrows = h_flex()
-            .flex_shrink_0()
-            .gap_2()
-            .child(self.nudge(index, -STEP, window, cx))
-            .child(self.nudge(index, STEP, window, cx));
-        v_flex()
-            .w_full()
-            .gap_5()
-            .child(
-                h_flex()
-                    .w_full()
-                    .items_end()
-                    .justify_between()
-                    .gap_4()
-                    .child(
-                        v_flex()
-                            .min_w_0()
-                            .when_some(view.shelf.strapline.clone(), |column, strapline| {
-                                column.child(
-                                    div()
-                                        .mb_0p5()
-                                        .text_size(style::text_10())
-                                        .font_weight(gpui_kit::FontWeight::BOLD)
-                                        .text_color(style::white(0.4, cx))
-                                        .child(strapline),
-                                )
-                            })
-                            .child(
-                                div()
-                                    .truncate()
-                                    .text_2xl()
-                                    .font_weight(gpui_kit::FontWeight::BOLD)
-                                    .child(view.shelf.title.clone()),
-                            ),
-                    )
-                    .child(arrows),
-            )
-            .child(
-                h_flex()
-                    .id(("shelf", index))
-                    .w_full()
-                    .items_start()
-                    .gap_5()
-                    .px_2()
-                    .pt_1()
-                    .pb_3()
-                    .overflow_x_scroll()
-                    // A bare wheel notch belongs to the page; only a sideways gesture or shift slides the row.
-                    .restrict_scroll_to_axis()
-                    .on_scroll_wheel(cx.listener({
-                        let scroll = view.scroll.clone();
-                        move |_, event: &ScrollWheelEvent, window, cx| {
-                            let delta = event.delta.pixel_delta(window.line_height());
-                            if event.modifiers.shift && delta.y != px(0.) {
-                                components::scroll::nudge_x(&scroll, -delta.y);
-                                cx.stop_propagation();
-                            }
-                        }
-                    }))
-                    .track_scroll(&view.scroll)
-                    .children(tiles),
-            )
-            .into_any_element()
+        let page = cx.entity();
+        Carousel::new(
+            SharedString::from(format!("catalog-shelf-{index}")),
+            view.shelf.title.clone(),
+            view.shelf.items.len(),
+            TILE,
+            // The carousel builds a tile once it is in view, after this render has handed the page back.
+            move |at, _, cx| {
+                page.update(cx, |this, cx| {
+                    this.tile(index, &this.views[index].shelf.items[at], cx)
+                })
+            },
+        )
+        .strapline(view.shelf.strapline.clone())
+        .arrows(Arrows::Always)
+        .grow_arrows(true)
+        .handle(view.scroll.clone())
+        .into_any_element()
     }
 
     fn list_section(
@@ -310,45 +235,26 @@ impl Shelves {
         let view = &self.views[index];
         let title = SharedString::from(view.shelf.title.clone());
         let rows = list.read(cx).rows().len();
+        let mut heading = ShelfHeading::new(title.clone());
+        if let Some(more) = view.shelf.more_ref.clone() {
+            heading = heading.trailing(
+                heading_link(("show-all", index), t("discover_show_all"), cx).on_click(
+                    move |_, _, cx| {
+                        Navigator::navigate(
+                            Route::DiscoverPlaylist {
+                                id: more.clone().into(),
+                                title: title.clone(),
+                            },
+                            cx,
+                        )
+                    },
+                ),
+            );
+        }
         v_flex()
             .w_full()
-            .gap_5()
-            .child(
-                h_flex()
-                    .w_full()
-                    .items_end()
-                    .justify_between()
-                    .gap_4()
-                    .child(
-                        div()
-                            .truncate()
-                            .text_2xl()
-                            .font_weight(gpui_kit::FontWeight::BOLD)
-                            .child(title.clone()),
-                    )
-                    .when_some(view.shelf.more_ref.clone(), |row, more| {
-                        row.child(
-                            div()
-                                .id(("show-all", index))
-                                .flex_shrink_0()
-                                .cursor_pointer()
-                                .text_xs()
-                                .font_weight(gpui_kit::FontWeight::BOLD)
-                                .text_color(style::white(style::TEXT_SECONDARY, cx))
-                                .hover(|link| link.text_color(cx.theme().foreground))
-                                .child(t("discover_show_all"))
-                                .on_click(move |_, _, cx| {
-                                    Navigator::navigate(
-                                        Route::DiscoverPlaylist {
-                                            id: more.clone().into(),
-                                            title: title.clone(),
-                                        },
-                                        cx,
-                                    )
-                                }),
-                        )
-                    }),
-            )
+            .gap_6()
+            .child(heading)
             .child(
                 div()
                     .w_full()
@@ -451,10 +357,10 @@ impl Shelves {
 }
 
 impl Render for Shelves {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mut sections = Vec::with_capacity(self.views.len());
         for index in 0..self.views.len() {
-            sections.push(self.section(index, window, cx));
+            sections.push(self.section(index, cx));
         }
         v_flex().w_full().gap_12().children(sections)
     }
@@ -463,60 +369,4 @@ impl Render for Shelves {
 /// A catalog id is unique only inside its shelf, and shelves only ever append.
 fn element_id(shelf: usize, id: &str) -> SharedString {
     SharedString::from(format!("{shelf}-{id}"))
-}
-
-impl Shelves {
-    /// `bg-white/5 hover:bg-white/10 transition-all hover:scale-105`, the scale read as a grown box.
-    fn nudge(
-        &self,
-        shelf: usize,
-        delta: Pixels,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Button {
-        let back = delta < px(0.);
-        let icon = if back {
-            icons::CHEVRON_LEFT
-        } else {
-            icons::CHEVRON_RIGHT
-        };
-        let side = if back { "back" } else { "forward" };
-        let title = &self.views[shelf].shelf.title;
-        let id = SharedString::from(format!("nudge-{shelf}-{title}-{side}"));
-        let hovered = self.hovered_nudge.as_ref() == Some(&id);
-        let target = if hovered {
-            style::white(style::HOVER, cx)
-        } else {
-            style::white(style::RAISED, cx)
-        };
-        let background = motion::color(id.clone(), target, window, cx);
-        let size = motion::length(
-            SharedString::from(format!("{id}-size")),
-            if hovered { NUDGE_HOVER } else { NUDGE },
-            motion::FAST,
-            window,
-            cx,
-        );
-        let scroll = self.views[shelf].scroll.clone();
-        Button::new((if back { "left" } else { "right" }, shelf))
-            .custom(
-                ButtonCustomVariant::new(cx)
-                    .color(style::rest(background))
-                    .foreground(cx.theme().foreground)
-                    .hover(background)
-                    .active(style::white(style::HOVER, cx)),
-            )
-            .rounded(px(999.))
-            .with_size(size)
-            .icon(icons::icon(icon).xsmall())
-            .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
-                this.set_nudge_hover(id.clone(), *hovered, cx)
-            }))
-            .on_click(move |_, window, _| {
-                let offset = scroll.offset();
-                let max = scroll.max_offset().x.max(px(0.));
-                scroll.set_offset(point((offset.x + delta).clamp(-max, px(0.)), offset.y));
-                window.refresh();
-            })
-    }
 }

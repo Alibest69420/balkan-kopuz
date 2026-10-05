@@ -1,6 +1,7 @@
 //! Every shared component, each defined once: a page composes these and never draws its own copy.
 
 pub mod cards;
+pub mod carousel;
 pub mod columns;
 pub mod cover;
 pub mod dialogs;
@@ -27,6 +28,7 @@ pub use cards::{
     Frame, PlayState, Tile, TileRow, album_row, album_tile, artist_row, artist_tile, playlist_tile,
     tile_grid,
 };
+pub use carousel::{Arrows, Carousel, Heading, ShelfHeading, heading_link};
 pub use cover::Cover;
 pub use grid::{GridMode, JumpRail, TileGrid, rail_letter};
 pub use header::{DetailHeader, PageHeader, detail_header_skeleton};

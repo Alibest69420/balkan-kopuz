@@ -13,15 +13,16 @@ use std::sync::Arc;
 use api::{AlbumInfo, AlbumPage, ApiError, KopuzApi, SearchResults, Table};
 use components::format::{t, t_with};
 use components::{
-    EmptyState, GridMode, Loading, PageHeader, TileGrid, TrackList, TrackListEvent, icons, style,
+    EmptyState, GridMode, Heading, Loading, PageHeader, ShelfHeading, TileGrid, TrackList,
+    TrackListEvent, heading_link, icons, style,
 };
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::spinner::Spinner;
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Div, Entity, FontWeight, InteractiveElement as _,
-    IntoElement, Keystroke, ParentElement as _, Pixels, Render, ScrollHandle, SharedString,
+    AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
+    Keystroke, ParentElement as _, Pixels, Render, ScrollHandle, SharedString,
     StatefulInteractiveElement as _, Styled, Subscription, Task, Window, div, px,
 };
 use store::{Chrome, Link, PlayerModel, Query, SourcesModel, actions, all};
@@ -54,29 +55,6 @@ fn search_fetch(query: String) -> impl Fn(Arc<dyn KopuzApi>) -> Answer + 'static
             api.search(query).await
         })
     }
-}
-
-/// `text-xl font-semibold text-white/80`: the heading over a band of results.
-pub(crate) fn band_label(title: SharedString, cx: &App) -> Div {
-    div()
-        .flex_shrink_0()
-        .text_xl()
-        .font_weight(FontWeight::SEMIBOLD)
-        .text_color(style::white(0.8, cx))
-        .child(title)
-}
-
-/// A quiet link at the end of a band's label row.
-fn band_link(id: &'static str, label: SharedString, cx: &App) -> gpui_kit::Stateful<gpui_kit::Div> {
-    div()
-        .id(id)
-        .flex_shrink_0()
-        .cursor_pointer()
-        .text_xs()
-        .font_weight(FontWeight::BOLD)
-        .text_color(style::white(style::TEXT_SECONDARY, cx))
-        .hover(|link| link.text_color(cx.theme().foreground))
-        .child(label)
 }
 
 /// The browsing destination: the catalog and the genres when nothing is asked for, results when something is.
@@ -324,24 +302,17 @@ impl Discover {
             .take(LANDING_GENRES)
             .map(|tile| GenreCard::new(tile).into_any_element())
             .collect();
+        let mut heading = ShelfHeading::new(t("browse_genres")).heading(Heading::Band);
+        if more {
+            heading = heading.trailing(
+                heading_link("discover-all-genres", t("discover_show_all"), cx)
+                    .on_click(cx.listener(|this, _, _, cx| this.show_all_genres(true, cx))),
+            );
+        }
         v_flex()
             .w_full()
             .gap_3()
-            .child(
-                h_flex()
-                    .w_full()
-                    .items_end()
-                    .justify_between()
-                    .gap_4()
-                    .child(band_label(t("browse_genres"), cx))
-                    .when(more, |row| {
-                        row.child(
-                            band_link("discover-all-genres", t("discover_show_all"), cx).on_click(
-                                cx.listener(|this, _, _, cx| this.show_all_genres(true, cx)),
-                            ),
-                        )
-                    }),
-            )
+            .child(heading)
             .child(div().flex().flex_wrap().gap_4().children(cards))
             .into_any_element()
     }
@@ -469,9 +440,10 @@ impl Discover {
                         &[("count", self.genres.len().to_string())],
                     ))
                     .action(
-                        band_link("discover-fewer-genres", t("discover_show_less"), cx).on_click(
-                            cx.listener(|this, _, _, cx| this.show_all_genres(false, cx)),
-                        ),
+                        heading_link("discover-fewer-genres", t("discover_show_less"), cx)
+                            .on_click(
+                                cx.listener(|this, _, _, cx| this.show_all_genres(false, cx)),
+                            ),
                     ),
             )
             .child(div().flex_1().min_h_0().pb_8().child(bands))
@@ -535,9 +507,8 @@ impl Discover {
                 )
                 .into_any_element()
         } else {
-            let albums = results::album_strip(&self.result_albums, t("albums"), &self.playing, cx);
-            let artists =
-                results::artist_strip(&self.result_artists, t("artists"), &self.playing, cx);
+            let albums = results::album_strip(&self.result_albums, t("albums"), &self.playing);
+            let artists = results::artist_strip(&self.result_artists, t("artists"), &self.playing);
             v_flex()
                 .flex_1()
                 .min_h_0()
@@ -546,8 +517,13 @@ impl Discover {
                 .children(albums)
                 .children(artists)
                 .when(found > 0, |body| {
-                    body.child(band_label(t("tracks"), cx).mb_4())
-                        .child(div().flex_1().min_h_0().pb_8().child(self.tracks.clone()))
+                    body.child(
+                        div()
+                            .flex_shrink_0()
+                            .mb_4()
+                            .child(ShelfHeading::new(t("tracks")).heading(Heading::Band)),
+                    )
+                    .child(div().flex_1().min_h_0().pb_8().child(self.tracks.clone()))
                 })
                 .into_any_element()
         };

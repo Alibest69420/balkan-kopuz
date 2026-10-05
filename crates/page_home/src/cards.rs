@@ -2,21 +2,16 @@
 
 use api::QueueContext;
 use components::PlayState;
-use gpui_kit::{AnyElement, App, IntoElement, ParentElement as _, Pixels, Styled, div, px};
+use gpui_kit::{AnyElement, App, IntoElement, Pixels, px};
 use store::{PlayerModel, QueueModel, actions};
 
 use crate::data::{Play, Tile};
 
-/// `gap-5` between cards, as the pixels the shelf's snap and its virtual window both count in.
+/// `gap-5` between cards.
 pub(crate) const GAP: f32 = 20.;
 
 /// `md:w-48`, which every shelf upstream settles on at desktop width.
 pub(crate) const TILE: Pixels = px(192.);
-
-/// What one card occupies, which is what a row snaps to and steps by.
-pub(crate) fn step() -> Pixels {
-    TILE + px(GAP)
-}
 
 pub(crate) fn card(tile: &Tile, cx: &App) -> AnyElement {
     let mut card = components::Tile::new(tile.key.clone(), tile.title.clone())
@@ -40,11 +35,7 @@ pub(crate) fn card(tile: &Tile, cx: &App) -> AnyElement {
         let play = tile.play.clone();
         card = card.play(state, move |_, _, cx| start(&play, current, cx));
     }
-    div()
-        .flex_shrink_0()
-        .mr(px(GAP))
-        .child(card)
-        .into_any_element()
+    card.into_any_element()
 }
 
 /// Whether the queue's current track is what `play` names.
