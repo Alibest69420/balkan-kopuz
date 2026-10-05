@@ -310,12 +310,14 @@ impl AlbumDetail {
                 )
                 .gap(px(0.));
                 match group.disc {
-                    // TODO(i18n): en.ftl has no disc-heading key.
                     Some(disc) => section
                         .heading(
-                            SectionHeading::new(format!("Disc {disc}"))
-                                .heading(Heading::Group)
-                                .icon(icons::DISC),
+                            SectionHeading::new(t_with(
+                                "disc_heading",
+                                &[("number", disc.to_string())],
+                            ))
+                            .heading(Heading::Group)
+                            .icon(icons::DISC),
                         )
                         .wash(true),
                     None => section,
