@@ -16,6 +16,7 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled, Subscription, Window, div,
 };
 
+use crate::folders::{FolderList, pick_folders};
 use crate::format::{t, text};
 use crate::icons;
 use crate::motion;
@@ -266,7 +267,7 @@ impl SchemaForm {
                         })),
                 )
                 .into_any_element(),
-            FieldKind::Directories => self.directories(&key, &value, locked, cx),
+            FieldKind::Directories => self.folders(&key, &value, locked, cx),
             FieldKind::Radio { options } => v_flex()
                 .gap_1p5()
                 .children(
@@ -454,93 +455,47 @@ impl SchemaForm {
         .detach();
     }
 
-    /// A list of folders: each with a remove button, and one button that adds several.
-    fn directories(
-        &self,
-        key: &str,
-        value: &str,
-        locked: bool,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let paths = api::schema::decode_directories(value);
-        v_flex()
-            .gap_1p5()
-            .when(paths.is_empty(), |list| {
-                list.child(
-                    div()
-                        .text_xs()
-                        .text_color(style::white(style::TEXT_SUBTLE, cx))
-                        .child(t("no_music_folders")),
-                )
-            })
-            .children(paths.iter().enumerate().map(|(index, path)| {
-                h_flex()
-                    .gap_2()
-                    .items_center()
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .text_sm()
-                            .child(path.clone()),
-                    )
-                    .child(
-                        Button::new(SharedString::from(format!("remove-{key}-{index}")))
-                            .icon(crate::icons::icon(icons::CLOSE))
-                            .tooltip(t("remove"))
-                            .disabled(locked)
-                            .on_click(cx.listener({
-                                let key = key.to_string();
-                                let path = path.clone();
-                                move |this, _, _, cx| {
-                                    let held = this.values.get(&key).cloned().unwrap_or_default();
-                                    let mut paths = api::schema::decode_directories(&held);
-                                    paths.retain(|kept| kept != &path);
-                                    let value = api::schema::encode_directories(&paths);
-                                    this.answer(&key, value, cx);
-                                }
-                            })),
-                    )
-            }))
-            .child(
-                Button::new(SharedString::from(format!("add-{key}")))
-                    .icon(crate::icons::icon(icons::FOLDER))
-                    .label(t("add_folder"))
-                    .disabled(locked)
-                    .on_click(cx.listener({
-                        let key = key.to_string();
-                        move |this, _, _, cx| this.add_directories(key.clone(), cx)
-                    })),
-            )
-            .into_any_element()
-    }
-
-    fn add_directories(&mut self, key: String, cx: &mut Context<Self>) {
-        let picked = cx.prompt_for_paths(PathPromptOptions {
-            files: false,
-            directories: true,
-            multiple: true,
-            prompt: None,
-        });
-        cx.spawn(async move |this, cx| {
-            let Ok(Ok(Some(picked))) = picked.await else {
-                return;
-            };
-            this.update(cx, |this, cx| {
-                let held = this.values.get(&key).cloned().unwrap_or_default();
-                let mut paths = api::schema::decode_directories(&held);
-                for path in picked {
-                    let path = path.to_string_lossy().to_string();
-                    if !paths.contains(&path) {
-                        paths.push(path);
-                    }
-                }
-                this.answer(&key, api::schema::encode_directories(&paths), cx);
-            })
-            .ok();
+    /// The folders list, answering with the whole encoded list each time one is added or dropped.
+    fn folders(&self, key: &str, value: &str, locked: bool, cx: &mut Context<Self>) -> AnyElement {
+        let form = cx.entity().downgrade();
+        FolderList::new(
+            SharedString::from(format!("folders-{key}")),
+            api::schema::decode_directories(value),
+        )
+        .locked(locked)
+        .empty(t("no_music_folders"))
+        .on_remove({
+            let (form, key) = (form.clone(), key.to_string());
+            move |path, _, cx| {
+                form.update(cx, |form, cx| {
+                    let held = form.values.get(&key).cloned().unwrap_or_default();
+                    let mut paths = api::schema::decode_directories(&held);
+                    paths.retain(|kept| kept != path);
+                    form.answer(&key, api::schema::encode_directories(&paths), cx);
+                })
+                .ok();
+            }
         })
-        .detach();
+        .on_add({
+            let key = key.to_string();
+            move |_, _, cx| {
+                let (form, key) = (form.clone(), key.clone());
+                pick_folders(true, cx, move |picked, cx| {
+                    form.update(cx, |form, cx| {
+                        let held = form.values.get(&key).cloned().unwrap_or_default();
+                        let mut paths = api::schema::decode_directories(&held);
+                        for path in picked {
+                            if !paths.contains(&path) {
+                                paths.push(path);
+                            }
+                        }
+                        form.answer(&key, api::schema::encode_directories(&paths), cx);
+                    })
+                    .ok();
+                });
+            }
+        })
+        .into_any_element()
     }
 }
 

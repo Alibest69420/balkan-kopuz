@@ -7,12 +7,11 @@ use components::format::{t, t_with};
 use components::settings::{
     Choice, SettingRow, SliderRow, on_slider_change, section, set_slider, slider_state, toggle_row,
 };
-use components::{FieldChanged, Lockable as _, SchemaForm};
+use components::{Callout, CalloutTone, FieldChanged, Lockable as _, SchemaForm, icons};
 use config::{
     ChannelMode, DeviceChangeBehavior, LYRICS_OFFSET_LIMIT_MS, OfflineQuality, SampleRateMode,
 };
 use equalizer::Equalizer;
-use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::slider::SliderState;
 use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -382,7 +381,6 @@ impl PlaybackSettings {
     // TODO(logs): opening and exporting the log folder is local filesystem work a socket-only client has no business doing.
     fn tools(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let tracing_enabled = ConfigModel::global(cx).read(cx).config().tracing_enabled;
-        let warning = cx.theme().warning.opacity(0.8);
         section(t("logs"))
             .children(
                 toggle_row(
@@ -398,12 +396,11 @@ impl PlaybackSettings {
                 .shown(cx),
             )
             .children(components::settings::when_unfiltered(
-                div()
-                    .px_5()
-                    .pb_3()
-                    .text_xs()
-                    .text_color(warning)
-                    .child(t("tracing_warning")),
+                div().px_5().pb_3().child(
+                    Callout::new(t("tracing_warning"))
+                        .tone(CalloutTone::Warning)
+                        .icon(icons::WARNING),
+                ),
                 cx,
             ))
     }

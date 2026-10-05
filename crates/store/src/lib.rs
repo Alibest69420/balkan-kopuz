@@ -56,7 +56,7 @@ pub use settings_filter::SettingsFilter;
 pub use signin::{
     browser as browser_sign_in, is_waiting_for_browser, register_password_form, start_sign_in,
 };
-pub use sources::SourcesModel;
+pub use sources::{SourceStatus, SourcesModel};
 pub use target::{Kind, RowEdit, RowScope, Target, TrackActions};
 
 /// `cx.notify()`, counted: a shared model's notify dirties every ancestor, so the profiler wants it.

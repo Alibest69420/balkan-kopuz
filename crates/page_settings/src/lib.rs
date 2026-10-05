@@ -1,16 +1,15 @@
 //! Settings: the category rail and the panel it shows; each category lives in its own crate.
 
-use components::focus::{Axis, Roving, Step};
 use components::format::{t, t_with};
 use components::marker::Along;
-use components::{Bar, EmptyState, PageHeader, SearchField, Tab, TabStrip, icons, style};
+use components::{Bar, Callout, EmptyState, PageHeader, SearchField, Tab, TabStrip, icons, style};
 use gpui_kit::component::input::{InputEvent, InputState};
-use gpui_kit::component::{Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
-    KeyDownEvent, ParentElement as _, Render, SharedString, StatefulInteractiveElement as _,
-    Styled, Subscription, Window, div, rems,
+    ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled,
+    Subscription, Window, div, rems,
 };
 use settings_appearance::AppearanceSettings;
 use settings_interface::InterfaceSettings;
@@ -21,8 +20,7 @@ use store::ConfigModel;
 /// `border-white/9` under the fan, over `bg-black/92`.
 const FAN_BORDER: f32 = 0.09;
 const FAN_BG: f32 = 0.92;
-/// `text-white/40` on the lock, `text-white/70` on the line beside it.
-const LOCK: f32 = 0.40;
+/// `text-white/70` on the line under an empty panel.
 const NOTICE: f32 = 0.70;
 
 /// Which panel the rail is showing.
@@ -105,9 +103,6 @@ impl Category {
 
 pub struct Settings {
     category: Category,
-    rail: Roving,
-    // A ring belongs to the keyboard; a click already says where it landed.
-    ringing: bool,
     scroll: gpui_kit::ScrollHandle,
     search: Entity<InputState>,
     searching: bool,
@@ -135,18 +130,8 @@ impl Settings {
             }),
             cx.observe(&ConfigModel::global(cx), |_, _, cx| cx.notify()),
         ];
-        let mut rail = Roving::new(Axis::Row, cx);
-        rail.set_len(Category::ALL.len());
-        rail.set_cursor(
-            Category::ALL
-                .iter()
-                .position(|held| *held == category)
-                .unwrap_or(0),
-        );
         let mut settings = Self {
             category,
-            rail,
-            ringing: false,
             scroll: gpui_kit::ScrollHandle::new(),
             search,
             searching: false,
@@ -234,28 +219,21 @@ impl Settings {
 
 impl Settings {
     /// The category fan, as its top-bar branch: the CD disc is rotated clip-paths GPUI cannot draw.
-    fn rail(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let tabs = Category::ALL.iter().enumerate().map(|(index, category)| {
-            Tab::new(category.slug(), category.icon())
-                .label(Some(category.label()))
-                .ringed(self.rail.is_active(index, window) && self.ringing)
+    fn rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let tabs = Category::ALL.iter().map(|category| {
+            Tab::new(category.slug(), category.icon()).label(Some(category.label()))
         });
         let strip = TabStrip::new("settings-fan", Along::Row, Bar::Rule)
+            .roving("SettingsRail")
             .current(Some(self.category.slug()))
             .tabs(tabs)
             .on_select(cx.listener(|this, index: &usize, window, cx| {
-                let Some(category) = Category::ALL.get(*index).copied() else {
-                    return;
-                };
-                this.rail.set_cursor(*index);
-                this.ringing = false;
-                this.choose(category, window, cx);
+                if let Some(category) = Category::ALL.get(*index).copied() {
+                    this.choose(category, window, cx);
+                }
             }));
-        self.rail
-            .group(h_flex().id("settings-fan"), "SettingsRail")
-            .on_key_down(
-                cx.listener(|this, event: &KeyDownEvent, window, cx| this.walk(event, window, cx)),
-            )
+        h_flex()
+            .id("settings-fan-scroll")
             .w_full()
             .flex_none()
             .mb_4()
@@ -265,20 +243,6 @@ impl Settings {
             .border_color(style::white(FAN_BORDER, cx))
             .bg(components::settings::panel_background(FAN_BG, cx))
             .child(strip)
-    }
-
-    /// Left and right walk the fan; enter shows whatever the walk landed on.
-    fn walk(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        self.ringing = true;
-        match self.rail.walk(event) {
-            Step::Moved(_) => cx.notify(),
-            Step::Activate(at) => {
-                if let Some(category) = Category::ALL.get(at).copied() {
-                    self.choose(category, window, cx);
-                }
-            }
-            Step::Ignored => cx.propagate(),
-        }
     }
 
     /// The box that filters every category at once.
@@ -306,29 +270,11 @@ impl Settings {
     }
 
     /// The notice a managed settings file puts above the fan.
-    fn managed_notice(&self, cx: &App) -> impl IntoElement {
-        h_flex()
+    fn managed_notice(&self) -> impl IntoElement {
+        div()
             .w_full()
-            .gap_3()
-            .items_center()
             .mb_4()
-            .px_5()
-            .py_3()
-            .rounded(style::radius_xl())
-            .border_1()
-            .border_color(style::white(style::BORDER, cx))
-            .bg(style::white(style::RAISED, cx))
-            .child(
-                icons::icon(icons::LOCK)
-                    .with_size(style::text_11())
-                    .text_color(style::white(LOCK, cx)),
-            )
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(style::white(NOTICE, cx))
-                    .child(t("settings_managed_notice")),
-            )
+            .child(Callout::new(t("settings_managed_notice")).icon(icons::LOCK))
     }
 }
 
@@ -359,8 +305,8 @@ impl Render for Settings {
                             return page.child(self.unavailable(cx));
                         }
                         page.child(self.search_box())
-                            .when(locked, |page| page.child(self.managed_notice(cx)))
-                            .child(self.rail(window, cx))
+                            .when(locked, |page| page.child(self.managed_notice()))
+                            .child(self.rail(cx))
                             .when(empty, |page| {
                                 page.child(EmptyState::new(t_with(
                                     "no_results_found",

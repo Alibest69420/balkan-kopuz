@@ -7,13 +7,13 @@ use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, Div, ElementId, FontWeight, Hsla, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, RenderOnce, SharedString, StatefulInteractiveElement as _, Styled,
-    Window, div, px, rems,
+    AnyElement, App, Div, ElementId, Entity, FontWeight, Hsla, InteractiveElement as _,
+    IntoElement, KeyDownEvent, ParentElement as _, Pixels, RenderOnce, SharedString,
+    StatefulInteractiveElement as _, Styled, Window, div, px, rems,
 };
 
 use crate::marker::{self, Along};
-use crate::{focus, icons, motion, style};
+use crate::{Axis, Roving, Step, focus, icons, motion, style};
 
 const HOVER: u64 = 0;
 const WASH: u64 = 1;
@@ -104,7 +104,7 @@ impl Tab {
 
 type OnSelect = Rc<dyn Fn(&usize, &mut Window, &mut App)>;
 
-/// The tabs and their sliding bar; the owner wraps it in its roving group for the keyboard.
+/// The tabs and their sliding bar; `roving` makes it one tab stop that the arrows walk.
 #[derive(IntoElement)]
 pub struct TabStrip {
     id: &'static str,
@@ -113,6 +113,7 @@ pub struct TabStrip {
     current: Option<SharedString>,
     tabs: Vec<Tab>,
     select: Option<OnSelect>,
+    roving: Option<&'static str>,
 }
 
 impl TabStrip {
@@ -124,6 +125,7 @@ impl TabStrip {
             current: None,
             tabs: Vec::new(),
             select: None,
+            roving: None,
         }
     }
 
@@ -143,7 +145,13 @@ impl TabStrip {
         self
     }
 
-    /// What a click on the tab at an index does.
+    /// One tab stop for the whole strip with arrows, home and end inside it, bound under `context`; enter selects.
+    pub fn roving(mut self, context: &'static str) -> Self {
+        self.roving = Some(context);
+        self
+    }
+
+    /// What a click, or enter on a roving strip, does for the tab at an index.
     pub fn on_select(mut self, select: impl Fn(&usize, &mut Window, &mut App) + 'static) -> Self {
         self.select = Some(Rc::new(select));
         self
@@ -227,8 +235,97 @@ impl TabStrip {
     }
 }
 
+/// The keyboard half of a roving strip: where the arrows are, and whether a ring should show it.
+struct Walk {
+    roving: Roving,
+    ringing: bool,
+}
+
 impl RenderOnce for TabStrip {
     fn render(mut self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let Some(context) = self.roving else {
+            return self.draw(window, cx);
+        };
+        let vertical = self.along == Along::Column;
+        let axis = match vertical {
+            true => Axis::Column,
+            false => Axis::Row,
+        };
+        let key = SharedString::from(format!("{}-roving", self.id));
+        let walk: Entity<Walk> = window.use_keyed_state(key.clone(), cx, |_, cx| Walk {
+            roving: Roving::new(axis, cx),
+            ringing: false,
+        });
+        let current = self
+            .current
+            .as_ref()
+            .and_then(|key| self.tabs.iter().position(|tab| &tab.key == key));
+        let len = self.tabs.len();
+        walk.update(cx, |walk, _| {
+            walk.roving.set_axis(axis);
+            walk.roving.set_len(len);
+            // Off the keyboard the cursor follows the chosen tab; on it, the arrows own the cursor.
+            if !walk.roving.is_focused(window)
+                && let Some(at) = current
+            {
+                walk.roving.set_cursor(at);
+            }
+        });
+        let (ringing, cursor) = {
+            let walk = walk.read(cx);
+            (walk.ringing, walk.roving.cursor())
+        };
+        let focused = walk.read(cx).roving.is_focused(window);
+        for (index, tab) in self.tabs.iter_mut().enumerate() {
+            tab.ringed |= focused && ringing && cursor == index;
+        }
+        let owner = self.select.take();
+        self.select = owner.clone().map(|owner| {
+            let walk = walk.clone();
+            Rc::new(move |index: &usize, window: &mut Window, cx: &mut App| {
+                walk.update(cx, |walk, cx| {
+                    walk.roving.set_cursor(*index);
+                    walk.ringing = false;
+                    cx.notify();
+                });
+                owner(index, window, cx);
+            }) as OnSelect
+        });
+        let group = walk.read(cx).roving.group(div().id(key), context);
+        group
+            .map(|group| match vertical {
+                true => group.w_full(),
+                false => group.h_full().flex_none(),
+            })
+            .on_key_down({
+                let walk = walk.clone();
+                move |event: &KeyDownEvent, window, cx| {
+                    let step = walk.update(cx, |walk, cx| {
+                        walk.ringing = true;
+                        let step = walk.roving.walk(event);
+                        if matches!(step, Step::Moved(_)) {
+                            cx.notify();
+                        }
+                        step
+                    });
+                    match step {
+                        Step::Moved(_) => {}
+                        Step::Activate(at) => {
+                            if let Some(owner) = &owner {
+                                owner(&at, window, cx);
+                            }
+                        }
+                        Step::Ignored => cx.propagate(),
+                    }
+                }
+            })
+            .child(self.draw(window, cx))
+            .into_any_element()
+    }
+}
+
+impl TabStrip {
+    fn draw(mut self, window: &mut Window, cx: &mut App) -> AnyElement {
         let marks = marker::marks((self.id, 0usize), window, cx);
         let tabs = std::mem::take(&mut self.tabs);
         let tabs: Vec<AnyElement> = tabs

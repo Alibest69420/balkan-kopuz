@@ -2,7 +2,7 @@
 
 use api::SourceInfo;
 use api::schema::{FieldValue, decode_directories, encode_directories, spec_value};
-use gpui_kit::{App, PathPromptOptions};
+use gpui_kit::App;
 use link::Link;
 use store::{Notices, SourcesModel};
 
@@ -30,30 +30,6 @@ pub fn write(id: String, directories: Vec<String>, cx: &mut App) {
         Err(error) => {
             cx.update(|cx| Notices::error(store::human(&error), cx));
         }
-    })
-    .detach();
-}
-
-/// Ask the platform for folders and hand `apply` whatever was picked.
-pub fn pick(multiple: bool, cx: &mut App, apply: impl FnOnce(Vec<String>, &mut App) + 'static) {
-    let paths = cx.prompt_for_paths(PathPromptOptions {
-        files: false,
-        directories: true,
-        multiple,
-        prompt: None,
-    });
-    cx.spawn(async move |cx| {
-        let Ok(Ok(Some(paths))) = paths.await else {
-            return;
-        };
-        let picked: Vec<String> = paths
-            .iter()
-            .map(|path| path.to_string_lossy().to_string())
-            .collect();
-        if picked.is_empty() {
-            return;
-        }
-        cx.update(|cx| apply(picked, cx));
     })
     .detach();
 }

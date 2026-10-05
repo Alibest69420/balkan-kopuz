@@ -8,6 +8,25 @@ use crate::config::ConfigModel;
 use crate::invalidation::{Invalidation, TablesChanged};
 use crate::notices::Notices;
 
+/// What a source's row says about the link to it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourceStatus {
+    Connected,
+    Connecting,
+    Disconnected,
+}
+
+impl SourceStatus {
+    /// The daemon's probe answer as a status; no answer yet reads as connecting.
+    pub fn of(state: Option<SourceState>) -> Self {
+        match state {
+            Some(SourceState::Online) => Self::Connected,
+            Some(SourceState::AuthExpired | SourceState::Offline) => Self::Disconnected,
+            Some(SourceState::Checking) | None => Self::Connecting,
+        }
+    }
+}
+
 /// Configured sources and the active one's capabilities, which gate every affordance.
 pub struct SourcesModel {
     sources: Vec<SourceInfo>,
@@ -90,6 +109,11 @@ impl SourcesModel {
 
     pub fn active(&self) -> Option<&SourceInfo> {
         self.sources.iter().find(|source| source.active)
+    }
+
+    /// The active source's link as the daemon's probe last found it.
+    pub fn active_status(&self) -> SourceStatus {
+        SourceStatus::of(self.active().and_then(|source| source.state))
     }
 
     /// The active source's capabilities; all off until sources load.

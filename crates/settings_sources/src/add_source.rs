@@ -294,7 +294,6 @@ impl Render for AddSource {
                 form.child(ui::host_access_warning(
                     "add-source-host-access",
                     t("browser_sign_in_needs_host"),
-                    cx,
                 ))
             })
             .child(

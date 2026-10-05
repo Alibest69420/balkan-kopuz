@@ -1,22 +1,19 @@
-use std::time::Duration;
-
-use api::{SourceInfo, SourceState};
+use api::SourceInfo;
 use components::format::{t, text};
 use components::source_mark::{self, SourceMark};
-use components::{icons, style};
+use components::{StatusDot, icons, style};
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::{ActiveTheme as _, Icon, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Anchor, Animation, AnimationExt as _, AnyElement, App, IntoElement, ParentElement as _, Pixels,
-    RenderOnce, SharedString, Styled, Window, div, pulsating_between, px,
+    Anchor, App, IntoElement, ParentElement as _, Pixels, RenderOnce, SharedString, Styled, Window,
+    div, px,
 };
-use store::{Navigator, Route, SourcesModel};
+use store::{Navigator, Route, SourceStatus, SourcesModel};
 
 const GLYPH: Pixels = px(16.);
-const DOT: Pixels = px(6.);
 const CHEVRON: Pixels = px(10.);
 const CHECK: Pixels = px(11.);
 const POPOVER_WIDTH: Pixels = px(218.);
@@ -30,36 +27,17 @@ const ROW_NAME: f32 = 0.85;
 
 const MANAGE_ICON: &str = "icons/sliders-horizontal.svg";
 
-/// Whether the active source answered the daemon's probe.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Status {
-    Connecting,
-    Online,
-    Offline,
-}
-
-/// The active source's link, as the daemon's own probe last found it.
-pub fn status(cx: &App) -> Status {
-    let sources = SourcesModel::global(cx);
-    let sources = sources.read(cx);
-    match sources.active().and_then(|source| source.state) {
-        Some(SourceState::Online) => Status::Online,
-        Some(SourceState::AuthExpired | SourceState::Offline) => Status::Offline,
-        Some(SourceState::Checking) | None => Status::Connecting,
-    }
-}
-
 /// The active source, and a popover to pick another.
 #[derive(IntoElement)]
 pub struct SourceSwitcher {
     sources: Vec<SourceInfo>,
-    status: Status,
+    status: SourceStatus,
     collapsed: bool,
     bare: bool,
 }
 
 impl SourceSwitcher {
-    pub fn new(sources: Vec<SourceInfo>, status: Status) -> Self {
+    pub fn new(sources: Vec<SourceInfo>, status: SourceStatus) -> Self {
         Self {
             sources,
             status,
@@ -199,7 +177,7 @@ fn row(source: &SourceInfo, cx: &App) -> PopupMenuItem {
 fn trigger(
     label: SharedString,
     mark: SourceMark,
-    status: Status,
+    status: SourceStatus,
     collapsed: bool,
     cx: &App,
 ) -> Button {
@@ -220,7 +198,7 @@ fn trigger(
                         .text_color(cx.theme().foreground)
                         .child(label),
                 )
-                .child(dot(status, cx))
+                .child(StatusDot::new(status))
                 .child(
                     Icon::default()
                         .path(icons::CHEVRON_DOWN)
@@ -242,27 +220,6 @@ fn trigger(
         false => button.w_full().h_auto().px_2p5().py_2(),
     });
     button.child(tile)
-}
-
-fn dot(status: Status, cx: &App) -> AnyElement {
-    let color = match status {
-        Status::Online => cx.theme().success,
-        Status::Connecting => cx.theme().warning,
-        Status::Offline => cx.theme().danger,
-    };
-    let dot = div().w(DOT).h(DOT).flex_shrink_0().rounded_full().bg(color);
-    if status == Status::Connecting {
-        dot.with_animation(
-            "source-status",
-            Animation::new(Duration::from_millis(1100))
-                .repeat()
-                .with_easing(pulsating_between(0.4, 1.)),
-            |dot, delta| dot.opacity(delta),
-        )
-        .into_any_element()
-    } else {
-        dot.into_any_element()
-    }
 }
 
 fn subline(source: &SourceInfo) -> SharedString {

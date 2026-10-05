@@ -2,9 +2,9 @@
 
 use api::JobProgress;
 use components::format::{t, t_with};
-use components::{Heading, ProgressBar, SectionHeading, style};
+use components::{Heading, ProgressBar, SectionHeading, StatusLine, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, Context, IntoElement, ParentElement as _, SharedString, Styled, Window, div,
@@ -33,17 +33,13 @@ impl FirstRun {
             .gap_3()
             .child(SectionHeading::new(t("first_run_sync_title")).heading(Heading::Step))
             .when(waiting, |step| {
-                step.child(crate::ui::hint(t("first_run_waiting_sign_in"), cx))
-                    .child(
-                        Button::new("first-run-sign-in")
-                            .outline()
-                            .small()
-                            .label(t("login"))
-                            .on_click(cx.listener(|this: &mut Self, _, window, cx| {
-                                this.sign_in_again(window, cx)
-                            }))
-                            .self_start(),
-                    )
+                step.child(
+                    StatusLine::new(store::SourceStatus::Disconnected)
+                        .label(t("first_run_waiting_sign_in"))
+                        .on_sign_in(cx.listener(|this: &mut Self, _, window, cx| {
+                            this.sign_in_again(window, cx)
+                        })),
+                )
             })
             .when(!waiting, |step| {
                 step.child(crate::ui::hint(t("first_run_sync_hint"), cx))

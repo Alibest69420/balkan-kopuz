@@ -1,6 +1,7 @@
 //! Every shared component, each defined once: a page composes these and never draws its own copy.
 
 pub mod album_collection;
+pub mod callout;
 pub mod cards;
 pub mod carousel;
 pub mod chip;
@@ -13,6 +14,7 @@ pub mod dialogs;
 pub mod dock_panel;
 pub mod download_toggle;
 pub mod drag;
+pub mod folders;
 pub mod grid;
 pub mod header;
 pub mod heading;
@@ -40,7 +42,9 @@ pub mod selection;
 pub mod settings;
 pub mod skeleton;
 pub mod sort;
+pub mod source_card;
 pub mod source_mark;
+pub mod source_status;
 pub mod states;
 pub mod tabs;
 pub mod thin_slider;
@@ -58,6 +62,7 @@ pub use primitives::{
 };
 
 pub use album_collection::AlbumCollection;
+pub use callout::{Callout, CalloutTone};
 pub use cards::{
     Frame, PlayState, Tile, TileRow, album_row, album_tile, artist_row, artist_tile, playlist_tile,
     tile_grid,
@@ -71,6 +76,7 @@ pub use device_row::DeviceRow;
 pub use dock_panel::{DockPanel, DockSize};
 pub use download_toggle::{DownloadToggle, ToggleSize};
 pub use drag::DragChip;
+pub use folders::{FolderBrowser, FolderList, parent_dir, pick_folders};
 pub use grid::{GridMode, JumpRail, TileGrid, rail_letter};
 pub use header::{
     DetailHeader, HeaderLayout, MetaLine, PageHeader, TitleSize, detail_header_skeleton,
@@ -98,7 +104,9 @@ pub use segmented::{Segment, Segmented, view_toggle};
 pub use selection::{SelectionBar, Verb};
 pub use settings::{Choice, Lockable, Section, SettingRow, SliderRow, Toggle, section};
 pub use sort::SortControl;
+pub use source_card::SourceCard;
 pub use source_mark::SourceMark;
+pub use source_status::{StatusDot, StatusLine};
 pub use states::{EmptyState, ErrorBanner, FieldProblem, Loading, StateSize};
 pub use tabs::{Bar, Tab, TabStrip};
 pub use thin_slider::ThinSlider;

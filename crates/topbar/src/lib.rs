@@ -5,7 +5,6 @@ mod settings;
 mod switcher;
 mod tabs;
 
-use components::focus::{Axis, Roving, Step};
 use components::format::t;
 use components::marker::Along;
 use components::{Bar, SearchTrigger, Tab, TabStrip, icons, style};
@@ -13,16 +12,16 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AnyView, App, Context, InteractiveElement as _, IntoElement, KeyDownEvent,
-    MouseButton, MouseDownEvent, NavigationDirection, ParentElement as _, Pixels, Render,
-    SharedString, Styled, Subscription, Window, div, px,
+    AnyElement, AnyView, App, Context, InteractiveElement as _, IntoElement, MouseButton,
+    MouseDownEvent, NavigationDirection, ParentElement as _, Pixels, Render, SharedString, Styled,
+    Subscription, Window, div, px,
 };
 use store::layout::{NavPosition, Ordered as _};
 use store::{ConfigModel, LayoutModel, Navigator, Route, SourcesModel};
 
 pub use bounds::{remember as remember_bounds, saved_bounds};
 pub use settings::register as register_settings;
-pub use switcher::{SourceSwitcher, Status, status};
+pub use switcher::SourceSwitcher;
 
 /// Below this the tab labels go, leaving the glyphs.
 pub const COMPACT_BELOW: Pixels = px(700.);
@@ -59,9 +58,6 @@ pub struct TopBar {
     destinations: Vec<&'static str>,
     position: NavPosition,
     activity: Option<AnyView>,
-    tabs: Roving,
-    // A ring belongs to the keyboard; a click already says where it landed.
-    ringing: bool,
     compact: bool,
     _subscriptions: Vec<Subscription>,
 }
@@ -91,8 +87,6 @@ impl TopBar {
             destinations: Vec::new(),
             position: NavPosition::Top,
             activity: None,
-            tabs: Roving::new(Axis::Row, cx),
-            ringing: false,
             compact: window.viewport_size().width < COMPACT_BELOW,
             _subscriptions: subscriptions,
         };
@@ -119,7 +113,6 @@ impl TopBar {
             })
             .collect();
         self.position = nav.position;
-        self.tabs.set_len(self.destinations.len());
     }
 
     fn open(&self, index: usize, cx: &mut App) {
@@ -131,22 +124,7 @@ impl TopBar {
         }
     }
 
-    /// Left and right walk the strip; enter opens what the walk landed on.
-    fn key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
-        self.ringing = true;
-        match self.tabs.walk(event) {
-            Step::Moved(_) => cx.notify(),
-            Step::Activate(at) => self.open(at, cx),
-            Step::Ignored => cx.propagate(),
-        }
-    }
-
-    fn strip(
-        &self,
-        current: Option<&str>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    fn strip(&self, current: Option<&str>, cx: &mut Context<Self>) -> AnyElement {
         let vertical = self.position == NavPosition::Left;
         let along = match vertical {
             true => Along::Column,
@@ -156,34 +134,21 @@ impl TopBar {
         let tabs: Vec<Tab> = self
             .destinations
             .iter()
-            .enumerate()
-            .map(|(index, name)| {
+            .map(|name| {
                 let label = t(tabs::label(name));
                 let tooltip =
                     compact.then(|| commands::tooltip(tabs::command(name), label.clone(), cx));
                 Tab::new(*name, tabs::icon(name))
                     .label((!compact).then_some(label))
                     .tooltip(tooltip)
-                    // A click already says where it landed; only the keyboard needs a ring.
-                    .ringed(self.tabs.is_active(index, window) && self.ringing)
             })
             .collect();
         let strip = TabStrip::new("nav-strip", along, Bar::Pill)
+            .roving("NavBar")
             .current(current.map(|name| SharedString::from(name.to_string())))
             .tabs(tabs)
-            .on_select(cx.listener(|this, index: &usize, _, cx| {
-                this.tabs.set_cursor(*index);
-                this.open(*index, cx);
-            }));
-        self.tabs
-            .group(div().id("nav-group"), "NavBar")
-            .map(|group| match vertical {
-                true => group.w_full(),
-                false => group.h_full(),
-            })
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| this.key(event, cx)))
-            .child(strip)
-            .into_any_element()
+            .on_select(cx.listener(|this, index: &usize, _, cx| this.open(*index, cx)));
+        strip.into_any_element()
     }
 
     /// The palette's doorway: it looks like a field, and clicking it opens the palette.
@@ -226,7 +191,7 @@ impl TopBar {
 
     fn cluster(&self, cx: &mut Context<Self>) -> AnyElement {
         let sources = SourcesModel::global(cx).read(cx).sources().to_vec();
-        let status = switcher::status(cx);
+        let status = SourcesModel::global(cx).read(cx).active_status();
         let compact = self.compact && self.position == NavPosition::Top;
         h_flex()
             .gap_1()
@@ -257,7 +222,7 @@ impl TopBar {
 }
 
 impl Render for TopBar {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("topbar");
         let artists_remote = store::SourcesModel::global(cx)
             .read(cx)
@@ -268,7 +233,7 @@ impl Render for TopBar {
             .read(cx)
             .current()
             .destination_of(artists_remote);
-        let strip = self.strip(current, window, cx);
+        let strip = self.strip(current, cx);
         let search = self.search(cx);
         let history = self.history(cx);
         let cluster = self.cluster(cx);
