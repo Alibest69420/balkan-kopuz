@@ -19,8 +19,6 @@ const HOST_ACCESS_COMMAND: &str =
 
 /// `text-white/60`, a card's secondary lines.
 const HINT: f32 = 0.60;
-/// `bg-indigo-500/30`, the pill on the active source.
-const BADGE: f32 = 0.30;
 /// `border-white/30` around the copyable flatpak command.
 const COMMAND_BORDER: f32 = 0.30;
 /// `bg-neutral-900/79` behind it.
@@ -142,18 +140,6 @@ pub fn error(text: SharedString, cx: &App) -> Div {
 /// Why one field is wrong, under that field rather than at the foot of the form.
 pub fn field_problem(text: SharedString, cx: &App) -> Div {
     div().text_xs().text_color(cx.theme().danger).child(text)
-}
-
-/// The "Active" pill on whichever source the daemon is using.
-pub fn active_badge(text: SharedString, cx: &App) -> impl IntoElement {
-    div()
-        .px_2()
-        .py_0p5()
-        .rounded(style::radius(cx))
-        .bg(style::accent(BADGE, cx))
-        .text_size(style::text_10())
-        .text_color(cx.theme().primary_hover)
-        .child(text)
 }
 
 /// One folder of a library, with the button that drops it.

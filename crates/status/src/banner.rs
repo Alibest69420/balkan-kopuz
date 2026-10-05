@@ -1,16 +1,14 @@
 //! The daemon is not there: said in a strip across the chrome, with the page still behind it.
 
 use components::format::{t, t_with};
-use components::{icons, style};
+use components::{Badge, BadgeTone, Chip, ChipTone, icons, style};
 use gpui_kit::component::{ActiveTheme as _, h_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Context, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Render,
-    SharedString, StatefulInteractiveElement as _, Styled, Subscription, Window, div, px,
+    SharedString, Styled, Subscription, Window, div, px,
 };
 use link::ConnectionStatus;
-
-use crate::chip;
 
 const GLYPH: Pixels = px(12.);
 // `bg-amber-500/15` and its edge: the connecting states are amber.
@@ -107,34 +105,34 @@ impl Render for ConnectionBanner {
             }))
             .child(div().flex_1().min_w_0())
             .child(
-                chip("connection-retry", t("retry_now"), warning, cx).on_click(|_, _, cx| {
-                    link::Link::connection(cx).read(cx).retry_now();
-                }),
+                Chip::new("connection-retry")
+                    .label(t("retry_now"))
+                    .tone(ChipTone::Ink(warning))
+                    .on_click(|_, _, cx| {
+                        link::Link::connection(cx).read(cx).retry_now();
+                    }),
             )
             .map(|banner| match starting {
-                true => banner.child(crate::quiet_chip(t("starting"), cx)),
+                true => banner.child(Badge::new(t("starting")).tone(BadgeTone::Muted)),
                 false => banner.child(
-                    chip(
-                        "connection-start",
-                        t("start_daemon"),
-                        cx.theme().primary,
-                        cx,
-                    )
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.starting = true;
-                        cx.notify();
-                        let socket = match link::Link::global(cx).address() {
-                            link::Address::Socket(path) => Some(path.clone()),
-                            link::Address::Tcp(_) => None,
-                        };
-                        // Silently logging this left the button looking broken, so it got
-                        // pressed again, spawning another daemon each time.
-                        if let Err(error) = link::spawn_daemon(socket) {
-                            tracing::error!(%error, "could not start the daemon");
-                            this.starting = false;
-                            store::Notices::error(error.to_string(), cx);
-                        }
-                    })),
+                    Chip::new("connection-start")
+                        .label(t("start_daemon"))
+                        .tone(ChipTone::Ink(cx.theme().primary))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.starting = true;
+                            cx.notify();
+                            let socket = match link::Link::global(cx).address() {
+                                link::Address::Socket(path) => Some(path.clone()),
+                                link::Address::Tcp(_) => None,
+                            };
+                            // Silently logging this left the button looking broken, so it got
+                            // pressed again, spawning another daemon each time.
+                            if let Err(error) = link::spawn_daemon(socket) {
+                                tracing::error!(%error, "could not start the daemon");
+                                this.starting = false;
+                                store::Notices::error(error.to_string(), cx);
+                            }
+                        })),
                 ),
             })
             .into_any_element()

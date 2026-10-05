@@ -3,7 +3,7 @@
 use api::ApiEvent;
 use api::schema::{ChoiceOption, FieldValue};
 use components::format::{t, text};
-use components::{FieldChanged, SchemaForm, focus, icons, style};
+use components::{Chip, ChipSize, FieldChanged, SchemaForm, icons, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{
@@ -11,7 +11,7 @@ use gpui_kit::component::{
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
+    App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
     ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _, Styled,
     Subscription, Task, Window, div, px,
 };
@@ -191,68 +191,24 @@ impl UrlDownload {
     }
 
     /// One tab stop per chip: the arrows here would seek, so Tab and Enter are the walk.
-    fn chips(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn chips(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let picked = self.format(cx);
         let formats = self.formats.read(cx).value().cloned().unwrap_or_default();
-        let chips: Vec<AnyElement> = formats
+        let chips: Vec<Chip> = formats
             .iter()
-            .map(|option| self.chip(option, picked.as_deref(), window, cx))
+            .map(|option| {
+                let pick = option.value.clone();
+                Chip::new(SharedString::from(format!("url-format-{}", option.value)))
+                    .label(text(&option.label))
+                    .size(ChipSize::Medium)
+                    .selected(picked.as_deref() == Some(option.value.as_str()))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.format = Some(pick.clone());
+                        cx.notify();
+                    }))
+            })
             .collect();
         h_flex().gap_1p5().flex_wrap().children(chips)
-    }
-
-    fn chip(
-        &self,
-        option: &ChoiceOption,
-        picked: Option<&str>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let selected = picked == Some(option.value.as_str());
-        let focus = focus::handle(format!("url-format:{}", option.value), window, cx);
-        let focused = focus.is_focused(window);
-        let this = cx.entity();
-        let pick = option.value.clone();
-        let click = pick.clone();
-        let entity = this.clone();
-        focus::stop(
-            div().id(SharedString::from(format!("url-format-{}", option.value))),
-            &focus,
-            move |_, cx| {
-                let pick = pick.clone();
-                this.update(cx, |this, cx| {
-                    this.format = Some(pick);
-                    cx.notify();
-                });
-            },
-        )
-        .relative()
-        .px_2p5()
-        .py_1()
-        .rounded(style::radius_lg())
-        .cursor_pointer()
-        .text_xs()
-        .bg(match selected {
-            true => style::white(style::ACTIVE, cx),
-            false => style::white(style::RAISED, cx),
-        })
-        .text_color(match selected {
-            true => cx.theme().foreground,
-            false => style::slate_400(cx),
-        })
-        .hover(|chip| chip.bg(style::white(style::HOVER, cx)))
-        .child(text(&option.label))
-        .on_click(move |_, _, cx| {
-            let pick = click.clone();
-            entity.update(cx, |this, cx| {
-                this.format = Some(pick);
-                cx.notify();
-            });
-        })
-        .when(focused, |chip| {
-            chip.child(focus::ring(style::radius_lg(), cx))
-        })
-        .into_any_element()
     }
 
     fn failure_box(&self, failure: SharedString, cx: &Context<Self>) -> impl IntoElement {
@@ -275,7 +231,7 @@ impl UrlDownload {
 }
 
 impl Render for UrlDownload {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let empty = self.url.read(cx).value().trim().is_empty();
         let chevron = match self.show_options {
             true => icons::CHEVRON_UP,
@@ -293,7 +249,7 @@ impl Render for UrlDownload {
                     .py_2()
                     .text_sm(),
             )
-            .child(self.chips(window, cx))
+            .child(self.chips(cx))
             .when_some(self.failure.clone(), |body, failure| {
                 body.child(self.failure_box(failure, cx))
             })

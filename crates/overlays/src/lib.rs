@@ -2,7 +2,7 @@
 
 use api::{JobKind, JobProgress};
 use components::format::t;
-use components::{icons, motion, style};
+use components::{Badge, BadgeTone, Chip, ChipTone, icons, motion, style};
 use gpui_kit::base::motion::{Easing, Presence, Transition};
 use gpui_kit::component::progress::Progress;
 use gpui_kit::component::tooltip::Tooltip;
@@ -159,8 +159,12 @@ impl Overlays {
                     .child(div().flex_1().min_w_0())
                     // A scan could not be stopped, though a download could, and both are jobs.
                     .child(match stopping {
-                        true => status::quiet_chip(t("stopping"), cx),
-                        false => status::chip("stop-scan", t("stop"), danger, cx)
+                        true => Badge::new(t("stopping"))
+                            .tone(BadgeTone::Muted)
+                            .into_any_element(),
+                        false => Chip::new("stop-scan")
+                            .label(t("stop"))
+                            .tone(ChipTone::Ink(danger))
                             .on_click(move |_, _, cx| {
                                 let id = id.clone();
                                 JobsModel::global(cx).update(cx, |jobs, cx| jobs.cancel(id, cx));

@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use api::schema::{FieldKind, FieldSpec, FieldValue};
 use api::{SignInKind, SourceFolderEntry, SourceInfo, SourceState, Table};
 use components::format::{t, t_with, text};
-use components::{FieldChanged, SchemaForm, icons};
+use components::{Badge, FieldChanged, SchemaForm, icons};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::spinner::Spinner;
@@ -598,7 +598,7 @@ impl Sources {
                                     .items_center()
                                     .child(ui::label(SharedString::from(source.name.clone())))
                                     .when(source.active, |row| {
-                                        row.child(ui::active_badge(t("active_server"), cx))
+                                        row.child(Badge::new(t("active_server")))
                                     }),
                             )
                             .child(ui::hint(

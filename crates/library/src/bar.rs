@@ -3,7 +3,7 @@
 use api::TrackFilter;
 use commands::Command;
 use components::format::{t, t_with};
-use components::{PageHeader, SearchField, icons, menus, style};
+use components::{ChipSize, ChipTone, PageHeader, SearchField, icons, menus, style};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
@@ -146,25 +146,13 @@ impl Library {
                 None => (false, t(chip.label_key())),
             },
         };
-        let (fill, ink) = match lit {
-            true => (cx.theme().primary, cx.theme().primary_foreground),
-            false => (
-                style::white(style::HOVER, cx),
-                style::white(style::TEXT_SECONDARY, cx),
-            ),
-        };
-        let hover = match lit {
-            true => cx.theme().primary_hover,
-            false => style::white(style::ACTIVE, cx),
-        };
-        let button = Button::new(chip.id())
-            .custom(style::button(fill, hover, ink, cx))
-            .icon(icons::icon(chip.icon()))
-            .label(label)
-            .h_7()
-            .px_3()
-            .text_xs()
-            .rounded(cx.theme().radius_full());
+        let button = components::Chip::new(chip.id())
+            .tone(ChipTone::Filter)
+            .size(ChipSize::Medium)
+            .pill(true)
+            .selected(lit)
+            .icon(chip.icon())
+            .label(label);
         if !chip.has_menu() {
             return button
                 .on_click(cx.listener(move |this, _, _, cx| {
@@ -181,7 +169,7 @@ impl Library {
         let entries = self.chip_entries(chip, cx);
         let page = cx.entity().downgrade();
         button
-            .dropdown_menu(move |mut menu, _, _| {
+            .dropdown(move |mut menu, _, _| {
                 let page = page.clone();
                 for (value, label, checked) in entries.clone() {
                     let page = page.clone();

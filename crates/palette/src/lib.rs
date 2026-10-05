@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use api::{AlbumPage, ApiError, ArtistPage, KopuzApi, SearchResults, Table};
 use components::format::{t, t_with};
-use components::{SearchField, icons, motion, style};
+use components::{Badge, SearchField, icons, motion, style};
 use gpui_kit::base::motion::{Easing, Presence, Transition};
 use gpui_kit::component::input::{Escape, IndentInline, InputEvent, InputState, MoveDown, MoveUp};
 use gpui_kit::component::kbd::Kbd;
@@ -937,19 +937,6 @@ impl Palette {
             }))
     }
 
-    /// The chip that says which mode, or which thing, the box is narrowed to.
-    fn chip(&self, label: SharedString, cx: &gpui_kit::App) -> impl IntoElement {
-        div()
-            .flex_shrink_0()
-            .px_2()
-            .py_0p5()
-            .rounded(style::radius_lg())
-            .bg(style::accent(CHOSEN, cx))
-            .text_size(style::text_11())
-            .text_color(cx.theme().primary_hover)
-            .child(label)
-    }
-
     fn footer(&self, cx: &gpui_kit::App) -> impl IntoElement {
         let hints: [(&[&str], &str); 4] = [
             (&["up", "down"], "palette_hint_move"),
@@ -1073,7 +1060,7 @@ impl Render for Palette {
                                 div().flex_1().min_w_0().child(
                                     SearchField::new(&self.input)
                                         .bare(true)
-                                        .chip(narrowed.map(|label| self.chip(label, cx)))
+                                        .chip(narrowed.map(Badge::new))
                                         .px_0()
                                         .py_3p5()
                                         .text_base(),

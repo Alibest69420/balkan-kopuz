@@ -16,9 +16,8 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::popover::Popover;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::{
-    Anchor, AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _,
-    IntoElement, ParentElement as _, Pixels, Render, SharedString, Styled, Subscription, Window,
-    div, px,
+    Anchor, AnyElement, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _,
+    Pixels, Render, SharedString, Styled, Subscription, Window, div, px,
 };
 use store::{DownloadsModel, ItemState, JobsModel, Navigator, Notices};
 
@@ -314,41 +313,6 @@ pub(crate) fn empty(message: SharedString, cx: &App) -> AnyElement {
         .text_xs()
         .text_color(style::white(style::TEXT_MUTED, cx))
         .child(message)
-        .into_any_element()
-}
-
-/// The small text buttons a popover puts in its header and footer.
-pub fn chip(
-    id: &'static str,
-    label: SharedString,
-    ink: gpui_kit::Hsla,
-    cx: &App,
-) -> gpui_kit::Stateful<gpui_kit::Div> {
-    div()
-        .id(id)
-        .px_2()
-        .py_0p5()
-        .flex_shrink_0()
-        .rounded(style::radius(cx))
-        .cursor_pointer()
-        .text_xs()
-        .bg(ink.opacity(style::HOVER))
-        .text_color(ink)
-        .hover(|chip| chip.bg(ink.opacity(style::ACTIVE)))
-        .child(label)
-}
-
-/// A disabled chip: the same shape, saying it is already happening.
-pub fn quiet_chip(label: SharedString, cx: &App) -> AnyElement {
-    div()
-        .px_2()
-        .py_0p5()
-        .flex_shrink_0()
-        .rounded(style::radius(cx))
-        .text_xs()
-        .bg(style::white(style::RAISED, cx))
-        .text_color(style::white(style::TEXT_MUTED, cx))
-        .child(label)
         .into_any_element()
 }
 

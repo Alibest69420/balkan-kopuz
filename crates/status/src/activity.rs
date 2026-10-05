@@ -2,7 +2,7 @@
 
 use api::{JobKind, JobProgress};
 use components::format::t;
-use components::{icons, style};
+use components::{Badge, BadgeTone, Chip, ChipTone, icons, style};
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::progress::Progress;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
@@ -13,7 +13,7 @@ use gpui_kit::{
 };
 use store::{Finished, JobsModel};
 
-use crate::{DONE, FAILED, ROW_GLYPH, chip, empty, header, quiet_chip, row};
+use crate::{DONE, FAILED, ROW_GLYPH, empty, header, row};
 
 const BAR: Pixels = px(3.);
 
@@ -77,8 +77,12 @@ impl ActivityList {
                             .into_any_element()
                     }))
                     .child(match stopping {
-                        true => quiet_chip(t("stopping"), cx),
-                        false => chip("stop-job", t("stop"), danger, cx)
+                        true => Badge::new(t("stopping"))
+                            .tone(BadgeTone::Muted)
+                            .into_any_element(),
+                        false => Chip::new("stop-job")
+                            .label(t("stop"))
+                            .tone(ChipTone::Ink(danger))
                             .on_click(move |_, _, cx| {
                                 let id = id.clone();
                                 JobsModel::global(cx).update(cx, |jobs, cx| jobs.cancel(id, cx));
@@ -190,7 +194,9 @@ impl Render for ActivityList {
                         .border_t_1()
                         .border_color(style::white(style::BORDER_SOFT, cx))
                         .child(
-                            chip("start-scan", t("rescan_library"), cx.theme().primary, cx)
+                            Chip::new("start-scan")
+                                .label(t("rescan_library"))
+                                .tone(ChipTone::Ink(cx.theme().primary))
                                 .on_click(|_, _, cx| {
                                     JobsModel::global(cx)
                                         .update(cx, |jobs, cx| jobs.start(JobKind::Scan, cx));

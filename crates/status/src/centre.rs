@@ -2,7 +2,7 @@
 
 use api::NoticeLevel;
 use components::format::t;
-use components::{icons, style};
+use components::{Chip, ChipTone, icons, style};
 use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -11,7 +11,7 @@ use gpui_kit::{
 };
 use store::{Notices, Record};
 
-use crate::{DONE, FAILED, ROW_GLYPH, chip, empty, header, row};
+use crate::{DONE, FAILED, ROW_GLYPH, empty, header, row};
 
 /// The bell's body.
 pub struct NoticeCentre {
@@ -66,7 +66,9 @@ impl Render for NoticeCentre {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let history = Notices::global(cx).read(cx).history().to_vec();
         let clear = (!history.is_empty()).then(|| {
-            chip("clear-notices", t("clear"), style::slate_400(cx), cx)
+            Chip::new("clear-notices")
+                .label(t("clear"))
+                .tone(ChipTone::Ink(style::slate_400(cx)))
                 .on_click(|_, _, cx| {
                     Notices::global(cx).update(cx, |notices, cx| notices.clear(cx));
                 })

@@ -5,18 +5,18 @@ use std::ops::Range;
 use api::schema::ChoiceOption;
 use api::{DownloadHistoryEntry, DownloadState, JobKind};
 use components::format::{t, t_with, text};
-use components::{focus, icons, style};
+use components::{Badge, BadgeTone, Chip, ChipTone, icons, style};
 use gpui_kit::component::progress::Progress;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AppContext as _, Context, Entity, EventEmitter, InteractiveElement as _,
-    IntoElement, ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _,
-    Styled, Subscription, UniformListScrollHandle, Window, div, px, uniform_list,
+    AnyElement, AppContext as _, Context, Entity, EventEmitter, IntoElement, ParentElement as _,
+    Pixels, Render, SharedString, Styled, Subscription, UniformListScrollHandle, Window, div, px,
+    uniform_list,
 };
 use store::{DownloadItem, DownloadsModel, ItemState, JobEvent, JobsModel, Link, Notices, Query};
 
-use crate::{DONE, FAILED, ROW_GLYPH, chip, empty, header, quiet_chip, row};
+use crate::{DONE, FAILED, ROW_GLYPH, empty, header, row};
 
 /// The same one-line list row the playlists panel draws, so a skin moves both together.
 fn row_height() -> Pixels {
@@ -93,35 +93,15 @@ impl DownloadsList {
     }
 
     /// The chip that opens the URL box; a tab stop, because a popover is reachable without a mouse.
-    fn add_url(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let handle = focus::handle("downloads-add-url", window, cx);
-        let focused = handle.is_focused(window);
-        let ink = cx.theme().primary;
-        let this = cx.entity();
-        let asked = this.clone();
-        focus::stop(div().id("downloads-add-url"), &handle, move |window, cx| {
-            this.update(cx, |_, cx| cx.emit(Dismiss));
-            components::dialogs::open_url_download(window, cx);
-        })
-        .relative()
-        .px_2()
-        .py_0p5()
-        .flex_shrink_0()
-        .rounded(style::radius(cx))
-        .cursor_pointer()
-        .text_xs()
-        .bg(ink.opacity(style::HOVER))
-        .text_color(ink)
-        .hover(|chip| chip.bg(ink.opacity(style::ACTIVE)))
-        .child(t("downloader_add_url"))
-        .on_click(move |_, window, cx| {
-            asked.update(cx, |_, cx| cx.emit(Dismiss));
-            components::dialogs::open_url_download(window, cx);
-        })
-        .when(focused, |chip| {
-            chip.child(focus::ring(style::radius(cx), cx))
-        })
-        .into_any_element()
+    fn add_url(&self, cx: &mut Context<Self>) -> AnyElement {
+        Chip::new("downloads-add-url")
+            .label(t("downloader_add_url"))
+            .tone(ChipTone::Ink(cx.theme().primary))
+            .on_click(cx.listener(|_, _, window, cx| {
+                cx.emit(Dismiss);
+                components::dialogs::open_url_download(window, cx);
+            }))
+            .into_any_element()
     }
 
     fn past_row(
@@ -244,7 +224,7 @@ impl DownloadsList {
 }
 
 impl Render for DownloadsList {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let downloads = DownloadsModel::global(cx);
         let (items, batch) = {
             let downloads = downloads.read(cx);
@@ -270,9 +250,15 @@ impl Render for DownloadsList {
         let danger = cx.theme().danger;
 
         let action = match (running.is_some(), stopping, count > 0) {
-            (true, true, _) => Some(quiet_chip(t("stopping"), cx)),
+            (true, true, _) => Some(
+                Badge::new(t("stopping"))
+                    .tone(BadgeTone::Muted)
+                    .into_any_element(),
+            ),
             (true, false, _) => Some(
-                chip("stop-downloads", t("stop"), danger, cx)
+                Chip::new("stop-downloads")
+                    .label(t("stop"))
+                    .tone(ChipTone::Ink(danger))
                     .on_click(move |_, _, cx| {
                         let Some(id) = job_id.clone() else { return };
                         JobsModel::global(cx).update(cx, |jobs, cx| jobs.cancel(id, cx));
@@ -280,7 +266,9 @@ impl Render for DownloadsList {
                     .into_any_element(),
             ),
             (false, _, true) => Some(
-                chip("clear-downloads", t("clear"), style::slate_400(cx), cx)
+                Chip::new("clear-downloads")
+                    .label(t("clear"))
+                    .tone(ChipTone::Ink(style::slate_400(cx)))
                     .on_click(|_, _, cx| {
                         DownloadsModel::global(cx)
                             .update(cx, |downloads, cx| downloads.clear_queue(cx));
@@ -296,7 +284,7 @@ impl Render for DownloadsList {
             .gap_1p5()
             .items_center()
             .children(action)
-            .child(self.add_url(window, cx))
+            .child(self.add_url(cx))
             .into_any_element();
 
         v_flex()
@@ -359,7 +347,9 @@ impl Render for DownloadsList {
                         .border_t_1()
                         .border_color(style::white(style::BORDER_SOFT, cx))
                         .child(
-                            chip("retry-downloads", t("retry_failed"), cx.theme().primary, cx)
+                            Chip::new("retry-downloads")
+                                .label(t("retry_failed"))
+                                .tone(ChipTone::Ink(cx.theme().primary))
                                 .on_click(|_, _, cx| {
                                     DownloadsModel::global(cx)
                                         .update(cx, |downloads, cx| downloads.retry_failed(cx));
@@ -376,7 +366,9 @@ impl Render for DownloadsList {
                         .child(header(
                             t("downloader_history"),
                             Some(
-                                chip("clear-url-history", t("clear"), style::slate_400(cx), cx)
+                                Chip::new("clear-url-history")
+                                    .label(t("clear"))
+                                    .tone(ChipTone::Ink(style::slate_400(cx)))
                                     .on_click(cx.listener(|this, _, _, cx| this.clear_history(cx)))
                                     .into_any_element(),
                             ),

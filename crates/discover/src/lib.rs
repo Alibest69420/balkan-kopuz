@@ -13,8 +13,8 @@ use std::sync::Arc;
 use api::{AlbumInfo, AlbumPage, ApiError, KopuzApi, SearchResults, Table};
 use components::format::{t, t_with};
 use components::{
-    EmptyState, GridMode, Heading, Loading, PageHeader, SearchTrigger, SectionHeading, TileGrid,
-    TrackList, TrackListEvent, TriggerSize, heading_link, icons, style,
+    Chip, ChipSize, EmptyState, GridMode, Heading, Loading, PageHeader, SearchTrigger,
+    SectionHeading, TileGrid, TrackList, TrackListEvent, TriggerSize, heading_link, icons, style,
 };
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{Sizable as _, h_flex, v_flex};
@@ -432,20 +432,10 @@ impl Discover {
 
     /// The chip that puts the query back where it came from.
     fn clear_chip(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        h_flex()
-            .id("discover-clear-search")
-            .gap_1p5()
-            .items_center()
-            .h_8()
-            .px_3()
-            .rounded(style::radius_lg())
-            .bg(style::white(style::RAISED, cx))
-            .cursor_pointer()
-            .hover(|chip| chip.bg(style::white(style::HOVER, cx)))
-            .text_xs()
-            .text_color(style::white(style::TEXT_SECONDARY, cx))
-            .child(icons::icon(icons::CLOSE).with_size(style::text_10()))
-            .child(t("discover_clear_search"))
+        Chip::new("discover-clear-search")
+            .icon(icons::CLOSE)
+            .label(t("discover_clear_search"))
+            .size(ChipSize::Medium)
             .on_click(cx.listener(|this, _, _, cx| this.clear_search(cx)))
     }
 

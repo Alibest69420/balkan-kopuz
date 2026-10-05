@@ -6,11 +6,10 @@ use std::time::Duration;
 use api::{QueueContext, RadioStationInfo, Table};
 use components::format::t;
 use components::{
-    Cover, EmptyState, Heading, PageHeader, SearchField, SectionHeading, icons, motion, style,
+    Badge, BadgeTone, Chip, ChipSize, ChipTone, Cover, EmptyState, Heading, PageHeader,
+    SearchField, SectionHeading, icons, motion, style,
 };
-use gpui_kit::component::button::{
-    Button, ButtonCustomVariant, ButtonRounded, ButtonVariants as _,
-};
+use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
@@ -221,18 +220,12 @@ impl Radio {
             .into_any_element()
     }
 
-    /// `px-3 py-1 rounded-lg text-xs font-medium bg-white/10 text-slate-300`.
-    fn chip(id: SharedString, cx: &App) -> Button {
-        Button::new(id)
-            .custom(
-                ButtonCustomVariant::new(cx)
-                    .color(style::rest(style::white(style::HOVER, cx)))
-                    .foreground(style::slate_400(cx))
-                    .hover(style::white(style::ACTIVE, cx))
-                    .active(style::white(style::ACTIVE, cx)),
-            )
-            .rounded(ButtonRounded::Large)
-            .xsmall()
+    /// `px-3 py-1 rounded-lg text-xs font-medium bg-white/10 text-slate-300`, inside a row that plays.
+    fn chip(id: SharedString) -> Chip {
+        Chip::new(id)
+            .tone(ChipTone::Filter)
+            .size(ChipSize::Medium)
+            .stop_propagation(true)
     }
 
     fn stream_button(
@@ -243,13 +236,12 @@ impl Radio {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let station_id = station.id.clone();
-        Self::chip(
-            SharedString::from(format!("stream-{}-{stream_id}", station.id)),
-            cx,
-        )
+        Self::chip(SharedString::from(format!(
+            "stream-{}-{stream_id}",
+            station.id
+        )))
         .label(label)
         .on_click(cx.listener(move |_, _, _, cx| {
-            cx.stop_propagation();
             play(station_id.clone(), stream_id.clone(), cx);
         }))
         .into_any_element()
@@ -268,10 +260,9 @@ impl Radio {
             _ if expanded => {
                 let id = station.id.clone();
                 vec![
-                    Self::chip(SharedString::from(format!("less-{}", station.id)), cx)
-                        .icon(icons::icon(icons::CHEVRON_UP).xsmall())
+                    Self::chip(SharedString::from(format!("less-{}", station.id)))
+                        .icon(icons::CHEVRON_UP)
                         .on_click(cx.listener(move |this, _, _, cx| {
-                            cx.stop_propagation();
                             this.expanded.remove(&id);
                             this.list.remeasure();
                             cx.notify();
@@ -286,10 +277,9 @@ impl Radio {
                     buttons.push(self.stream_button(station, first.id.clone(), t(&first.name), cx));
                 }
                 buttons.push(
-                    Self::chip(SharedString::from(format!("more-{}", station.id)), cx)
+                    Self::chip(SharedString::from(format!("more-{}", station.id)))
                         .label(format!("+{}", count - 1))
                         .on_click(cx.listener(move |this, _, _, cx| {
-                            cx.stop_propagation();
                             this.expanded.insert(id.clone());
                             this.list.remeasure();
                             cx.notify();
@@ -301,22 +291,15 @@ impl Radio {
         }
     }
 
-    fn tags(&self, station: &RadioStationInfo, cx: &Context<Self>) -> Vec<AnyElement> {
+    fn tags(&self, station: &RadioStationInfo) -> Vec<AnyElement> {
         station
             .tags
             .iter()
             .take(2)
             .map(|tag| {
-                div()
-                    .px_3()
-                    .py_1()
-                    .flex_shrink_0()
-                    .rounded(style::radius_lg())
-                    .bg(style::white(style::RAISED, cx))
-                    .text_xs()
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(style::slate_500(cx))
-                    .child(SharedString::from(tag.clone()))
+                Badge::new(tag.clone())
+                    .tone(BadgeTone::Neutral)
+                    .size(ChipSize::Medium)
                     .into_any_element()
             })
             .collect()
@@ -414,7 +397,7 @@ impl Radio {
                                     .text_color(muted)
                                     .child(t(&station.description)),
                             )
-                            .children(self.tags(station, cx)),
+                            .children(self.tags(station)),
                     )
                     .child(
                         h_flex()
@@ -492,7 +475,7 @@ impl Radio {
                         .text_color(muted)
                         .child(t(&station.description)),
                 )
-                .child(h_flex().gap_2().mt_2().children(self.tags(station, cx))),
+                .child(h_flex().gap_2().mt_2().children(self.tags(station))),
         )
         .child(
             Button::new(SharedString::from(format!("pin-{}", station.id)))

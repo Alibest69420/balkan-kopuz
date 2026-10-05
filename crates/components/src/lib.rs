@@ -2,6 +2,7 @@
 
 pub mod cards;
 pub mod carousel;
+pub mod chip;
 pub mod columns;
 pub mod cover;
 pub mod dialogs;
@@ -33,6 +34,7 @@ pub use cards::{
     tile_grid,
 };
 pub use carousel::{Arrows, Carousel};
+pub use chip::{Badge, BadgeTone, Chip, ChipSize, ChipTone};
 pub use cover::{Cover, Scrim};
 pub use grid::{GridMode, JumpRail, TileGrid, rail_letter};
 pub use header::{DetailHeader, PageHeader, TitleSize, detail_header_skeleton};
