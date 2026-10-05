@@ -272,11 +272,7 @@ impl Render for PlaylistDetail {
             );
 
         let body = self.body(self.keys.len(), window, cx);
-        components::page()
-            .gap_8()
-            .child(components::back_button("playlist-back", cx))
-            .child(header)
-            .child(body)
+        components::page().gap_8().child(header).child(body)
     }
 }
 

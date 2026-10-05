@@ -15,7 +15,7 @@ use gpui_kit::{
     ParentElement as _, Render, ScrollHandle, SharedString, StatefulInteractiveElement as _,
     Styled, Subscription, Task, Window, div,
 };
-use store::{Link, PlayerModel, Route, actions};
+use store::{Link, PlayerModel, actions};
 
 use crate::shelves::Shelves;
 use crate::states;
@@ -123,16 +123,14 @@ impl Render for CatalogPlaylist {
         components::page()
             .pb_8()
             .child(
-                PageHeader::new(self.title.clone())
-                    .back(Route::Discover)
-                    .when(!self.keys.is_empty(), |header| {
-                        header.action(
-                            DetailActions::new("catalog-playlist", self.keys.clone())
-                                .look(Look::Compact)
-                                .play(commands::play_all)
-                                .shuffle(commands::set_shuffle),
-                        )
-                    }),
+                PageHeader::new(self.title.clone()).when(!self.keys.is_empty(), |header| {
+                    header.action(
+                        DetailActions::new("catalog-playlist", self.keys.clone())
+                            .look(Look::Compact)
+                            .play(commands::play_all)
+                            .shuffle(commands::set_shuffle),
+                    )
+                }),
             )
             .map(|page| {
                 if self.loading {
@@ -257,7 +255,7 @@ impl Render for CatalogArtist {
                     .pt_6()
                     .pb_10()
                     .gap_8()
-                    .child(PageHeader::new(self.name()).back(Route::Discover))
+                    .child(PageHeader::new(self.name()))
                     .when(self.loading, |page| page.child(Loading::new()))
                     .when_some(self.error.clone(), |page, message| {
                         page.child(EmptyState::failed(

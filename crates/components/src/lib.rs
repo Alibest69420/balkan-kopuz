@@ -101,7 +101,7 @@ pub use header::{
     DetailHeader, HeaderLayout, MetaLine, PageHeader, TitleSize, detail_header_skeleton,
 };
 pub use heading::{Heading, SectionHeading};
-pub use icon_button::{FollowButton, IconButton, IconTone, back_button};
+pub use icon_button::{FollowButton, IconButton, IconTone};
 pub use job::{JobLayout, JobLine, JobStop, ProgressBar};
 pub use karaoke::KaraokeText;
 pub use keycap::{KeyHint, Keycap};

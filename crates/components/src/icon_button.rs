@@ -235,18 +235,6 @@ impl RenderOnce for FollowButton {
     }
 }
 
-/// The chevron a detail page opens with, stepping back through the navigation history.
-pub fn back_button(id: impl Into<SharedString>, cx: &App) -> Button {
-    let button = Button::new(id.into())
-        .custom(style::quiet_button(style::slate_400(cx), cx))
-        .icon(icons::icon(icons::CHEVRON_LEFT))
-        .tooltip(crate::format::t("go_back"))
-        .on_click(|_, _, cx| {
-            store::Navigator::global(cx).update(cx, |navigator, cx| navigator.go_back(cx))
-        });
-    focus::quiet(button, cx)
-}
-
 impl RenderOnce for IconButton {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let id = self.id;

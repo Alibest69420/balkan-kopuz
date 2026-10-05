@@ -264,9 +264,8 @@ impl Render for ArtistDetail {
             .child(
                 h_flex()
                     .w_full()
-                    .justify_between()
+                    .justify_end()
                     .items_center()
-                    .child(components::back_button("artist-back", cx))
                     .child(controls::view_order_toggle(albums_view)),
             )
             .child(body)

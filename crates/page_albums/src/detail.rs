@@ -408,13 +408,6 @@ impl AlbumDetail {
             .relative()
             .pb_8()
             .overflow_hidden()
-            .child(
-                h_flex()
-                    .flex_shrink_0()
-                    .mb_8()
-                    .items_center()
-                    .child(components::back_button("album-back", cx)),
-            )
             .child(div().flex_shrink_0().mb_12().child(header))
             .child(self.tracks_body())
             .children(self.selection_bar(cx))
@@ -468,13 +461,6 @@ impl AlbumDetail {
             .relative()
             .pb_8()
             .overflow_hidden()
-            .child(
-                h_flex()
-                    .flex_shrink_0()
-                    .mb_8()
-                    .items_center()
-                    .child(components::back_button("album-back", cx)),
-            )
             .child(
                 h_flex()
                     .size_full()

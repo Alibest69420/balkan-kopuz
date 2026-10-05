@@ -1,5 +1,7 @@
 use std::rc::Rc;
 
+use crate::cover::{Cover, EditableCover, Scrim};
+use crate::{icons, style};
 use api::ArtworkRef;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -7,10 +9,6 @@ use gpui_kit::{
     AnyElement, App, FontWeight, Hsla, IntoElement, ParentElement as _, Pixels, RenderOnce,
     SharedString, Styled, Window, div, px, rems,
 };
-use store::Route;
-
-use crate::cover::{Cover, EditableCover, Scrim};
-use crate::{icons, style};
 
 /// How big a page's title is drawn.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -72,11 +70,6 @@ impl PageHeader {
     /// No space of its own under it, for a page that spaces its column itself.
     pub fn flush(mut self) -> Self {
         self.flush = true;
-        self
-    }
-
-    /// Taken and ignored: the nav bar owns history, so no page draws a back chevron of its own.
-    pub fn back(self, _: Route) -> Self {
         self
     }
 
