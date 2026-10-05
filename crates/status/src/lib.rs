@@ -37,7 +37,6 @@ const GLYPH: Pixels = px(15.);
 const POPOVER_WIDTH: Pixels = px(320.);
 /// A list inside a popover scrolls rather than growing past the window.
 pub(crate) const LIST_HEIGHT: Pixels = px(260.);
-pub(crate) const ROW_GLYPH: Pixels = px(13.);
 const BADGE: Pixels = px(14.);
 
 /// Which popover of the three is showing.
@@ -299,11 +298,6 @@ pub(crate) fn header(title: SharedString, action: Option<AnyElement>, cx: &App) 
         .border_color(style::white(style::BORDER, cx))
         .child(heading)
         .into_any_element()
-}
-
-/// One popover row, at the density the rest of the chrome uses.
-pub(crate) fn row() -> gpui_kit::Div {
-    h_flex().w_full().gap_2().items_center().px_3().py_1p5()
 }
 
 /// Let a popover be opened from anywhere: a redirected route is what carries the request.

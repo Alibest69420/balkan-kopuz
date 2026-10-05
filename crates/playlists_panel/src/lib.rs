@@ -244,7 +244,7 @@ impl PlaylistsPanel {
         match row.folder {
             true => item,
             false => item.accept::<TrackDrag>(move |drag, _, cx| {
-                let (keys, id) = (drag.keys.clone(), id.clone());
+                let (keys, id) = (drag.keys.to_vec(), id.clone());
                 PlaylistsModel::global(cx)
                     .update(cx, move |model, cx| model.add_tracks(id, keys, cx));
             }),

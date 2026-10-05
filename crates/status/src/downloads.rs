@@ -5,17 +5,17 @@ use std::ops::Range;
 use api::schema::ChoiceOption;
 use api::{DownloadHistoryEntry, DownloadState, JobKind};
 use components::format::{t, t_with, text};
-use components::{Chip, ChipTone, JobStop, ProgressBar, icons, style};
+use components::{Chip, ChipTone, JobStop, ProgressBar, StatusRow, icons, style};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AppContext as _, Context, Entity, EventEmitter, IntoElement, ParentElement as _,
-    Pixels, Render, SharedString, Styled, Subscription, UniformListScrollHandle, Window, div, px,
-    uniform_list,
+    AnyElement, App, AppContext as _, Context, Entity, EventEmitter, IntoElement,
+    ParentElement as _, Pixels, Render, SharedString, Styled, Subscription,
+    UniformListScrollHandle, Window, div, px, uniform_list,
 };
 use store::{DownloadItem, DownloadsModel, ItemState, JobEvent, JobsModel, Link, Notices, Query};
 
-use crate::{DONE, FAILED, ROW_GLYPH, header, row};
+use crate::{DONE, FAILED, header};
 use components::EmptyState;
 
 /// The same one-line list row the playlists panel draws, so a skin moves both together.
@@ -107,7 +107,7 @@ impl DownloadsList {
         &self,
         entry: &DownloadHistoryEntry,
         formats: &[ChoiceOption],
-        cx: &Context<Self>,
+        cx: &App,
     ) -> AnyElement {
         let failed = entry.state == DownloadState::Failed;
         let status: SharedString = match (failed, entry.error.clone()) {
@@ -132,52 +132,16 @@ impl DownloadsList {
             true => cx.theme().danger,
             false => style::slate_500(cx),
         };
-
-        row()
-            .h(row_height())
-            .child(
-                icons::icon(glyph)
-                    .size(ROW_GLYPH)
-                    .flex_shrink_0()
-                    .text_color(ink),
-            )
-            .child(
-                v_flex()
-                    .flex_1()
-                    .min_w_0()
-                    .child(
-                        h_flex()
-                            .w_full()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .truncate()
-                                    .text_xs()
-                                    .text_color(cx.theme().foreground)
-                                    .child(title),
-                            )
-                            .child(
-                                div()
-                                    .flex_shrink_0()
-                                    .text_size(style::text_10())
-                                    .text_color(style::slate_500(cx))
-                                    .child(format),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .truncate()
-                            .text_size(style::text_10())
-                            .text_color(status_ink)
-                            .child(status),
-                    ),
-            )
+        StatusRow::new(format!("past-{}", entry.url))
+            .height(row_height())
+            .glyph(glyph, ink)
+            .title(title)
+            .aside(format)
+            .detail(status, Some(status_ink))
             .into_any_element()
     }
 
-    fn row(&self, item: &DownloadItem, cx: &mut Context<Self>) -> AnyElement {
+    fn row(&self, item: &DownloadItem, cx: &App) -> AnyElement {
         let (glyph, ink) = match item.state {
             ItemState::Downloading => (icons::DOWNLOAD, cx.theme().primary_hover),
             ItemState::Queued => (icons::CLOCK, style::slate_500(cx)),
@@ -189,35 +153,14 @@ impl DownloadsList {
             ItemState::Queued => style::slate_500(cx),
             _ => cx.theme().foreground,
         };
-        row()
-            .h(row_height())
-            .child(
-                icons::icon(glyph)
-                    .size(ROW_GLYPH)
-                    .flex_shrink_0()
-                    .text_color(ink),
-            )
-            .child(
-                v_flex()
-                    .flex_1()
-                    .min_w_0()
-                    .child(
-                        div()
-                            .truncate()
-                            .text_xs()
-                            .text_color(title_ink)
-                            .child(item.title.clone()),
-                    )
-                    .when(!item.artist.is_empty(), |cell| {
-                        cell.child(
-                            div()
-                                .truncate()
-                                .text_size(style::text_10())
-                                .text_color(style::slate_500(cx))
-                                .child(item.artist.clone()),
-                        )
-                    }),
-            )
+        StatusRow::new(format!("download-{}", item.key))
+            .height(row_height())
+            .glyph(glyph, ink)
+            .title(item.title.clone())
+            .title_ink(title_ink)
+            .when(!item.artist.is_empty(), |row| {
+                row.detail(item.artist.clone(), Some(style::slate_500(cx)))
+            })
             .into_any_element()
     }
 }
@@ -225,19 +168,19 @@ impl DownloadsList {
 impl Render for DownloadsList {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let downloads = DownloadsModel::global(cx);
-        let (items, batch) = {
+        let (count, failed, batch) = {
             let downloads = downloads.read(cx);
-            (downloads.queue().to_vec(), downloads.batch())
+            let queue = downloads.queue();
+            let failed = queue
+                .iter()
+                .filter(|item| item.state == ItemState::Failed)
+                .count();
+            (queue.len(), failed, downloads.batch())
         };
         let running = JobsModel::global(cx)
             .read(cx)
             .progress(JobKind::Download)
             .cloned();
-        let failed = items
-            .iter()
-            .filter(|item| item.state == ItemState::Failed)
-            .count();
-        let count = items.len();
 
         let action = match (running.as_ref(), count > 0) {
             (Some(job), _) => Some(JobStop::new(job.id.clone()).into_any_element()),
@@ -253,9 +196,9 @@ impl Render for DownloadsList {
             ),
             _ => None,
         };
-        let past = self.history.read(cx).value().cloned().unwrap_or_default();
-        let formats = self.formats.read(cx).value().cloned().unwrap_or_default();
-        let fetched = past.len();
+        let past = self.history.clone();
+        let formats = self.formats.clone();
+        let fetched = past.read(cx).value().map_or(0, Vec::len);
         let heading = h_flex()
             .gap_1p5()
             .items_center()
@@ -295,8 +238,9 @@ impl Render for DownloadsList {
                         "download-rows",
                         count,
                         cx.processor(move |this, range: Range<usize>, _, cx| {
+                            let queue = downloads.read(cx).queue();
                             range
-                                .filter_map(|index| items.get(index).map(|item| this.row(item, cx)))
+                                .filter_map(|index| queue.get(index).map(|item| this.row(item, cx)))
                                 .collect::<Vec<_>>()
                         }),
                     )
@@ -347,10 +291,16 @@ impl Render for DownloadsList {
                         "url-download-rows",
                         fetched,
                         cx.processor(move |this, range: Range<usize>, _, cx| {
+                            let past = past.read(cx).value().map(Vec::as_slice).unwrap_or_default();
+                            let formats = formats
+                                .read(cx)
+                                .value()
+                                .map(Vec::as_slice)
+                                .unwrap_or_default();
                             range
                                 .filter_map(|index| {
                                     past.get(index)
-                                        .map(|entry| this.past_row(entry, &formats, cx))
+                                        .map(|entry| this.past_row(entry, formats, cx))
                                 })
                                 .collect::<Vec<_>>()
                         }),

@@ -2,17 +2,16 @@
 
 use api::{JobKind, JobProgress};
 use components::format::t;
-use components::{Chip, ChipTone, JobStop, ProgressBar, icons, style};
-use gpui_kit::base::StyledExt as _;
+use components::{Chip, ChipTone, JobLayout, JobLine, StatusRow, style};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, Context, InteractiveElement as _, IntoElement, ParentElement as _, Render,
-    SharedString, StatefulInteractiveElement as _, Styled, Subscription, Window, div,
+    AnyElement, App, Context, InteractiveElement as _, IntoElement, ParentElement as _, Render,
+    StatefulInteractiveElement as _, Styled, Subscription, Window, div,
 };
 use store::{Finished, JobsModel};
 
-use crate::{DONE, FAILED, ROW_GLYPH, header, row};
+use crate::{DONE, FAILED, header};
 use components::EmptyState;
 
 /// The activity popover's body.
@@ -28,61 +27,27 @@ impl ActivityList {
         }
     }
 
-    fn job(&self, progress: &JobProgress, cx: &mut Context<Self>) -> AnyElement {
-        let done = progress.current.unwrap_or(0);
-        let total = progress.total.unwrap_or(0);
-        let detail = progress
-            .message
-            .clone()
-            .filter(|message| !message.is_empty())
-            .or_else(|| (!progress.phase.is_empty()).then(|| progress.phase.clone()))
-            .map(SharedString::from);
-        let counted = (total > 0).then(|| SharedString::from(format!("{done} / {total}")));
-        v_flex()
+    fn job(&self, progress: &JobProgress, cx: &App) -> AnyElement {
+        let id = progress.id.clone();
+        div()
             .w_full()
-            .gap_1()
             .px_3()
             .py_2()
             .child(
-                h_flex()
-                    .w_full()
-                    .gap_2()
-                    .items_center()
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .text_xs()
-                            .font_semibold()
-                            .text_color(cx.theme().foreground)
-                            .child(store::kind_label(progress.kind)),
-                    )
-                    .children(counted.map(|counted| {
-                        div()
-                            .flex_shrink_0()
-                            .text_size(style::text_10())
-                            .text_color(style::white(style::TEXT_MUTED, cx))
-                            .child(counted)
-                            .into_any_element()
-                    }))
-                    .child(JobStop::new(progress.id.clone())),
+                JobLine::new(progress)
+                    .layout(JobLayout::Stacked)
+                    .title(store::kind_label(progress.kind))
+                    .stopping(JobsModel::global(cx).read(cx).is_stopping(&progress.id))
+                    .on_stop(move |_, cx| {
+                        let id = id.clone();
+                        JobsModel::global(cx).update(cx, |jobs, cx| jobs.cancel(id, cx));
+                    }),
             )
-            .child(ProgressBar::job(progress))
-            .children(detail.map(|detail| {
-                div()
-                    .w_full()
-                    .truncate()
-                    .text_size(style::text_10())
-                    .text_color(style::white(style::TEXT_MUTED, cx))
-                    .child(detail)
-                    .into_any_element()
-            }))
             .into_any_element()
     }
 
     /// A job that has just stopped, with what it ended as.
-    fn outcome(&self, finished: &Finished, cx: &mut Context<Self>) -> AnyElement {
+    fn outcome(&self, finished: &Finished, cx: &App) -> AnyElement {
         let (glyph, ink) = match finished.ok {
             true => (DONE, cx.theme().success),
             false => (FAILED, cx.theme().danger),
@@ -94,31 +59,10 @@ impl ActivityList {
                 true => t("job_done"),
                 false => t("job_stopped"),
             });
-        row()
-            .child(
-                icons::icon(glyph)
-                    .size(ROW_GLYPH)
-                    .flex_shrink_0()
-                    .text_color(ink),
-            )
-            .child(
-                v_flex()
-                    .flex_1()
-                    .min_w_0()
-                    .child(
-                        div()
-                            .truncate()
-                            .text_xs()
-                            .child(store::kind_label(finished.kind)),
-                    )
-                    .child(
-                        div()
-                            .truncate()
-                            .text_size(style::text_10())
-                            .text_color(style::white(style::TEXT_MUTED, cx))
-                            .child(detail),
-                    ),
-            )
+        StatusRow::new(format!("outcome-{}", finished.id))
+            .glyph(glyph, ink)
+            .title(store::kind_label(finished.kind))
+            .detail(detail, None)
             .into_any_element()
     }
 }
@@ -126,16 +70,20 @@ impl ActivityList {
 impl Render for ActivityList {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let jobs = JobsModel::global(cx);
-        let (running, recent) = {
+        let (rows, scan_running) = {
             let jobs = jobs.read(cx);
-            (jobs.running().to_vec(), jobs.recent().to_vec())
+            let rows: Vec<AnyElement> = jobs
+                .running()
+                .iter()
+                .map(|progress| self.job(progress, cx))
+                .chain(
+                    jobs.recent()
+                        .iter()
+                        .map(|finished| self.outcome(finished, cx)),
+                )
+                .collect();
+            (rows, jobs.progress(JobKind::Scan).is_some())
         };
-        let scan_running = running.iter().any(|job| job.kind == JobKind::Scan);
-        let mut rows: Vec<AnyElement> = running
-            .iter()
-            .map(|progress| self.job(progress, cx))
-            .collect();
-        rows.extend(recent.iter().map(|finished| self.outcome(finished, cx)));
         v_flex()
             .w_full()
             .child(header(t("activity"), None, cx))

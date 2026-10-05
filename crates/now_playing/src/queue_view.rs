@@ -258,7 +258,7 @@ impl QueueView {
         let zones = ReorderDropZones::new(("queue-drop", index), style::media_row(), index)
             .split(DROP_SPLIT)
             .on_drop::<TrackDrag>(move |drag, at, _, cx| {
-                insert_at(at as u32, drag.keys.clone(), cx)
+                insert_at(at as u32, drag.keys.to_vec(), cx)
             })
             .on_drop::<QueueRowDrag>(move |drag, to, _, cx| {
                 if let Some(to) = move_target(drag.from, to as u32, count) {
@@ -393,7 +393,7 @@ impl Render for QueueView {
                         cx.notify();
                     }
                 }))
-                .on_drop::<TrackDrag>(move |drag, _, cx| insert_at(end, drag.keys.clone(), cx)),
+                .on_drop::<TrackDrag>(move |drag, _, cx| insert_at(end, drag.keys.to_vec(), cx)),
             )
             .when(!self.auto_follow, |panel| {
                 panel.child(

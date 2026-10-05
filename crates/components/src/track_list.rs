@@ -62,7 +62,7 @@ pub enum TrackListEvent {
 /// Tracks dragged out of a list, for a drop target such as the queue.
 #[derive(Debug, Clone)]
 pub struct TrackDrag {
-    pub keys: Vec<String>,
+    pub keys: std::sync::Arc<[String]>,
     pub label: SharedString,
 }
 
@@ -419,7 +419,10 @@ impl TrackList {
             .selected(selected)
             .picking(self.options.selectable && self.selection.is_active())
             .cursor(self.selection.cursor() == Some(index))
-            .drag(TrackDrag { keys, label })
+            .drag(TrackDrag {
+                keys: keys.into(),
+                label,
+            })
             .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                 // A click is also where the arrows should carry on from.
                 this.selection.set_cursor(Some(index));

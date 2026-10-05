@@ -139,3 +139,10 @@ impl From<MenuItem> for PopupMenuItem {
         }
     }
 }
+
+/// The same builder for a target that is costly to make, such as a long selection: made when the menu opens.
+pub fn lazy_builder(
+    target: impl Fn() -> Target + 'static,
+) -> impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static {
+    move |menu, window, cx| build(target(), menu, window, cx)
+}

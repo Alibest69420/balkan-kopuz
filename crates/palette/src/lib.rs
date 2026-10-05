@@ -12,13 +12,13 @@ use std::time::Duration;
 
 use api::{AlbumPage, ApiError, ArtistPage, KopuzApi, SearchResults, Table};
 use components::format::{t, t_with};
-use components::{Badge, EmptyState, KeyHint, SearchField, icons, motion, style};
+use components::{Badge, CommandRow, EmptyState, KeyHint, SearchField, icons, motion, style};
 use gpui_kit::base::motion::{Easing, Presence, Transition};
 use gpui_kit::component::input::{Escape, IndentInline, InputEvent, InputState, MoveDown, MoveUp};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AppContext as _, Context, Entity, FocusHandle, FontWeight, InteractiveElement as _,
+    AnyElement, AppContext as _, Context, Entity, FocusHandle, FontWeight, InteractiveElement as _,
     IntoElement, ParentElement as _, Pixels, Render, ScrollStrategy, SharedString,
     StatefulInteractiveElement as _, Styled, Subscription, Task, UniformListScrollHandle, Window,
     div, px, uniform_list,
@@ -44,12 +44,6 @@ const FLOOR: f32 = 0.08;
 const FRAME: Pixels = px(88.);
 /// `bg-black/55` behind the panel; GPUI has no backdrop blur, so the scrim carries it alone.
 const SCRIM: f32 = 0.55;
-/// The accent wash on the row the keyboard is on.
-const CHOSEN: f32 = 0.16;
-/// Results that answer the previous query stay up at this opacity rather than blanking.
-const FADED: f32 = 0.55;
-/// The widest a subtitle may get before the title stops shrinking for it.
-const SUBTITLE: Pixels = px(220.);
 
 /// How many rows one block may contribute.
 const FEW: usize = 5;
@@ -849,72 +843,16 @@ impl Palette {
         )
     }
 
-    fn row(&self, index: usize, cx: &mut Context<Self>) -> impl IntoElement {
+    fn row(&self, index: usize, cx: &mut Context<Self>) -> AnyElement {
         let Some(item) = self.items.get(index) else {
-            return div().id(("palette-row", index)).h(ROW);
+            return div().id(("palette-row", index)).h(ROW).into_any_element();
         };
-        let chosen = index == self.selected;
-        let glyph = match chosen {
-            true => cx.theme().primary_hover,
-            false => style::white(style::TEXT_MUTED, cx),
-        };
-        let ink = match chosen {
-            true => cx.theme().foreground,
-            false => style::white(style::TEXT_STRONG, cx),
-        };
-        div()
-            .id(("palette-row", index))
-            .h(ROW)
-            .w_full()
-            .px_2()
-            .cursor_pointer()
-            .tab_index(0)
-            .when(item.faded, |row| row.opacity(FADED))
-            .child(
-                h_flex()
-                    .relative()
-                    .size_full()
-                    .px_3()
-                    .gap_3()
-                    .items_center()
-                    .rounded(style::radius_lg())
-                    .when(chosen, |row| {
-                        row.bg(style::accent(CHOSEN, cx))
-                            .child(components::focus::ring(style::radius_lg(), cx))
-                    })
-                    .child(
-                        icons::icon(item.icon)
-                            .with_size(style::text_11())
-                            .text_color(glyph),
-                    )
-                    .child(
-                        h_flex()
-                            .flex_1()
-                            .min_w_0()
-                            .gap_2()
-                            .items_baseline()
-                            .child(
-                                div()
-                                    .flex_shrink(1.)
-                                    .min_w_0()
-                                    .text_sm()
-                                    .truncate()
-                                    .text_color(ink)
-                                    .child(item.title.clone()),
-                            )
-                            .children(item.subtitle.clone().map(|subtitle| {
-                                div()
-                                    .flex_shrink(1.)
-                                    .min_w_0()
-                                    .max_w(SUBTITLE)
-                                    .text_xs()
-                                    .truncate()
-                                    .text_color(style::slate_500(cx))
-                                    .child(subtitle)
-                            })),
-                    )
-                    .children(item.hint.as_deref().map(components::Keycap::new)),
-            )
+        CommandRow::new(("palette-row", index), item.icon, item.title.clone())
+            .height(ROW)
+            .subtitle(item.subtitle.clone())
+            .hint(item.hint.clone())
+            .chosen(index == self.selected)
+            .faded(item.faded)
             .on_hover(cx.listener(move |this, over: &bool, _, cx| {
                 if *over && this.selected != index {
                     this.selected = index;
@@ -928,6 +866,7 @@ impl Palette {
                     this.input.update(cx, |state, cx| state.focus(window, cx));
                 }
             }))
+            .into_any_element()
     }
 
     fn footer(&self, cx: &gpui_kit::App) -> impl IntoElement {

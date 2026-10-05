@@ -1,7 +1,9 @@
 //! The one selection pill: how much is picked, what to do with it, and the way out.
 
+use std::cell::OnceCell;
 use std::collections::HashSet;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, h_flex};
@@ -184,6 +186,8 @@ impl RenderOnce for SelectionBar {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Selection {
     picked: Vec<String>,
+    /// `picked` as one shared slice, built the first time a frame asks and dropped on any change.
+    shared: OnceCell<Arc<[String]>>,
     held: HashSet<String>,
     /// The filtered listing entire, rather than the keys that happen to be loaded.
     everything: bool,
@@ -225,6 +229,13 @@ impl Selection {
         &self.picked
     }
 
+    /// The same keys, shared: a row of a big selection holds one without copying every key.
+    pub fn picked_shared(&self) -> Arc<[String]> {
+        self.shared
+            .get_or_init(|| self.picked.as_slice().into())
+            .clone()
+    }
+
     pub fn cursor(&self) -> Option<usize> {
         self.cursor
     }
@@ -245,6 +256,7 @@ impl Selection {
             return;
         }
         self.everything = false;
+        self.shared.take();
         for key in keys {
             if self.held.insert(key.clone()) {
                 self.picked.push(key);
@@ -254,6 +266,7 @@ impl Selection {
 
     /// Ctrl-click: add or drop one row, and make it where a later shift-click reaches from.
     pub fn toggle(&mut self, id: &str, index: usize) {
+        self.shared.take();
         // Select-all cannot become keys without the whole listing, so a plain pick starts over.
         self.forget_everything();
         if self.held.remove(id) {
@@ -268,6 +281,7 @@ impl Selection {
 
     /// Shift-click: everything between the last pick and `index`, as far as `rows` can name it.
     pub fn extend_to(&mut self, index: usize, rows: impl Fn(usize) -> Option<String>) {
+        self.shared.take();
         let anchor = self.anchor.unwrap_or(index);
         let (first, last) = (anchor.min(index), anchor.max(index));
         self.forget_everything();
@@ -282,6 +296,7 @@ impl Selection {
 
     /// Ctrl-A: the whole filtered listing, not the window. Nothing is fetched to say so.
     pub fn select_everything(&mut self) {
+        self.shared.take();
         self.picked.clear();
         self.held.clear();
         self.everything = true;
@@ -289,6 +304,7 @@ impl Selection {
 
     /// Drop the keys a refetch no longer holds; select-all is scoped to the filter and stays.
     pub fn retain_loaded(&mut self, loaded: &HashSet<String>, complete: bool) {
+        self.shared.take();
         if self.everything || !complete {
             return;
         }
@@ -388,5 +404,16 @@ mod tests {
         selection.toggle("k1", 1);
         selection.toggle("k1", 1);
         assert!(!selection.is_active());
+    }
+
+    #[test]
+    fn the_shared_keys_follow_every_change_to_the_picks() {
+        let mut selection = Selection::new();
+        selection.toggle("k1", 1);
+        assert_eq!(&*selection.picked_shared(), ["k1"]);
+        selection.toggle("k2", 2);
+        assert_eq!(&*selection.picked_shared(), ["k1", "k2"]);
+        selection.retain_loaded(&HashSet::from(["k2".to_string()]), true);
+        assert_eq!(&*selection.picked_shared(), ["k2"]);
     }
 }

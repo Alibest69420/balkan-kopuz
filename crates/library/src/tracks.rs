@@ -1,6 +1,7 @@
 //! The tracks facet: the shared table with moveable, resizable, hideable columns, groups, and paging.
 
 use std::rc::Rc;
+use std::sync::Arc;
 
 use api::{QueueContext, TrackInfo};
 use components::columns::{self as table, Layout};
@@ -21,6 +22,13 @@ use store::{Target, actions};
 use crate::columns::{self, MAX_WIDTH, MIN_WIDTH};
 use crate::filters;
 use crate::{Library, Line};
+
+/// What every row of one frame shares.
+struct Frame {
+    layout: Layout,
+    covers: bool,
+    picked: Arc<[String]>,
+}
 
 impl Library {
     /// The lines the table draws: the loaded rows, with a heading wherever a group starts.
@@ -102,9 +110,9 @@ impl Library {
                         cx.processor(move |this, range: std::ops::Range<usize>, window, cx| {
                             this.note_visible(&range, cx);
                             this.ensure_window(&range, window, cx);
-                            let layout = table::visible(&this.columns);
+                            let frame = this.frame(cx);
                             range
-                                .map(|index| this.line(index, grouped, height, &layout, cx))
+                                .map(|index| this.line(index, grouped, height, &frame, cx))
                                 .collect()
                         }),
                     )
@@ -143,11 +151,11 @@ impl Library {
         index: usize,
         grouped: bool,
         height: Pixels,
-        layout: &Layout,
+        frame: &Frame,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         if !grouped {
-            return self.row(index, index, height, layout, cx);
+            return self.row(index, index, height, frame, cx);
         }
         match self.lines.get(index) {
             Some(Line::Group(name)) => h_flex()
@@ -160,8 +168,18 @@ impl Library {
                 .text_color(style::white(style::TEXT_SECONDARY, cx))
                 .child(name.clone())
                 .into_any_element(),
-            Some(Line::Track(row)) => self.row(*row, index, height, layout, cx),
+            Some(Line::Track(row)) => self.row(*row, index, height, frame, cx),
             None => div().h(height).into_any_element(),
+        }
+    }
+
+    /// What every row of one frame shares, read once rather than once per row.
+    fn frame(&self, cx: &App) -> Frame {
+        Frame {
+            layout: table::visible(&self.columns),
+            covers: self.density == Density::Comfortable
+                && store::ConfigModel::global(cx).read(cx).row_images(),
+            picked: self.selection.picked_shared(),
         }
     }
 
@@ -171,28 +189,40 @@ impl Library {
         index: usize,
         slot: usize,
         height: Pixels,
-        layout: &Layout,
+        frame: &Frame,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let covers = self.density == Density::Comfortable
-            && store::ConfigModel::global(cx).read(cx).row_images();
+        let covers = frame.covers;
         let Some(track) = self.track_at(index) else {
-            return components::skeleton::row(slot, height, covers, layout.len(), cx)
+            return components::skeleton::row(slot, height, covers, frame.layout.len(), cx)
                 .into_any_element();
         };
         let key = track.key.clone();
         let selected = self.selection.contains(&key);
-        let drag_keys: Vec<String> = match selected && !self.selection.is_everything() {
-            true => self.selection.picked().to_vec(),
-            false => vec![key.clone()],
+        let shared = selected && !self.selection.is_everything();
+        let drag_keys: Arc<[String]> = match shared {
+            true => frame.picked.clone(),
+            false => Arc::from([key.clone()]),
         };
         let drag_label = match drag_keys.len() {
             0 | 1 => SharedString::from(track.title.clone()),
             many => SharedString::from(format!("{} +{}", track.title, many - 1)),
         };
-        let menu: RowMenu = Rc::new(menus::builder(self.row_target(track)));
+        let menu: RowMenu = match shared {
+            true => {
+                let (picked, title) = (frame.picked.clone(), track.title.clone());
+                Rc::new(menus::lazy_builder(move || {
+                    let keys = picked.iter().map(|key| SharedString::from(key.clone()));
+                    Target::selection(keys.collect(), title.clone())
+                }))
+            }
+            false => Rc::new(menus::builder(Target::track(
+                track.key.clone(),
+                track.title.clone(),
+            ))),
+        };
         TrackRow::new(track, slot)
-            .columns(layout.clone())
+            .columns(frame.layout.clone())
             .height(height)
             .lead(Some(SharedString::from((index + 1).to_string())))
             .cover(covers)
@@ -239,20 +269,6 @@ impl Library {
             }))
             .menu(menu)
             .into_any_element()
-    }
-
-    /// What a row's menu acts on: the selection when the row is in it, else the row alone.
-    fn row_target(&self, track: &TrackInfo) -> Target {
-        if !self.selection.contains(&track.key) || self.selection.is_everything() {
-            return Target::track(track.key.clone(), track.title.clone());
-        }
-        let keys: Vec<SharedString> = self
-            .selection
-            .picked()
-            .iter()
-            .map(|key| SharedString::from(key.clone()))
-            .collect();
-        Target::selection(keys, track.title.clone())
     }
 
     /// The header: a sort control per column, a grip between them, and a menu to hide them.

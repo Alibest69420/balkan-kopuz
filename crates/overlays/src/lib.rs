@@ -2,7 +2,7 @@
 
 use api::{JobKind, JobProgress};
 use components::format::t;
-use components::{JobStop, ProgressBar, icons, motion, style};
+use components::{JobLine, ProgressBar, icons, motion, style};
 use gpui_kit::base::motion::{Easing, Presence, Transition};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
@@ -85,15 +85,7 @@ impl Overlays {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let file = progress
-            .message
-            .clone()
-            .filter(|file| !file.is_empty())
-            .map(SharedString::from);
-        let phase = match progress.phase.is_empty() {
-            true => t("scanning_library"),
-            false => SharedString::from(progress.phase.clone()),
-        };
+        let id = progress.id.clone();
         v_flex()
             .w_full()
             .flex_shrink_0()
@@ -117,13 +109,19 @@ impl Overlays {
                             .flex_shrink_0()
                             .text_color(style::white(SCAN_GLYPH, cx)),
                     )
-                    .child(div().flex_shrink_0().child(phase))
-                    .when_some(file, |row, file| {
-                        row.child(div().flex_1().min_w_0().truncate().child(file))
-                    })
-                    .child(div().flex_1().min_w_0())
-                    // A scan could not be stopped, though a download could, and both are jobs.
-                    .child(JobStop::new(progress.id.clone())),
+                    .child(
+                        div().flex_1().min_w_0().child(
+                            JobLine::new(progress)
+                                .idle_phase(t("scanning_library"))
+                                .stopping(JobsModel::global(cx).read(cx).is_stopping(&progress.id))
+                                // A scan could not be stopped, though a download could, and both are jobs.
+                                .on_stop(move |_, cx| {
+                                    let id = id.clone();
+                                    JobsModel::global(cx)
+                                        .update(cx, |jobs, cx| jobs.cancel(id, cx));
+                                }),
+                        ),
+                    ),
             )
             .into_any_element()
     }
