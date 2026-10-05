@@ -4,20 +4,20 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use api::{AlbumInfo, ArtistInfo, ArtworkRef, PlaylistInfo};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Div, Entity, FontWeight, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, RenderOnce, SharedString, Stateful,
-    StatefulInteractiveElement as _, Styled, Window, div, px,
+    AnyElement, App, ClickEvent, FontWeight, InteractiveElement as _, IntoElement,
+    ParentElement as _, Pixels, RenderOnce, SharedString, StatefulInteractiveElement as _, Styled,
+    Window, div, px,
 };
 use store::{Navigator, Route, Target};
 
 use crate::cover::Cover;
 use crate::icon_button::{IconButton, IconTone};
 use crate::icons;
+use crate::menu_button::{MenuButton, MenuVariant};
+use crate::menus::{self, WithContextMenu as _};
 use crate::motion;
 use crate::style;
 
@@ -27,8 +27,6 @@ const HOVER: u64 = 1;
 const WASH: u64 = 2;
 const COVER: u64 = 3;
 const TITLE: u64 = 4;
-const DOTS: u64 = 5;
-const MENU: u64 = 6;
 const CORNER: u64 = 10;
 
 /// `w-10 h-10`: the play button over a cover's corner.
@@ -204,8 +202,6 @@ impl RenderOnce for Tile {
         let (hovered, pointer) = motion::hovered(motion::channel(&id, HOVER), window, cx);
         let focus = crate::focus::handle(format!("tile-focus:{id}"), window, cx);
         let focused = focus.is_focused(window);
-        let menu_open = window.use_keyed_state(motion::channel(&id, MENU), cx, |_, _| false);
-        let open = *menu_open.read(cx);
         let wash = motion::color(
             motion::channel(&id, WASH),
             match (framed, self.selected, hovered || focused) {
@@ -312,20 +308,12 @@ impl RenderOnce for Tile {
                 )
             });
 
-        let dots = (framed && self.menu.is_some()).then(|| {
-            let shown = motion::amount(
-                motion::channel(&id, DOTS),
-                crate::focus::reveal(hovered || focused || self.cursor || open),
-                motion::FAST,
-                window,
-                cx,
-            );
-            dots_button(&id, self.menu.clone(), menu_open.clone(), cx)
-                .absolute()
-                .bottom_3()
-                .right_3()
-                // A hidden element takes its own open popup with it, so the fade stops at a resting level.
-                .opacity(shown)
+        let dots = self.menu.clone().filter(|_| framed).map(|target| {
+            div().absolute().bottom_3().right_3().child(
+                MenuButton::new(id.clone(), menus::menu_for(target))
+                    .variant(MenuVariant::Scrim)
+                    .reveal(hovered || focused || self.cursor),
+            )
         });
 
         let tile = crate::focus::stop(
@@ -354,17 +342,7 @@ impl RenderOnce for Tile {
         .when(focused || self.cursor, |tile| {
             tile.child(crate::focus::ring(style::radius_xl(), cx))
         });
-        with_menu(tile, self.menu)
-    }
-}
-
-/// Right-click opens what `target` names, when there is one.
-fn with_menu(element: Stateful<Div>, target: Option<Target>) -> AnyElement {
-    match target {
-        Some(target) => element
-            .context_menu(crate::menus::builder(target))
-            .into_any_element(),
-        None => element.into_any_element(),
+        tile.with_context_menu(self.menu.map(menus::menu_for))
     }
 }
 
@@ -475,8 +453,6 @@ impl RenderOnce for TileRow {
         let (hovered, pointer) = motion::hovered(motion::channel(&id, HOVER), window, cx);
         let focus = crate::focus::handle(format!("row-focus:{id}"), window, cx);
         let focused = focus.is_focused(window);
-        let menu_open = window.use_keyed_state(motion::channel(&id, MENU), cx, |_, _| false);
-        let open = *menu_open.read(cx);
         let wash = motion::color(
             motion::channel(&id, WASH),
             match (self.selected, hovered || focused) {
@@ -484,13 +460,6 @@ impl RenderOnce for TileRow {
                 (false, true) => style::white(style::HOVER, cx),
                 (false, false) => style::white(0., cx),
             },
-            window,
-            cx,
-        );
-        let dots = motion::amount(
-            motion::channel(&id, DOTS),
-            crate::focus::reveal(hovered || focused || open),
-            motion::FAST,
             window,
             cx,
         );
@@ -583,52 +552,20 @@ impl RenderOnce for TileRow {
                     .child(detail),
             )
         })
-        .when(self.menu.is_some(), |row| {
+        .when_some(self.menu.clone(), |row, target| {
             row.child(
-                dots_button(&id, self.menu.clone(), menu_open, cx)
-                    .flex_shrink_0()
-                    .opacity(dots),
+                div().flex_shrink_0().child(
+                    MenuButton::new(id.clone(), menus::menu_for(target))
+                        .variant(MenuVariant::Scrim)
+                        .reveal(hovered || focused),
+                ),
             )
         })
         .when(focused, |row| {
             row.child(crate::focus::ring(style::radius_lg(), cx))
         });
-        with_menu(row, self.menu)
+        row.with_context_menu(self.menu.map(menus::menu_for))
     }
-}
-
-/// The dots that open a card's or a row's menu; pressing them is never a click on what holds them.
-fn dots_button(
-    id: &SharedString,
-    target: Option<Target>,
-    open: Entity<bool>,
-    cx: &App,
-) -> Stateful<Div> {
-    let slot = div()
-        .id(SharedString::from(format!("menu-slot-{id}")))
-        .on_click(|_, _, cx| cx.stop_propagation());
-    let Some(target) = target else {
-        return slot;
-    };
-    slot.child(
-        Button::new(SharedString::from(format!("menu-{id}")))
-            .custom(style::button(
-                style::black(0.4, cx),
-                style::white(style::HOVER, cx),
-                cx.theme().secondary_foreground,
-                cx,
-            ))
-            .icon(icons::icon(icons::MORE))
-            .rounded(cx.theme().radius_full())
-            .dropdown_menu(crate::menus::builder(target))
-            .on_open_change(move |shown: &bool, _, cx| {
-                let shown = *shown;
-                open.update(cx, |open, cx| {
-                    *open = shown;
-                    cx.notify();
-                });
-            }),
-    )
 }
 
 /// `bg-primary` circle on a playing cover's corner.

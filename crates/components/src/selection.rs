@@ -4,7 +4,6 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::menu::DropdownMenu as _;
 use gpui_kit::component::{ActiveTheme as _, h_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -14,6 +13,7 @@ use gpui_kit::{
 use store::Target;
 
 use crate::format::{t, t_with};
+use crate::menu_button::{MenuButton, MenuVariant};
 use crate::{dialogs, icons, menus, motion, style};
 
 const FADE: u64 = 0;
@@ -136,10 +136,8 @@ impl RenderOnce for SelectionBar {
             verb("delete".into(), icons::TRASH, t("delete"), confirm)
         });
         let more = self.target.map(|target| {
-            Button::new(SharedString::from(format!("{id}-more")))
-                .custom(bare)
-                .icon(icons::icon(icons::MORE))
-                .dropdown_menu(menus::builder(target))
+            MenuButton::new(format!("{id}-more"), menus::menu_for(target))
+                .variant(MenuVariant::Bare(ink))
         });
         let cancel = self.cancel;
         div()

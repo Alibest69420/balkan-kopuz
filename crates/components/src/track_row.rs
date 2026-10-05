@@ -3,14 +3,12 @@
 use std::rc::Rc;
 
 use api::{ArtworkRef, TrackInfo};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::checkbox::Checkbox;
-use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenu};
 use gpui_kit::component::tooltip::Tooltip;
-use gpui_kit::component::{ActiveTheme as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, ClickEvent, Context, Div, ElementId, FontWeight, Hsla,
+    AnyElement, App, AppContext as _, ClickEvent, Div, ElementId, FontWeight, Hsla,
     InteractiveElement as _, IntoElement, Length, ParentElement as _, RenderOnce, SharedString,
     Stateful, StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
@@ -22,6 +20,8 @@ use crate::format::duration;
 use crate::icons;
 use crate::lead;
 use crate::link::{Link, Tone};
+use crate::menu_button::MenuButton;
+use crate::menus::WithContextMenu as _;
 use crate::motion;
 use crate::style;
 use crate::track_list::TrackDrag;
@@ -33,8 +33,7 @@ const ROW_GROUP: &str = "track-row";
 pub type OnRowClick = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 /// What ticking a row's box does.
 pub type OnPick = Rc<dyn Fn(&bool, &mut Window, &mut App)>;
-/// One builder for the dots and the right-click, so the two menus cannot drift apart.
-pub type RowMenu = Rc<dyn Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu>;
+pub use crate::menus::Menu as RowMenu;
 
 /// A track on its table's columns; whoever holds the rows says what is picked, playing and pressed.
 #[derive(IntoElement)]
@@ -178,9 +177,6 @@ impl RenderOnce for TrackRow {
         let slot = self.slot;
         let accent = cx.theme().primary;
         let stored = DownloadsModel::global(cx).read(cx).is_stored(&self.key);
-        let menu_open =
-            window.use_keyed_state(motion::row_id("track-row-open", slot), cx, |_, _| false);
-        let open = *menu_open.read(cx);
         // `transition-colors` on the row: the playing tint and the selection wash tween, hover does not.
         let wash = motion::color(
             motion::row_id("track-row-wash", slot),
@@ -288,34 +284,14 @@ impl RenderOnce for TrackRow {
                 .justify_end()
                 // The popover stops the press; this stops the rest of the cell playing the row.
                 .on_click(|_, _, cx| cx.stop_propagation())
-                // A hidden trigger would take its own open menu down with it, so an open one stays.
-                .when(!open, |cell| {
-                    cell.invisible()
-                        .group_hover(ROW_GROUP, |dots| dots.visible())
-                })
                 .when_some(self.menu.clone(), |cell, menu| {
                     cell.child(
-                        Button::new(("track-row-dots", slot))
-                            .ghost()
-                            .xsmall()
-                            .icon(icons::icon(icons::MORE))
-                            .dropdown_menu(move |popup, window, cx| menu(popup, window, cx))
-                            .on_open_change(move |shown: &bool, _, cx| {
-                                let shown = *shown;
-                                menu_open.update(cx, |open, cx| {
-                                    *open = shown;
-                                    cx.notify();
-                                });
-                            }),
+                        MenuButton::new(format!("track-row-dots-{slot}"), menu)
+                            .reveal_in_group(ROW_GROUP),
                     )
                 }),
         );
-        match self.menu {
-            Some(menu) => row
-                .context_menu(move |popup, window, cx| menu(popup, window, cx))
-                .into_any_element(),
-            None => row.into_any_element(),
-        }
+        row.with_context_menu(self.menu)
     }
 }
 
