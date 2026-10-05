@@ -9,8 +9,7 @@ use crate::invalidation::{Invalidation, TablesChanged};
 use crate::jobs::{JobEvent, JobsModel};
 use crate::notices::Notices;
 
-/// Where one row of the download queue has got to. `Done` is this client's: the daemon
-/// forgets a finished item, and the row has to stay reachable after the batch ends.
+/// Where one row of the download queue has got to; `Done` is this client's, since the daemon forgets a finished item.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ItemState {
     Queued,
@@ -43,6 +42,13 @@ pub struct DownloadItem {
 pub struct BatchFinished {
     pub downloaded: usize,
     pub failed: usize,
+}
+
+/// What a set of keys says about offline copies: every one stored, any one still on its way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Offline {
+    pub stored: bool,
+    pub busy: bool,
 }
 
 /// Which tracks have an offline copy, and what the running download batch is doing.
@@ -244,6 +250,25 @@ impl DownloadsModel {
             self.state(key),
             Some(DownloadItemState::Queued | DownloadItemState::Downloading)
         )
+    }
+
+    /// The one stored/busy answer for a key set; compute it on a data change, not per frame.
+    pub fn offline(&self, keys: &[String]) -> Offline {
+        Offline {
+            stored: !keys.is_empty() && keys.iter().all(|key| self.is_stored(key)),
+            busy: !self.active.is_empty() && keys.iter().any(|key| self.is_active(key)),
+        }
+    }
+
+    /// Download the keys, or give their offline copies back.
+    pub fn set_offline(&mut self, keys: Vec<String>, offline: bool, cx: &mut Context<Self>) {
+        if offline {
+            self.download(keys, cx);
+            return;
+        }
+        for key in keys {
+            self.remove(key, cx);
+        }
     }
 
     pub fn stored(&self) -> &HashSet<String> {

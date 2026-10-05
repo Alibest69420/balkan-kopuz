@@ -414,7 +414,7 @@ static COMMANDS: &[Command] = &[
             if let Some(id) = ops::album_id(&target) {
                 ops::with_album_keys(id, cx, |keys, cx| {
                     store::DownloadsModel::global(cx)
-                        .update(cx, |downloads, cx| downloads.download(keys, cx))
+                        .update(cx, |downloads, cx| downloads.set_offline(keys, true, cx))
                 });
             }
         },
@@ -434,11 +434,8 @@ static COMMANDS: &[Command] = &[
         run: |target, _, cx| {
             if let Some(id) = ops::album_id(&target) {
                 ops::with_album_keys(id, cx, |keys, cx| {
-                    store::DownloadsModel::global(cx).update(cx, |downloads, cx| {
-                        for key in keys {
-                            downloads.remove(key, cx);
-                        }
-                    })
+                    store::DownloadsModel::global(cx)
+                        .update(cx, |downloads, cx| downloads.set_offline(keys, false, cx))
                 });
             }
         },

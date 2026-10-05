@@ -63,8 +63,7 @@ pub fn all_favorite(keys: &[String], cx: &App) -> bool {
 }
 
 pub fn all_stored(keys: &[String], cx: &App) -> bool {
-    let downloads = DownloadsModel::global(cx).read(cx);
-    !keys.is_empty() && keys.iter().all(|key| downloads.is_stored(key))
+    DownloadsModel::global(cx).read(cx).offline(keys).stored
 }
 
 pub fn toggle_favorite(target: &Target, cx: &mut App) {
@@ -76,15 +75,7 @@ pub fn toggle_favorite(target: &Target, cx: &mut App) {
 pub fn toggle_download(target: &Target, cx: &mut App) {
     let keys = track_keys(target);
     let stored = all_stored(&keys, cx);
-    DownloadsModel::global(cx).update(cx, |downloads, cx| {
-        if stored {
-            for key in keys {
-                downloads.remove(key, cx);
-            }
-        } else {
-            downloads.download(keys, cx);
-        }
-    });
+    DownloadsModel::global(cx).update(cx, |downloads, cx| downloads.set_offline(keys, !stored, cx));
 }
 
 /// Album order: by disc, then by track number.
