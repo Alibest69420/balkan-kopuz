@@ -1,5 +1,12 @@
 //! The header controls the two artist pages share: view mode, stacked sort, and Tracks⇄Albums.
 
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+
+use api::{
+    AlbumPage, AlbumQuery, AlbumSort, ApiError, ArtistPage, ArtistQuery, ArtistSort, KopuzApi,
+};
 use components::format::t;
 use components::{Segment, Segmented, SortControl};
 use config::{
@@ -72,6 +79,38 @@ impl SortTarget for AlbumSortField {
 
     fn write(config: &mut AppConfig, criteria: Vec<SortCriterion<Self>>) {
         config.artist_album_sort = criteria;
+    }
+}
+
+pub type Listing<T> = Pin<Box<dyn Future<Output = Result<T, ApiError>> + Send>>;
+
+/// Every artist, in the order `criteria` stack up to, sorted by the daemon.
+pub fn artist_listing(
+    criteria: &[SortCriterion<ArtistSortField>],
+) -> impl Fn(Arc<dyn KopuzApi>) -> Listing<ArtistPage> + 'static {
+    let query = ArtistQuery {
+        sort: criteria.iter().copied().map(ArtistSort::from).collect(),
+        ..ArtistQuery::default()
+    };
+    move |api| {
+        let query = query.clone();
+        Box::pin(async move { api.artists(query, store::all()).await })
+    }
+}
+
+/// The albums billed to `artist`, in the order `criteria` stack up to, sorted by the daemon.
+pub fn album_listing(
+    artist: String,
+    criteria: &[SortCriterion<AlbumSortField>],
+) -> impl Fn(Arc<dyn KopuzApi>) -> Listing<AlbumPage> + 'static {
+    let query = AlbumQuery {
+        artist_key: Some(artist),
+        sort: criteria.iter().copied().map(AlbumSort::from).collect(),
+        ..AlbumQuery::default()
+    };
+    move |api| {
+        let query = query.clone();
+        Box::pin(async move { api.albums(query, store::all()).await })
     }
 }
 

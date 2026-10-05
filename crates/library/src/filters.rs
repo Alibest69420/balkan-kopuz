@@ -1,6 +1,9 @@
 //! What the library is showing, in a form that fits in the route: the facet and every active chip.
 
-use api::{TrackFilter, TrackSort};
+use api::{
+    AlbumQuery, AlbumSort, AlbumSortField, ArtistQuery, ArtistSort, ArtistSortField, TrackFilter,
+    TrackSort,
+};
 use config::{SortCriterion, SortDirection, TrackSortField};
 
 use crate::facet::Facet;
@@ -51,9 +54,7 @@ impl Filters {
         Self::on(self.facet)
     }
 
-    /// The daemon-side filter: what the server can narrow without the client walking the library.
-    ///
-    /// `downloaded` and `years` are not on the wire, so they are applied to what comes back.
+    /// The tracks the daemon is asked for: every chip and the order, narrowed and sorted there.
     pub fn track_filter(&self, sort: &Sort) -> TrackFilter {
         TrackFilter {
             search: non_empty(&self.search),
@@ -61,18 +62,36 @@ impl Filters {
             genre: self.genre.clone(),
             favorite: self.favorites.then_some(true),
             sort: sort.to_track_sort(),
-            ..TrackFilter::default()
+            downloaded: self.downloaded.then_some(true),
+            year_from: self.years.map(|(from, _)| from),
+            year_to: self.years.map(|(_, to)| to),
+            reverse: sort.reverses(),
         }
     }
 
-    /// Whether the listing can be paged, or has to be read whole and narrowed here.
-    ///
-    /// Downloaded tracks come from the download model and a year has no column on the wire, so
-    /// either chip means reading the filtered set once rather than a window at a time.
-    pub fn is_pageable(&self) -> bool {
-        match self.facet {
-            Facet::Tracks => !self.downloaded && self.years.is_none(),
-            _ => false,
+    /// The albums the daemon is asked for, filtered and ordered there.
+    pub fn album_query(&self, sort: &Sort) -> AlbumQuery {
+        AlbumQuery {
+            search: non_empty(&self.search),
+            genre: self.genre.clone(),
+            year_from: self.years.map(|(from, _)| from),
+            year_to: self.years.map(|(_, to)| to),
+            artist_key: None,
+            sort: album_sort_field(&sort.field)
+                .map(|field| AlbumSort::new(field, sort.descending))
+                .into_iter()
+                .collect(),
+        }
+    }
+
+    /// The artists the daemon is asked for, filtered and ordered there.
+    pub fn artist_query(&self, sort: &Sort) -> ArtistQuery {
+        ArtistQuery {
+            search: non_empty(&self.search),
+            sort: artist_sort_field(&sort.field)
+                .map(|field| ArtistSort::new(field, sort.descending))
+                .into_iter()
+                .collect(),
         }
     }
 
@@ -251,6 +270,34 @@ impl Sort {
         };
         TrackSort::Fields(vec![SortCriterion::new(field, self.direction())])
     }
+
+    /// Play count runs high to low by itself, so ascending is that order reversed.
+    pub fn reverses(&self) -> bool {
+        self.field == "plays" && !self.descending
+    }
+}
+
+/// The ids the albums grid offers, as the daemon's album order.
+pub fn album_sort_field(id: &str) -> Option<AlbumSortField> {
+    Some(match id {
+        "title" => AlbumSortField::Title,
+        "artist" => AlbumSortField::Artist,
+        "year" => AlbumSortField::Year,
+        "genre" => AlbumSortField::Genre,
+        "added" => AlbumSortField::RecentlyAdded,
+        "tracks" => AlbumSortField::TrackCount,
+        _ => return None,
+    })
+}
+
+/// The ids the artists grid offers, as the daemon's artist order.
+pub fn artist_sort_field(id: &str) -> Option<ArtistSortField> {
+    Some(match id {
+        "title" => ArtistSortField::Name,
+        "tracks" => ArtistSortField::TrackCount,
+        "albums" => ArtistSortField::AlbumCount,
+        _ => return None,
+    })
 }
 
 /// The column ids the daemon can order a track listing by.
@@ -382,15 +429,57 @@ mod tests {
     }
 
     #[test]
-    fn a_chip_the_wire_cannot_narrow_stops_the_listing_being_paged() {
-        let mut filters = Filters::on(Facet::Tracks);
-        assert!(filters.is_pageable());
-        filters.favorites = true;
-        filters.genre = Some("Rock".into());
-        filters.search = "x".into();
-        assert!(filters.is_pageable(), "the daemon narrows all three itself");
-        filters.downloaded = true;
-        assert!(!filters.is_pageable());
+    fn every_track_chip_reaches_the_daemon() {
+        let filters = Filters {
+            downloaded: true,
+            years: Some((1980, 1989)),
+            ..Filters::on(Facet::Tracks)
+        };
+        let filter = filters.track_filter(&Sort::default());
+        assert_eq!(filter.downloaded, Some(true));
+        assert_eq!((filter.year_from, filter.year_to), (Some(1980), Some(1989)));
+    }
+
+    #[test]
+    fn the_album_grid_asks_for_its_chips_and_its_order() {
+        let filters = Filters {
+            search: " blue ".into(),
+            genre: Some("Jazz".into()),
+            years: Some((1950, 1959)),
+            ..Filters::on(Facet::Albums)
+        };
+        let sort = Sort {
+            field: "year".into(),
+            descending: true,
+        };
+        let query = filters.album_query(&sort);
+        assert_eq!(query.search.as_deref(), Some("blue"));
+        assert_eq!(query.genre.as_deref(), Some("Jazz"));
+        assert_eq!((query.year_from, query.year_to), (Some(1950), Some(1959)));
+        assert_eq!(query.sort, [AlbumSort::new(AlbumSortField::Year, true)]);
+    }
+
+    #[test]
+    fn the_artist_grid_orders_by_what_it_offers() {
+        let sort = Sort {
+            field: "albums".into(),
+            descending: true,
+        };
+        let query = Filters::on(Facet::Artists).artist_query(&sort);
+        assert_eq!(
+            query.sort,
+            [ArtistSort::new(ArtistSortField::AlbumCount, true)]
+        );
+        assert_eq!(query.search, None);
+    }
+
+    #[test]
+    fn ascending_play_count_reverses_the_daemon_order() {
+        let sort = Sort {
+            field: "plays".into(),
+            descending: false,
+        };
+        assert!(Filters::on(Facet::Tracks).track_filter(&sort).reverse);
     }
 
     #[test]

@@ -1,10 +1,10 @@
-//! Albums as virtualized tiles or rows, and the one order they are sorted in.
+//! Albums as virtualized tiles or rows, in the order the daemon listed them.
 
 use std::cmp::Ordering;
 use std::rc::Rc;
 
 use api::AlbumInfo;
-use config::{AlbumSortField, SortCriterion, SortDirection};
+use config::AlbumSortField;
 use gpui_kit::{AnyElement, Context, IntoElement as _, Pixels, SharedString, Window, px};
 
 use crate::cards::{Frame, album_row, album_tile};
@@ -70,18 +70,6 @@ pub fn available_fields(albums: &[AlbumInfo], with_artist: bool) -> Vec<AlbumSor
     fields
 }
 
-pub fn sort_albums(albums: &mut [AlbumInfo], criteria: &[SortCriterion<AlbumSortField>]) {
-    albums.sort_by(|left, right| {
-        for criterion in criteria {
-            let ordering = compare(left, right, criterion);
-            if ordering != Ordering::Equal {
-                return ordering;
-            }
-        }
-        Ordering::Equal
-    });
-}
-
 pub fn field_label(field: AlbumSortField) -> SharedString {
     t(match field {
         AlbumSortField::Title => "sort_field_title",
@@ -89,23 +77,6 @@ pub fn field_label(field: AlbumSortField) -> SharedString {
         AlbumSortField::Year => "sort_field_year",
         AlbumSortField::Genre => "sort_field_genre",
     })
-}
-
-fn compare(
-    left: &AlbumInfo,
-    right: &AlbumInfo,
-    criterion: &SortCriterion<AlbumSortField>,
-) -> Ordering {
-    let ordering = match criterion.field {
-        AlbumSortField::Title => compare_text(&left.title, &right.title),
-        AlbumSortField::Artist => compare_text(&left.artist, &right.artist),
-        AlbumSortField::Year => left.year.cmp(&right.year),
-        AlbumSortField::Genre => compare_text(&left.genre, &right.genre),
-    };
-    match criterion.direction {
-        SortDirection::Asc => ordering,
-        SortDirection::Desc => ordering.reverse(),
-    }
 }
 
 /// Case-insensitive without allocating: a comparator runs O(n log n) times over a whole library.
@@ -126,36 +97,6 @@ mod tests {
             year,
             ..AlbumInfo::default()
         }
-    }
-
-    fn by(field: AlbumSortField, direction: SortDirection) -> Vec<SortCriterion<AlbumSortField>> {
-        vec![SortCriterion { field, direction }]
-    }
-
-    #[test]
-    fn titles_sort_without_regard_to_case_or_padding() {
-        let mut albums = vec![album(" beta", 0), album("Alpha", 0), album("gamma", 0)];
-        sort_albums(&mut albums, &by(AlbumSortField::Title, SortDirection::Asc));
-        let titles: Vec<&str> = albums.iter().map(|album| album.title.as_str()).collect();
-        assert_eq!(titles, ["Alpha", " beta", "gamma"]);
-    }
-
-    #[test]
-    fn a_later_criterion_breaks_the_tie_of_an_earlier_one() {
-        let mut albums = vec![album("b", 2001), album("a", 2001), album("c", 1999)];
-        let criteria = vec![
-            SortCriterion {
-                field: AlbumSortField::Year,
-                direction: SortDirection::Desc,
-            },
-            SortCriterion {
-                field: AlbumSortField::Title,
-                direction: SortDirection::Asc,
-            },
-        ];
-        sort_albums(&mut albums, &criteria);
-        let titles: Vec<&str> = albums.iter().map(|album| album.title.as_str()).collect();
-        assert_eq!(titles, ["a", "b", "c"]);
     }
 
     #[test]

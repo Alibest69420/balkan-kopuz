@@ -104,13 +104,14 @@ pub(crate) enum Line {
 #[derive(Clone, Default)]
 struct AlbumMeta {
     year: u16,
-    genre: String,
 }
 
 #[derive(Clone)]
 struct CatalogWindow<T> {
     offset: usize,
     page: T,
+    /// Asked for with a chip or a search on, so it is not the whole catalog.
+    narrowed: bool,
 }
 
 impl<T> Deref for CatalogWindow<T> {
@@ -203,6 +204,7 @@ impl Library {
                     Ok(CatalogWindow {
                         offset: 0,
                         page: api.albums(Default::default(), first).await?,
+                        narrowed: false,
                     })
                 },
                 cx,
@@ -215,6 +217,7 @@ impl Library {
                     Ok(CatalogWindow {
                         offset: 0,
                         page: api.artists(Default::default(), first).await?,
+                        narrowed: false,
                     })
                 },
                 cx,
@@ -465,17 +468,16 @@ impl Library {
         }));
     }
 
-    /// Whether grouping, a chip the wire cannot express, or a client-side sort needs the whole listing.
+    /// Whether grouping, a column the daemon cannot order by, or the jump rail needs the whole listing.
     fn needs_whole(&self) -> bool {
         match self.filters.facet {
             Facet::Tracks => {
-                self.group_by.is_some()
-                    || !self.filters.is_pageable()
-                    || !filters::is_server_sortable(&self.sort.field)
+                self.group_by.is_some() || !filters::is_server_sortable(&self.sort.field)
             }
             // A playlist catalog is bounded by what a person made and arrives in one read anyway.
             Facet::Playlists => true,
-            _ => self.filters.is_narrowed() || self.sort.field != "title",
+            // The daemon narrows it; a narrowed set is small enough to hold whole and keep the rail.
+            _ => self.filters.is_narrowed(),
         }
     }
 
@@ -499,31 +501,10 @@ impl Library {
     fn fetch_tracks(&mut self, page: Page, paging: bool, cx: &mut Context<Self>) {
         let filter = self.filters.track_filter(&self.sort);
         let folder = self.filters.folder.clone();
-        // The download model holds what is stored; the wire has no "downloaded" narrowing.
-        let stored: Option<Vec<String>> = self.filters.downloaded.then(|| {
-            DownloadsModel::global(cx)
-                .read(cx)
-                .stored()
-                .iter()
-                .cloned()
-                .collect()
-        });
         let fetch = move |api: Arc<dyn KopuzApi>| {
             let filter = filter.clone();
             let folder = folder.clone();
-            let stored = stored.clone();
             async move {
-                if let Some(keys) = stored {
-                    let items = match keys.is_empty() {
-                        true => Vec::new(),
-                        false => api.tracks_by_keys(keys).await?,
-                    };
-                    return Ok(TrackPage {
-                        total: items.len() as u32,
-                        offset: 0,
-                        items,
-                    });
-                }
                 match folder {
                     Some(prefix) => api.folder_tracks(prefix, page).await,
                     None => api.tracks(filter, page).await,
@@ -537,11 +518,17 @@ impl Library {
     }
 
     fn fetch_albums(&mut self, page: Page, paging: bool, cx: &mut Context<Self>) {
-        let fetch = move |api: Arc<dyn KopuzApi>| async move {
-            Ok(CatalogWindow {
-                offset: page.offset as usize,
-                page: api.albums(Default::default(), page).await?,
-            })
+        let query = self.filters.album_query(&self.sort);
+        let narrowed = self.filters.is_narrowed();
+        let fetch = move |api: Arc<dyn KopuzApi>| {
+            let query = query.clone();
+            async move {
+                Ok(CatalogWindow {
+                    offset: page.offset as usize,
+                    page: api.albums(query, page).await?,
+                    narrowed,
+                })
+            }
         };
         self.albums.update(cx, |query, cx| match paging {
             true => query.set_page(fetch, cx),
@@ -550,11 +537,17 @@ impl Library {
     }
 
     fn fetch_artists(&mut self, page: Page, paging: bool, cx: &mut Context<Self>) {
-        let fetch = move |api: Arc<dyn KopuzApi>| async move {
-            Ok(CatalogWindow {
-                offset: page.offset as usize,
-                page: api.artists(Default::default(), page).await?,
-            })
+        let query = self.filters.artist_query(&self.sort);
+        let narrowed = self.filters.is_narrowed();
+        let fetch = move |api: Arc<dyn KopuzApi>| {
+            let query = query.clone();
+            async move {
+                Ok(CatalogWindow {
+                    offset: page.offset as usize,
+                    page: api.artists(query, page).await?,
+                    narrowed,
+                })
+            }
         };
         self.artists.update(cx, |query, cx| match paging {
             true => query.set_page(fetch, cx),
@@ -601,37 +594,16 @@ impl Library {
             .adopt(page.offset as usize, page.items.len(), page.total as usize);
         self.rows = page.items;
         if self.whole {
-            self.narrow_rows(cx);
+            self.narrow_rows();
         }
         let loaded: HashSet<String> = self.rows.iter().map(|row| row.key.clone()).collect();
         self.selection.retain_loaded(&loaded, self.whole);
         self.rebuild(cx);
     }
 
-    /// The chips and orders the wire cannot express, applied to what came back whole.
-    fn narrow_rows(&mut self, cx: &App) {
-        if self.filters.downloaded {
-            let query = self.filters.search.trim().to_lowercase();
-            let genre = self.filters.genre.clone();
-            let favorites = self.filters.favorites;
-            let model = store::FavoritesModel::global(cx);
-            let model = model.read(cx);
-            let meta = &self.albums_meta;
-            self.rows.retain(|row| {
-                if favorites && !model.is_favorite(&row.key) {
-                    return false;
-                }
-                if let Some(genre) = &genre
-                    && meta
-                        .get(&row.album_id)
-                        .is_none_or(|meta| &meta.genre != genre)
-                {
-                    return false;
-                }
-                query.is_empty() || matches_query(row, &query)
-            });
-        }
-        if !filters::is_server_sortable(&self.sort.field) || self.filters.downloaded {
+    /// A column the daemon cannot order by, put in order over what came back whole.
+    fn narrow_rows(&mut self) {
+        if !filters::is_server_sortable(&self.sort.field) {
             let field = self.sort.field.clone();
             let descending = self.sort.descending;
             let plays = self.plays.clone();
@@ -650,20 +622,12 @@ impl Library {
             cx.notify();
             return;
         };
-        // A window of albums is not the whole set, so the chip menus only learn from a whole read.
-        if page.albums.len() as u32 >= page.total {
+        // A window or a narrowed set is not the whole catalog, so the chip menus only learn from a whole read.
+        if !page.narrowed && page.albums.len() as u32 >= page.total {
             self.albums_meta = page
                 .albums
                 .iter()
-                .map(|album| {
-                    (
-                        album.id.clone(),
-                        AlbumMeta {
-                            year: album.year,
-                            genre: album.genre.clone(),
-                        },
-                    )
-                })
+                .map(|album| (album.id.clone(), AlbumMeta { year: album.year }))
                 .collect();
             self.year_span = span_of(&page.albums);
         }
@@ -1091,13 +1055,6 @@ fn span_of(albums: &[AlbumInfo]) -> Option<(u16, u16)> {
     Some((first, last))
 }
 
-pub(crate) fn matches_query(track: &TrackInfo, query: &str) -> bool {
-    query.is_empty()
-        || track.title.to_lowercase().contains(query)
-        || track.artist.to_lowercase().contains(query)
-        || track.album.to_lowercase().contains(query)
-}
-
 /// The order a column the daemon cannot sort by is put in here.
 fn compare(
     field: &str,
@@ -1149,6 +1106,7 @@ mod paging_tests {
                         .collect(),
                     total: total as u32,
                 },
+                narrowed: false,
             };
             pager.adopt(
                 response.offset,

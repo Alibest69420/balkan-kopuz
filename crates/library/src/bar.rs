@@ -361,6 +361,7 @@ impl Library {
             Facet::Artists => vec![
                 ("title", "sort_field_name"),
                 ("tracks", "sort_field_tracks"),
+                ("albums", "sort_field_albums"),
             ],
             Facet::Playlists => vec![
                 ("title", "sort_field_name"),

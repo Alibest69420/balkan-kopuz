@@ -1,16 +1,15 @@
 //! One artist: the tracks showcase, or their albums.
 
-use std::collections::HashSet;
 use std::rc::Rc;
 
-use api::{AlbumInfo, ArtworkTarget, SourceCapabilities, Table, TrackInfo, TrackPage};
-use components::album_collection::{available_fields, compare_text, sort_albums};
+use api::{AlbumInfo, AlbumPage, ArtworkTarget, SourceCapabilities, Table, TrackInfo, TrackPage};
+use components::album_collection::{available_fields, compare_text};
 use components::format::{t, t_with, total_duration};
 use components::{
     AlbumCollection, DetailActions, DetailHeader, EmptyState, GridMode, Loading, TrackActions,
     TrackHeader, TrackList, TrackListEvent, TrackListOptions, icons,
 };
-use config::{AlbumSortField, AlbumViewMode, SortDirection};
+use config::{AlbumSortField, AlbumViewMode, SortCriterion, SortDirection};
 use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -64,6 +63,9 @@ pub struct ArtistDetail {
     keys: Rc<[String]>,
     total_ms: u64,
     offline: Offline,
+    billed: Entity<Query<AlbumPage>>,
+    // The order the albums were last asked for; the daemon sorts, so a new one is a new read.
+    asked: Vec<SortCriterion<AlbumSortField>>,
     albums: Rc<[AlbumInfo]>,
     album_fields: Vec<AlbumSortField>,
     collection: AlbumCollection,
@@ -94,14 +96,22 @@ impl ArtistDetail {
                 cx,
             )
         });
+        let asked = controls::criteria::<AlbumSortField>(cx);
+        let billed = cx.new(|cx| {
+            Query::new(
+                &[Table::Albums, Table::Tracks],
+                controls::album_listing(key.clone(), &asked),
+                cx,
+            )
+        });
         let list = cx.new(TrackList::new);
         commands::bind_track_list(&list, cx);
         let subscriptions = vec![
             cx.observe(&tracks, |this, _, cx| this.sync_rows(cx)),
-            cx.observe(&detail, |this, _, cx| this.rebuild_albums(cx)),
+            cx.observe(&billed, |this, _, cx| this.rebuild_albums(cx)),
             cx.observe(&ConfigModel::global(cx), |this, _, cx| {
                 this.sync_rows(cx);
-                this.rebuild_albums(cx);
+                this.reorder_albums(cx);
             }),
             cx.observe(&SourcesModel::global(cx), |this, _, cx| this.sync_rows(cx)),
             cx.observe(&DownloadsModel::global(cx), |this, _, cx| {
@@ -120,6 +130,8 @@ impl ArtistDetail {
             keys: Rc::from([]),
             total_ms: 0,
             offline: Offline::default(),
+            billed,
+            asked,
             albums: Rc::from([]),
             album_fields: Vec::new(),
             collection: AlbumCollection::new("artist-albums-scroll"),
@@ -175,24 +187,29 @@ impl ArtistDetail {
         self.offline = DownloadsModel::global(cx).read(cx).offline(&self.keys);
     }
 
-    /// The artist's albums, deduped by id and sorted, on a change to the listing or the sort.
+    /// The artist's albums as the daemon listed them, and which orders are worth offering.
     fn rebuild_albums(&mut self, cx: &mut Context<Self>) {
-        let mut albums: Vec<AlbumInfo> = match self.detail.read(cx).value() {
-            Some(detail) => {
-                let mut seen = HashSet::new();
-                detail
-                    .albums
-                    .iter()
-                    .filter(|album| seen.insert(album.id.as_str()))
-                    .cloned()
-                    .collect()
-            }
-            None => Vec::new(),
-        };
+        let albums: Vec<AlbumInfo> = self
+            .billed
+            .read(cx)
+            .value()
+            .map(|page| page.albums.clone())
+            .unwrap_or_default();
         self.album_fields = available_fields(&albums, false);
-        sort_albums(&mut albums, &controls::criteria(cx));
         self.albums = albums.into();
         cx.notify();
+    }
+
+    /// Ask the daemon again when the albums' order changed.
+    fn reorder_albums(&mut self, cx: &mut Context<Self>) {
+        let wanted = controls::criteria::<AlbumSortField>(cx);
+        if wanted == self.asked {
+            return;
+        }
+        let listing = controls::album_listing(self.key.clone(), &wanted);
+        self.billed
+            .update(cx, |query, cx| query.set_fetch(listing, cx));
+        self.asked = wanted;
     }
 
     fn rows(&self, cx: &App) -> Vec<TrackInfo> {
@@ -403,7 +420,7 @@ impl ArtistDetail {
             AlbumViewMode::Grid => GridMode::Tiles,
             AlbumViewMode::List => GridMode::Rows,
         };
-        let settled = self.detail.read(cx).is_settled();
+        let settled = self.billed.read(cx).is_settled();
         let empty = self.albums.is_empty();
 
         let body = if !settled && empty {

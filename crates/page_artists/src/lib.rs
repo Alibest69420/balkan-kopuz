@@ -3,7 +3,6 @@
 mod controls;
 mod detail;
 mod grid;
-mod names;
 
 pub use detail::ArtistDetail;
 pub use grid::Artists;

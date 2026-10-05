@@ -24,12 +24,13 @@ impl Library {
             Facet::Playlists => self.playlist_tiles(cx),
             Facet::Tracks => Vec::new(),
         };
-        if self.whole {
+        // The daemon orders albums and artists; only the playlist catalog is held and ordered here.
+        if self.filters().facet == Facet::Playlists {
             let descending = self.sort().descending;
             let field = self.sort().field.clone();
             tiles.sort_by(|left, right| {
                 let order = match field.as_str() {
-                    "tracks" | "year" => left.sort_rank.cmp(&right.sort_rank),
+                    "tracks" => left.sort_rank.cmp(&right.sort_rank),
                     _ => left.sort_key.cmp(&right.sort_key),
                 };
                 match descending {
@@ -51,12 +52,8 @@ impl Library {
         let Some(page) = self.albums.read(cx).value() else {
             return Vec::new();
         };
-        let query = self.filters().search.trim().to_lowercase();
-        let genre = self.filters().genre.clone();
-        let years = self.filters().years;
         page.albums
             .iter()
-            .filter(|album| matches_album(album, &query, genre.as_deref(), years))
             .map(|album| self.album_tile(album))
             .collect()
     }
@@ -83,10 +80,8 @@ impl Library {
         let Some(page) = self.artists.read(cx).value() else {
             return Vec::new();
         };
-        let query = self.filters().search.trim().to_lowercase();
         page.artists
             .iter()
-            .filter(|artist| query.is_empty() || artist.name.to_lowercase().contains(&query))
             .map(|artist| self.artist_tile(artist))
             .collect()
     }
@@ -297,25 +292,4 @@ fn playlist_tile(playlist: &PlaylistInfo, playing: Option<&str>) -> Tile {
         },
         route: Route::Playlist(playlist.id.clone().into()),
     }
-}
-
-fn matches_album(
-    album: &AlbumInfo,
-    query: &str,
-    genre: Option<&str>,
-    years: Option<(u16, u16)>,
-) -> bool {
-    if let Some(genre) = genre
-        && !album.genre.eq_ignore_ascii_case(genre)
-    {
-        return false;
-    }
-    if let Some((from, to)) = years
-        && (album.year < from || album.year > to)
-    {
-        return false;
-    }
-    query.is_empty()
-        || album.title.to_lowercase().contains(query)
-        || album.artist.to_lowercase().contains(query)
 }

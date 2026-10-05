@@ -1,9 +1,12 @@
 //! The albums grid: every album the library holds; two albums sharing a title are two tiles.
 
+use std::future::Future;
+use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::Arc;
 
-use api::{AlbumInfo, AlbumPage, JobKind, Table};
-use components::album_collection::{available_fields, field_label, sort_albums};
+use api::{AlbumInfo, AlbumPage, AlbumQuery, AlbumSort, ApiError, JobKind, KopuzApi, Table};
+use components::album_collection::{available_fields, field_label};
 use components::format::t;
 use components::{AlbumCollection, EmptyState, GridMode, Loading, PageHeader, SortControl, icons};
 use config::{AlbumSortField, AlbumViewMode, SortCriterion};
@@ -20,7 +23,9 @@ use store::{ConfigModel, JobsModel, Query, SourcesModel};
 /// Every album, as tiles or as rows.
 pub struct Albums {
     albums: Entity<Query<AlbumPage>>,
-    // Sorted once per change, since a card hover notifies and render would re-sort the library.
+    // The order the listing was last asked for; the daemon sorts, so a new one is a new read.
+    asked: Vec<SortCriterion<AlbumSortField>>,
+    // Shared once per answer, since a card hover notifies and a band must not clone the listing.
     visible: Rc<[AlbumInfo]>,
     sort_fields: Vec<AlbumSortField>,
     grid: AlbumCollection,
@@ -31,13 +36,8 @@ pub struct Albums {
 
 impl Albums {
     pub fn new(_: &mut Window, cx: &mut Context<Self>) -> Self {
-        let albums = cx.new(|cx| {
-            Query::new(
-                &[Table::Albums],
-                |api| async move { api.albums(Default::default(), store::all()).await },
-                cx,
-            )
-        });
+        let asked = criteria(cx);
+        let albums = cx.new(|cx| Query::new(&[Table::Albums], listing(&asked), cx));
         let sources = SourcesModel::global(cx);
         let config = ConfigModel::global(cx);
         let subscriptions = vec![
@@ -50,10 +50,11 @@ impl Albums {
                 cx.notify();
             }),
             // The sort lives in config, so a change there is a change to the order.
-            cx.observe(&config, |this, _, cx| this.rebuild(cx)),
+            cx.observe(&config, |this, _, cx| this.reorder(cx)),
         ];
         Self {
             albums,
+            asked,
             visible: Rc::from([]),
             sort_fields: Vec::new(),
             grid: AlbumCollection::new("albums-scroll"),
@@ -62,12 +63,22 @@ impl Albums {
         }
     }
 
-    /// Sort, and note which fields are worth offering — on change, not per frame.
+    /// Ask the daemon again when the order changed; anything else in config only repaints.
+    fn reorder(&mut self, cx: &mut Context<Self>) {
+        let wanted = criteria(cx);
+        if wanted != self.asked {
+            self.albums
+                .update(cx, |query, cx| query.set_fetch(listing(&wanted), cx));
+            self.asked = wanted;
+        }
+        cx.notify();
+    }
+
+    /// Note which fields are worth offering, on change rather than per frame.
     fn rebuild(&mut self, cx: &mut Context<Self>) {
-        let mut sorted = self.all_albums(cx);
-        self.sort_fields = available_fields(&sorted, true);
-        sort_albums(&mut sorted, &criteria(cx));
-        self.visible = sorted.into();
+        let albums = self.all_albums(cx);
+        self.sort_fields = available_fields(&albums, true);
+        self.visible = albums.into();
         cx.notify();
     }
 
@@ -168,4 +179,20 @@ fn view_mode(cx: &App) -> AlbumViewMode {
 
 fn criteria(cx: &App) -> Vec<SortCriterion<AlbumSortField>> {
     ConfigModel::global(cx).read(cx).config().album_sort.clone()
+}
+
+type Listing = Pin<Box<dyn Future<Output = Result<AlbumPage, ApiError>> + Send>>;
+
+/// Every album, in the order `criteria` stack up to, sorted by the daemon.
+fn listing(
+    criteria: &[SortCriterion<AlbumSortField>],
+) -> impl Fn(Arc<dyn KopuzApi>) -> Listing + 'static {
+    let query = AlbumQuery {
+        sort: criteria.iter().copied().map(AlbumSort::from).collect(),
+        ..AlbumQuery::default()
+    };
+    move |api| {
+        let query = query.clone();
+        Box::pin(async move { api.albums(query, store::all()).await })
+    }
 }
