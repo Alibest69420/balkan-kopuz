@@ -14,13 +14,14 @@ use gpui_kit::{
     InteractiveElement as _, IntoElement, Length, ParentElement as _, RenderOnce, SharedString,
     Stateful, StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
-use store::{DownloadsModel, Navigator, Route};
+use store::{DownloadsModel, Route};
 
 use crate::columns::{self, Layout};
 use crate::cover::Cover;
 use crate::format::duration;
 use crate::icons;
 use crate::lead;
+use crate::link::{Link, Tone};
 use crate::motion;
 use crate::style;
 use crate::track_list::TrackDrag;
@@ -262,14 +263,12 @@ impl RenderOnce for TrackRow {
                     ("track-artist", slot),
                     self.artist.clone(),
                     self.artist_route.clone(),
-                    cx,
                 ),
                 "album" => link(
                     cell,
                     ("track-album", slot),
                     self.album.clone(),
                     self.album_route.clone(),
-                    cx,
                 ),
                 "plays" => dim(cell, cx)
                     .child(self.plays.to_string())
@@ -374,27 +373,20 @@ fn link(
     id: impl Into<ElementId>,
     value: SharedString,
     route: Option<Route>,
-    cx: &App,
 ) -> AnyElement {
-    let bright = style::slate_400(cx);
-    cell.id(id)
-        .text_sm()
-        .text_color(style::slate_500(cx))
-        .when_some(route, |cell, route| {
-            cell.cursor_pointer()
-                .hover(move |cell| cell.text_color(bright))
-                .on_click(move |_, _, cx| {
-                    // Without this the row's own click would play the track too.
-                    cx.stop_propagation();
-                    Navigator::navigate(route.clone(), cx);
-                })
-        })
-        .tooltip({
-            let value = value.clone();
-            move |window, cx| Tooltip::new(value.clone()).build(window, cx)
-        })
-        .child(div().flex_1().min_w_0().truncate().child(value))
-        .into_any_element()
+    cell.child(
+        Link::new(id)
+            .label(value.clone())
+            .route(route)
+            .tone(Tone::Dim)
+            // Without this the row's own click would play the track too.
+            .stop_propagation(true)
+            .tooltip(Some(value))
+            .flex_1()
+            .min_w_0()
+            .text_sm(),
+    )
+    .into_any_element()
 }
 
 fn dim(cell: Div, cx: &App) -> Div {

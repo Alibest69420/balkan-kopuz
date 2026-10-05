@@ -1,11 +1,10 @@
 //! The cover, the title, the artist and the line that says where the queue came from.
 
 use components::format::t;
-use components::{Cover, focus, icons, menus, style};
+use components::{Cover, Link, Tone, focus, icons, menus, motion, style};
 use gpui_kit::base::ElementExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _};
-use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -14,8 +13,7 @@ use gpui_kit::{
     px,
 };
 use store::{
-    Chrome, FavoritesModel, Navigator, PlaylistsModel, QueueModel, Route, SourcesModel, Target,
-    actions,
+    Chrome, FavoritesModel, PlaylistsModel, QueueModel, Route, SourcesModel, Target, actions,
 };
 
 use crate::NowPlaying;
@@ -111,7 +109,6 @@ impl NowPlaying {
         let artist_route = track.as_ref().and_then(Route::artist_of);
         let size = cover_size(cx);
         let muted = style::slate_400(cx);
-        let lifted = style::white(0.7, cx);
         let origin = playing_from(cx);
         let album = track
             .as_ref()
@@ -149,27 +146,14 @@ impl NowPlaying {
                     .gap_0p5()
                     .child(self.marquee_title(title.clone(), album, window, cx))
                     .child(
-                        div()
-                            .id("bar-artist")
-                            .truncate()
-                            .text_xs()
-                            .text_color(muted)
-                            .when(artist_route.is_some(), |label| {
-                                label
-                                    .cursor_pointer()
-                                    .hover(move |label| label.text_color(lifted).underline())
-                            })
-                            .on_click({
-                                let artist_route = artist_route.clone();
-                                move |_, _, cx| {
-                                    if let Some(route) = artist_route.clone() {
-                                        Navigator::navigate(route, cx);
-                                    }
-                                }
-                            })
-                            .child(artist),
+                        Link::new("bar-artist")
+                            .label(artist)
+                            .route(artist_route)
+                            .tone(Tone::Muted)
+                            .underline(true)
+                            .text_xs(),
                     )
-                    .children(origin.map(|(label, route)| playing_from_link(label, route, cx))),
+                    .children(origin.map(|(label, route)| playing_from_link(label, route))),
             )
             .children(self.marks(key, window, cx))
             .children(
@@ -208,7 +192,8 @@ impl NowPlaying {
         // How far past its column the title runs, which is exactly how far it has to walk.
         let overflow = (natural - self.title_room).max(px(0.));
         let long = overflow > px(0.);
-        let running = long && self.hovered == Some("bar-title");
+        let (over, pointer) = motion::hovered("bar-title-hover", window, cx);
+        let running = long && over;
         let shown = title.clone();
 
         div()
@@ -223,44 +208,41 @@ impl NowPlaying {
                         .ok();
                 }
             })
-            .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
-                this.set_hovered("bar-title", *hovered, cx)
-            }))
-            .when_some(album, |frame, album| {
-                frame
-                    .cursor_pointer()
-                    .hover(|frame| frame.underline())
-                    .on_click(move |_, _, cx| Navigator::navigate(Route::Album(album.clone()), cx))
-            })
-            .when(long, |frame| {
-                frame.tooltip(move |window, cx| Tooltip::new(title.clone()).build(window, cx))
-            })
             .child(
-                div()
-                    .text_sm()
-                    .font_weight(FontWeight::BOLD)
-                    .text_color(style::white(style::TEXT_STRONG, cx))
-                    .map(|label| {
-                        if running {
-                            label
-                                .flex_shrink_0()
-                                .whitespace_nowrap()
-                                .child(shown.clone())
-                                .with_animation(
-                                    "bar-title-marquee",
-                                    Animation::new(MARQUEE_PERIOD).repeat(),
-                                    move |label, progress| {
-                                        // There and back over exactly what does not fit, so the
-                                        // end of the title is reached and never passed.
-                                        let travel = 1. - (1. - 2. * progress).abs();
-                                        label.ml(-overflow * travel)
-                                    },
-                                )
-                                .into_any_element()
-                        } else {
-                            label.truncate().child(shown.clone()).into_any_element()
-                        }
-                    }),
+                Link::new("bar-title")
+                    .route(album.map(Route::Album))
+                    .underline(true)
+                    .hover_state(pointer)
+                    .tooltip(long.then_some(title))
+                    .min_w_0()
+                    .overflow_hidden()
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(style::white(style::TEXT_STRONG, cx))
+                            .map(|label| {
+                                if running {
+                                    label
+                                        .flex_shrink_0()
+                                        .whitespace_nowrap()
+                                        .child(shown.clone())
+                                        .with_animation(
+                                            "bar-title-marquee",
+                                            Animation::new(MARQUEE_PERIOD).repeat(),
+                                            move |label, progress| {
+                                                // There and back over exactly what does not fit, so the
+                                                // end of the title is reached and never passed.
+                                                let travel = 1. - (1. - 2. * progress).abs();
+                                                label.ml(-overflow * travel)
+                                            },
+                                        )
+                                        .into_any_element()
+                                } else {
+                                    label.truncate().child(shown.clone()).into_any_element()
+                                }
+                            }),
+                    ),
             )
     }
 
@@ -376,18 +358,15 @@ impl NowPlaying {
 }
 
 /// "Playing from <album>", which is the only thing on the bar that says how you got here.
-fn playing_from_link(label: SharedString, route: Route, cx: &App) -> impl IntoElement + use<> {
-    let muted = style::white(style::TEXT_MUTED, cx);
-    let lifted = style::white(0.7, cx);
-    h_flex()
-        .id("playing-from")
+fn playing_from_link(label: SharedString, route: Route) -> impl IntoElement + use<> {
+    Link::new("playing-from")
+        .route(Some(route))
+        .tone(Tone::Faint)
+        .flex()
+        .items_center()
         .gap_1()
         .min_w_0()
-        .cursor_pointer()
         .text_size(style::text_10())
-        .text_color(muted)
-        .hover(move |line| line.text_color(lifted))
-        .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
         .child(div().flex_shrink_0().child(t("playing_from")))
         .child(div().truncate().child(label))
 }

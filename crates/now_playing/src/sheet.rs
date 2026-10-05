@@ -7,7 +7,7 @@ mod tests;
 use std::path::PathBuf;
 
 use components::format::t;
-use components::{Cover, icons, menus, motion, style};
+use components::{Cover, Link, Tone, icons, menus, motion, style};
 use gpui_kit::base::ElementExt as _;
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::menu::DropdownMenu as _;
@@ -17,11 +17,11 @@ use gpui_kit::component::{
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, Context, FocusHandle, FontWeight, Hsla, ImageSource, InteractiveElement as _,
-    IntoElement, ParentElement as _, Pixels, SharedString, StatefulInteractiveElement as _, Styled,
-    Window, div, point, px, relative, rems,
+    IntoElement, ParentElement as _, Pixels, SharedString, Styled, Window, div, point, px,
+    relative, rems,
 };
 use store::layout::{Backdrop, Side};
-use store::{Chrome, ConfigModel, FavoritesModel, Navigator, Route, SourcesModel};
+use store::{Chrome, ConfigModel, FavoritesModel, Route, SourcesModel};
 
 use crate::NowPlaying;
 use crate::meta::{cover_size, playing_from, track_target};
@@ -312,19 +312,11 @@ impl NowPlaying {
                     .text_lg()
                     .text_color(style::white(0.7, cx))
                     .child(
-                        div()
-                            .id("sheet-artist")
-                            .truncate()
-                            .child(SharedString::from(artist.clone()))
-                            .when_some(artist_route, |link, route| {
-                                link.cursor_pointer()
-                                    .hover(|link| link.underline())
-                                    .on_click(move |_, _, cx| {
-                                        Chrome::global(cx)
-                                            .update(cx, |chrome, cx| chrome.set_sheet(false, cx));
-                                        Navigator::navigate(route.clone(), cx);
-                                    })
-                            }),
+                        Link::new("sheet-artist")
+                            .label(artist.clone())
+                            .route(artist_route)
+                            .underline(true)
+                            .on_before_navigate(close_sheet),
                     )
                     .when(!album.is_empty(), |row| {
                         row.child(
@@ -334,38 +326,27 @@ impl NowPlaying {
                                 .child("•"),
                         )
                         .child(
-                            div()
-                                .id("sheet-album")
-                                .truncate()
-                                .text_color(style::white(style::TEXT_MUTED, cx))
-                                .when_some(album_route, |link, route| {
-                                    let lifted = style::white(0.8, cx);
-                                    link.cursor_pointer()
-                                        .hover(move |link| link.text_color(lifted).underline())
-                                        .on_click(move |_, _, cx| {
-                                            Chrome::global(cx).update(cx, |chrome, cx| {
-                                                chrome.set_sheet(false, cx)
-                                            });
-                                            Navigator::navigate(route.clone(), cx);
-                                        })
-                                })
-                                .child(album.clone()),
+                            Link::new("sheet-album")
+                                .label(album.clone())
+                                .route(album_route)
+                                .tone(Tone::Faint)
+                                .underline(true)
+                                .on_before_navigate(close_sheet),
                         )
                     }),
             )
             .children(origin.map(|(label, route)| {
-                h_flex()
-                    .id("sheet-playing-from")
+                Link::new("sheet-playing-from")
+                    .route(Some(route))
+                    .tone(Tone::Faint)
+                    .brighten(false)
+                    .underline(true)
+                    .on_before_navigate(close_sheet)
+                    .flex()
+                    .items_center()
                     .gap_1()
                     .max_w_full()
-                    .cursor_pointer()
                     .text_xs()
-                    .text_color(style::white(style::TEXT_MUTED, cx))
-                    .hover(|line| line.underline())
-                    .on_click(move |_, _, cx| {
-                        Chrome::global(cx).update(cx, |chrome, cx| chrome.set_sheet(false, cx));
-                        Navigator::navigate(route.clone(), cx);
-                    })
                     .child(div().flex_shrink_0().child(t("playing_from")))
                     .child(div().truncate().child(label))
             }))
@@ -502,6 +483,11 @@ impl NowPlaying {
             }
         }
     }
+}
+
+/// A link out of the sheet folds it away first, so the page it opens is not hidden behind it.
+fn close_sheet(_: &mut Window, cx: &mut App) {
+    Chrome::global(cx).update(cx, |chrome, cx| chrome.set_sheet(false, cx));
 }
 
 /// `w-11 h-11 rounded-full bg-white/10`: the shape every button beside the title takes.

@@ -6,8 +6,8 @@ use api::{
 };
 use components::format::{t, t_with};
 use components::{
-    Cover, DetailHeader, EmptyState, Heading, Loading, SectionHeading, TrackActions, TrackList,
-    TrackListEvent, TrackListOptions, icons, motion, style,
+    Cover, DetailHeader, EmptyState, Heading, Link, Loading, SectionHeading, Tone, TrackActions,
+    TrackList, TrackListEvent, TrackListOptions, icons, motion, style,
 };
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
@@ -536,40 +536,16 @@ impl AlbumDetail {
     }
 
     /// `text-sm font-bold text-white/60 hover:text-white hover:underline transition-colors`.
-    fn artist_link(
-        &self,
-        artist: &str,
-        key: Option<String>,
-        id: &'static str,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let name = SharedString::from(artist.to_string());
-        let route = key.map(Route::Artist);
-        let target = if self.hovered == Some(id) {
-            cx.theme().foreground
-        } else {
-            style::white(style::TEXT_SECONDARY, cx)
-        };
-        let ink = motion::color(motion::id(id, "ink"), target, window, cx);
-        div()
-            .id(id)
-            .truncate()
+    fn artist_link(artist: &str, key: Option<String>, id: &'static str) -> impl IntoElement {
+        // An album that bills nobody the daemon could key opens nothing.
+        Link::new(id)
+            .label(artist.to_string())
+            .route(key.map(Route::Artist))
+            .tone(Tone::Quiet)
+            .underline(true)
             .max_w_full()
             .text_sm()
             .font_weight(gpui_kit::FontWeight::BOLD)
-            .text_color(ink)
-            .on_hover(
-                cx.listener(move |this, hovered: &bool, _, cx| this.track_hover(id, *hovered, cx)),
-            )
-            // An album that bills nobody the daemon could key opens nothing.
-            .when_some(route, |link, route| {
-                // The rule has nothing to tween, so it stays a plain hover refinement.
-                link.hover(|link| link.underline())
-                    .cursor_pointer()
-                    .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx))
-            })
-            .child(name)
     }
 
     fn tracks_body(&self, cx: &Context<Self>) -> AnyElement {
@@ -743,12 +719,10 @@ impl AlbumDetail {
         let radius = cx.theme().radius * 3.;
         let mut header = DetailHeader::new(SharedString::from(album.title.clone()))
             .cover(self.cover(&album, HERO_COVER, radius, window, cx))
-            .eyebrow(self.artist_link(
+            .eyebrow(Self::artist_link(
                 &album.artist,
                 album.artist_key.clone(),
                 "album-artist",
-                window,
-                cx,
             ))
             .meta(count)
             .meta(format!("{} {}", self.total_ms() / 60_000, t("min")))
@@ -869,12 +843,10 @@ impl AlbumDetail {
                                 v_flex()
                                     .w_full()
                                     .gap_2()
-                                    .child(self.artist_link(
+                                    .child(Self::artist_link(
                                         &view.artist,
                                         view.artist_key.clone(),
                                         "album-remote-artist",
-                                        window,
-                                        cx,
                                     ))
                                     .child(
                                         div()

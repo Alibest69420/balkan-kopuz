@@ -11,8 +11,7 @@ use components::{
 use gpui_kit::component::v_flex;
 use gpui_kit::{
     AnyElement, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Pixels, Render,
-    ScrollHandle, SharedString, StatefulInteractiveElement as _, Styled, Subscription, Task,
-    Window, div, px,
+    ScrollHandle, SharedString, Styled, Subscription, Task, Window, div, px,
 };
 use store::{Link, Navigator, Notices, PlayerModel, Route, SourcesModel, Target, actions};
 
@@ -238,7 +237,7 @@ impl Shelves {
         let mut heading = SectionHeading::new(title.clone());
         if let Some(more) = view.shelf.more_ref.clone() {
             heading = heading.trailing(
-                heading_link(("show-all", index), t("discover_show_all"), cx).on_click(
+                heading_link(("show-all", index), t("discover_show_all")).on_click(
                     move |_, _, cx| {
                         Navigator::navigate(
                             Route::DiscoverPlaylist {

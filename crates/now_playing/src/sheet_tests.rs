@@ -1,5 +1,5 @@
 use super::*;
-use gpui_kit::{Render, ScrollDelta, ScrollWheelEvent};
+use gpui_kit::{Render, ScrollDelta, ScrollWheelEvent, StatefulInteractiveElement as _};
 
 struct Harness {
     modal: ModalFocus,

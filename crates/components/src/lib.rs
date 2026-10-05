@@ -10,6 +10,7 @@ pub mod header;
 pub mod heading;
 pub mod karaoke;
 pub mod lead;
+pub mod link;
 pub mod menus;
 pub mod playlist_picker;
 pub mod schema_form;
@@ -29,12 +30,13 @@ pub use cards::{
     Frame, PlayState, Tile, TileRow, album_row, album_tile, artist_row, artist_tile, playlist_tile,
     tile_grid,
 };
-pub use carousel::{Arrows, Carousel, heading_link};
+pub use carousel::{Arrows, Carousel};
 pub use cover::{Cover, Scrim};
 pub use grid::{GridMode, JumpRail, TileGrid, rail_letter};
 pub use header::{DetailHeader, PageHeader, TitleSize, detail_header_skeleton};
 pub use heading::{Heading, SectionHeading};
 pub use karaoke::KaraokeText;
+pub use link::{Link, Tone, heading_link};
 pub use schema_form::{FieldChanged, SchemaForm};
 pub use settings::{Section, SettingRow, Toggle, section};
 pub use states::{EmptyState, Loading};

@@ -2,11 +2,11 @@
 
 use components::format::{duration, t};
 use components::{
-    EmptyState, Heading, SectionHeading, TrackDrag, dialogs, icons, menus, motion, style, track_row,
+    EmptyState, Heading, Link, SectionHeading, Tone, TrackDrag, dialogs, icons, menus, motion,
+    style, track_row,
 };
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::ContextMenuExt as _;
-use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -462,17 +462,14 @@ impl QueueView {
             .pt_1()
             .pb_2()
             .child(
-                div()
-                    .id("queue-summary")
+                Link::new("queue-summary")
+                    .label(if radio { t("radio") } else { label })
+                    .tone(Tone::Quiet)
+                    .tooltip(Some(t("jump_to_current_song")))
+                    .on_click(cx.listener(|this, _, _, cx| this.rearm(cx)))
                     .flex_1()
                     .min_w_0()
-                    .truncate()
-                    .text_size(style::text_11())
-                    .text_color(style::white(style::TEXT_SECONDARY, cx))
-                    .hover(|line| line.text_color(style::white(0.85, cx)))
-                    .tooltip(|window, cx| Tooltip::new(t("jump_to_current_song")).build(window, cx))
-                    .on_click(cx.listener(|this, _, _, cx| this.rearm(cx)))
-                    .child(if radio { t("radio") } else { label }),
+                    .text_size(style::text_11()),
             )
             .child(
                 tool("queue-shuffle-upcoming", icons::SHUFFLE, cx)

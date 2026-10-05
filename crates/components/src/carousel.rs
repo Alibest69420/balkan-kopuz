@@ -5,9 +5,9 @@ use std::rc::Rc;
 use gpui_kit::component::{ActiveTheme as _, Icon, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, Div, ElementId, FontWeight, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, RenderOnce, ScrollHandle, ScrollWheelEvent, SharedString, Stateful,
-    StatefulInteractiveElement as _, Styled, Window, div, linear_color_stop, linear_gradient, px,
+    AnyElement, App, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, RenderOnce,
+    ScrollHandle, ScrollWheelEvent, SharedString, StatefulInteractiveElement as _, Styled, Window,
+    div, linear_color_stop, linear_gradient, px,
 };
 
 use crate::heading::{Heading, SectionHeading};
@@ -41,19 +41,6 @@ pub enum Arrows {
     #[default]
     Hover,
     Always,
-}
-
-/// A quiet link at the end of a heading, such as "show all".
-pub fn heading_link(id: impl Into<ElementId>, label: SharedString, cx: &App) -> Stateful<Div> {
-    div()
-        .id(id)
-        .flex_shrink_0()
-        .cursor_pointer()
-        .text_xs()
-        .font_weight(FontWeight::BOLD)
-        .text_color(style::white(style::TEXT_SECONDARY, cx))
-        .hover(|link| link.text_color(cx.theme().foreground))
-        .child(label)
 }
 
 type BuildTile = Rc<dyn Fn(usize, &mut Window, &mut App) -> AnyElement>;

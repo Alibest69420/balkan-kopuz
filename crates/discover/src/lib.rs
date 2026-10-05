@@ -305,7 +305,7 @@ impl Discover {
         let mut heading = SectionHeading::new(t("browse_genres")).heading(Heading::Band);
         if more {
             heading = heading.trailing(
-                heading_link("discover-all-genres", t("discover_show_all"), cx)
+                heading_link("discover-all-genres", t("discover_show_all"))
                     .on_click(cx.listener(|this, _, _, cx| this.show_all_genres(true, cx))),
             );
         }
@@ -440,10 +440,9 @@ impl Discover {
                         &[("count", self.genres.len().to_string())],
                     ))
                     .action(
-                        heading_link("discover-fewer-genres", t("discover_show_less"), cx)
-                            .on_click(
-                                cx.listener(|this, _, _, cx| this.show_all_genres(false, cx)),
-                            ),
+                        heading_link("discover-fewer-genres", t("discover_show_less")).on_click(
+                            cx.listener(|this, _, _, cx| this.show_all_genres(false, cx)),
+                        ),
                     ),
             )
             .child(div().flex_1().min_h_0().pb_8().child(bands))
