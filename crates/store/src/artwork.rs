@@ -141,6 +141,8 @@ fn budget() -> usize {
 #[derive(Default)]
 pub struct Residents {
     live: HashMap<ArtworkKey, Resident>,
+    // Per target and size, the version drawn last: what stands in while a newer one loads.
+    latest: HashMap<(ArtworkTarget, bool), ArtworkKey>,
     failed: HashSet<ArtworkKey>,
     clock: u64,
 }
@@ -154,11 +156,34 @@ impl gpui_kit::Global for Residents {}
 
 impl Residents {
     fn previous(&self, key: &ArtworkKey) -> Option<(ArtworkKey, Arc<Image>)> {
+        let old = self
+            .latest
+            .get(&(key.target.clone(), key.hq))
+            .filter(|old| *old != key)?;
+        let resident = self.live.get(old)?;
+        Some((old.clone(), resident.image.clone()))
+    }
+
+    fn record(&mut self, key: &ArtworkKey, image: &Arc<Image>) {
+        self.clock += 1;
+        let clock = self.clock;
         self.live
-            .iter()
-            .filter(|(old, _)| old.target == key.target && old.hq == key.hq && *old != key)
-            .max_by_key(|(_, resident)| resident.used)
-            .map(|(old, resident)| (old.clone(), resident.image.clone()))
+            .entry(key.clone())
+            .and_modify(|resident| resident.used = clock)
+            .or_insert_with(|| Resident {
+                image: image.clone(),
+                used: clock,
+            });
+        self.latest
+            .insert((key.target.clone(), key.hq), key.clone());
+    }
+
+    fn forget(&mut self, key: &ArtworkKey) -> Option<Resident> {
+        let slot = (key.target.clone(), key.hq);
+        if self.latest.get(&slot) == Some(key) {
+            self.latest.remove(&slot);
+        }
+        self.live.remove(key)
     }
 
     pub(crate) fn retry_failed(cx: &mut App) {
@@ -173,21 +198,7 @@ impl Residents {
 
     /// Records that `key` was drawn this frame.
     fn touch(key: &ArtworkKey, image: &Arc<Image>, cx: &mut App) {
-        let residents = cx.default_global::<Self>();
-        residents.clock += 1;
-        let clock = residents.clock;
-        match residents.live.get_mut(key) {
-            Some(resident) => resident.used = clock,
-            None => {
-                residents.live.insert(
-                    key.clone(),
-                    Resident {
-                        image: image.clone(),
-                        used: clock,
-                    },
-                );
-            }
-        }
+        cx.default_global::<Self>().record(key, image);
     }
 
     /// Releases the least recently drawn covers until the budget is met.
@@ -210,7 +221,7 @@ impl Residents {
         ages.sort_unstable_by_key(|(used, _)| *used);
         let doomed: Vec<ArtworkKey> = ages.into_iter().take(over).map(|(_, key)| key).collect();
         for key in doomed {
-            let Some(resident) = cx.default_global::<Self>().live.remove(&key) else {
+            let Some(resident) = cx.default_global::<Self>().forget(&key) else {
                 continue;
             };
             // The atlas texture goes first; it is the only one that needs the window.
@@ -246,20 +257,16 @@ mod tests {
         )
     }
 
+    fn image(byte: u8) -> Arc<Image> {
+        Arc::new(Image::from_bytes(ImageFormat::Png, vec![byte]))
+    }
+
     #[test]
     fn a_new_version_can_keep_the_previous_cover_while_loading() {
         let old = key("album", 1, false);
-        let image = Arc::new(Image::from_bytes(ImageFormat::Png, vec![1]));
-        let residents = Residents {
-            live: HashMap::from([(
-                old.clone(),
-                Resident {
-                    image: image.clone(),
-                    used: 1,
-                },
-            )]),
-            ..Default::default()
-        };
+        let image = image(1);
+        let mut residents = Residents::default();
+        residents.record(&old, &image);
         let (previous, fallback) = residents.previous(&key("album", 2, false)).unwrap();
         assert_eq!(previous, old);
         assert!(Arc::ptr_eq(&fallback, &image));
@@ -275,18 +282,22 @@ mod tests {
     #[test]
     fn replacement_uses_the_most_recently_displayed_cover() {
         let mut residents = Residents::default();
-        for version in 1..=3 {
-            residents.live.insert(
-                key("album", version, false),
-                Resident {
-                    image: Arc::new(Image::from_bytes(ImageFormat::Png, vec![version as u8])),
-                    used: version,
-                },
-            );
+        for version in [1, 3, 2] {
+            residents.record(&key("album", version, false), &image(version as u8));
         }
         assert_eq!(
             residents.previous(&key("album", 4, false)).unwrap().0,
-            key("album", 3, false)
+            key("album", 2, false),
+            "the last one drawn, not the highest version"
         );
+    }
+
+    #[test]
+    fn a_released_cover_is_no_stand_in() {
+        let mut residents = Residents::default();
+        let old = key("album", 1, false);
+        residents.record(&old, &image(1));
+        assert!(residents.forget(&old).is_some());
+        assert!(residents.previous(&key("album", 2, false)).is_none());
     }
 }
