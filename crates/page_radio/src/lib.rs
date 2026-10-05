@@ -7,18 +7,15 @@ use api::{QueueContext, RadioStationInfo, Table};
 use components::Loading;
 use components::format::t;
 use components::{
-    Badge, BadgeTone, Chip, ChipSize, ChipTone, Cover, EmptyState, Heading, PageHeader,
-    SearchField, SectionHeading, icons, motion, style,
+    EmptyState, Heading, PageHeader, SearchField, SectionHeading, StationRow, StationVariant,
+    icons, style,
 };
-use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{InputEvent, InputState};
-use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _,
-    IntoElement, ListAlignment, ListOffset, ListState, ParentElement as _, Pixels, Render,
-    SharedString, StatefulInteractiveElement as _, Styled, Subscription, Task, Window, div, list,
-    px, rems,
+    AnyElement, App, AppContext as _, Context, Entity, IntoElement, ListAlignment, ListOffset,
+    ListState, ParentElement as _, Render, SharedString, Styled, Subscription, Task, Window, div,
+    list, px, rems,
 };
 use link::Link;
 use store::{Notices, Query, actions};
@@ -26,28 +23,10 @@ use store::{Notices, Query, actions};
 // Typing settles before the directory is searched; the Dioxus page used the same delay.
 const DEBOUNCE: Duration = Duration::from_millis(300);
 const RESULTS: u32 = 60;
-// `w-11 h-11` station art, and `rounded-md` on it; `Cover` only takes pixels.
-const ART: Pixels = px(44.);
-const CARD_HOVER: u64 = 0;
-const CARD_WASH: u64 = 1;
-
-// The width the streams column reserves on the right of a selected row.
-fn streams_width() -> gpui_kit::Rems {
-    rems(13.75)
-}
 
 // `max-w-sm w-full`: the directory search box.
 fn search_width() -> gpui_kit::Rems {
     rems(24.)
-}
-
-/// The stream a click plays when the row does not name one.
-fn first_stream(station: &RadioStationInfo) -> String {
-    station
-        .streams
-        .first()
-        .map(|stream| stream.id.clone())
-        .unwrap_or_default()
 }
 
 /// Registry text may be a translation key, so the filter matches what is on screen.
@@ -84,7 +63,6 @@ pub struct Radio {
     stations: Entity<Query<Vec<RadioStationInfo>>>,
     directory: Entity<Query<Vec<RadioStationInfo>>>,
     pinned: HashSet<String>,
-    expanded: HashSet<String>,
     list: ListState,
     keys: Vec<SharedString>,
     lines: Vec<Line>,
@@ -126,7 +104,6 @@ impl Radio {
             stations,
             directory,
             pinned: HashSet::new(),
-            expanded: HashSet::new(),
             list: ListState::new(0, ListAlignment::Top, px(400.)),
             keys: Vec::new(),
             lines: Vec::new(),
@@ -206,274 +183,10 @@ impl Radio {
         .detach();
     }
 
-    fn play_button(&self, station: &RadioStationInfo, cx: &mut Context<Self>) -> AnyElement {
-        let station_id = station.id.clone();
-        let stream_id = first_stream(station);
-        Button::new(SharedString::from(format!("play-{}", station.id)))
-            .ghost()
-            .icon(icons::icon(icons::PLAY))
-            .on_click(cx.listener(move |_, _, _, cx| {
-                cx.stop_propagation();
-                play(station_id.clone(), stream_id.clone(), cx);
-            }))
-            .into_any_element()
-    }
-
-    /// `px-3 py-1 rounded-lg text-xs font-medium bg-white/10 text-slate-300`, inside a row that plays.
-    fn chip(id: SharedString) -> Chip {
-        Chip::new(id)
-            .tone(ChipTone::Filter)
-            .size(ChipSize::Medium)
-            .stop_propagation(true)
-    }
-
-    fn stream_button(
-        &self,
-        station: &RadioStationInfo,
-        stream_id: String,
-        label: SharedString,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let station_id = station.id.clone();
-        Self::chip(SharedString::from(format!(
-            "stream-{}-{stream_id}",
-            station.id
-        )))
-        .label(label)
-        .on_click(cx.listener(move |_, _, _, cx| {
-            play(station_id.clone(), stream_id.clone(), cx);
-        }))
-        .into_any_element()
-    }
-
-    /// One button per stream while there are few, the first plus a "+N" expander past that.
-    fn streams(&self, station: &RadioStationInfo, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        let expanded = self.expanded.contains(&station.id);
-        match station.streams.len() {
-            0 | 1 => vec![self.play_button(station, cx)],
-            2 => station
-                .streams
-                .iter()
-                .map(|stream| self.stream_button(station, stream.id.clone(), t(&stream.name), cx))
-                .collect(),
-            _ if expanded => {
-                let id = station.id.clone();
-                vec![
-                    Self::chip(SharedString::from(format!("less-{}", station.id)))
-                        .icon(icons::CHEVRON_UP)
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.expanded.remove(&id);
-                            this.list.remeasure();
-                            cx.notify();
-                        }))
-                        .into_any_element(),
-                ]
-            }
-            count => {
-                let id = station.id.clone();
-                let mut buttons = Vec::new();
-                if let Some(first) = station.streams.first() {
-                    buttons.push(self.stream_button(station, first.id.clone(), t(&first.name), cx));
-                }
-                buttons.push(
-                    Self::chip(SharedString::from(format!("more-{}", station.id)))
-                        .label(format!("+{}", count - 1))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.expanded.insert(id.clone());
-                            this.list.remeasure();
-                            cx.notify();
-                        }))
-                        .into_any_element(),
-                );
-                buttons
-            }
-        }
-    }
-
-    fn tags(&self, station: &RadioStationInfo) -> Vec<AnyElement> {
-        station
-            .tags
-            .iter()
-            .take(2)
-            .map(|tag| {
-                Badge::new(tag.clone())
-                    .tone(BadgeTone::Neutral)
-                    .size(ChipSize::Medium)
-                    .into_any_element()
-            })
-            .collect()
-    }
-
-    /// `p-4 rounded-xl border border-white/8 transition-colors hover:bg-white/10`.
-    fn card(
-        &self,
-        id: SharedString,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> gpui_kit::Stateful<gpui_kit::Div> {
-        let (hovered, pointer) = motion::hovered(motion::channel(&id, CARD_HOVER), window, cx);
-        let wash = motion::color(
-            motion::channel(&id, CARD_WASH),
-            style::white(if hovered { style::HOVER } else { 0. }, cx),
-            window,
-            cx,
-        );
-        div()
-            .id(id)
-            .w_full()
-            .p_4()
-            .rounded(style::radius_xl())
-            .border_1()
-            .border_color(style::white(0.08, cx))
-            .cursor_pointer()
-            .bg(wash)
-            .on_hover(motion::track(pointer))
-    }
-
-    /// A row of the selected table: the whole row plays, the buttons pick a stream.
-    fn pinned_row(
-        &self,
-        station: &RadioStationInfo,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let expanded = self.expanded.contains(&station.id);
-        let station_id = station.id.clone();
-        let stream_id = first_stream(station);
-        let muted = style::slate_400(cx);
-        self.card(SharedString::from(station.id.clone()), window, cx)
-            .flex()
-            .flex_col()
-            .on_click(
-                cx.listener(move |_, _, _, cx| play(station_id.clone(), stream_id.clone(), cx)),
-            )
-            .child(
-                h_flex()
-                    .w_full()
-                    .items_center()
-                    .gap_4()
-                    .child(
-                        Cover::new(station.artwork.as_ref())
-                            .size(ART)
-                            .rounded(style::thumb_radius())
-                            .placeholder(icons::RADIO),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .text_base()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(t(&station.name)),
-                    )
-                    .child(
-                        h_flex()
-                            .flex_1()
-                            .min_w_0()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .truncate()
-                                    .text_xs()
-                                    .text_color(muted)
-                                    .child(t(&station.description)),
-                            )
-                            .children(self.tags(station)),
-                    )
-                    .child(
-                        h_flex()
-                            .w(streams_width())
-                            .flex_shrink_0()
-                            .gap_2()
-                            .justify_end()
-                            .children(self.streams(station, cx)),
-                    ),
-            )
-            .when(expanded, |row| {
-                row.child(h_flex().w_full().flex_wrap().gap_2().mt_2p5().children(
-                    station.streams.iter().map(|stream| {
-                        self.stream_button(station, stream.id.clone(), t(&stream.name), cx)
-                    }),
-                ))
-            })
-            .into_any_element()
-    }
-
-    /// A directory row: play it, or pin it into the selected table.
-    fn directory_row(
-        &self,
-        station: &RadioStationInfo,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let pinned = self.pinned.contains(&station.id);
-        let station_id = station.id.clone();
-        let stream_id = first_stream(station);
-        let toggle_id = station.id.clone();
-        let muted = style::slate_400(cx);
-        // The pin's answer is a round trip away, so the check mark lights as it arrives.
-        let pin_tint = motion::color(
-            SharedString::from(format!("pin-tint-{}", station.id)),
-            if pinned {
-                cx.theme().success
-            } else {
-                style::slate_400(cx)
-            },
-            window,
-            cx,
-        );
-        self.card(
-            SharedString::from(format!("directory-{}", station.id)),
-            window,
-            cx,
-        )
-        .flex()
-        .items_start()
-        .gap_4()
-        .on_click(cx.listener(move |_, _, _, cx| play(station_id.clone(), stream_id.clone(), cx)))
-        .child(
-            Cover::new(station.artwork.as_ref())
-                .size(ART)
-                .rounded(style::thumb_radius())
-                .placeholder(icons::RADIO),
-        )
-        .child(
-            v_flex()
-                .flex_1()
-                .min_w_0()
-                .gap_0p5()
-                .child(
-                    div()
-                        .truncate()
-                        .text_base()
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .child(t(&station.name)),
-                )
-                .child(
-                    div()
-                        .truncate()
-                        .text_xs()
-                        .text_color(muted)
-                        .child(t(&station.description)),
-                )
-                .child(h_flex().gap_2().mt_2().children(self.tags(station))),
-        )
-        .child(
-            Button::new(SharedString::from(format!("pin-{}", station.id)))
-                .custom(style::quiet_button(pin_tint, cx))
-                .rounded(px(999.))
-                .with_size(px(36.))
-                .icon(icons::icon(if pinned { icons::CHECK } else { icons::PLUS }).xsmall())
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    cx.stop_propagation();
-                    this.toggle_pin(toggle_id.clone(), cx);
-                })),
-        )
-        .child(self.play_button(station, cx))
-        .into_any_element()
+    /// What a station row does with a stream it is asked to play.
+    fn player(station: &RadioStationInfo) -> impl Fn(&str, &mut Window, &mut App) + use<> {
+        let id = station.id.clone();
+        move |stream, _, cx| play(id.clone(), stream.to_string(), cx)
     }
 
     /// `text-sm font-bold uppercase tracking-wider text-slate-400`, less the two GPUI cannot draw.
@@ -564,7 +277,7 @@ impl Radio {
         self.keys = keys;
     }
 
-    fn line(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn line(&mut self, index: usize, cx: &mut Context<Self>) -> AnyElement {
         let Some(line) = self.lines.get(index).cloned() else {
             return div().into_any_element();
         };
@@ -572,14 +285,20 @@ impl Radio {
             Line::SelectedHeading => {
                 Self::heading(SectionHeading::new(t("radio_selected"))).into_any_element()
             }
-            Line::Pinned(station, last) => div()
-                .w_full()
-                .map(|slot| match last {
-                    true => slot.pb_8(),
-                    false => slot.pb_3(),
-                })
-                .child(self.pinned_row(&station, window, cx))
-                .into_any_element(),
+            Line::Pinned(station, last) => {
+                let list = self.list.clone();
+                let row = StationRow::new(&station)
+                    .on_play(Self::player(&station))
+                    .on_resize(move |_, _| list.remeasure());
+                div()
+                    .w_full()
+                    .map(|slot| match last {
+                        true => slot.pb_8(),
+                        false => slot.pb_3(),
+                    })
+                    .child(row)
+                    .into_any_element()
+            }
             Line::DirectoryHeading => {
                 let searching = !self.query.trim().is_empty();
                 let title = match searching {
@@ -610,11 +329,19 @@ impl Radio {
             Line::Status(Status::Empty) => EmptyState::new(t("radio_no_stations_match"))
                 .icon(icons::RADIO)
                 .into_any_element(),
-            Line::Station(station) => div()
-                .w_full()
-                .pb_3()
-                .child(self.directory_row(&station, window, cx))
-                .into_any_element(),
+            Line::Station(station) => {
+                let this = cx.entity().downgrade();
+                let id = station.id.clone();
+                let row = StationRow::new(&station)
+                    .variant(StationVariant::Directory)
+                    .pinned(self.pinned.contains(&station.id))
+                    .on_play(Self::player(&station))
+                    .on_pin(move |_, cx| {
+                        this.update(cx, |this, cx| this.toggle_pin(id.clone(), cx))
+                            .ok();
+                    });
+                div().w_full().pb_3().child(row).into_any_element()
+            }
         }
     }
 }
@@ -659,7 +386,7 @@ impl Render for Radio {
                 // Virtualized: a whole directory rebuilt on every scrolled frame is what made this page lag.
                 list(
                     self.list.clone(),
-                    cx.processor(|this, index: usize, window, cx| this.line(index, window, cx)),
+                    cx.processor(|this, index: usize, _, cx| this.line(index, cx)),
                 )
                 .flex_1()
                 .min_h_0()
