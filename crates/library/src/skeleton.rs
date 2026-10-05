@@ -69,14 +69,64 @@ pub fn tile(width: Pixels, round: bool, cx: &App) -> impl IntoElement {
     let cover = width - px(32.);
     v_flex()
         .w(width)
-        .gap_3()
-        .items_center()
+        .p_4()
         .child(div().size(cover).bg(ink(cx)).map(|shape| match round {
             true => shape.rounded(cover / 2.),
             false => shape.rounded(style::radius_xl()),
         }))
-        .child(bar(cover * 0.7, px(10.), cx))
-        .child(bar(cover * 0.45, px(8.), cx))
+        .child(catalog_text(cover, cx))
+}
+
+fn catalog_text(width: Pixels, cx: &App) -> impl IntoElement {
+    v_flex()
+        .mt_3()
+        .w_full()
+        .child(
+            div().relative().h_6().child(
+                div().absolute().inset_0().flex().items_center().child(bar(
+                    width * 0.7,
+                    px(10.),
+                    cx,
+                )),
+            ),
+        )
+        .child(
+            div().relative().h_5().child(
+                div().absolute().inset_0().flex().items_center().child(bar(
+                    width * 0.45,
+                    px(8.),
+                    cx,
+                )),
+            ),
+        )
+}
+
+pub fn catalog_row(covers: bool, cx: &App) -> impl IntoElement {
+    h_flex()
+        .w_full()
+        .gap_3()
+        .items_center()
+        .px_3()
+        .py_2()
+        .mb_1()
+        .when(covers, |row| row.child(div().size(px(48.)).bg(ink(cx))))
+        .child(
+            v_flex()
+                .child(div().relative().w_40().h_6().child(
+                    div().absolute().inset_0().flex().items_center().child(bar(
+                        px(120.),
+                        px(10.),
+                        cx,
+                    )),
+                ))
+                .child(div().relative().w_40().h_5().child(
+                    div().absolute().inset_0().flex().items_center().child(bar(
+                        px(80.),
+                        px(8.),
+                        cx,
+                    )),
+                )),
+        )
 }
 
 /// A band of placeholder tiles, matching the grid the real ones will fill.

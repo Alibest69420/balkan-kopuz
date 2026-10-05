@@ -150,7 +150,7 @@ impl Library {
             false => 1,
         };
         self.band_columns = columns;
-        let bands = self.tiles.len().div_ceil(columns.max(1));
+        let bands = self.total().div_ceil(columns.max(1));
         let rail = self.jump_rail(cx);
         h_flex()
             .size_full()
@@ -197,18 +197,29 @@ impl Library {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let first = band * columns;
-        let last = (first + columns).min(self.tiles.len());
+        let last = (first + columns).min(self.total());
         let width = px(self.tile.width());
-        let held: Vec<(usize, Tile)> = self.tiles[first..last]
-            .iter()
-            .cloned()
-            .enumerate()
-            .map(|(offset, tile)| (first + offset, tile))
+        let held: Vec<(usize, Option<Tile>)> = (first..last)
+            .map(|index| (index, self.tile_at(index).cloned()))
             .collect();
         let cards: Vec<AnyElement> = held
             .into_iter()
             .map(|(index, tile)| {
                 profile::elements::built();
+                let Some(tile) = tile else {
+                    return if tiles {
+                        crate::skeleton::tile(width, facet.round_tiles(), cx).into_any_element()
+                    } else {
+                        crate::skeleton::catalog_row(
+                            store::ConfigModel::global(cx)
+                                .read(cx)
+                                .config()
+                                .show_row_images,
+                            cx,
+                        )
+                        .into_any_element()
+                    };
+                };
                 match tiles {
                     true => self.card(&tile, index, width, facet, window, cx),
                     false => self.line_of(&tile, index, facet, window, cx),
@@ -267,7 +278,9 @@ impl Library {
             .p_4()
             .rounded(style::radius_xl())
             .bg(wash)
-            .when(cursor, |card| card.border_1().border_color(cx.theme().ring))
+            .when(cursor, |card| {
+                card.child(widgets::focus::ring(style::radius_xl(), cx))
+            })
             .on_hover(self.hover_listener(tile.id.clone(), cx))
             .on_click(self.click_listener(tile.clone(), index, cx))
             .child(
@@ -314,6 +327,7 @@ impl Library {
                             .w_full()
                             .truncate()
                             .font_weight(FontWeight::MEDIUM)
+                            .h_6()
                             .text_color(title_ink)
                             .when(facet.round_tiles(), |line| line.text_center())
                             .child(tile.title.clone()),
@@ -323,6 +337,7 @@ impl Library {
                             .w_full()
                             .truncate()
                             .text_sm()
+                            .h_5()
                             .text_color(cx.theme().muted_foreground)
                             .when(facet.round_tiles(), |line| line.text_center())
                             .child(tile.subtitle.clone()),
@@ -417,6 +432,7 @@ impl Library {
                         div()
                             .truncate()
                             .font_weight(FontWeight::MEDIUM)
+                            .h_6()
                             .text_color(match tile.playing {
                                 true => cx.theme().primary,
                                 false => cx.theme().foreground,
@@ -427,6 +443,7 @@ impl Library {
                         div()
                             .truncate()
                             .text_sm()
+                            .h_5()
                             .text_color(cx.theme().muted_foreground)
                             .child(tile.subtitle.clone()),
                     ),
@@ -485,8 +502,10 @@ impl Library {
                 this.selection.toggle(&id, index);
             } else if modifiers.shift && this.selection.is_active() {
                 let ids: Vec<String> = this.tiles.iter().map(|tile| tile.id.to_string()).collect();
-                this.selection
-                    .extend_to(index, move |slot| ids.get(slot).cloned());
+                let offset = this.tile_offset();
+                this.selection.extend_to(index, move |slot| {
+                    crate::window_item(&ids, offset, slot).cloned()
+                });
             } else if this.selection.is_active() {
                 this.selection.toggle(&id, index);
             } else {
@@ -500,7 +519,7 @@ impl Library {
 
     /// The letters down the right edge: a long grid is reachable without dragging a scrollbar.
     fn jump_rail(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if self.tiles.len() < RAIL_FROM || self.sort().field != "title" {
+        if self.total() < RAIL_FROM || self.sort().field != "title" {
             return None;
         }
         let present: std::collections::HashSet<char> = self
@@ -549,6 +568,7 @@ impl Library {
         else {
             return;
         };
+        let index = index + self.tile_offset();
         self.selection.set_cursor(Some(index));
         self.jump_to(index);
         cx.notify();

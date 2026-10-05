@@ -12,6 +12,7 @@ mod states;
 mod tracks;
 
 use std::collections::{HashMap, HashSet};
+use std::ops::{Deref, Range};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -109,6 +110,20 @@ struct AlbumMeta {
     genre: String,
 }
 
+#[derive(Clone)]
+struct CatalogWindow<T> {
+    offset: usize,
+    page: T,
+}
+
+impl<T> Deref for CatalogWindow<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        &self.page
+    }
+}
+
 /// The library page.
 pub struct Library {
     filters: Filters,
@@ -126,8 +141,8 @@ pub struct Library {
     scroll: UniformListScrollHandle,
 
     tracks: Entity<Query<TrackPage>>,
-    albums: Entity<Query<AlbumPage>>,
-    artists: Entity<Query<ArtistPage>>,
+    albums: Entity<Query<CatalogWindow<AlbumPage>>>,
+    artists: Entity<Query<CatalogWindow<ArtistPage>>>,
     genres: Entity<Query<Vec<String>>>,
     stats: Entity<Query<StatsView>>,
 
@@ -142,6 +157,7 @@ pub struct Library {
     // A grid tile has no key to match, so the playing artist and album are held beside it.
     playing_title: Option<(String, String)>,
     pager: Pager,
+    window_request: Option<Range<usize>>,
     whole: bool,
     // Where the viewport starts, for the pinned group heading.
     visible_from: usize,
@@ -189,14 +205,24 @@ impl Library {
         let albums = cx.new(|cx| {
             Query::new(
                 &[Table::Albums],
-                move |api| async move { api.albums(first).await },
+                move |api| async move {
+                    Ok(CatalogWindow {
+                        offset: 0,
+                        page: api.albums(first).await?,
+                    })
+                },
                 cx,
             )
         });
         let artists = cx.new(|cx| {
             Query::new(
                 &[Table::Tracks],
-                move |api| async move { api.artists(first).await },
+                move |api| async move {
+                    Ok(CatalogWindow {
+                        offset: 0,
+                        page: api.artists(first).await?,
+                    })
+                },
                 cx,
             )
         });
@@ -271,6 +297,7 @@ impl Library {
             playing_key: None,
             playing_title: None,
             pager: Pager::new(),
+            window_request: None,
             whole: false,
             visible_from: 0,
             selection: selection::Selection::new(),
@@ -467,6 +494,7 @@ impl Library {
     /// Point every read this facet needs at the filter set that is showing.
     fn refetch(&mut self, cx: &mut Context<Self>) {
         self.pager.reset();
+        self.window_request = None;
         self.whole = self.needs_whole();
         let page = match self.whole {
             true => store::all(),
@@ -521,7 +549,12 @@ impl Library {
     }
 
     fn fetch_albums(&mut self, page: Page, paging: bool, cx: &mut Context<Self>) {
-        let fetch = move |api: Arc<dyn KopuzApi>| async move { api.albums(page).await };
+        let fetch = move |api: Arc<dyn KopuzApi>| async move {
+            Ok(CatalogWindow {
+                offset: page.offset as usize,
+                page: api.albums(page).await?,
+            })
+        };
         self.albums.update(cx, |query, cx| match paging {
             true => query.set_page(fetch, cx),
             false => query.set_fetch(fetch, cx),
@@ -529,7 +562,12 @@ impl Library {
     }
 
     fn fetch_artists(&mut self, page: Page, paging: bool, cx: &mut Context<Self>) {
-        let fetch = move |api: Arc<dyn KopuzApi>| async move { api.artists(page).await };
+        let fetch = move |api: Arc<dyn KopuzApi>| async move {
+            Ok(CatalogWindow {
+                offset: page.offset as usize,
+                page: api.artists(page).await?,
+            })
+        };
         self.artists.update(cx, |query, cx| match paging {
             true => query.set_page(fetch, cx),
             false => query.set_fetch(fetch, cx),
@@ -546,15 +584,23 @@ impl Library {
         if self.whole {
             return;
         }
-        let Some(page) = self.pager.needs(range) else {
+        // Measurement asks for the first band too; only the final visible range should fetch.
+        if self.window_request.replace(range.clone()).is_some() {
             return;
-        };
-        let facet = self.filters.facet;
-        cx.defer_in(window, move |this, _, cx| match facet {
-            Facet::Tracks => this.fetch_tracks(page, true, cx),
-            Facet::Albums => this.fetch_albums(page, true, cx),
-            Facet::Artists => this.fetch_artists(page, true, cx),
-            Facet::Playlists => {}
+        }
+        cx.defer_in(window, move |this, _, cx| {
+            let Some(range) = this.window_request.take() else {
+                return;
+            };
+            let Some(page) = this.pager.needs(&range) else {
+                return;
+            };
+            match this.filters.facet {
+                Facet::Tracks => this.fetch_tracks(page, true, cx),
+                Facet::Albums => this.fetch_albums(page, true, cx),
+                Facet::Artists => this.fetch_artists(page, true, cx),
+                Facet::Playlists => {}
+            }
         });
     }
 
@@ -635,7 +681,7 @@ impl Library {
         }
         if self.filters.facet == Facet::Albums {
             let total = page.total.max(page.albums.len() as u32) as usize;
-            self.pager.adopt(0, page.albums.len(), total);
+            self.pager.adopt(page.offset, page.albums.len(), total);
         }
         self.rebuild(cx);
     }
@@ -645,7 +691,7 @@ impl Library {
             && self.filters.facet == Facet::Artists
         {
             let total = page.total.max(page.artists.len() as u32) as usize;
-            self.pager.adopt(0, page.artists.len(), total);
+            self.pager.adopt(page.offset, page.artists.len(), total);
         }
         self.request_photos(cx);
         self.rebuild(cx);
@@ -762,6 +808,14 @@ impl Library {
         }
     }
 
+    fn tile_offset(&self) -> usize {
+        if self.whole { 0 } else { self.pager.offset() }
+    }
+
+    fn tile_at(&self, index: usize) -> Option<&Tile> {
+        window_item(&self.tiles, self.tile_offset(), index)
+    }
+
     pub(crate) fn plays_for(&self, track: &TrackInfo) -> u64 {
         self.plays.get(&track.uid).copied().unwrap_or_default()
     }
@@ -844,6 +898,7 @@ impl Library {
             .iter()
             .position(|tile| tile.sort_key.starts_with(&run))
         {
+            let index = index + self.tile_offset();
             self.selection.set_cursor(Some(index));
             self.jump_to(index);
             cx.notify();
@@ -909,13 +964,17 @@ impl Library {
         match self.filters.facet {
             Facet::Tracks => self.play_from(index, cx),
             _ => {
-                if let Some(tile) = self.tiles.get(index) {
+                if let Some(tile) = self.tile_at(index) {
                     let route = tile.route.clone();
                     Navigator::navigate(route, cx);
                 }
             }
         }
     }
+}
+
+fn window_item<T>(items: &[T], offset: usize, index: usize) -> Option<&T> {
+    index.checked_sub(offset).and_then(|slot| items.get(slot))
 }
 
 impl Render for Library {
@@ -1079,4 +1138,50 @@ fn compare(
 
 fn text(left: &str, right: &str) -> std::cmp::Ordering {
     left.to_lowercase().cmp(&right.to_lowercase())
+}
+
+#[cfg(test)]
+mod paging_tests {
+    use super::*;
+
+    #[test]
+    fn catalog_windows_keep_the_same_indexes_in_both_scroll_directions() {
+        let mut pager = Pager::new();
+        let total = 347;
+        for range in [0..24, 96..120, 204..228, 330..347, 180..204, 0..24] {
+            pager.adopt(pager.offset(), 0, total);
+            let request = pager.needs(&range).unwrap();
+            let end = (request.offset + request.limit).min(total as u32);
+            let response = CatalogWindow {
+                offset: request.offset as usize,
+                page: AlbumPage {
+                    albums: (request.offset..end)
+                        .map(|index| AlbumInfo {
+                            id: format!("album-{index}"),
+                            ..Default::default()
+                        })
+                        .collect(),
+                    total: total as u32,
+                },
+            };
+            pager.adopt(
+                response.offset,
+                response.albums.len(),
+                response.total as usize,
+            );
+            assert_eq!(pager.total().div_ceil(6), 58);
+            for index in range {
+                assert_eq!(
+                    window_item(&response.albums, pager.offset(), index)
+                        .unwrap()
+                        .id,
+                    format!("album-{index}")
+                );
+            }
+            if response.offset > 0 {
+                assert!(window_item(&response.albums, pager.offset(), 0).is_none());
+            }
+            assert!(window_item(&response.albums, pager.offset(), total).is_none());
+        }
+    }
 }
