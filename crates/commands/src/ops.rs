@@ -295,7 +295,7 @@ pub fn delete_album(target: &Target, cx: &mut App) {
 }
 
 pub fn delete_tracks(target: &Target, cx: &mut App) {
-    let Some(scope) = components::track_list::row_scope(cx) else {
+    let Some(scope) = target.row() else {
         tracing::warn!("nothing to delete: the menu did not come from a track row");
         return;
     };

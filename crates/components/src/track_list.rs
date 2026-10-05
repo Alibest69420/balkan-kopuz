@@ -5,11 +5,11 @@ use api::TrackInfo;
 use gpui_kit::component::menu::PopupMenu;
 use gpui_kit::component::v_flex;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Context, EventEmitter, FocusHandle, Focusable, Global,
-    InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled,
-    UniformListScrollHandle, WeakEntity, Window, actions, div, uniform_list,
+    AnyElement, ClickEvent, Context, EventEmitter, FocusHandle, Focusable, InteractiveElement as _,
+    IntoElement, ParentElement as _, Render, SharedString, Styled, UniformListScrollHandle,
+    WeakEntity, Window, actions, div, uniform_list,
 };
-use store::{ConfigModel, FavoritesModel, PlayerModel, Target};
+use store::{ConfigModel, FavoritesModel, PlayerModel, RowEdit, RowScope, Target};
 
 use crate::columns::{self, Layout};
 use crate::format::t;
@@ -40,13 +40,7 @@ impl Default for TrackListOptions {
     }
 }
 
-/// Row-menu entries only the owning page can carry out.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct TrackActions {
-    pub remove_from_playlist: bool,
-    pub delete: bool,
-    pub reorder: bool,
-}
+pub use store::TrackActions;
 
 /// What the page has to answer for; everything else the list does itself.
 #[derive(Debug, Clone)]
@@ -75,63 +69,12 @@ impl Render for TrackDrag {
     }
 }
 
-/// The row a menu is being built for, so a list-scoped command can emit back through the list.
-#[derive(Clone)]
-pub struct RowScope {
-    pub list: WeakEntity<TrackList>,
-    pub index: usize,
-    pub rows: usize,
-    pub actions: TrackActions,
-}
-
-#[derive(Default)]
-struct OpenRow(Option<RowScope>);
-
-impl Global for OpenRow {}
-
-fn set_row_scope(scope: RowScope, cx: &mut App) {
-    cx.set_global(OpenRow(Some(scope)));
-}
-
-/// The row whose menu was built last; `None` when the menu belongs to something that is not a row.
-pub fn row_scope(cx: &App) -> Option<RowScope> {
-    cx.try_global::<OpenRow>().and_then(|open| open.0.clone())
-}
-
-/// Forget the row scope, so a menu opened elsewhere cannot inherit the last row's.
-pub fn clear_row_scope(cx: &mut App) {
-    cx.set_global(OpenRow(None));
-}
-
-impl RowScope {
-    pub fn reorder(&self, to: usize, cx: &mut App) {
-        let from = self.index;
-        self.list
-            .update(cx, |_, cx| cx.emit(TrackListEvent::Reorder { from, to }))
-            .ok();
-    }
-
-    pub fn remove_from_playlist(&self, cx: &mut App) {
-        let index = self.index;
-        self.list
-            .update(cx, |_, cx| {
-                cx.emit(TrackListEvent::RemoveFromPlaylist(index))
-            })
-            .ok();
-    }
-
-    pub fn delete(&self, keys: Vec<String>, cx: &mut App) {
-        self.list
-            .update(cx, |_, cx| cx.emit(TrackListEvent::Delete(keys)))
-            .ok();
-    }
-}
-
 /// The shared track list: virtualized rows, selection, and the row menu.
 pub struct TrackList {
     rows: Vec<TrackInfo>,
     options: TrackListOptions,
     row_actions: TrackActions,
+    me: WeakEntity<TrackList>,
     selection: Selection,
     focus: FocusHandle,
     scroll: UniformListScrollHandle,
@@ -169,6 +112,7 @@ impl TrackList {
             rows: Vec::new(),
             options: TrackListOptions::default(),
             row_actions: TrackActions::default(),
+            me: cx.weak_entity(),
             selection: Selection::new(),
             focus: cx.focus_handle(),
             scroll: UniformListScrollHandle::new(),
@@ -239,19 +183,27 @@ impl TrackList {
     }
 
     /// What a row's menu acts on: the whole selection when the row is in it, else the row alone.
+    fn scope(&self, index: usize) -> RowScope {
+        let list = self.me.clone();
+        RowScope::new(index, self.rows.len(), self.row_actions, move |edit, cx| {
+            list.update(cx, |_, cx| cx.emit(TrackListEvent::from(edit)))
+                .ok();
+        })
+    }
+
     fn row_target(&self, index: usize) -> Target {
         let Some(row) = self.rows.get(index) else {
             return Target::None;
         };
         if !self.selection.contains(&row.key) {
-            return Target::track(row.key.clone(), row.title.clone());
+            return Target::track(row.key.clone(), row.title.clone()).with_row(self.scope(index));
         }
         let keys: Vec<SharedString> = self
             .selected_keys()
             .into_iter()
             .map(SharedString::from)
             .collect();
-        Target::selection(keys, row.title.clone())
+        Target::selection(keys, row.title.clone()).with_row(self.scope(index))
     }
 
     /// What the keyboard acts on: the selection when there is one, else the row under the cursor.
@@ -419,20 +371,11 @@ impl TrackList {
             false => vec![key.clone()],
         };
         let label = target.label();
-        let menu = {
-            let scope = RowScope {
-                list: cx.entity().downgrade(),
-                index,
-                rows: self.rows.len(),
-                actions: self.row_actions,
-            };
-            Rc::new(
-                move |popup, window: &mut Window, cx: &mut Context<PopupMenu>| {
-                    set_row_scope(scope.clone(), cx);
-                    menus::build(target.clone(), popup, window, cx)
-                },
-            )
-        };
+        let menu = Rc::new(
+            move |popup, window: &mut Window, cx: &mut Context<PopupMenu>| {
+                menus::build(target.clone(), popup, window, cx)
+            },
+        );
         TrackRow::new(track, index)
             .columns(columns.clone())
             .height(style::row_height())
@@ -513,5 +456,15 @@ impl Render for TrackList {
                 .flex_1()
                 .size_full(),
             )
+    }
+}
+
+impl From<RowEdit> for TrackListEvent {
+    fn from(edit: RowEdit) -> Self {
+        match edit {
+            RowEdit::Reorder { from, to } => TrackListEvent::Reorder { from, to },
+            RowEdit::RemoveFromPlaylist(index) => TrackListEvent::RemoveFromPlaylist(index),
+            RowEdit::Delete(keys) => TrackListEvent::Delete(keys),
+        }
     }
 }

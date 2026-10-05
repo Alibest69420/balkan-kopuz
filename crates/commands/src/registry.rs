@@ -3,7 +3,6 @@
 use api::PlaylistCapability;
 use components::format::t;
 use components::icons;
-use components::track_list::row_scope;
 use gpui_kit::App;
 use store::{Kind, Navigator, Route, Target, actions};
 
@@ -266,9 +265,13 @@ static COMMANDS: &[Command] = &[
         keys: NO_KEYS,
         danger: false,
         applies: ONLY_TRACKS,
-        available: |_, cx| row_scope(cx).is_some_and(|row| row.actions.reorder && row.index > 0),
-        run: |_, _, cx| {
-            if let Some(row) = row_scope(cx) {
+        available: |target, _| {
+            target
+                .row()
+                .is_some_and(|row| row.actions.reorder && row.index > 0)
+        },
+        run: |target, _, cx| {
+            if let Some(row) = target.row() {
                 row.reorder(row.index.saturating_sub(1), cx);
             }
         },
@@ -284,11 +287,13 @@ static COMMANDS: &[Command] = &[
         keys: NO_KEYS,
         danger: false,
         applies: ONLY_TRACKS,
-        available: |_, cx| {
-            row_scope(cx).is_some_and(|row| row.actions.reorder && row.index + 1 < row.rows)
+        available: |target, _| {
+            target
+                .row()
+                .is_some_and(|row| row.actions.reorder && row.index + 1 < row.rows)
         },
-        run: |_, _, cx| {
-            if let Some(row) = row_scope(cx) {
+        run: |target, _, cx| {
+            if let Some(row) = target.row() {
                 row.reorder(row.index + 1, cx);
             }
         },
@@ -304,9 +309,13 @@ static COMMANDS: &[Command] = &[
         keys: NO_KEYS,
         danger: false,
         applies: ONLY_TRACKS,
-        available: |_, cx| row_scope(cx).is_some_and(|row| row.actions.remove_from_playlist),
-        run: |_, _, cx| {
-            if let Some(row) = row_scope(cx) {
+        available: |target, _| {
+            target
+                .row()
+                .is_some_and(|row| row.actions.remove_from_playlist)
+        },
+        run: |target, _, cx| {
+            if let Some(row) = target.row() {
                 row.remove_from_playlist(cx);
             }
         },
@@ -326,7 +335,7 @@ static COMMANDS: &[Command] = &[
         danger: true,
         applies: ONLY_TRACKS,
         available: |target, cx| {
-            has_tracks(target, cx) && row_scope(cx).is_some_and(|row| row.actions.delete)
+            has_tracks(target, cx) && target.row().is_some_and(|row| row.actions.delete)
         },
         run: |target, _, cx| ops::delete_tracks(&target, cx),
         action: Some(|| Box::new(components::track_list::RemoveSelection)),

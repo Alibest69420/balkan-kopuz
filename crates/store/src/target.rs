@@ -1,6 +1,88 @@
 //! What a command acts on. Pure data, so it sits below both `commands` and `components`.
 
-use gpui_kit::SharedString;
+use std::fmt;
+use std::rc::Rc;
+
+use gpui_kit::{App, SharedString};
+
+/// Row-menu entries only the owning page can carry out.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TrackActions {
+    pub remove_from_playlist: bool,
+    pub delete: bool,
+    pub reorder: bool,
+}
+
+/// What a row's menu asks its list to hand back to the page.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RowEdit {
+    Reorder { from: usize, to: usize },
+    RemoveFromPlaylist(usize),
+    Delete(Vec<String>),
+}
+
+type Emit = Rc<dyn Fn(RowEdit, &mut App)>;
+
+/// The list row a track target came from, so a list-scoped command can answer back through it.
+#[derive(Clone)]
+pub struct RowScope {
+    pub index: usize,
+    pub rows: usize,
+    pub actions: TrackActions,
+    emit: Emit,
+}
+
+impl RowScope {
+    pub fn new(
+        index: usize,
+        rows: usize,
+        actions: TrackActions,
+        emit: impl Fn(RowEdit, &mut App) + 'static,
+    ) -> Self {
+        Self {
+            index,
+            rows,
+            actions,
+            emit: Rc::new(emit),
+        }
+    }
+
+    pub fn reorder(&self, to: usize, cx: &mut App) {
+        (self.emit)(
+            RowEdit::Reorder {
+                from: self.index,
+                to,
+            },
+            cx,
+        );
+    }
+
+    pub fn remove_from_playlist(&self, cx: &mut App) {
+        (self.emit)(RowEdit::RemoveFromPlaylist(self.index), cx);
+    }
+
+    pub fn delete(&self, keys: Vec<String>, cx: &mut App) {
+        (self.emit)(RowEdit::Delete(keys), cx);
+    }
+}
+
+impl fmt::Debug for RowScope {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RowScope")
+            .field("index", &self.index)
+            .field("rows", &self.rows)
+            .field("actions", &self.actions)
+            .finish()
+    }
+}
+
+impl PartialEq for RowScope {
+    fn eq(&self, other: &Self) -> bool {
+        self.index == other.index && self.rows == other.rows && self.actions == other.actions
+    }
+}
+
+impl Eq for RowScope {}
 
 /// The thing under the pointer, the keyboard, or the selection, named well enough to talk about.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -11,6 +93,8 @@ pub enum Target {
     Tracks {
         keys: Vec<SharedString>,
         label: SharedString,
+        /// Set when the tracks came from a list row, which is what enables the list-scoped verbs.
+        row: Option<RowScope>,
     },
     Album {
         id: SharedString,
@@ -52,6 +136,7 @@ impl Target {
         Target::Tracks {
             keys: vec![key.into()],
             label: title.into(),
+            row: None,
         }
     }
 
@@ -59,6 +144,7 @@ impl Target {
         Target::Tracks {
             keys,
             label: label.into(),
+            row: None,
         }
     }
 
@@ -69,7 +155,27 @@ impl Target {
             0 | 1 => first,
             many => SharedString::from(format!("{first} +{}", many - 1)),
         };
-        Target::Tracks { keys, label }
+        Target::Tracks {
+            keys,
+            label,
+            row: None,
+        }
+    }
+
+    /// Mark these tracks as coming from a list row.
+    pub fn with_row(mut self, scope: RowScope) -> Self {
+        if let Target::Tracks { row, .. } = &mut self {
+            *row = Some(scope);
+        }
+        self
+    }
+
+    /// The list row these tracks came from, if any.
+    pub fn row(&self) -> Option<&RowScope> {
+        match self {
+            Target::Tracks { row, .. } => row.as_ref(),
+            _ => None,
+        }
     }
 
     pub fn kind(&self) -> Kind {

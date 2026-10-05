@@ -44,12 +44,9 @@ pub fn build(
     }
 }
 
-/// The closure `dropdown_menu` and `context_menu` both take; nothing built here is a list row.
+/// The closure `dropdown_menu` and `context_menu` both take.
 pub fn builder(
     target: Target,
 ) -> impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + Clone + 'static {
-    move |menu, window, cx| {
-        crate::track_list::clear_row_scope(cx);
-        build(target.clone(), menu, window, cx)
-    }
+    move |menu, window, cx| build(target.clone(), menu, window, cx)
 }
