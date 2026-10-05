@@ -2,22 +2,6 @@ use api::{ApiError, ApiEvent, QueueEdit, QueueSnapshot, TrackInfo};
 use gpui_kit::{App, Context, Entity, Subscription, Task};
 use link::Link;
 
-/// The pinned daemon sends physical rows despite the API's play-order documentation.
-fn in_play_order(mut snapshot: QueueSnapshot) -> Option<QueueSnapshot> {
-    if snapshot.shuffle {
-        if snapshot.shuffle_order.len() != snapshot.items.len() {
-            return None;
-        }
-        let mut physical: Vec<_> = snapshot.items.into_iter().map(Some).collect();
-        snapshot.items = snapshot
-            .shuffle_order
-            .iter()
-            .map(|&index| physical.get_mut(index as usize).and_then(Option::take))
-            .collect::<Option<Vec<_>>>()?;
-    }
-    Some(snapshot)
-}
-
 /// What the queue adds up to: "3/57 • 3:41:02" without folding every row per frame.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct QueueSummary {
@@ -91,10 +75,6 @@ impl QueueModel {
         let call = Link::global(cx).call(|api| async move { api.queue_snapshot().await });
         self._fetch = Some(cx.spawn(async move |this, cx| {
             let Ok(snapshot) = call.await else { return };
-            let Some(snapshot) = in_play_order(snapshot) else {
-                tracing::warn!("daemon returned an invalid queue shuffle permutation");
-                return;
-            };
             this.update(cx, |this, cx| {
                 if this.generation == generation {
                     this.snapshot = snapshot;
@@ -132,11 +112,6 @@ impl QueueModel {
 
     pub fn shuffle(&self) -> bool {
         self.snapshot.shuffle
-    }
-
-    /// For each play-order position, its index in the unshuffled queue; empty while shuffle is off.
-    pub fn shuffle_order(&self) -> &[u32] {
-        &self.snapshot.shuffle_order
     }
 
     pub fn rev(&self) -> u64 {
@@ -285,65 +260,7 @@ fn edit(edit: QueueEdit, cx: &App) {
 
 #[cfg(test)]
 mod tests {
-    use super::{QueueSnapshot, TrackInfo, in_play_order, reindex};
-
-    fn snapshot(shuffle: bool, order: Vec<u32>) -> QueueSnapshot {
-        QueueSnapshot {
-            items: ["first", "second", "third"]
-                .into_iter()
-                .map(|key| TrackInfo {
-                    key: key.into(),
-                    ..Default::default()
-                })
-                .collect(),
-            position: Some(1),
-            shuffle,
-            shuffle_order: order,
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn shuffled_rows_and_current_position_use_the_same_order() {
-        let queue = in_play_order(snapshot(true, vec![2, 0, 1])).unwrap();
-        let keys: Vec<_> = queue.items.iter().map(|track| track.key.as_str()).collect();
-        assert_eq!(keys, ["third", "first", "second"]);
-        assert_eq!(queue.items[queue.position.unwrap() as usize].key, "first");
-        assert_eq!(queue.shuffle_order, [2, 0, 1]);
-    }
-
-    #[test]
-    fn disabling_shuffle_restores_physical_order() {
-        let original = snapshot(false, vec![2, 0, 1]);
-        assert_eq!(in_play_order(original.clone()), Some(original));
-    }
-
-    #[test]
-    fn duplicate_tracks_remain_distinct_queue_entries() {
-        let mut original = snapshot(true, vec![2, 0, 1]);
-        original.items[2].key = original.items[0].key.clone();
-        original.items[2].uid = "duplicate-entry".into();
-        let queue = in_play_order(original).unwrap();
-        assert_eq!(queue.items.len(), 3);
-        assert_eq!(queue.items[0].uid, "duplicate-entry");
-        assert!(queue.items[1].uid.is_empty());
-    }
-
-    #[test]
-    fn invalid_permutations_are_not_displayed_as_a_different_queue() {
-        for order in [vec![2, 0], vec![2, 0, 3], vec![2, 0, 0]] {
-            assert!(in_play_order(snapshot(true, order)).is_none());
-        }
-    }
-
-    #[test]
-    fn empty_shuffled_queue_is_valid() {
-        let empty = QueueSnapshot {
-            shuffle: true,
-            ..Default::default()
-        };
-        assert_eq!(in_play_order(empty.clone()), Some(empty));
-    }
+    use super::reindex;
 
     #[test]
     fn the_moved_row_carries_the_playhead_with_it() {
