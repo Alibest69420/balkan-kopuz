@@ -197,6 +197,10 @@ impl RenderOnce for JobLine {
         let phase = (!progress.phase.is_empty())
             .then(|| SharedString::from(progress.phase.clone()))
             .or(self.fallback);
+        // TODO(i18n): no "scheduled" key yet; "Automatic" is the nearest the locale has.
+        let automatic = progress
+            .automatic
+            .then(|| Badge::new(t("playback_browser_auto")).tone(BadgeTone::Neutral));
         let stop = self.on_stop.map(|stop| {
             stop_control(
                 &progress.id,
@@ -211,6 +215,7 @@ impl RenderOnce for JobLine {
                 .gap_2()
                 .items_center()
                 .children(phase.map(|phase| div().flex_shrink_0().child(phase)))
+                .children(automatic)
                 .child(div().flex_1().min_w_0().truncate().children(message))
                 .children(counted(&progress, true).map(|counted| {
                     div()
@@ -240,6 +245,7 @@ impl RenderOnce for JobLine {
                                     .text_color(cx.theme().foreground)
                                     .children(self.title),
                             )
+                            .children(automatic)
                             .children(counted(&progress, false).map(|counted| {
                                 div()
                                     .flex_shrink_0()

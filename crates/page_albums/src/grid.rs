@@ -5,7 +5,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use api::{AlbumInfo, AlbumPage, AlbumQuery, AlbumSort, ApiError, JobKind, KopuzApi, Table};
+use api::{AlbumInfo, AlbumPage, AlbumQuery, AlbumSort, ApiError, KopuzApi, Table};
 use components::album_collection::{available_fields, field_label};
 use components::format::t;
 use components::{AlbumCollection, EmptyState, GridMode, Loading, PageHeader, SortControl, icons};
@@ -16,7 +16,7 @@ use gpui_kit::{
     App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled,
     Subscription, Window, div,
 };
-use store::{ConfigModel, JobsModel, Query, SourcesModel};
+use store::{ConfigModel, Query};
 
 // TODO(offline): filtering the grid to downloaded albums waits on an offline seam the checklist flags as wrong.
 
@@ -29,8 +29,6 @@ pub struct Albums {
     visible: Rc<[AlbumInfo]>,
     sort_fields: Vec<AlbumSortField>,
     grid: AlbumCollection,
-    // A library sync is offered once per visit, not once per refetch.
-    synced: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -38,17 +36,9 @@ impl Albums {
     pub fn new(_: &mut Window, cx: &mut Context<Self>) -> Self {
         let asked = criteria(cx);
         let albums = cx.new(|cx| Query::new(&[Table::Albums], listing(&asked), cx));
-        let sources = SourcesModel::global(cx);
         let config = ConfigModel::global(cx);
         let subscriptions = vec![
-            cx.observe(&albums, |this, _, cx| {
-                this.sync_empty_library(cx);
-                this.rebuild(cx);
-            }),
-            cx.observe(&sources, |this, _, cx| {
-                this.sync_empty_library(cx);
-                cx.notify();
-            }),
+            cx.observe(&albums, |this, _, cx| this.rebuild(cx)),
             // The sort lives in config, so a change there is a change to the order.
             cx.observe(&config, |this, _, cx| this.reorder(cx)),
         ];
@@ -58,7 +48,6 @@ impl Albums {
             visible: Rc::from([]),
             sort_fields: Vec::new(),
             grid: AlbumCollection::new("albums-scroll"),
-            synced: false,
             _subscriptions: subscriptions,
         }
     }
@@ -80,21 +69,6 @@ impl Albums {
         self.sort_fields = available_fields(&albums, true);
         self.visible = albums.into();
         cx.notify();
-    }
-
-    /// A source that syncs and holds nothing yet gets one pull, the way a first visit should.
-    fn sync_empty_library(&mut self, cx: &mut Context<Self>) {
-        if self.synced || !SourcesModel::global(cx).read(cx).capabilities().sync {
-            return;
-        }
-        let empty = match self.albums.read(cx).value() {
-            Some(page) => page.albums.is_empty(),
-            None => return,
-        };
-        self.synced = true;
-        if empty {
-            JobsModel::global(cx).update(cx, |jobs, cx| jobs.start(JobKind::LibrarySync, cx));
-        }
     }
 
     fn all_albums(&self, cx: &App) -> Vec<AlbumInfo> {

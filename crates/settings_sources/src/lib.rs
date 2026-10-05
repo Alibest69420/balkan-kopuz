@@ -5,6 +5,7 @@ pub mod folders;
 mod integrations;
 mod login;
 mod registries;
+mod schedule;
 mod sources;
 pub mod ui;
 
@@ -58,7 +59,7 @@ impl SourceSettings {
 }
 
 impl Render for SourceSettings {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // The settings page owns the scroll; this panel is content inside it.
         v_flex()
             .id("source-settings")
@@ -67,6 +68,9 @@ impl Render for SourceSettings {
             .pb_4()
             .when(self.shows("library"), |panel| {
                 panel.child(self.sources.clone())
+            })
+            .when(self.shows("library"), |panel| {
+                panel.child(schedule::settings(cx))
             })
             .when(self.shows("library"), |panel| {
                 panel.child(self.registries.clone())

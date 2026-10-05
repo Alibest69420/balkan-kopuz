@@ -17,6 +17,8 @@ pub struct JobEvent {
     pub kind: JobKind,
     pub ok: bool,
     pub error: Option<ErrorBody>,
+    /// Started by the daemon's schedule rather than by anyone pressing anything.
+    pub automatic: bool,
 }
 
 /// A job that has just stopped, kept on the list for [`LINGER`] so its outcome can be read.
@@ -25,6 +27,7 @@ pub struct Finished {
     pub id: String,
     pub kind: JobKind,
     pub ok: bool,
+    pub automatic: bool,
     pub message: Option<SharedString>,
 }
 
@@ -83,33 +86,50 @@ impl JobsModel {
                 kind,
                 ok,
                 error,
-                ..
+                automatic,
             } => {
                 this.running.retain(|running| &running.id != id);
                 this.stopping.remove(id);
-                this.remember(id.clone(), *kind, *ok, error.as_ref(), cx);
+                this.remember(
+                    Finished {
+                        id: id.clone(),
+                        kind: *kind,
+                        ok: *ok,
+                        automatic: *automatic,
+                        message: error
+                            .as_ref()
+                            .map(|failure| SharedString::from(failure.message.clone())),
+                    },
+                    cx,
+                );
                 crate::notify(cx);
                 // A job that fails says so. Upstream drops this, which is why a sync against
                 // expired credentials spins for a moment and then goes quiet.
                 let notice = match (ok, error.as_ref()) {
-                    (false, Some(failure)) => {
-                        Notice::new(api::NoticeLevel::Error, failure.message.clone())
-                    }
-                    (false, None) => Notice::new(
+                    (false, Some(failure)) => Some(Notice::new(
+                        api::NoticeLevel::Error,
+                        failure.message.clone(),
+                    )),
+                    (false, None) => Some(Notice::new(
                         api::NoticeLevel::Error,
                         i18n::t_with("job_failed", &[("job", kind_label(*kind).to_string())]),
-                    ),
-                    (true, _) => Notice::new(
+                    )),
+                    // The schedule's own runs succeed on the activity list, not as a toast each interval.
+                    (true, _) if *automatic => None,
+                    (true, _) => Some(Notice::new(
                         api::NoticeLevel::Info,
                         i18n::t_with("job_finished", &[("job", kind_label(*kind).to_string())]),
-                    ),
+                    )),
                 };
-                this.say(notice.kind(kind_key(*kind)), cx);
+                if let Some(notice) = notice {
+                    this.say(notice.kind(kind_key(*kind)), cx);
+                }
                 cx.emit(JobEvent {
                     id: id.clone(),
                     kind: *kind,
                     ok: *ok,
                     error: error.clone(),
+                    automatic: *automatic,
                 });
             }
             ApiEvent::Resync => this.reseed(cx),
@@ -131,21 +151,10 @@ impl JobsModel {
     }
 
     /// Keep a stopped job on the list briefly, so its outcome is readable where it was running.
-    fn remember(
-        &mut self,
-        id: String,
-        kind: JobKind,
-        ok: bool,
-        error: Option<&ErrorBody>,
-        cx: &mut Context<Self>,
-    ) {
-        self.recent.retain(|finished| finished.id != id);
-        self.recent.push(Finished {
-            id: id.clone(),
-            kind,
-            ok,
-            message: error.map(|failure| SharedString::from(failure.message.clone())),
-        });
+    fn remember(&mut self, finished: Finished, cx: &mut Context<Self>) {
+        let id = finished.id.clone();
+        self.recent.retain(|held| held.id != id);
+        self.recent.push(finished);
         let evicted = id.clone();
         let task = cx.spawn(async move |this, cx| {
             cx.background_executor().timer(LINGER).await;

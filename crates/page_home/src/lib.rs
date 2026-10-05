@@ -41,7 +41,6 @@ pub struct Home {
     scroll: HashMap<&'static str, ScrollHandle>,
     page: ScrollHandle,
     seed: u64,
-    // The empty-library sync is offered once per visit, not once per refetch.
     _subscriptions: Vec<Subscription>,
 }
 

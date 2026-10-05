@@ -2,7 +2,7 @@
 
 use api::{JobKind, JobProgress};
 use components::format::t;
-use components::{Chip, ChipTone, JobLayout, JobLine, StatusRow, style};
+use components::{Badge, BadgeTone, Chip, ChipTone, JobLayout, JobLine, StatusRow, style};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -59,11 +59,17 @@ impl ActivityList {
                 true => t("job_done"),
                 false => t("job_stopped"),
             });
-        StatusRow::new(format!("outcome-{}", finished.id))
+        let row = StatusRow::new(format!("outcome-{}", finished.id))
             .glyph(glyph, ink)
             .title(store::kind_label(finished.kind))
-            .detail(detail, None)
-            .into_any_element()
+            .detail(detail, None);
+        match finished.automatic {
+            // TODO(i18n): no "scheduled" key yet; "Automatic" is the nearest the locale has.
+            true => row
+                .trailing(Badge::new(t("playback_browser_auto")).tone(BadgeTone::Neutral))
+                .into_any_element(),
+            false => row.into_any_element(),
+        }
     }
 }
 

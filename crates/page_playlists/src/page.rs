@@ -22,7 +22,6 @@ use crate::dialogs;
 use components::{Tile, tile_grid as card_grid};
 
 pub struct Playlists {
-    requested_sync: bool,
     // Each playlist's keys and what the downloads say of them, rebuilt on a change, not per card per frame.
     offline: HashMap<String, (Rc<[String]>, Offline)>,
     _subscriptions: Vec<Subscription>,
@@ -41,17 +40,14 @@ impl Playlists {
                 cx.notify();
             }),
             cx.observe(&SourcesModel::global(cx), |this: &mut Self, _, cx| {
-                this.request_sync(cx);
                 this.rekey_offline(cx);
                 cx.notify();
             }),
         ];
         let mut page = Self {
-            requested_sync: false,
             offline: HashMap::new(),
             _subscriptions: subscriptions,
         };
-        page.request_sync(cx);
         page.rekey_offline(cx);
         page
     }
@@ -78,15 +74,6 @@ impl Playlists {
         for (keys, offline) in self.offline.values_mut() {
             *offline = downloads.offline(keys);
         }
-    }
-
-    /// The pull runs in the daemon, single-flight, so this only has to ask once per visit.
-    fn request_sync(&mut self, cx: &mut Context<Self>) {
-        if self.requested_sync || !SourcesModel::global(cx).read(cx).capabilities().sync {
-            return;
-        }
-        self.requested_sync = true;
-        JobsModel::global(cx).update(cx, |jobs, cx| jobs.start(JobKind::PlaylistSync, cx));
     }
 
     fn header(&self, capabilities: SourceCapabilities, cx: &mut Context<Self>) -> PageHeader {
