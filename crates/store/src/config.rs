@@ -1,9 +1,10 @@
 use std::time::Duration;
 
-use api::{ApiEvent, ConfigView};
+use api::{ApiEvent, ConfigField, ConfigView, DAEMON_OWNED_CONFIG_KEYS};
 use config::AppConfig;
 use gpui_kit::{App, Context, Entity, Subscription, Task};
 use link::Link;
+use serde_json::{Map, Value};
 
 use crate::notices::Notices;
 
@@ -13,12 +14,12 @@ const SAVE_DELAY: Duration = Duration::from_millis(600);
 // How long a settings row says "Saved" before going quiet again.
 const SAVED_FOR: Duration = Duration::from_millis(2200);
 
-/// The daemon's settings surface, edited locally and written back debounced.
+/// The daemon's settings surface, edited locally and patched back debounced, key by key.
 pub struct ConfigModel {
     view: ConfigView,
+    /// The daemon's config as last adopted, per top-level key; a local key that differs is unsent.
+    baseline: Map<String, Value>,
     loaded: bool,
-    // Bumped per local edit, so a save's answer never clobbers a newer edit.
-    edits: u64,
     // The keys edited since the last write went out, then the ones that write carried.
     pending: Vec<&'static str>,
     saved: Vec<&'static str>,
@@ -37,13 +38,15 @@ impl ConfigModel {
         let connection = Link::connection(cx);
         let subscription = cx.subscribe(&connection, |this, _, event: &ApiEvent, cx| match event {
             ApiEvent::Resync => this.reload(cx),
-            ApiEvent::ConfigChanged { .. } if this._save.is_none() => this.reload(cx),
+            ApiEvent::ConfigChanged { revision, .. } if *revision > this.view.revision => {
+                this.reload(cx)
+            }
             _ => {}
         });
         Self {
             view: ConfigView::default(),
+            baseline: Map::new(),
             loaded: false,
-            edits: 0,
             pending: Vec::new(),
             saved: Vec::new(),
             _save: None,
@@ -78,15 +81,9 @@ impl ConfigModel {
 
     pub fn reload(&mut self, cx: &mut Context<Self>) {
         let call = Link::global(cx).call(|api| async move { api.config().await });
-        let edits = self.edits;
         self._fetch = Some(cx.spawn(async move |this, cx| match call.await {
             Ok(view) => {
-                this.update(cx, |this, cx| {
-                    if this.edits == edits {
-                        this.adopt(view, cx);
-                    }
-                })
-                .ok();
+                this.update(cx, |this, cx| this.adopt(view, cx)).ok();
             }
             Err(error) => tracing::warn!(%error, "could not read the daemon config"),
         }));
@@ -134,7 +131,7 @@ impl ConfigModel {
         self.update(cx, edit);
     }
 
-    /// Change settings; the write reaches the daemon once edits settle.
+    /// Change settings; the keys that moved reach the daemon once edits settle.
     pub fn update(&mut self, cx: &mut Context<Self>, edit: impl FnOnce(&mut AppConfig)) {
         if !self.loaded {
             tracing::warn!("config edit before the daemon config loaded; ignored");
@@ -145,7 +142,6 @@ impl ConfigModel {
         if self.view.config.language != language {
             i18n::set_locale(&self.view.config.language);
         }
-        self.edits += 1;
         crate::notify(cx);
         self.schedule_save(cx);
     }
@@ -153,27 +149,32 @@ impl ConfigModel {
     fn schedule_save(&mut self, cx: &mut Context<Self>) {
         self._save = Some(cx.spawn(async move |this, cx| {
             cx.background_executor().timer(SAVE_DELAY).await;
-            let Ok((call, edits)) = this.update(cx, |this, cx| {
-                let config = this.view.config.clone();
-                let call =
-                    Link::global(cx).call(move |api| async move { api.set_config(config).await });
-                (call, this.edits)
+            let Ok(call) = this.update(cx, |this, cx| {
+                let fields = patch_of(&this.baseline, &this.view.config);
+                (!fields.is_empty()).then(|| {
+                    Link::global(cx).call(move |api| async move { api.patch_config(fields).await })
+                })
             }) else {
                 return;
             };
-            let result = call.await;
+            let result = match call {
+                Some(call) => Some(call.await),
+                None => None,
+            };
             this.update(cx, |this, cx| {
                 this._save = None;
                 match result {
-                    Ok(view) if this.edits == edits => {
+                    Some(Ok(view)) => {
                         this.adopt(view, cx);
                         this.confirm(cx);
                     }
-                    Ok(_) => this.confirm(cx),
+                    None => this.confirm(cx),
                     // The control is showing an edit the daemon never took; put the truth back.
-                    Err(error) => {
+                    Some(Err(error)) => {
                         Notices::error(crate::human(&error), cx);
                         this.pending.clear();
+                        this.discard_unsent();
+                        crate::notify(cx);
                         this.reload(cx);
                     }
                 }
@@ -199,12 +200,93 @@ impl ConfigModel {
         }));
     }
 
-    fn adopt(&mut self, view: ConfigView, cx: &mut Context<Self>) {
-        if !self.loaded || view.config.language != self.view.config.language {
-            i18n::set_locale(&view.config.language);
+    /// Go back to what the daemon last said.
+    fn discard_unsent(&mut self) {
+        if let Ok(config) = serde_json::from_value(Value::Object(self.baseline.clone())) {
+            self.view.config = config;
         }
-        self.view = view;
+    }
+
+    /// Take the daemon's view, unless an older one lost the race, keeping local edits not yet sent.
+    fn adopt(&mut self, view: ConfigView, cx: &mut Context<Self>) {
+        if self.loaded && view.revision < self.view.revision {
+            return;
+        }
+        let remote = fields_of(&view.config);
+        let mut config = view.config;
+        if self.loaded {
+            let unsent = unsent(&self.baseline, &self.view.config);
+            if !unsent.is_empty() {
+                let mut merged = remote.clone();
+                merged.extend(unsent);
+                if let Ok(kept) = serde_json::from_value(Value::Object(merged)) {
+                    config = kept;
+                }
+            }
+        }
+        if !self.loaded || config.language != self.view.config.language {
+            i18n::set_locale(&config.language);
+        }
+        self.baseline = remote;
+        self.view = ConfigView {
+            config,
+            locked_keys: view.locked_keys,
+            revision: view.revision,
+        };
         self.loaded = true;
         crate::notify(cx);
+    }
+}
+
+fn fields_of(config: &AppConfig) -> Map<String, Value> {
+    match serde_json::to_value(config) {
+        Ok(Value::Object(object)) => object,
+        _ => Map::new(),
+    }
+}
+
+/// The caller-writable keys whose local value differs from what the daemon last said.
+fn unsent(baseline: &Map<String, Value>, local: &AppConfig) -> Map<String, Value> {
+    fields_of(local)
+        .into_iter()
+        .filter(|(key, value)| {
+            !DAEMON_OWNED_CONFIG_KEYS.contains(&key.as_str()) && baseline.get(key) != Some(value)
+        })
+        .collect()
+}
+
+fn patch_of(baseline: &Map<String, Value>, local: &AppConfig) -> Vec<ConfigField> {
+    unsent(baseline, local)
+        .into_iter()
+        .map(|(key, value)| ConfigField {
+            key,
+            json: value.to_string(),
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_keys_that_moved_are_sent() {
+        let before = AppConfig::default();
+        let mut after = before.clone();
+        after.show_row_images = !before.show_row_images;
+        let fields = patch_of(&fields_of(&before), &after);
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].key, "show_row_images");
+    }
+
+    #[test]
+    fn a_key_the_daemon_owns_is_never_sent() {
+        let before = AppConfig::default();
+        let mut after = before.clone();
+        after.volume = 0.1;
+        after
+            .pinned_stations
+            .push("https://example.invalid/station.json".into());
+        assert!(patch_of(&fields_of(&before), &after).is_empty());
     }
 }

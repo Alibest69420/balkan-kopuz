@@ -318,15 +318,9 @@ impl PlayerModel {
         );
     }
 
-    /// The same, and remembered: this is the level the app opens at next time.
+    /// The same; the daemon owns the volume key and persists the level itself.
     pub fn set_volume_saved(&mut self, volume: f32, cx: &mut Context<Self>) {
-        let volume = volume.clamp(0.0, 1.0);
         self.set_volume(volume, cx);
-        crate::ConfigModel::global(cx).update(cx, |config, cx| {
-            if config.is_loaded() && config.config().volume != volume {
-                config.update(cx, |config| config.volume = volume);
-            }
-        });
     }
 
     /// Mute, or come back to the level muting left. Unmuting must never be a jump to full
