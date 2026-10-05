@@ -2,28 +2,21 @@
 
 use components::format::{duration, t};
 use components::{
-    EmptyState, Heading, Link, SectionHeading, Tone, TrackDrag, dialogs, icons, menus, motion,
-    style, track_row,
+    EmptyState, Heading, Link, QueueRow, ReorderDropZones, SectionHeading, Tone, TrackDrag,
+    dialogs, icons, style,
 };
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::menu::ContextMenuExt as _;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{Disableable as _, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Div, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, Render, ScrollStrategy, SharedString, Stateful,
-    StatefulInteractiveElement as _, Styled, Subscription, UniformListScrollHandle, Window, div,
-    px, uniform_list,
+    AnyElement, App, Context, Div, InteractiveElement as _, IntoElement, ParentElement as _,
+    Pixels, Render, ScrollStrategy, SharedString, Stateful, StatefulInteractiveElement as _,
+    Styled, Subscription, UniformListScrollHandle, Window, div, px, uniform_list,
 };
 use store::{ConfigModel, PlaylistsModel, QueueModel, Target};
 
 // Above this point in a row a drop lands before it, below it after.
 const DROP_SPLIT: Pixels = px(23.);
-const LEAD_WIDTH: Pixels = px(16.);
-const REORDER_BUTTON: Pixels = px(14.);
-const REORDER_GLYPH: Pixels = px(9.);
-const ROW_SUBTITLE: f32 = 0.65;
-const ROW_GROUP: &str = "queue-row";
 const TOOL_GLYPH: Pixels = px(13.);
 
 const CLEAR: &str = "icons/list-x.svg";
@@ -66,32 +59,6 @@ fn move_target(from: u32, insert_at: u32, count: u32) -> Option<u32> {
 
 fn insert_at(at: u32, keys: Vec<String>, cx: &mut App) {
     QueueModel::global(cx).update(cx, move |queue, cx| queue.insert(at, keys, cx));
-}
-
-/// A strip of a row that accepts a drop, either reordering the queue or inserting dragged tracks.
-fn drop_zone(id: (&'static str, usize), at: u32, count: u32) -> Stateful<Div> {
-    div()
-        .id(id)
-        .absolute()
-        .left_0()
-        .right_0()
-        .on_drop::<TrackDrag>(move |drag, _, cx| insert_at(at, drag.keys.clone(), cx))
-        .on_drop::<QueueRowDrag>(move |drag, _, cx| {
-            if let Some(to) = move_target(drag.from, at, count) {
-                let from = drag.from;
-                QueueModel::global(cx).update(cx, move |queue, cx| queue.move_item(from, to, cx));
-            }
-        })
-        .drag_over::<TrackDrag>(|style, _, _, cx| style.bg(cx.theme().drop_target))
-        .drag_over::<QueueRowDrag>(|style, _, _, cx| style.bg(cx.theme().drop_target))
-}
-
-fn reorder_button(id: (&'static str, usize), glyph: &'static str, cx: &App) -> Button {
-    Button::new(id)
-        .custom(style::quiet_button(style::slate_500(cx), cx))
-        .with_size(REORDER_GLYPH * (4. / 3.))
-        .size(REORDER_BUTTON)
-        .icon(icons::icon(glyph))
 }
 
 /// The queue, with its history folded away and its upcoming rows under your hand.
@@ -244,9 +211,9 @@ impl QueueView {
     }
 
     /// The row a list slot holds: a heading, or the queue row at that play-order index.
-    fn line(&self, slot: usize, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn line(&self, slot: usize, cx: &mut Context<Self>) -> AnyElement {
         match self.lines.get(slot).copied() {
-            Some(Line::Track(index)) => self.row(index, window, cx),
+            Some(Line::Track(index)) => self.row(index, cx),
             Some(Line::History(count)) => self.history_heading(count, cx),
             Some(Line::Now) => heading(SectionHeading::new(t("queue_now"))).into_any_element(),
             Some(Line::Next(count)) => {
@@ -279,154 +246,61 @@ impl QueueView {
         .into_any_element()
     }
 
-    fn row(&self, index: usize, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn row(&self, index: usize, cx: &mut Context<Self>) -> AnyElement {
         let model = QueueModel::global(cx);
         let queue = model.read(cx);
         let Some(track) = queue.items().get(index) else {
             return div().into_any_element();
         };
         let count = queue.len() as u32;
-        let active = queue.position() == Some(index as u32);
-        let played = queue.position().is_some_and(|at| (index as u32) < at);
-        let title = SharedString::from(track.title.clone());
-        let key = SharedString::from(track.key.clone());
-        let artist = SharedString::from(track.artist.clone());
-        let artwork = track.artwork.clone();
-        let uid = SharedString::from(track.uid.clone());
-        let covers = ConfigModel::global(cx).read(cx).row_images();
         let at = index as u32;
-        let raised = style::white(style::RAISED, cx);
-        let accent = motion::accent(theme::Surface::Sheet, cx.theme().primary, window, cx);
-        let wash_target = if active {
-            accent.opacity(style::PLAYING)
-        } else {
-            cx.theme().transparent
-        };
-        let lit_target = if active {
-            theme::readable_on(accent, cx.theme().background)
-        } else if played {
-            style::white(style::TEXT_MUTED, cx)
-        } else {
-            cx.theme().foreground
-        };
-        let lead_target = if active {
-            theme::readable_on(accent, cx.theme().background)
-        } else {
-            style::white(style::TEXT_SECONDARY, cx)
-        };
-        let wash = motion::color(crate::channel(uid.clone(), "wash"), wash_target, window, cx);
-        let lit = motion::color(crate::channel(uid.clone(), "title"), lit_target, window, cx);
-        let lead = motion::color(crate::channel(uid, "lead"), lead_target, window, cx);
+        let title = SharedString::from(track.title.clone());
+        let zones = ReorderDropZones::new(("queue-drop", index), style::media_row(), index)
+            .split(DROP_SPLIT)
+            .on_drop::<TrackDrag>(move |drag, at, _, cx| {
+                insert_at(at as u32, drag.keys.clone(), cx)
+            })
+            .on_drop::<QueueRowDrag>(move |drag, to, _, cx| {
+                if let Some(to) = move_target(drag.from, to as u32, count) {
+                    let from = drag.from;
+                    QueueModel::global(cx)
+                        .update(cx, move |queue, cx| queue.move_item(from, to, cx));
+                }
+            });
 
-        div()
-            .id(("queue-row", index))
-            .group(ROW_GROUP)
-            .relative()
-            .h(style::media_row())
-            .w_full()
-            .flex()
-            .items_center()
-            .gap_3()
-            .px_2()
-            .rounded(style::radius_lg())
-            .bg(wash)
-            .hover(move |row| row.bg(raised))
-            .on_click(move |_, _, cx| {
-                QueueModel::global(cx).update(cx, |queue, cx| queue.jump(at, cx));
-            })
-            .on_drag(
-                QueueRowDrag {
-                    from: at,
-                    label: title.clone(),
-                },
-                |drag, _, _, cx| {
-                    cx.stop_propagation();
-                    cx.new(|_| drag.clone())
-                },
-            )
-            .child(
-                div()
-                    .relative()
-                    .w(LEAD_WIDTH)
-                    .flex_shrink_0()
-                    .flex()
-                    .justify_center()
-                    .items_end()
-                    .text_xs()
-                    .text_color(lead)
-                    .children(components::lead::lead(
-                        ROW_GROUP,
-                        active,
-                        Some((index + 1).to_string().into()),
-                        lead,
-                    )),
-            )
-            .when(covers, |row| {
-                row.child(track_row::thumb(artwork.as_ref(), 0., window, cx))
-            })
-            .child(
-                v_flex()
-                    .flex_1()
-                    .min_w_0()
-                    .justify_center()
-                    .gap_0p5()
-                    .child(track_row::title(("queue-title", index), title, lit))
-                    .child(
-                        div()
-                            .truncate()
-                            .text_xs()
-                            .text_color(style::white(ROW_SUBTITLE, cx))
-                            .child(artist),
-                    ),
-            )
-            .child(
-                v_flex()
-                    .flex_shrink_0()
-                    .pr_1()
-                    .invisible()
-                    .group_hover(ROW_GROUP, |buttons| buttons.visible())
-                    .child(
-                        reorder_button(("queue-up", index), icons::CHEVRON_UP, cx)
-                            .tooltip(t("move_up"))
-                            .disabled(index == 0)
-                            .on_click(move |_, _, cx| {
-                                cx.stop_propagation();
-                                QueueModel::global(cx).update(cx, |queue, cx| {
-                                    queue.move_item(at, at.saturating_sub(1), cx)
-                                });
-                            }),
-                    )
-                    .child(
-                        reorder_button(("queue-down", index), icons::CHEVRON_DOWN, cx)
-                            .tooltip(t("move_down"))
-                            .disabled(at + 1 >= count)
-                            .on_click(move |_, _, cx| {
-                                cx.stop_propagation();
-                                QueueModel::global(cx)
-                                    .update(cx, |queue, cx| queue.move_item(at, at + 1, cx));
-                            }),
-                    )
-                    .child(
-                        reorder_button(("queue-remove", index), icons::CLOSE, cx)
-                            .tooltip(t("remove"))
-                            .on_click(move |_, _, cx| {
-                                cx.stop_propagation();
-                                store::actions::queue_remove(at, cx);
-                            }),
-                    ),
-            )
-            .child(
-                drop_zone(("queue-drop-before", index), at, count)
-                    .top_0()
-                    .h(DROP_SPLIT),
-            )
-            .child(
-                drop_zone(("queue-drop-after", index), at + 1, count)
-                    .bottom_0()
-                    .h(style::media_row() - DROP_SPLIT),
-            )
-            .context_menu(menus::builder(Target::QueueItem { index: at, key }))
-            .into_any_element()
+        QueueRow::new(
+            index,
+            track.uid.clone(),
+            track.title.clone(),
+            track.artist.clone(),
+        )
+        .cover(
+            track.artwork.clone(),
+            ConfigModel::global(cx).read(cx).row_images(),
+        )
+        .active(queue.position() == Some(at))
+        .played(queue.position().is_some_and(|position| at < position))
+        .last(at + 1 >= count)
+        .menu(Target::QueueItem {
+            index: at,
+            key: SharedString::from(track.key.clone()),
+        })
+        .on_jump(move |_, cx| QueueModel::global(cx).update(cx, |queue, cx| queue.jump(at, cx)))
+        .on_move_up(move |_, cx| {
+            QueueModel::global(cx).update(cx, |queue, cx| {
+                queue.move_item(at, at.saturating_sub(1), cx)
+            });
+        })
+        .on_move_down(move |_, cx| {
+            QueueModel::global(cx).update(cx, |queue, cx| queue.move_item(at, at + 1, cx));
+        })
+        .on_remove(move |_, cx| store::actions::queue_remove(at, cx))
+        .drag(QueueRowDrag {
+            from: at,
+            label: title,
+        })
+        .drop_zones(zones)
+        .into_any_element()
     }
 
     /// "3/57 • 3:41:02", then everything that can be done to the rest of the queue.
@@ -505,8 +379,8 @@ impl Render for QueueView {
                 uniform_list(
                     "queue-list",
                     lines,
-                    cx.processor(move |this, range: std::ops::Range<usize>, window, cx| {
-                        range.map(|slot| this.line(slot, window, cx)).collect()
+                    cx.processor(move |this, range: std::ops::Range<usize>, _, cx| {
+                        range.map(|slot| this.line(slot, cx)).collect()
                     }),
                 )
                 .track_scroll(&self.scroll)

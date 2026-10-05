@@ -1,11 +1,8 @@
 //! The docked column beside the content: the same queue and lyrics the sheet draws, in a narrower slot.
 
 use components::format::t;
-use components::{Edge, EdgeResizer, IconButton, Segment, Segmented, icons, style};
-use gpui_kit::component::{h_flex, v_flex};
-use gpui_kit::{
-    AnyElement, Context, IntoElement, ParentElement as _, Pixels, Styled, Window, div, px,
-};
+use components::{DockPanel, Edge, Segment, Segmented, icons};
+use gpui_kit::{AnyElement, Context, IntoElement, Pixels, Window, div, px};
 use store::layout::SheetTab;
 use store::{Chrome, SidePanel};
 
@@ -15,9 +12,6 @@ use crate::NowPlaying;
 const MIN_WIDTH: Pixels = px(280.);
 const MAX_WIDTH: Pixels = px(600.);
 const DEFAULT_WIDTH: Pixels = px(320.);
-// `bg-black/40`: the column darkens whatever the window paints behind it.
-const SCRIM: f32 = 0.4;
-const CLOSE_GLYPH: Pixels = px(14.);
 
 impl NowPlaying {
     /// What the docked column has been dragged to; the shell sizes the slot it puts it in.
@@ -32,45 +26,31 @@ impl NowPlaying {
             Some(SidePanel::Queue) => SheetTab::Queue,
             _ => return div().into_any_element(),
         };
+        let panel = cx.entity().downgrade();
 
-        v_flex()
-            .relative()
-            .h_full()
-            .w(self.panel_width())
-            .flex_shrink_0()
-            .bg(style::black(SCRIM, cx))
-            .border_l_1()
-            .border_color(style::white(style::BORDER_SOFT, cx))
-            .child(
-                h_flex()
-                    .w_full()
-                    .flex_shrink_0()
-                    .justify_between()
-                    .items_center()
-                    .px_4()
-                    .py_3()
-                    .border_b_1()
-                    .border_color(style::white(style::BORDER, cx))
-                    .child(self.tab_strip(showing, false, cx))
-                    .child(
-                        IconButton::new("panel-close", icons::CLOSE)
-                            .size(style::chrome().round_button)
-                            .glyph(CLOSE_GLYPH)
-                            .tooltip(t("close"))
-                            .on_click(|_, _, cx| {
-                                Chrome::global(cx)
-                                    .update(cx, |chrome, cx| chrome.set_panel(None, cx))
-                            }),
-                    ),
+        DockPanel::new("panel", Edge::Left)
+            .width(self.panel_width())
+            .header(self.tab_strip(showing, false, cx))
+            .body(self.tab_body(showing))
+            .on_close(|_, cx| {
+                Chrome::global(cx).update(cx, |chrome, cx| chrome.set_panel(None, cx))
+            })
+            // The left edge drags the column between 280 and 600 px.
+            .resizable(
+                self.panel_width(),
+                MIN_WIDTH,
+                MAX_WIDTH,
+                move |width, _, cx| {
+                    panel
+                        .update(cx, |this, cx| {
+                            if this.panel_width != Some(width) {
+                                this.panel_width = Some(width);
+                                cx.notify();
+                            }
+                        })
+                        .ok();
+                },
             )
-            .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .w_full()
-                    .child(self.tab_body(showing)),
-            )
-            .child(self.resize_handle(cx))
             .into_any_element()
     }
 
@@ -127,22 +107,5 @@ impl NowPlaying {
                 .map(IntoElement::into_any_element)
                 .unwrap_or_else(|| div().into_any_element()),
         }
-    }
-
-    /// The left edge drags the column between 280 and 600 px.
-    fn resize_handle(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let panel = cx.entity().downgrade();
-        EdgeResizer::new("panel-resize", Edge::Left, self.panel_width())
-            .range(MIN_WIDTH, MAX_WIDTH)
-            .on_resize(move |width, _, cx| {
-                panel
-                    .update(cx, |this, cx| {
-                        if this.panel_width != Some(width) {
-                            this.panel_width = Some(width);
-                            cx.notify();
-                        }
-                    })
-                    .ok();
-            })
     }
 }

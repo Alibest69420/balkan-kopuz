@@ -6,17 +6,14 @@ mod settings;
 use components::focus::{Axis, Roving, Step};
 use components::format::t;
 use components::{
-    Edge, EdgeResizer, EmptyState, IconButton, TrackDrag, icons, menus, motion, style,
+    DockPanel, DockSize, Edge, EmptyState, NavListRow, ReorderDropZones, TrackDrag, icons, style,
 };
 use gpui_kit::base::StyledExt as _;
-use gpui_kit::component::menu::ContextMenuExt as _;
-use gpui_kit::component::{ActiveTheme as _, Icon, h_flex, v_flex};
-use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::component::v_flex;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Div, ElementId, InteractiveElement as _,
-    IntoElement, KeyDownEvent, ParentElement as _, Pixels, Render, SharedString, Stateful,
-    StatefulInteractiveElement as _, Styled, Subscription, UniformListScrollHandle, Window, div,
-    px, uniform_list,
+    AnyElement, App, Context, ElementId, InteractiveElement as _, IntoElement, KeyDownEvent,
+    ParentElement as _, Pixels, Render, SharedString, Styled, Subscription,
+    UniformListScrollHandle, Window, div, px, uniform_list,
 };
 use store::{LayoutModel, Navigator, PlaylistsModel, Route, Target};
 
@@ -29,12 +26,6 @@ const MIN_WIDTH: Pixels = px(180.);
 const MAX_WIDTH: Pixels = px(420.);
 /// A window narrower than this opens with the panel closed.
 pub const NARROW_WINDOW: Pixels = px(1100.);
-
-const GLYPH: Pixels = px(14.);
-const CLOSE_BUTTON: Pixels = px(24.);
-const CLOSE_GLYPH: Pixels = px(12.);
-// `bg-black/40`, the same scrim the other chrome wears.
-const SCRIM: f32 = 0.40;
 
 /// Open the panel, or close it if it is already open; what `ctrl-b` does.
 pub fn toggle(cx: &mut App) {
@@ -219,164 +210,63 @@ impl PlaylistsPanel {
             return div().into_any_element();
         };
         let current = Navigator::global(cx).read(cx).current().clone();
-        let active = current == row.route();
-        let (hovered, pointer) = motion::hovered(
-            ElementId::from((ElementId::from("panel-row-hover"), row.id.clone())),
-            window,
-            cx,
-        );
-        let focused = self.roving.is_active(index, window);
-        let wash = motion::color(
-            ElementId::from((ElementId::from("panel-row"), row.id.clone())),
-            match (active, hovered) {
-                (true, _) => style::white(style::HOVER, cx),
-                (false, true) => style::white(style::RAISED, cx),
-                (false, false) => style::white(0., cx),
-            },
-            window,
-            cx,
-        );
-        let ink = match active || hovered {
-            true => cx.theme().foreground,
-            false => style::slate_400(cx),
-        };
         let id = row.id.to_string();
-        let label = row.name.clone();
-        let target = row.target();
         let route = row.route();
-        h_flex()
-            .id(ElementId::from((
-                ElementId::from("panel-row-row"),
-                row.id.clone(),
-            )))
-            .relative()
-            .w_full()
-            .h(style::list_row())
-            .px_2()
-            .gap_2()
-            .rounded(style::radius_lg())
-            .cursor_pointer()
-            .bg(wash)
-            .text_color(ink)
-            .on_hover(motion::track(pointer))
+        let panel = cx.entity().downgrade();
+        let zones = ReorderDropZones::new(
+            ElementId::from(("panel-drop", index)),
+            style::list_row(),
+            index,
+        )
+        .on_drop::<RowDrag>(move |drag, at, _, cx| {
+            panel.update(cx, |this, cx| this.pin(&drag.id, at, cx)).ok();
+        });
+
+        let item = NavListRow::new("panel-row", row.id.clone(), row.name.clone())
+            .glyph(match row.folder {
+                true => icons::FOLDER,
+                false => icons::LIST,
+            })
+            .detail(row.detail.clone())
+            .active(current == route)
+            .focused(self.roving.is_active(index, window))
+            .menu(row.target())
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.roving.set_cursor(index);
                 Navigator::navigate(route.clone(), cx);
             }))
-            .on_drag(
-                RowDrag {
-                    id: row.id.clone(),
-                    label: label.clone(),
-                },
-                |drag, _, _, cx| cx.new(|_| drag.clone()),
-            )
-            // A track dropped on a playlist joins it; a folder holds playlists, so it takes none.
-            .when(!row.folder, |element| {
-                element
-                    .on_drop::<TrackDrag>(move |drag, _, cx| {
-                        let keys = drag.keys.clone();
-                        let id = id.clone();
-                        PlaylistsModel::global(cx)
-                            .update(cx, move |model, cx| model.add_tracks(id, keys, cx));
-                    })
-                    .drag_over::<TrackDrag>(|style, _, _, cx| style.bg(cx.theme().drop_target))
+            .drag(RowDrag {
+                id: row.id.clone(),
+                label: row.name.clone(),
             })
-            .child(
-                Icon::default()
-                    .path(match row.folder {
-                        true => icons::FOLDER,
-                        false => icons::LIST,
-                    })
-                    .size(GLYPH)
-                    .flex_shrink_0(),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .truncate()
-                    .text_sm()
-                    .child(row.name.clone()),
-            )
-            .child(
-                div()
-                    .flex_shrink_0()
-                    .text_size(style::text_10())
-                    .text_color(style::white(style::TEXT_SUBTLE, cx))
-                    .child(row.detail.clone()),
-            )
-            .when(focused, |element| {
-                element.child(components::focus::ring(style::radius_lg(), cx))
-            })
-            .child(self.slot(index, 0., cx))
-            .child(self.slot(index + 1, 0.5, cx))
-            .context_menu(menus::builder(target))
-            .into_any_element()
-    }
-
-    /// Half a row that takes a dropped row, so a drag lands above or below whatever it is over.
-    fn slot(&self, at: usize, top: f32, cx: &mut Context<Self>) -> Stateful<Div> {
-        div()
-            .id(ElementId::from((
-                "panel-slot",
-                at as u64 + (top * 2.) as u64,
-            )))
-            .absolute()
-            .left_0()
-            .right_0()
-            .top(style::list_row() * top)
-            .h(style::list_row() / 2.)
-            .on_drop::<RowDrag>(cx.listener(move |this, drag: &RowDrag, _, cx| {
-                let id = drag.id.to_string();
-                this.pin(&id, at, cx);
-            }))
-            .drag_over::<RowDrag>(|style, _, _, cx| style.bg(cx.theme().drop_target))
+            .drop_zones(zones);
+        // A track dropped on a playlist joins it; a folder holds playlists, so it takes none.
+        match row.folder {
+            true => item,
+            false => item.accept::<TrackDrag>(move |drag, _, cx| {
+                let (keys, id) = (drag.keys.clone(), id.clone());
+                PlaylistsModel::global(cx)
+                    .update(cx, move |model, cx| model.add_tracks(id, keys, cx));
+            }),
+        }
+        .into_any_element()
     }
 
     fn header(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        h_flex()
-            .w_full()
-            .flex_shrink_0()
-            .justify_between()
-            .items_center()
-            .px_3()
-            .py_2()
-            .border_b_1()
-            .border_color(style::white(style::BORDER_SOFT, cx))
-            .child(
-                div()
-                    .text_xs()
-                    .font_semibold()
-                    .text_color(style::white(style::TEXT_SECONDARY, cx))
-                    .child(t("playlists")),
-            )
-            .child(
-                IconButton::new("panel-playlists-close", icons::CLOSE)
-                    .size(CLOSE_BUTTON)
-                    .glyph(CLOSE_GLYPH)
-                    .tooltip(t("close"))
-                    .on_click(|_, _, cx| toggle(cx)),
-            )
+        div()
+            .text_xs()
+            .font_semibold()
+            .text_color(style::white(style::TEXT_SECONDARY, cx))
+            .child(t("playlists"))
     }
 
     /// The right edge drags the panel between 180 and 420 px.
-    fn resize_handle(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let panel = cx.entity().downgrade();
-        EdgeResizer::new("playlists-panel-resize", Edge::Right, self.width)
-            .range(MIN_WIDTH, MAX_WIDTH)
-            .on_resize(move |width, _, cx| {
-                panel
-                    .update(cx, |this, cx| {
-                        if width != this.width {
-                            this.width = width;
-                            LayoutModel::edit(cx, move |layout| {
-                                layout.panel.width = width.as_f32()
-                            });
-                            cx.notify();
-                        }
-                    })
-                    .ok();
-            })
+    fn on_resize(&mut self, width: Pixels, cx: &mut Context<Self>) {
+        if width != self.width {
+            self.width = width;
+            LayoutModel::edit(cx, move |layout| layout.panel.width = width.as_f32());
+            cx.notify();
+        }
     }
 }
 
@@ -405,18 +295,22 @@ impl Render for PlaylistsPanel {
             .py_1()
             .into_any_element(),
         };
+        let panel = cx.entity().downgrade();
 
         self.roving
             .group(v_flex().id("playlists-panel"), "PlaylistsPanel")
-            .relative()
             .h_full()
             .w_full()
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| this.key(event, cx)))
-            .bg(style::black(SCRIM, cx))
-            .border_r_1()
-            .border_color(style::white(style::BORDER_SOFT, cx))
-            .child(self.header(cx))
-            .child(body)
-            .child(self.resize_handle(cx))
+            .child(
+                DockPanel::new("playlists-panel", Edge::Right)
+                    .size(DockSize::Compact)
+                    .header(self.header(cx))
+                    .body(v_flex().size_full().child(body))
+                    .on_close(|_, cx| toggle(cx))
+                    .resizable(self.width, MIN_WIDTH, MAX_WIDTH, move |width, _, cx| {
+                        panel.update(cx, |this, cx| this.on_resize(width, cx)).ok();
+                    }),
+            )
     }
 }

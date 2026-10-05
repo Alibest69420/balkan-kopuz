@@ -2,25 +2,19 @@
 
 use api::ExternalDevice;
 use components::format::t;
-use components::{icons, motion, style};
+use components::{DeviceRow, icons};
 use gpui_kit::component::popover::Popover;
-use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
-use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::component::{ActiveTheme as _, v_flex};
 use gpui_kit::{
-    Anchor, App, Context, ElementId, Hsla, InteractiveElement as _, IntoElement,
-    ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled, WeakEntity, Window,
-    div, px,
+    Anchor, App, Context, Hsla, IntoElement, ParentElement as _, Styled, WeakEntity, Window, div,
+    px,
 };
 use store::{Chrome, Link, Notices, PlayerModel, SourcesModel};
 
 use crate::NowPlaying;
 use crate::bar::utility;
-use crate::channel;
 
 const PANEL_WIDTH: gpui_kit::Pixels = px(280.);
-// `w-10 h-10 rounded-md` with a `text-sm` glyph: the tile in front of a device's name.
-const ROW_TILE: gpui_kit::Pixels = px(40.);
-const ROW_ICON: gpui_kit::Pixels = px(14.);
 
 /// The active source's id, but only while it has devices of its own and is signed in.
 fn device_source(cx: &App) -> Option<String> {
@@ -57,9 +51,7 @@ impl NowPlaying {
                         .open(open)
                         .on_open_change(changed)
                         .trigger(button)
-                        .content(move |_, window, cx| {
-                            device_list(devices.clone(), owner.clone(), window, cx)
-                        })
+                        .content(move |_, _, cx| device_list(devices.clone(), owner.clone(), cx))
                         .into_any_element()
                 }),
         )
@@ -121,27 +113,27 @@ impl NowPlaying {
 fn device_list(
     devices: Vec<ExternalDevice>,
     owner: WeakEntity<NowPlaying>,
-    window: &mut Window,
     cx: &mut App,
 ) -> impl IntoElement + use<> {
     let chosen = devices
         .iter()
         .find(|device| device.active)
         .map(|device| device.id.clone());
+    let pick = |target: Option<String>| {
+        let owner = owner.clone();
+        move |_: &mut Window, cx: &mut App| {
+            owner
+                .update(cx, |this, cx| this.select_device(target.clone(), cx))
+                .ok();
+        }
+    };
     let rows: Vec<_> = devices
         .iter()
         .map(|device| {
-            device_row(
-                SharedString::from(device.id.clone()).into(),
-                icons::SPEAKER,
-                device.name.clone().into(),
-                (!device.kind.is_empty()).then(|| device.kind.clone().into()),
-                chosen.as_deref() == Some(device.id.as_str()),
-                Some(device.id.clone()),
-                owner.clone(),
-                window,
-                cx,
-            )
+            DeviceRow::new(device.id.clone(), device.name.clone())
+                .subtitle((!device.kind.is_empty()).then(|| device.kind.clone().into()))
+                .chosen(chosen.as_deref() == Some(device.id.as_str()))
+                .on_select(pick(Some(device.id.clone())))
         })
         .collect();
 
@@ -156,109 +148,11 @@ fn device_list(
                 .text_color(cx.theme().muted_foreground)
                 .child(t("external_play_on")),
         )
-        .child(device_row(
-            "external-this-app".into(),
-            icons::MUSIC,
-            t("external_this_app"),
-            None,
-            chosen.is_none(),
-            None,
-            owner,
-            window,
-            cx,
-        ))
+        .child(
+            DeviceRow::new("external-this-app", t("external_this_app"))
+                .glyph(icons::MUSIC)
+                .chosen(chosen.is_none())
+                .on_select(pick(None)),
+        )
         .children(rows)
-}
-
-#[allow(clippy::too_many_arguments)]
-fn device_row(
-    id: ElementId,
-    glyph: &'static str,
-    name: SharedString,
-    subtitle: Option<SharedString>,
-    chosen: bool,
-    target: Option<String>,
-    owner: WeakEntity<NowPlaying>,
-    window: &mut Window,
-    cx: &mut App,
-) -> impl IntoElement + use<> {
-    let accent = cx.theme().primary;
-    let raised = style::white(style::RAISED, cx);
-    let wash_target = if chosen {
-        style::accent(style::PLAYING, cx)
-    } else {
-        cx.theme().transparent
-    };
-    let tile_target = if chosen {
-        style::accent(0.18, cx)
-    } else {
-        style::white(0.06, cx)
-    };
-    let mark_target = if chosen {
-        accent
-    } else {
-        style::white(style::TEXT_SECONDARY, cx)
-    };
-    let name_target = if chosen {
-        accent
-    } else {
-        cx.theme().foreground
-    };
-    let subtitle_target = if chosen {
-        accent.opacity(0.7)
-    } else {
-        style::white(0.5, cx)
-    };
-    let wash = motion::color(channel(id.clone(), "wash"), wash_target, window, cx);
-    let tile = motion::color(channel(id.clone(), "tile"), tile_target, window, cx);
-    let mark = motion::color(channel(id.clone(), "mark"), mark_target, window, cx);
-    let label = motion::color(channel(id.clone(), "label"), name_target, window, cx);
-    let caption = motion::color(channel(id.clone(), "caption"), subtitle_target, window, cx);
-
-    h_flex()
-        .id(id)
-        .w_full()
-        .gap_3()
-        .px_3()
-        .py_2p5()
-        .rounded(style::radius_lg())
-        .cursor_pointer()
-        .bg(wash)
-        .hover(move |row| row.bg(raised))
-        .on_click(move |_, _, cx| {
-            owner
-                .update(cx, |this, cx| this.select_device(target.clone(), cx))
-                .ok();
-        })
-        .child(
-            div()
-                .size(ROW_TILE)
-                .flex_shrink_0()
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(style::thumb_radius())
-                .bg(tile)
-                .child(icons::icon(glyph).size(ROW_ICON).text_color(mark)),
-        )
-        .child(
-            v_flex()
-                .flex_1()
-                .min_w_0()
-                .gap_0p5()
-                .justify_center()
-                .child(div().truncate().text_sm().text_color(label).child(name))
-                .when_some(subtitle, |column, subtitle| {
-                    column.child(
-                        div()
-                            .truncate()
-                            .text_xs()
-                            .text_color(caption)
-                            .child(subtitle),
-                    )
-                }),
-        )
-        .when(chosen, |row| {
-            row.child(icons::icon(icons::VOLUME).size(ROW_ICON).text_color(accent))
-        })
 }

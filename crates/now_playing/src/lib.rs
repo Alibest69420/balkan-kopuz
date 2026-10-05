@@ -17,7 +17,7 @@ mod window;
 use components::volume_control::to_ui;
 use gpui_kit::base::slider::{SliderEvent, SliderState};
 use gpui_kit::{
-    App, AppContext as _, Bounds, Context, ElementId, Entity, Global, IntoElement, Pixels, Render,
+    App, AppContext as _, Bounds, Context, Entity, Global, IntoElement, Pixels, Render,
     Subscription, Task, Window,
 };
 use store::layout::SheetTab;
@@ -207,11 +207,6 @@ fn track_duration_ms(player: &PlayerModel) -> Option<u64> {
     player
         .duration_ms()
         .filter(|total| *total > 0 && *total != u64::MAX)
-}
-
-/// One transition channel of a control, so each tweened value keeps a key of its own.
-fn channel(id: impl Into<ElementId>, name: &'static str) -> ElementId {
-    ElementId::NamedChild(std::sync::Arc::new(id.into()), name.into())
 }
 
 impl Render for NowPlaying {
