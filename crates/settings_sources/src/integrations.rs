@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use api::schema::{FieldSpec, FieldValue};
+use api::schema::FieldValue;
 use api::{ConnectKind, IntegrationInfo, Table};
 use components::format::{t, t_with, text};
 use components::{FieldChanged, SchemaForm, style};
@@ -39,7 +39,6 @@ fn write_settings(
 }
 
 struct IntegrationForm {
-    specs: Vec<FieldSpec>,
     form: Entity<SchemaForm>,
     _subscription: Subscription,
 }
@@ -89,42 +88,21 @@ impl Integrations {
             .retain(|id, _| listed.iter().any(|integration| &integration.id == id));
         for integration in listed {
             let specs = integration.fields.clone();
-            if !self.forms.contains_key(&integration.id) {
+            let held = self.forms.entry(integration.id.clone()).or_insert_with(|| {
                 let form = cx.new(|cx| SchemaForm::new(specs.clone(), window, cx));
                 let id = integration.id.clone();
                 let query = self.query.clone();
                 let subscription = cx.subscribe(&form, move |_, _, event: &FieldChanged, cx| {
                     write_settings(id.clone(), event.0.clone(), query.clone(), cx);
                 });
-                self.forms.insert(
-                    integration.id.clone(),
-                    IntegrationForm {
-                        specs: specs.clone(),
-                        form,
-                        _subscription: subscription,
-                    },
-                );
-            }
-            let Some(held) = self.forms.get_mut(&integration.id) else {
-                continue;
-            };
-            if held.specs != specs {
-                held.specs = specs.clone();
-                held.form
-                    .update(cx, |form, cx| form.set_specs(specs.clone(), window, cx));
-            }
-            // A secret never comes back, so "configured" is the only word on whether one is stored.
-            let saved: Vec<String> = match integration.configured {
-                true => specs
-                    .iter()
-                    .filter(|field| matches!(field.kind, api::schema::FieldKind::Secret))
-                    .map(|field| field.key.clone())
-                    .collect(),
-                false => Vec::new(),
-            };
+                IntegrationForm {
+                    form,
+                    _subscription: subscription,
+                }
+            });
+            let (locked, configured) = (locked.clone(), integration.configured);
             held.form.update(cx, |form, cx| {
-                form.set_locked(locked.clone(), cx);
-                form.set_saved(saved, cx);
+                form.sync(specs, locked, configured, window, cx)
             });
         }
         cx.notify();

@@ -14,6 +14,7 @@ pub mod dialogs;
 pub mod dock_panel;
 pub mod download_toggle;
 pub mod drag;
+pub mod fields;
 pub mod folders;
 pub mod grid;
 pub mod header;
@@ -76,6 +77,7 @@ pub use device_row::DeviceRow;
 pub use dock_panel::{DockPanel, DockSize};
 pub use download_toggle::{DownloadToggle, ToggleSize};
 pub use drag::DragChip;
+pub use fields::{ComboChoice, FieldFrame, PathField, PathKind, RadioGroup, SecretInput};
 pub use folders::{FolderBrowser, FolderList, parent_dir, pick_folders};
 pub use grid::{GridMode, JumpRail, TileGrid, rail_letter};
 pub use header::{

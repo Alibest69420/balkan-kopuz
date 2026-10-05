@@ -1,25 +1,21 @@
 //! Renders the daemon's own `FieldSpec` forms: source options, integrations, artwork providers, the downloader.
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use api::schema::{FieldKind, FieldSpec, FieldValue, Problem};
 use gpui_kit::component::Disableable as _;
-use gpui_kit::component::button::Button;
-use gpui_kit::component::input::{Input, InputContentType, InputEvent, InputState};
-use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
+use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::switch::Switch;
-use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
-use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::component::v_flex;
 use gpui_kit::{
-    AnyElement, AppContext as _, Context, Entity, EventEmitter, InteractiveElement as _,
-    IntoElement, ParentElement as _, PathPromptOptions, Render, SharedString,
-    StatefulInteractiveElement as _, Styled, Subscription, Window, div,
+    AnyElement, App, AppContext as _, Context, Entity, EventEmitter, IntoElement,
+    ParentElement as _, Render, SharedString, Styled, Subscription, Window, div,
 };
 
+use crate::fields::{ComboChoice, FieldFrame, PathField, RadioGroup, SecretInput};
 use crate::folders::{FolderList, pick_folders};
 use crate::format::{t, text};
-use crate::icons;
-use crate::motion;
 use crate::states::FieldProblem;
 use crate::style;
 
@@ -37,11 +33,6 @@ pub struct SchemaForm {
     // Secret keys the daemon already holds a value for, since a secret never comes back to prefill.
     saved: Vec<String>,
     _subscriptions: Vec<Subscription>,
-}
-
-/// Whether a choice's current answer is one the daemon listed.
-fn is_listed(options: &[api::schema::ChoiceOption], value: &str) -> bool {
-    options.iter().any(|option| option.value == value)
 }
 
 impl EventEmitter<FieldChanged> for SchemaForm {}
@@ -110,6 +101,31 @@ impl SchemaForm {
         cx.notify();
     }
 
+    /// Bring the form up to what the daemon last said: rebuilt only when its fields change, so a refetch never swaps an input out from under the caret.
+    pub fn sync(
+        &mut self,
+        specs: Vec<FieldSpec>,
+        locked: Vec<String>,
+        secrets_held: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // A secret never comes back, so the caller says whether any is stored.
+        let saved = match secrets_held {
+            true => specs
+                .iter()
+                .filter(|field| matches!(field.kind, FieldKind::Secret))
+                .map(|field| field.key.clone())
+                .collect(),
+            false => Vec::new(),
+        };
+        if self.specs != specs {
+            self.set_specs(specs, window, cx);
+        }
+        self.set_locked(locked, cx);
+        self.set_saved(saved, cx);
+    }
+
     pub fn set_problems(&mut self, problems: Vec<Problem>, cx: &mut Context<Self>) {
         self.problems = problems;
         cx.notify();
@@ -172,287 +188,97 @@ impl SchemaForm {
             .map(|problem| text(&problem.label))
     }
 
-    /// Take the answer off the listed options and onto whatever the box is about to hold.
-    fn start_custom(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(input) = self.inputs.get(key).cloned() {
-            input.update(cx, |state, cx| state.set_value("", window, cx));
-            input.update(cx, |state, cx| state.focus(window, cx));
-        }
-        self.answer(key, String::new(), cx);
-    }
-
-    /// One option of a radio group: the dot says which, and the whole line is the target.
-    fn radio(
-        &self,
-        key: &str,
-        option: &api::schema::ChoiceOption,
-        chosen: bool,
-        locked: bool,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement + use<> {
-        let accent = cx.theme().primary;
-        let id = SharedString::from(format!("radio-{key}-{}", option.value));
-        let dot = div()
-            .size_3p5()
-            .flex_shrink_0()
-            .rounded_full()
-            .border_1()
-            .border_color(if chosen {
-                accent
-            } else {
-                style::white(style::BORDER, cx)
-            })
-            .when(chosen, |ring| {
-                ring.child(
-                    div()
-                        .size_full()
-                        .p_0p5()
-                        .child(div().size_full().rounded_full().bg(accent)),
-                )
-            });
-        h_flex()
-            .id(id)
-            .gap_2()
-            .items_center()
-            .text_sm()
-            .text_color(style::white(style::TEXT_STRONG, cx))
-            .when(!locked, |row| row.cursor_pointer())
-            .child(dot)
-            .child(text(&option.label))
-            .when(!locked, |row| {
-                row.on_click(cx.listener({
-                    let key = key.to_string();
-                    let value = option.value.clone();
-                    move |this, _, _, cx| this.answer(&key, value.clone(), cx)
-                }))
-            })
-    }
-
-    fn field(
+    /// The control for one field, wired to answer through the form.
+    fn control(
         &self,
         spec: &FieldSpec,
-        window: &mut Window,
+        value: &str,
+        locked: bool,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let locked = self.is_locked(spec);
+    ) -> Option<AnyElement> {
         let key = spec.key.clone();
-        let value = self.values.get(&key).cloned().unwrap_or_default();
-        let control = match &spec.kind {
-            // A note carries no answer: its whole row is the sentence, drawn where the label would be.
-            FieldKind::Note => div().into_any_element(),
+        let form = cx.entity().downgrade();
+        let answer = {
+            let (form, key) = (form.clone(), key.clone());
+            Rc::new(move |value: String, cx: &mut App| {
+                form.update(cx, |form, cx| form.answer(&key, value, cx))
+                    .ok();
+            })
+        };
+        Some(match &spec.kind {
+            FieldKind::Note => return None,
             FieldKind::Toggle => Switch::new(SharedString::from(format!("toggle-{key}")))
                 .checked(value == "true")
                 .disabled(locked)
-                .on_click(cx.listener({
-                    let key = key.clone();
-                    move |this, checked: &bool, _, cx| {
-                        this.answer(&key, checked.to_string(), cx);
-                    }
-                }))
+                .on_click(move |checked: &bool, _, cx| answer(checked.to_string(), cx))
                 .into_any_element(),
-            FieldKind::Directory => h_flex()
-                .gap_2()
-                .children(
-                    self.inputs
-                        .get(&key)
-                        .map(|input| div().flex_1().child(Input::new(input).disabled(locked))),
-                )
-                .child(
-                    Button::new(SharedString::from(format!("browse-{key}")))
-                        .icon(crate::icons::icon(icons::FOLDER))
-                        .disabled(locked)
-                        .on_click(cx.listener({
-                            let key = key.clone();
-                            move |this, _, _, cx| this.pick_directory(key.clone(), cx)
-                        })),
-                )
-                .into_any_element(),
-            FieldKind::Directories => self.folders(&key, &value, locked, cx),
-            FieldKind::Radio { options } => v_flex()
-                .gap_1p5()
-                .children(
-                    options
-                        .iter()
-                        .map(|option| self.radio(&key, option, option.value == value, locked, cx)),
-                )
+            FieldKind::Directory => {
+                let field = PathField::new(format!("browse-{key}"), value.to_string())
+                    .locked(locked)
+                    .on_change(move |path, cx| answer(path, cx));
+                match self.inputs.get(&key) {
+                    Some(input) => field.input(input),
+                    None => field,
+                }
+                .into_any_element()
+            }
+            FieldKind::Directories => self.folders(&key, value, locked, cx),
+            FieldKind::Radio { options } => options
+                .iter()
+                .fold(RadioGroup::new(key.clone(), value), |group, option| {
+                    group.option(option.value.clone(), text(&option.label))
+                })
+                .locked(locked)
+                .on_change(move |value, _, cx| answer(value.to_string(), cx))
                 .into_any_element(),
             FieldKind::Choice { options, custom } => {
-                let typed = *custom && !is_listed(options, &value);
-                let label = options
+                let combo = options
                     .iter()
-                    .find(|option| option.value == value)
-                    .map(|option| text(&option.label))
-                    .unwrap_or_else(|| {
-                        if typed {
-                            t("custom_manual")
-                        } else {
-                            t("choose")
-                        }
+                    .fold(ComboChoice::new(key.clone(), value), |combo, option| {
+                        combo.option(option.value.clone(), text(&option.label))
+                    })
+                    .locked(locked)
+                    .on_pick({
+                        let answer = answer.clone();
+                        move |value, _, cx| answer(value.to_string(), cx)
                     });
-                v_flex()
-                    .gap_2()
-                    .child(
-                        Button::new(SharedString::from(format!("choice-{key}")))
-                            .outline()
-                            .label(label)
-                            .disabled(locked)
-                            .dropdown_menu({
-                                let options = options.clone();
-                                let custom = *custom;
-                                let form = cx.entity().downgrade();
-                                let key = key.clone();
-                                move |mut menu, _, _| {
-                                    for option in &options {
-                                        let value = option.value.clone();
-                                        let form = form.clone();
-                                        let key = key.clone();
-                                        menu = menu.item(
-                                            PopupMenuItem::new(text(&option.label)).on_click(
-                                                move |_, _, cx| {
-                                                    form.update(cx, |form, cx| {
-                                                        form.answer(&key, value.clone(), cx)
-                                                    })
-                                                    .ok();
-                                                },
-                                            ),
-                                        );
-                                    }
-                                    if custom {
-                                        let form = form.clone();
-                                        let key = key.clone();
-                                        menu = menu.item(
-                                            PopupMenuItem::new(t("custom_manual")).on_click(
-                                                move |_, window, cx| {
-                                                    form.update(cx, |form, cx| {
-                                                        form.start_custom(&key, window, cx)
-                                                    })
-                                                    .ok();
-                                                },
-                                            ),
-                                        );
-                                    }
-                                    menu
-                                }
-                            }),
-                    )
-                    .children(
-                        typed
-                            .then(|| self.inputs.get(&key))
-                            .flatten()
-                            .map(|input| Input::new(input).disabled(locked)),
-                    )
-                    .into_any_element()
+                match self.inputs.get(&key).filter(|_| *custom) {
+                    Some(input) => combo.custom(input.clone()).on_custom({
+                        let input = input.clone();
+                        move |window, cx| {
+                            input.update(cx, |state, cx| state.set_value("", window, cx));
+                            input.update(cx, |state, cx| state.focus(window, cx));
+                            answer(String::new(), cx);
+                        }
+                    }),
+                    None => combo,
+                }
+                .into_any_element()
             }
-            FieldKind::Text | FieldKind::Url | FieldKind::Secret => {
-                let secret = matches!(spec.kind, FieldKind::Secret);
-                let held = secret && self.saved.iter().any(|saved| saved == &key);
-                h_flex()
-                    .gap_2()
-                    .items_center()
-                    .children(self.inputs.get(&key).map(|input| {
-                        div().flex_1().min_w_0().child(
-                            Input::new(input).disabled(locked).when(secret, |field| {
-                                field.content_type(InputContentType::Password).mask_toggle()
-                            }),
-                        )
-                    }))
-                    .when(held, |row| {
-                        row.child(
-                            div()
-                                .flex_shrink_0()
-                                .text_size(style::text_10())
-                                .text_color(style::white(style::TEXT_MUTED, cx))
-                                .child(t("secret_saved")),
-                        )
-                    })
-                    .into_any_element()
-            }
-        };
-
-        // `.settings-row` washes to white/5 under the pointer.
-        let (over, pointer) = motion::hovered(motion::id("field-hover", &key), window, cx);
-        let wash = motion::color(
-            motion::id("field-wash", &key),
-            style::white(if over { style::RAISED } else { 0. }, cx),
-            window,
-            cx,
-        );
-        let note = matches!(spec.kind, FieldKind::Note);
-        let sentence = spec
-            .help
-            .as_ref()
-            .map(text)
-            .filter(|help| !help.is_empty())
-            .unwrap_or_else(|| text(&spec.label));
-        v_flex()
-            .id(SharedString::from(format!("field-{key}")))
-            .gap_1()
-            .px_5()
-            .py_2p5()
-            .bg(wash)
-            .on_hover(motion::track(pointer))
-            .when(note, |field| {
-                field.child(
-                    div()
-                        .text_xs()
-                        .text_color(style::white(style::TEXT_SECONDARY, cx))
-                        .child(sentence),
-                )
-            })
-            .when(!note, |field| {
-                field
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .font_weight(gpui_kit::FontWeight::MEDIUM)
-                                    .text_color(style::white(style::TEXT_STRONG, cx))
-                                    .child(text(&spec.label)),
-                            )
-                            .when(locked, |row| {
-                                row.child(
-                                    div()
-                                        .text_size(style::text_10())
-                                        .text_color(style::white(style::TEXT_SUBTLE, cx))
-                                        .child(t("setting_managed_by_system")),
-                                )
-                            }),
-                    )
-                    .child(control)
-                    .when_some(spec.help.as_ref(), |field, help| {
-                        field.child(
-                            div()
-                                .text_xs()
-                                .text_color(style::white(style::TEXT_MUTED, cx))
-                                .child(text(help)),
-                        )
-                    })
-            })
-            .when_some(self.problem_for(&key), |field, problem| {
-                field.child(FieldProblem::new(problem))
-            })
+            FieldKind::Text | FieldKind::Url => match self.inputs.get(&key) {
+                Some(input) => Input::new(input).disabled(locked).into_any_element(),
+                None => div().into_any_element(),
+            },
+            FieldKind::Secret => match self.inputs.get(&key) {
+                Some(input) => SecretInput::new(input)
+                    .saved(self.saved.iter().any(|saved| saved == &key))
+                    .locked(locked)
+                    .into_any_element(),
+                None => div().into_any_element(),
+            },
+        })
     }
 
-    fn pick_directory(&mut self, key: String, cx: &mut Context<Self>) {
-        let paths = cx.prompt_for_paths(PathPromptOptions {
-            files: false,
-            directories: true,
-            multiple: false,
-            prompt: None,
-        });
-        cx.spawn(async move |this, cx| {
-            if let Ok(Ok(Some(paths))) = paths.await
-                && let Some(path) = paths.first()
-            {
-                let value = path.to_string_lossy().to_string();
-                this.update(cx, |this, cx| this.answer(&key, value, cx))
-                    .ok();
-            }
-        })
-        .detach();
+    fn field(&self, spec: &FieldSpec, cx: &mut Context<Self>) -> impl IntoElement {
+        let locked = self.is_locked(spec);
+        let value = self.values.get(&spec.key).cloned().unwrap_or_default();
+        let control = self.control(spec, &value, locked, cx);
+        FieldFrame::new(spec.key.clone(), text(&spec.label))
+            .help(spec.help.as_ref().map(text))
+            .locked(locked)
+            .note(control.is_none())
+            .problem(self.problem_for(&spec.key))
+            .children(control)
     }
 
     /// The folders list, answering with the whole encoded list each time one is added or dropped.
@@ -500,7 +326,7 @@ impl SchemaForm {
 }
 
 impl Render for SchemaForm {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mut section: Option<SharedString> = None;
         let mut rows = Vec::new();
         for spec in self.specs.clone() {
@@ -524,7 +350,7 @@ impl Render for SchemaForm {
                         .into_any_element(),
                 );
             }
-            rows.push(self.field(&spec, window, cx).into_any_element());
+            rows.push(self.field(&spec, cx).into_any_element());
         }
         let form_problems: Vec<SharedString> = self
             .problems

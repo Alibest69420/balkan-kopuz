@@ -29,9 +29,20 @@ pub fn pick_folders(
     cx: &mut App,
     apply: impl FnOnce(Vec<String>, &mut App) + 'static,
 ) {
+    pick_paths(false, true, multiple, cx, apply);
+}
+
+/// Ask the platform for files or folders and hand `apply` whatever was picked.
+pub fn pick_paths(
+    files: bool,
+    directories: bool,
+    multiple: bool,
+    cx: &mut App,
+    apply: impl FnOnce(Vec<String>, &mut App) + 'static,
+) {
     let paths = cx.prompt_for_paths(PathPromptOptions {
-        files: false,
-        directories: true,
+        files,
+        directories,
         multiple,
         prompt: None,
     });

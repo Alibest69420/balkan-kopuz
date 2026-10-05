@@ -6,22 +6,17 @@ use components::format::t;
 use components::settings::{
     Choice, SettingRow, SliderRow, on_slider_change, section, set_slider, slider_state, toggle_row,
 };
-use components::{icons, style};
+use components::{PathField, PathKind};
 use config::{AppConfig, BackBehavior, PlayerBarPosition};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::slider::SliderState;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
-    ParentElement as _, PathPromptOptions, Render, SharedString, Styled, Subscription, Window, div,
-    rems,
+    ParentElement as _, Render, SharedString, Styled, Subscription, Window, div,
 };
 use store::ConfigModel;
 use theme_editor::ThemeEditor;
-
-/// `text-white/50`, the path a file setting shows.
-const PATH: f32 = 0.50;
 
 /// The i18n key each built-in theme is listed under; `kettek16` is a name, not a phrase.
 fn theme_label(id: &str) -> SharedString {
@@ -133,62 +128,15 @@ impl AppearanceSettings {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let locked = ConfigModel::global(cx).read(cx).is_locked(key);
-        let danger = cx.theme().danger;
-        h_flex()
-            .gap_2()
-            .items_center()
-            .when(!path.is_empty(), |row| {
-                row.child(
-                    div()
-                        .max_w(rems(13.75))
-                        .truncate()
-                        .text_xs()
-                        .text_color(style::white(PATH, cx))
-                        .child(SharedString::from(path)),
-                )
-                .child(
-                    Button::new(SharedString::from(format!("{key}-remove")))
-                        .custom(style::soft_button(danger, cx))
-                        .small()
-                        .icon(icons::icon(icons::TRASH))
-                        .label(t("remove"))
-                        .disabled(locked)
-                        .on_click(move |_, _, cx| {
-                            ConfigModel::edit_key(key, cx, |cfg| set_path(cfg, key, String::new()));
-                        }),
-                )
+        PathField::new(key, path)
+            .kind(PathKind::File)
+            .choose(choose)
+            .removable(true)
+            .locked(locked)
+            .on_change(move |value, cx| {
+                ConfigModel::edit_key(key, cx, |cfg| set_path(cfg, key, value))
             })
-            .child(
-                Button::new(SharedString::from(format!("{key}-choose")))
-                    .custom(style::soft_button(cx.theme().foreground, cx))
-                    .small()
-                    .icon(icons::icon(icons::FOLDER))
-                    .label(choose)
-                    .disabled(locked)
-                    .on_click(cx.listener(move |this, _, _, cx| this.pick_file(key, cx))),
-            )
             .into_any_element()
-    }
-
-    fn pick_file(&mut self, key: &'static str, cx: &mut Context<Self>) {
-        let paths = cx.prompt_for_paths(PathPromptOptions {
-            files: true,
-            directories: false,
-            multiple: false,
-            prompt: None,
-        });
-        cx.spawn(async move |this, cx| {
-            if let Ok(Ok(Some(paths))) = paths.await
-                && let Some(path) = paths.first()
-            {
-                let value = path.to_string_lossy().to_string();
-                this.update(cx, |_, cx| {
-                    ConfigModel::edit_key(key, cx, |cfg| set_path(cfg, key, value));
-                })
-                .ok();
-            }
-        })
-        .detach();
     }
 
     fn general(&self, cfg: &AppConfig, cx: &mut Context<Self>) -> Vec<AnyElement> {

@@ -55,7 +55,6 @@ fn form_fields(source: &SourceInfo) -> Vec<FieldSpec> {
 
 /// One source's options, kept in step with the specs the daemon last answered with.
 struct SourceOptions {
-    specs: Vec<FieldSpec>,
     form: Entity<SchemaForm>,
     _subscription: Subscription,
 }
@@ -148,31 +147,15 @@ impl Sources {
                     write_setting(id.clone(), event.0.clone(), cx);
                 });
                 SourceOptions {
-                    specs: specs.clone(),
                     form,
                     _subscription: subscription,
                 }
             });
-            if options.specs != specs {
-                options.specs = specs.clone();
-                options
-                    .form
-                    .update(cx, |form, cx| form.set_specs(specs.clone(), window, cx));
-            }
-            // A secret never comes back from the daemon, so a signed-in source is what says one is held.
-            let saved: Vec<String> = match source.authenticated {
-                true => specs
-                    .iter()
-                    .filter(|field| matches!(field.kind, FieldKind::Secret))
-                    .map(|field| field.key.clone())
-                    .collect(),
-                false => Vec::new(),
-            };
             let locked = locked.clone();
-            options.form.update(cx, |form, cx| {
-                form.set_locked(locked, cx);
-                form.set_saved(saved, cx);
-            });
+            let held = source.authenticated;
+            options
+                .form
+                .update(cx, |form, cx| form.sync(specs, locked, held, window, cx));
         }
         cx.notify();
     }
