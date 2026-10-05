@@ -74,6 +74,7 @@ impl super::FavoritesService {
     /// would have made this one redundant; without a `ctx` the walk is
     /// unattended, reporting no progress and answering to no cancel.
     pub(super) async fn pull(&self, ctx: Option<&JobCtx>, force: bool) -> Result<(), ApiError> {
+        let _walk = self.pulling.lock().await;
         let config = self.session.config_watch().borrow().clone();
         let source: ActiveSource =
             std::sync::Arc::from(server::source::active(self.db.clone(), &config));
@@ -171,8 +172,10 @@ impl super::FavoritesService {
             let _ = source
                 .upsert_favorites_page(&page_refs, start_rank, epoch)
                 .await;
+            // Inside another job (a playlist sync) the count would read as that job's.
             if let Some(ctx) = ctx {
-                ctx.progress("importing favorites", Some(ids.len() as u64), None, None);
+                let done = (ctx.kind() == JobKind::FavoritesSync).then_some(ids.len() as u64);
+                ctx.progress("importing favorites", done, None, None);
             }
             self.bump(Table::Tracks);
             self.bump(Table::Favorites);

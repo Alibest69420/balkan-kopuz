@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use api::{ApiError, ApiEvent, ErrorCode, FavoritesView, JobKind, JobRef, Table};
 use server::sync::{SyncError, SyncReason, reconcile_favorites};
-use tokio::sync::Notify;
+use tokio::sync::{Mutex, Notify};
 
 use crate::jobs::{JobRunner, Trigger};
 use crate::session::SessionHandle;
@@ -34,6 +34,8 @@ pub struct FavoritesService {
     generation: AtomicU64,
     nudge: Notify,
     mutation_nudge: AtomicBool,
+    /// Held for a whole import: two walks would each sweep the rows the other just stamped.
+    pulling: Mutex<()>,
 }
 
 impl FavoritesService {
@@ -44,6 +46,7 @@ impl FavoritesService {
             generation: AtomicU64::new(0),
             nudge: Notify::new(),
             mutation_nudge: AtomicBool::new(false),
+            pulling: Mutex::new(()),
         })
     }
 
@@ -178,6 +181,35 @@ impl FavoritesService {
             }
             reconciled
         })
+    }
+
+    /// A favorites sync run inside another job: push pending likes, then import unless one ran within the interval.
+    pub(crate) async fn refresh(&self, ctx: &crate::jobs::JobCtx) -> Result<(), ApiError> {
+        let config = self.session.config_watch().borrow().clone();
+        ctx.progress("reconciling favorites", None, None, None);
+        let reconciled = self.reconcile(SyncReason::Manual).await;
+        if self.imported_recently(&config).await {
+            return reconciled;
+        }
+        self.pull(Some(ctx), true).await?;
+        reconciled
+    }
+
+    /// Whether the last favorites sync is younger than the sync interval (a day when it is "never").
+    async fn imported_recently(&self, config: &config::AppConfig) -> bool {
+        let window =
+            crate::auto_sync::interval(config).unwrap_or(Duration::from_secs(24 * 60 * 60));
+        let Some(at) =
+            crate::auto_sync::last_synced(&self.db, JobKind::FavoritesSync, &config.active_source)
+                .await
+        else {
+            return false;
+        };
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_secs())
+            .unwrap_or_default();
+        now.saturating_sub(at) < window.as_secs()
     }
 
     async fn reconcile(&self, reason: SyncReason) -> Result<(), ApiError> {
