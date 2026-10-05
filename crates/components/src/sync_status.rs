@@ -57,7 +57,7 @@ impl RenderOnce for SyncStatus {
         let syncing = progress.is_some();
         let done = progress.and_then(|job| job.current).unwrap_or(0) as usize;
         let total = self.total;
-        let remaining = total.saturating_sub(done);
+        let label = store::kind_label(self.kind);
         let refresh = self.on_refresh;
         h_flex()
             .w_full()
@@ -73,15 +73,11 @@ impl RenderOnce for SyncStatus {
                     .items_center()
                     .when(syncing, |row| {
                         row.child(Spinner::new().xsmall().color(cx.theme().primary_hover))
-                            // TODO(i18n): the Dioxus status line is English-only too.
-                            .child(SharedString::from(format!(
-                                "Loading tracks — {done} / {total} playlists ({remaining} left)"
-                            )))
+                            .child(SharedString::from(format!("{label} {done} / {total}")))
                     })
                     .when(!syncing && total > 0, |row| {
                         row.child(icons::icon(icons::CHECK).text_color(cx.theme().success))
-                            // TODO(i18n): the Dioxus status line is English-only too.
-                            .child(SharedString::from(format!("{total} playlists synced")))
+                            .child(SharedString::from(format!("{label} · {total}")))
                     }),
             )
             .child(
