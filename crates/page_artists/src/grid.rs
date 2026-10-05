@@ -1,5 +1,6 @@
 //! The artists grid: every credited name in the library, with the photo the daemon found for it.
 
+use std::collections::HashSet;
 use std::time::Duration;
 
 use api::{AlbumPage, ArtistInfo, ArtistPage, Table};
@@ -22,6 +23,8 @@ const TILE: f32 = 160.;
 const TILE_GAP: gpui_kit::Pixels = px(32.);
 // Until the list has been laid out once there is no measured width to divide.
 const TILE_COLUMNS_FALLBACK: usize = 5;
+// Bands land one after another while a list scrolls; their missing photos travel as one request.
+const PHOTO_BATCH: Duration = Duration::from_millis(150);
 /// `group-hover:scale-110` on the photo.
 const PHOTO_ZOOM: f32 = 1.10;
 /// `duration-500`, slower than anything `widgets::motion` names.
@@ -34,8 +37,10 @@ pub struct Artists {
     scroll: UniformListScrollHandle,
     // Built on change, not per frame: render runs on every playhead tick.
     entries: Vec<ArtistInfo>,
-    // What the last photo request asked for; the answer dirties Tracks, which would ask again forever.
-    asked: Vec<String>,
+    // Every artist a photo was asked for, so the Tracks refresh its answer causes asks nothing again.
+    asked: HashSet<String>,
+    // Shown without a photo and not yet sent, waiting out the batch window.
+    pending: Vec<String>,
     _refresh: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
@@ -67,7 +72,8 @@ impl Artists {
             artists,
             scroll: UniformListScrollHandle::new(),
             entries: Vec::new(),
-            asked: Vec::new(),
+            asked: HashSet::new(),
+            pending: Vec::new(),
             _refresh: None,
             _subscriptions: subscriptions,
         }
@@ -76,27 +82,33 @@ impl Artists {
     fn reread(&mut self, cx: &mut Context<Self>) {
         self.entries = self.build_entries(cx);
         cx.notify();
-        self.request_photos(cx);
     }
 
-    /// Ask the daemon to fill in the photos this grid is missing; it announces what it finds.
-    fn request_photos(&mut self, cx: &mut Context<Self>) {
-        let wanted: Vec<String> = self
-            .entries
+    /// Queue the photos a band on screen lacks; only what is seen is ever looked up, and once.
+    fn want_photos(&mut self, entries: &[ArtistInfo], cx: &mut Context<Self>) {
+        let missing = entries
             .iter()
-            .map(|artist| artist.key.clone())
-            .collect();
-        if wanted.is_empty() || wanted == self.asked {
-            return;
+            .filter(|artist| artist.artwork.is_none())
+            .filter(|artist| self.asked.insert(artist.key.clone()))
+            .map(|artist| artist.key.clone());
+        let before = self.pending.len();
+        self.pending.extend(missing);
+        if before == 0 && !self.pending.is_empty() {
+            self._refresh = Some(cx.spawn(async move |this, cx| {
+                cx.background_executor().timer(PHOTO_BATCH).await;
+                let Ok(wanted) = this.update(cx, |this, _| std::mem::take(&mut this.pending))
+                else {
+                    return;
+                };
+                let call = cx.update(|cx| {
+                    Link::global(cx)
+                        .call(move |api| async move { api.refresh_artist_artwork(wanted).await })
+                });
+                if let Err(error) = call.await {
+                    tracing::debug!(%error, "artist artwork refresh failed");
+                }
+            }));
         }
-        self.asked = wanted.clone();
-        let call = Link::global(cx)
-            .call(move |api| async move { api.refresh_artist_artwork(wanted).await });
-        self._refresh = Some(cx.spawn(async move |_, _| {
-            if let Err(error) = call.await {
-                tracing::debug!(%error, "artist artwork refresh failed");
-            }
-        }));
     }
 
     fn is_settled(&self, cx: &App) -> bool {
@@ -125,6 +137,7 @@ impl Artists {
         let first = index * columns;
         let last = (first + columns).min(self.entries.len());
         let entries = self.entries[first..last].to_vec();
+        self.want_photos(&entries, cx);
         match mode {
             AlbumViewMode::Grid => div()
                 .flex()
