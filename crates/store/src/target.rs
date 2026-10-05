@@ -17,10 +17,7 @@ pub enum Target {
         title: SharedString,
     },
     /// `name` only labels it; the key is what opens and plays it.
-    Artist {
-        key: api::ArtistKey,
-        name: SharedString,
-    },
+    Artist { key: String, name: SharedString },
     Playlist {
         id: SharedString,
         name: SharedString,

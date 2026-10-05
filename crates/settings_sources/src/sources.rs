@@ -1,9 +1,9 @@
-//! Media servers: what is configured, which one is live, and the options the active one publishes.
+//! Every configured source, which one is live, and the options each publishes.
 
 use std::collections::HashMap;
 
-use api::schema::{FieldSpec, FieldValue};
-use api::{ApiEvent, SignInKind, SourceFolderEntry, SourceInfo, SourceState, Table};
+use api::schema::{FieldKind, FieldSpec, FieldValue};
+use api::{SignInKind, SourceFolderEntry, SourceInfo, SourceState, Table};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::spinner::Spinner;
@@ -18,12 +18,12 @@ use store::{ConfigModel, Notices, Query, SourcesModel};
 use widgets::format::{t, t_with, text};
 use widgets::{FieldChanged, SchemaForm, icons};
 
-use crate::add_server::{AddServer, ServerAdded};
-use crate::local::write_directories;
+use crate::add_source::{AddSource, SourceAdded};
+use crate::folders;
 use crate::login::LoginForm;
 use crate::ui;
 
-/// What the active server's row says about the link to it.
+/// What the active source's row says about the link to it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Status {
     Connected,
@@ -57,15 +57,26 @@ fn write_setting(id: String, value: FieldValue, cx: &mut App) {
     .detach();
 }
 
-/// The active server's options, kept in step with the specs the daemon last answered with.
-struct ServerOptions {
-    id: String,
+/// The fields a source's form shows: a folder tree the source browses itself is picked with the browser below it.
+fn form_fields(source: &SourceInfo) -> Vec<FieldSpec> {
+    source
+        .settings
+        .iter()
+        .filter(|field| {
+            !(source.capabilities.browse_folders && matches!(field.kind, FieldKind::Directories))
+        })
+        .cloned()
+        .collect()
+}
+
+/// One source's options, kept in step with the specs the daemon last answered with.
+struct SourceOptions {
     specs: Vec<FieldSpec>,
     form: Entity<SchemaForm>,
     _subscription: Subscription,
 }
 
-/// The in-place folder picker for a server whose library is a directory tree.
+/// The in-place folder picker for a source whose library is a remote directory tree.
 #[derive(Default)]
 struct FolderBrowser {
     open: bool,
@@ -76,25 +87,20 @@ struct FolderBrowser {
     generation: u64,
 }
 
-pub struct MediaServers {
-    options: Option<ServerOptions>,
+pub struct Sources {
+    options: HashMap<String, SourceOptions>,
     browser: FolderBrowser,
-    statuses: HashMap<String, SourceState>,
     switching: Option<String>,
-    // The server the probe last ran for, so a redraw does not re-probe it.
-    probed: Option<String>,
-    probing: Option<String>,
     host_access: Entity<Query<bool>>,
-    add: Entity<AddServer>,
+    add: Entity<AddSource>,
     login: Entity<LoginForm>,
     _subscriptions: Vec<Subscription>,
 }
 
-impl MediaServers {
+impl Sources {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let sources = SourcesModel::global(cx);
         let config = ConfigModel::global(cx);
-        let connection = Link::connection(cx);
         let host_access = cx.new(|cx| {
             Query::new(
                 &[Table::Servers],
@@ -102,7 +108,7 @@ impl MediaServers {
                 cx,
             )
         });
-        let add = cx.new(|cx| AddServer::new(window, cx));
+        let add = cx.new(|cx| AddSource::new(window, cx));
         let login = cx.new(|cx| LoginForm::new(window, cx));
         let subscriptions = vec![
             cx.observe_in(&sources, window, |this, _, window, cx| {
@@ -117,25 +123,15 @@ impl MediaServers {
                     .update(cx, |add, cx| add.set_host_access(allowed, cx));
                 cx.notify();
             }),
-            // The daemon reports a source going offline; the active row is what shows it.
-            cx.subscribe(&connection, |this, _, event: &ApiEvent, cx| {
-                if let ApiEvent::SourceStatus { source, state } = event {
-                    this.statuses.insert(source.clone(), *state);
-                    cx.notify();
-                }
-            }),
-            cx.subscribe_in(&add, window, |this, _, added: &ServerAdded, window, cx| {
+            cx.subscribe_in(&add, window, |this, _, added: &SourceAdded, window, cx| {
                 this.activate(added.0.clone(), window, cx)
             }),
         ];
         // The sources may already be loaded, in which case no observer would ever fire.
         cx.defer_in(window, |this, window, cx| this.sync_options(window, cx));
         Self {
-            options: None,
+            options: HashMap::new(),
             browser: FolderBrowser::default(),
-            statuses: HashMap::new(),
-            probed: None,
-            probing: None,
             switching: None,
             host_access,
             add,
@@ -144,72 +140,54 @@ impl MediaServers {
         }
     }
 
-    fn servers(cx: &App) -> Vec<SourceInfo> {
-        SourcesModel::global(cx)
-            .read(cx)
-            .sources()
-            .iter()
-            .filter(|source| source.service.is_some())
-            .cloned()
-            .collect()
-    }
-
-    fn active(cx: &App) -> Option<SourceInfo> {
-        SourcesModel::global(cx)
-            .read(cx)
-            .active()
-            .filter(|source| source.service.is_some())
-            .cloned()
+    fn sources(cx: &App) -> Vec<SourceInfo> {
+        SourcesModel::global(cx).read(cx).sources().to_vec()
     }
 
     fn host_access(&self, cx: &App) -> bool {
         self.host_access.read(cx).value().copied().unwrap_or(true)
     }
 
-    /// Keep one form over the active server's options, rebuilt only when the daemon's fields change.
+    /// Keep one form per source over its options, rebuilt only when the daemon's fields change.
     fn sync_options(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.probe_active(window, cx);
         let locked = ConfigModel::global(cx).read(cx).locked_keys().to_vec();
-        let active = Self::active(cx).filter(|source| !source.settings.is_empty());
-        let Some(source) = active else {
-            self.options = None;
-            cx.notify();
-            return;
-        };
-        let specs = source.settings.clone();
-        let same = self
-            .options
-            .as_ref()
-            .is_some_and(|options| options.id == source.id);
-        if !same {
-            let form = cx.new(|cx| SchemaForm::new(specs.clone(), window, cx));
-            let id = source.id.clone();
-            let subscription = cx.subscribe(&form, move |_, _, event: &FieldChanged, cx| {
-                write_setting(id.clone(), event.0.clone(), cx);
+        let sources = Self::sources(cx);
+        self.options
+            .retain(|id, _| sources.iter().any(|source| &source.id == id));
+        for source in sources {
+            let specs = form_fields(&source);
+            if specs.is_empty() {
+                self.options.remove(&source.id);
+                continue;
+            }
+            let options = self.options.entry(source.id.clone()).or_insert_with(|| {
+                let form = cx.new(|cx| SchemaForm::new(specs.clone(), window, cx));
+                let id = source.id.clone();
+                let subscription = cx.subscribe(&form, move |_, _, event: &FieldChanged, cx| {
+                    write_setting(id.clone(), event.0.clone(), cx);
+                });
+                SourceOptions {
+                    specs: specs.clone(),
+                    form,
+                    _subscription: subscription,
+                }
             });
-            self.options = Some(ServerOptions {
-                id: source.id.clone(),
-                specs: specs.clone(),
-                form,
-                _subscription: subscription,
-            });
-        }
-        // A secret never comes back from the daemon, so a signed-in source is what says one is held.
-        let saved: Vec<String> = match source.authenticated {
-            true => specs
-                .iter()
-                .filter(|field| matches!(field.kind, api::schema::FieldKind::Secret))
-                .map(|field| field.key.clone())
-                .collect(),
-            false => Vec::new(),
-        };
-        if let Some(options) = self.options.as_mut() {
             if options.specs != specs {
                 options.specs = specs.clone();
                 options
                     .form
-                    .update(cx, |form, cx| form.set_specs(specs, window, cx));
+                    .update(cx, |form, cx| form.set_specs(specs.clone(), window, cx));
             }
+            // A secret never comes back from the daemon, so a signed-in source is what says one is held.
+            let saved: Vec<String> = match source.authenticated {
+                true => specs
+                    .iter()
+                    .filter(|field| matches!(field.kind, FieldKind::Secret))
+                    .map(|field| field.key.clone())
+                    .collect(),
+                false => Vec::new(),
+            };
+            let locked = locked.clone();
             options.form.update(cx, |form, cx| {
                 form.set_locked(locked, cx);
                 form.set_saved(saved, cx);
@@ -218,62 +196,19 @@ impl MediaServers {
         cx.notify();
     }
 
+    /// The daemon probes the active source and reports on the row; a switch in flight reads as connecting.
     fn status(&self, source: &SourceInfo) -> Status {
-        if self.switching.as_deref() == Some(source.id.as_str())
-            || self.probing.as_deref() == Some(source.id.as_str())
-        {
+        if self.switching.as_deref() == Some(source.id.as_str()) {
             return Status::Connecting;
         }
-        match self.statuses.get(&source.id) {
+        match source.state {
             Some(SourceState::Online) => Status::Connected,
-            Some(_) => Status::Disconnected,
-            // Stored credentials say a sign-in once worked, not that the server answers now.
-            None => Status::Connecting,
+            Some(SourceState::AuthExpired | SourceState::Offline) => Status::Disconnected,
+            Some(SourceState::Checking) | None => Status::Connecting,
         }
     }
 
-    /// Probe the active server the way the daemon is asked to on a switch, since nothing else
-    /// reports a server that was already unreachable when the page opened.
-    fn probe_active(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(source) = Self::active(cx) else {
-            self.probed = None;
-            self.probing = None;
-            return;
-        };
-        if self.probed.as_deref() == Some(source.id.as_str()) {
-            return;
-        }
-        tracing::info!(
-            id = %source.id,
-            service = ?source.service.as_ref().map(|service| service.id.clone()),
-            authenticated = source.authenticated,
-            anonymous = source.anonymous,
-            sign_in = ?source.sign_in,
-            reauth = ?source.reauth,
-            "active server"
-        );
-        self.probed = Some(source.id.clone());
-        self.probing = Some(source.id.clone());
-        cx.notify();
-        let id = source.id.clone();
-        let call = Link::global(cx).call(move |api| async move { api.validate_source(id).await });
-        cx.spawn_in(window, async move |this, cx| {
-            let state = call.await;
-            this.update(cx, |this, cx| {
-                if this.probing.as_deref() == Some(source.id.as_str()) {
-                    this.probing = None;
-                }
-                // A probe that could not be made is not a server that answered.
-                this.statuses
-                    .insert(source.id.clone(), state.unwrap_or(SourceState::Offline));
-                cx.notify();
-            })
-            .ok();
-        })
-        .detach();
-    }
-
-    /// Make a server active, then pick up whichever sign-in the daemon says it still needs.
+    /// Make a source active, then pick up whichever sign-in the daemon says it still needs.
     fn activate(&mut self, id: String, window: &mut Window, cx: &mut Context<Self>) {
         self.switching = Some(id.clone());
         cx.notify();
@@ -313,18 +248,9 @@ impl MediaServers {
         }
     }
 
-    /// Signing in again on a server already active. `sign_in` reads None once a source holds any
+    /// Signing in again on a source already active. `sign_in` reads None once a source holds any
     /// credentials, so asking it here offered a password box for a service that has no password.
     fn sign_in_again(&mut self, source: &SourceInfo, window: &mut Window, cx: &mut Context<Self>) {
-        tracing::info!(
-            id = %source.id,
-            service = ?source.service.as_ref().map(|service| service.id.clone()),
-            authenticated = source.authenticated,
-            anonymous = source.anonymous,
-            sign_in = ?source.sign_in,
-            reauth = ?source.reauth,
-            "sign-in again"
-        );
         match source.reauth {
             SignInKind::Browser => self.authenticate(source.id.clone(), cx),
             _ => self.open_login(source, window, cx),
@@ -337,11 +263,7 @@ impl MediaServers {
     }
 
     fn open_login(&mut self, source: &SourceInfo, window: &mut Window, cx: &mut Context<Self>) {
-        let service = source
-            .service
-            .as_ref()
-            .map(|service| text(&service.name))
-            .unwrap_or_else(|| SharedString::from(source.name.clone()));
+        let service = text(&source.service.name);
         self.login.update(cx, |form, cx| {
             form.reset(source.id.clone(), service, window, cx)
         });
@@ -371,7 +293,7 @@ impl MediaServers {
         let form = self.add.clone();
         window.open_dialog(cx, move |dialog, _, _| {
             dialog
-                .title(t("add_media_server"))
+                .title(t("add_source"))
                 .w(ui::dialog_width())
                 // Enter saves the draft rather than throwing it away.
                 .on_ok({
@@ -381,7 +303,7 @@ impl MediaServers {
                         false
                     }
                 })
-                // A click outside should not discard a half-filled server definition.
+                // A click outside should not discard a half-filled source definition.
                 .overlay_closable(false)
                 .child(form.clone())
                 .footer(div())
@@ -389,7 +311,7 @@ impl MediaServers {
     }
 
     fn delete(&mut self, id: String, cx: &mut Context<Self>) {
-        let call = Link::global(cx).call(move |api| async move { api.delete_server(id).await });
+        let call = Link::global(cx).call(move |api| async move { api.delete_source(id).await });
         cx.spawn(async move |_, cx| match call.await {
             Ok(()) => {
                 cx.update(|cx| {
@@ -470,7 +392,7 @@ impl MediaServers {
             .when(status == Status::Disconnected && !waiting, |row| {
                 let source = source.clone();
                 row.child(
-                    Button::new("server-login")
+                    Button::new("source-login")
                         .custom(ui::soft(cx))
                         .xsmall()
                         .label(t("login"))
@@ -482,9 +404,10 @@ impl MediaServers {
             .into_any_element()
     }
 
-    fn folders(&self, source: &SourceInfo, cx: &mut Context<Self>) -> AnyElement {
+    /// A remote folder tree's chosen folders, and the browser that adds to them.
+    fn remote_folders(&self, source: &SourceInfo, cx: &mut Context<Self>) -> AnyElement {
         let id = source.id.clone();
-        let folders = source.directories.clone();
+        let chosen = folders::of(source);
         let path = if self.browser.path.is_empty() {
             "/".to_string()
         } else {
@@ -498,10 +421,10 @@ impl MediaServers {
             .border_t_1()
             .border_color(cx.theme().border)
             .child(ui::hint(t("remote_music_folders"), cx))
-            .when(folders.is_empty(), |column| {
+            .when(chosen.is_empty(), |column| {
                 column.child(ui::empty(t("no_music_folders"), cx))
             })
-            .children(folders.iter().map(|folder| {
+            .children(chosen.iter().map(|folder| {
                 let folder = folder.clone();
                 ui::folder_row(
                     SharedString::from(format!("remote-{id}-{folder}")),
@@ -509,14 +432,14 @@ impl MediaServers {
                     false,
                     cx.listener({
                         let id = id.clone();
-                        let folders = folders.clone();
+                        let chosen = chosen.clone();
                         move |_: &mut Self, _, _, cx| {
-                            let kept: Vec<String> = folders
+                            let kept: Vec<String> = chosen
                                 .iter()
                                 .filter(|held| held.as_str() != folder.as_str())
                                 .cloned()
                                 .collect();
-                            write_directories(id.clone(), kept, cx);
+                            folders::write(id.clone(), kept, cx);
                         }
                     }),
                     cx,
@@ -524,7 +447,7 @@ impl MediaServers {
             }))
             .map(|column| {
                 if self.browser.open {
-                    column.child(self.browser_panel(&id, &path, &folders, cx))
+                    column.child(self.browser_panel(&id, &path, &chosen, cx))
                 } else {
                     column.child(ui::add_folder_button(
                         "remote-add-folder",
@@ -546,7 +469,7 @@ impl MediaServers {
         &self,
         id: &str,
         path: &str,
-        folders: &[String],
+        chosen: &[String],
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let owned_id = id.to_string();
@@ -618,13 +541,13 @@ impl MediaServers {
                             .on_click(cx.listener({
                                 let id = owned_id.clone();
                                 let path = owned_path.clone();
-                                let folders = folders.to_vec();
+                                let chosen = chosen.to_vec();
                                 move |this: &mut Self, _, _, cx| {
-                                    let mut kept = folders.clone();
+                                    let mut kept = chosen.clone();
                                     if !kept.contains(&path) {
                                         kept.push(path.clone());
                                     }
-                                    write_directories(id.clone(), kept, cx);
+                                    folders::write(id.clone(), kept, cx);
                                     this.browser.open = false;
                                     cx.notify();
                                 }
@@ -644,25 +567,17 @@ impl MediaServers {
             .into_any_element()
     }
 
-    fn server(
+    fn source(
         &self,
         source: &SourceInfo,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let id = source.id.clone();
-        let service = source
-            .service
-            .as_ref()
-            .map(|service| text(&service.name))
-            .unwrap_or_default();
+        let service = text(&source.service.name);
         let detail = source.detail.clone().unwrap_or_default();
         let host_access = self.host_access(cx);
-        let browse_folders = SourcesModel::global(cx)
-            .read(cx)
-            .capabilities()
-            .browse_folders;
-        let picker = source.active && browse_folders && source.authenticated;
+        let picker = source.active && source.capabilities.browse_folders && source.authenticated;
         let needs_host = source.capabilities.browser_playback && !host_access;
 
         ui::hover_row(&id, window, cx)
@@ -693,7 +608,7 @@ impl MediaServers {
                             .when(!detail.is_empty(), |column| {
                                 column.child(ui::hint(SharedString::from(detail.clone()), cx))
                             })
-                            .when(source.active, |column| {
+                            .when(source.active && source.needs_network, |column| {
                                 column.child(self.status_line(source, cx))
                             }),
                     )
@@ -715,35 +630,38 @@ impl MediaServers {
                                         })),
                                 )
                             })
-                            .child(
-                                Button::new(SharedString::from(format!("delete-{id}")))
-                                    .custom(ui::danger_text(cx))
-                                    .small()
-                                    .label(t("delete"))
-                                    .on_click(cx.listener({
-                                        let id = id.clone();
-                                        let name = SharedString::from(source.name.clone());
-                                        // This takes the server's stored sign-in with it.
-                                        move |_: &mut Self, _, window, cx| {
+                            .when(!source.permanent, |row| {
+                                row.child(
+                                    Button::new(SharedString::from(format!("delete-{id}")))
+                                        .custom(ui::danger_text(cx))
+                                        .small()
+                                        .label(t("delete"))
+                                        .on_click(cx.listener({
                                             let id = id.clone();
-                                            let entity = cx.entity();
-                                            widgets::dialogs::confirm_delete(
-                                                t("delete"),
-                                                name.clone(),
-                                                move |_, cx| {
-                                                    let id = id.clone();
-                                                    entity
-                                                        .update(cx, |this, cx| this.delete(id, cx));
-                                                },
-                                                window,
-                                                cx,
-                                            );
-                                        }
-                                    })),
-                            ),
+                                            let name = SharedString::from(source.name.clone());
+                                            // This takes the source's stored sign-in and library with it.
+                                            move |_: &mut Self, _, window, cx| {
+                                                let id = id.clone();
+                                                let entity = cx.entity();
+                                                widgets::dialogs::confirm_delete(
+                                                    t("delete"),
+                                                    name.clone(),
+                                                    move |_, cx| {
+                                                        let id = id.clone();
+                                                        entity.update(cx, |this, cx| {
+                                                            this.delete(id, cx)
+                                                        });
+                                                    },
+                                                    window,
+                                                    cx,
+                                                );
+                                            }
+                                        })),
+                                )
+                            }),
                     ),
             )
-            .when(picker, |row| row.child(self.folders(source, cx)))
+            .when(picker, |row| row.child(self.remote_folders(source, cx)))
             .when(needs_host, |row| {
                 row.child(ui::host_access_warning(
                     SharedString::from(format!("host-access-{id}")),
@@ -751,39 +669,37 @@ impl MediaServers {
                     cx,
                 ))
             })
-            .when(source.active, |row| {
-                row.children(self.options.as_ref().map(|options| {
-                    v_flex()
-                        .w_full()
-                        .pt_2()
-                        .border_t_1()
-                        .border_color(cx.theme().border)
-                        .child(options.form.clone())
-                }))
-            })
+            .children(self.options.get(&source.id).map(|options| {
+                v_flex()
+                    .w_full()
+                    .pt_2()
+                    .border_t_1()
+                    .border_color(cx.theme().border)
+                    .child(options.form.clone())
+            }))
             .into_any_element()
     }
 }
 
-impl Render for MediaServers {
+impl Render for Sources {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let servers = Self::servers(cx);
-        let rows: Vec<_> = servers
+        let sources = Self::sources(cx);
+        let rows: Vec<_> = sources
             .iter()
-            .map(|source| self.server(source, window, cx))
+            .map(|source| self.source(source, window, cx))
             .collect();
-        ui::section(t("media_servers")).opaque().child(
+        ui::section(t("sources")).opaque().child(
             ui::card(cx)
-                .when(servers.is_empty(), |card| {
+                .when(sources.is_empty(), |card| {
                     card.child(ui::empty(t("no_saved_servers"), cx))
                 })
                 .children(rows)
                 .child(
-                    Button::new("add-server")
+                    Button::new("add-source")
                         .custom(ui::soft(cx))
                         .small()
                         .icon(icons::icon(icons::PLUS))
-                        .label(t("add_server"))
+                        .label(t("add_source"))
                         .on_click(cx.listener(|this, _, window, cx| this.open_add(window, cx)))
                         .self_start(),
                 ),

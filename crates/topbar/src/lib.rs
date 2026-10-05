@@ -11,7 +11,7 @@ use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AnyView, App, AppContext as _, Context, ElementId, Entity, FocusHandle, Hsla,
+    AnyElement, AnyView, App, Context, ElementId, Entity, FocusHandle, Hsla,
     InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent,
     NavigationDirection, ParentElement as _, Pixels, Render, SharedString,
     StatefulInteractiveElement as _, Styled, Subscription, Window, div, px, rems,
@@ -24,7 +24,7 @@ use widgets::{icons, motion, style};
 
 pub use bounds::{remember as remember_bounds, saved_bounds};
 pub use settings::register as register_settings;
-pub use switcher::{SourceProbe, SourceSwitcher, Status};
+pub use switcher::{SourceSwitcher, Status, status};
 
 /// Below this the tab labels go, leaving the glyphs.
 pub const COMPACT_BELOW: Pixels = px(700.);
@@ -75,7 +75,6 @@ pub struct TopBar {
     destinations: Vec<&'static str>,
     position: NavPosition,
     activity: Option<AnyView>,
-    probe: gpui_kit::Entity<SourceProbe>,
     tabs: Roving,
     search_focus: FocusHandle,
     hovered: Option<&'static str>,
@@ -87,7 +86,6 @@ pub struct TopBar {
 
 impl TopBar {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let probe = cx.new(SourceProbe::new);
         let layout = LayoutModel::global(cx);
         let subscriptions = vec![
             // Derived here rather than in render: the bar redraws on every notify in the app.
@@ -98,7 +96,6 @@ impl TopBar {
             cx.observe(&Navigator::global(cx), |_, _, cx| cx.notify()),
             cx.observe(&ConfigModel::global(cx), |_, _, cx| cx.notify()),
             cx.observe(&SourcesModel::global(cx), |_, _, cx| cx.notify()),
-            cx.observe(&probe, |_, _, cx| cx.notify()),
             cx.observe_window_bounds(window, |this, window, cx| {
                 bounds::remember(window, cx);
                 let compact = window.viewport_size().width < COMPACT_BELOW;
@@ -112,7 +109,6 @@ impl TopBar {
             destinations: Vec::new(),
             position: NavPosition::Top,
             activity: None,
-            probe,
             tabs: Roving::new(Axis::Row, cx),
             search_focus: widgets::focus::stop_handle(cx),
             hovered: None,
@@ -437,7 +433,7 @@ impl TopBar {
 
     fn cluster(&self, cx: &mut Context<Self>) -> AnyElement {
         let sources = SourcesModel::global(cx).read(cx).sources().to_vec();
-        let status = self.probe.read(cx).status();
+        let status = switcher::status(cx);
         let compact = self.compact && self.position == NavPosition::Top;
         h_flex()
             .gap_1()

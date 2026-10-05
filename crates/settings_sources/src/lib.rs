@@ -1,11 +1,11 @@
-//! The Library and Connectivity settings: local libraries, radio registries, media servers, integrations.
+//! The Library and Connectivity settings: sources, radio registries, integrations.
 
-pub mod add_server;
+pub mod add_source;
+pub mod folders;
 mod integrations;
-pub mod local;
 mod login;
 mod registries;
-mod servers;
+mod sources;
 pub mod ui;
 
 use gpui_kit::component::v_flex;
@@ -16,9 +16,8 @@ use gpui_kit::{
 };
 
 use integrations::Integrations;
-use local::LocalLibraries;
 use registries::RadioRegistries;
-use servers::MediaServers;
+use sources::Sources;
 
 /// Let a source switched from anywhere — the sidebar included — open the password form.
 ///
@@ -29,9 +28,8 @@ pub fn register(cx: &mut gpui_kit::App) {
 }
 
 pub struct SourceSettings {
-    local: Entity<LocalLibraries>,
+    sources: Entity<Sources>,
     registries: Entity<RadioRegistries>,
-    servers: Entity<MediaServers>,
     integrations: Entity<Integrations>,
     section: Option<SharedString>,
 }
@@ -39,9 +37,8 @@ pub struct SourceSettings {
 impl SourceSettings {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
-            local: cx.new(|cx| LocalLibraries::new(window, cx)),
+            sources: cx.new(|cx| Sources::new(window, cx)),
             registries: cx.new(|cx| RadioRegistries::new(window, cx)),
-            servers: cx.new(|cx| MediaServers::new(window, cx)),
             integrations: cx.new(|cx| Integrations::new(window, cx)),
             section: None,
         }
@@ -69,13 +66,10 @@ impl Render for SourceSettings {
             .gap_4()
             .pb_4()
             .when(self.shows("library"), |panel| {
-                panel.child(self.local.clone())
+                panel.child(self.sources.clone())
             })
             .when(self.shows("library"), |panel| {
                 panel.child(self.registries.clone())
-            })
-            .when(self.shows("library"), |panel| {
-                panel.child(self.servers.clone())
             })
             .when(self.shows("connectivity"), |panel| {
                 panel.child(self.integrations.clone())

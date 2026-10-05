@@ -1,4 +1,6 @@
-use api::{SourceCapabilities, SourceInfo, Table};
+use std::collections::HashMap;
+
+use api::{ApiEvent, SourceCapabilities, SourceInfo, SourceState, Table};
 use gpui_kit::{App, Context, Entity, Subscription, Task, Window};
 use link::Link;
 
@@ -9,9 +11,11 @@ use crate::notices::Notices;
 /// Configured sources and the active one's capabilities, which gate every affordance.
 pub struct SourcesModel {
     sources: Vec<SourceInfo>,
+    /// The daemon's latest probe answers, laid over each fetch: a fetch that left before an answer carries the older one.
+    heard: HashMap<String, SourceState>,
     loaded: bool,
     _fetch: Option<Task<()>>,
-    _subscription: Subscription,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl SourcesModel {
@@ -21,16 +25,33 @@ impl SourcesModel {
 
     pub(crate) fn new(cx: &mut Context<Self>) -> Self {
         let invalidation = Invalidation::global(cx);
-        let subscription = cx.subscribe(&invalidation, |this, _, event: &TablesChanged, cx| {
-            if event.touches(&[Table::Servers]) {
-                this.refetch(cx);
-            }
-        });
+        let subscriptions = vec![
+            cx.subscribe(&invalidation, |this, _, event: &TablesChanged, cx| {
+                if event.touches(&[Table::Servers]) {
+                    this.refetch(cx);
+                }
+            }),
+            cx.subscribe(&Link::connection(cx), |this, _, event: &ApiEvent, cx| {
+                match event {
+                    ApiEvent::SourceStatus { source, state } => {
+                        this.heard.insert(source.clone(), *state);
+                        if let Some(row) = this.sources.iter_mut().find(|row| &row.id == source) {
+                            row.state = Some(*state);
+                            crate::notify(cx);
+                        }
+                    }
+                    // Answers may have been lost; the refetch the resync starts is trusted over them.
+                    ApiEvent::Resync => this.heard.clear(),
+                    _ => {}
+                }
+            }),
+        ];
         Self {
             sources: Vec::new(),
+            heard: HashMap::new(),
             loaded: false,
             _fetch: None,
-            _subscription: subscription,
+            _subscriptions: subscriptions,
         }
     }
 
@@ -42,8 +63,13 @@ impl SourcesModel {
         }));
     }
 
-    fn adopt(&mut self, sources: Vec<SourceInfo>, cx: &mut Context<Self>) {
+    fn adopt(&mut self, mut sources: Vec<SourceInfo>, cx: &mut Context<Self>) {
         let before = self.active().map(|source| source.id.clone());
+        for row in &mut sources {
+            if let Some(state) = self.heard.get(&row.id) {
+                row.state = Some(*state);
+            }
+        }
         self.sources = sources;
         let after = self.active().map(|source| source.id.clone());
         let switched = self.loaded && before != after;

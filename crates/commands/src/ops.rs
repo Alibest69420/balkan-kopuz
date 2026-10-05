@@ -132,7 +132,7 @@ pub fn with_album_keys(
 }
 
 pub fn with_artist_keys(
-    artist: api::ArtistKey,
+    artist: String,
     cx: &mut App,
     then: impl FnOnce(Vec<String>, &mut App) + 'static,
 ) {

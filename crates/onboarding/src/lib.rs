@@ -1,6 +1,5 @@
-//! First run: pick a source, configure it with the settings page's own forms, watch the first sync.
+//! First run: add a source with the settings page's own form, then watch the daemon fill it.
 
-mod configure;
 mod pick;
 mod sync;
 mod ui;
@@ -14,31 +13,22 @@ use gpui_kit::{
     ParentElement as _, Render, ScrollHandle, StatefulInteractiveElement as _, Styled,
     Subscription, Window, div, px,
 };
-use settings_sources::add_server::{AddServer, ServerAdded};
+use settings_sources::add_source::{AddSource, SourceAdded};
 use store::{JobEvent, JobsModel, LayoutModel, Navigator, Query, Route, SourcesModel};
 use widgets::format::t;
 use widgets::{icons, style};
 
-/// Which kind of source the first step chose.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Kind {
-    Local,
-    Server,
-    Streaming,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Step {
     Pick,
-    Configure(Kind),
     Sync,
 }
 
 impl Step {
+    /// The rail's middle pip is the add form, which is a dialog over the first step.
     fn index(self) -> usize {
         match self {
             Step::Pick => 0,
-            Step::Configure(_) => 1,
             Step::Sync => 2,
         }
     }
@@ -47,14 +37,12 @@ impl Step {
 /// The guide the shell draws instead of a Home made of empty shelves.
 pub struct FirstRun {
     step: Step,
-    /// The source this run configured, so a stale active one never starts its job.
+    /// The source this run added, so a finish is only ever about it.
     target: Option<String>,
-    job: Option<JobKind>,
     finished: bool,
     albums: Entity<Query<AlbumPage>>,
     services: Entity<Query<Vec<ServiceInfo>>>,
-    host_access: Entity<Query<bool>>,
-    add: Entity<AddServer>,
+    add: Entity<AddSource>,
     scroll: ScrollHandle,
     _subscriptions: Vec<Subscription>,
 }
@@ -91,7 +79,7 @@ impl FirstRun {
                 cx,
             )
         });
-        let add = cx.new(|cx| AddServer::new(window, cx));
+        let add = cx.new(|cx| AddSource::new(window, cx));
         let subscriptions = vec![
             cx.observe(&sources, |this, _, cx| this.settle(cx)),
             cx.observe(&albums, |this, _, cx| this.settle(cx)),
@@ -102,8 +90,8 @@ impl FirstRun {
                     .update(cx, |add, cx| add.set_host_access(allowed, cx));
                 cx.notify();
             }),
-            cx.subscribe_in(&add, window, |this, _, added: &ServerAdded, window, cx| {
-                this.adopt_server(added.0.clone(), window, cx)
+            cx.subscribe_in(&add, window, |this, _, added: &SourceAdded, window, cx| {
+                this.adopt(added.0.clone(), window, cx)
             }),
             cx.subscribe(&jobs, |this, _, event: &JobEvent, cx| {
                 this.job_finished(event, cx)
@@ -112,11 +100,9 @@ impl FirstRun {
         Self {
             step: Step::Pick,
             target: None,
-            job: None,
             finished: false,
             albums,
             services,
-            host_access,
             add,
             scroll: ScrollHandle::new(),
             _subscriptions: subscriptions,
@@ -154,7 +140,7 @@ impl FirstRun {
         configured(SourcesModel::global(cx).read(cx).sources())
     }
 
-    /// Real state moved: drop a dismissal the state no longer supports, and carry the flow forward.
+    /// Real state moved: drop a dismissal the state no longer supports.
     fn settle(&mut self, cx: &mut Context<Self>) {
         let stale = store::layout(cx).first_run_dismissed
             && self.ready(cx)
@@ -162,38 +148,15 @@ impl FirstRun {
         if stale {
             LayoutModel::edit(cx, |layout| layout.first_run_dismissed = false);
         }
-        if self.step == Step::Sync {
-            self.maybe_start(cx);
-        }
         cx.notify();
     }
 
-    /// Start the first scan or sync, once the source this run configured is the live one.
-    fn maybe_start(&mut self, cx: &mut Context<Self>) {
-        if self.job.is_some() {
-            return;
-        }
-        let Some(source) = active_source(cx) else {
-            return;
-        };
-        if self.target.as_deref() != Some(source.id.as_str()) || !ready_to_sync(&source) {
-            return;
-        }
-        let kind = job_for(&source);
-        self.job = Some(kind);
-        JobsModel::global(cx).update(cx, |jobs, cx| jobs.start(kind, cx));
-    }
-
+    /// The daemon fills a newly active source on its own; its first library job ending is the flow's end.
     fn job_finished(&mut self, event: &JobEvent, cx: &mut Context<Self>) {
-        if self.step != Step::Sync || self.job != Some(event.kind) {
-            return;
-        }
-        if event.ok {
+        let filling = matches!(event.kind, JobKind::Scan | JobKind::LibrarySync);
+        let ours = active_source(cx).is_some_and(|source| self.target.as_ref() == Some(&source.id));
+        if self.step == Step::Sync && event.ok && filling && ours {
             self.finish(cx);
-        } else {
-            // The failure is already on screen as a toast; let the step offer another go.
-            self.job = None;
-            cx.notify();
         }
     }
 
@@ -210,20 +173,14 @@ impl FirstRun {
         cx.notify();
     }
 
-    fn choose(&mut self, kind: Kind, cx: &mut Context<Self>) {
-        self.step = Step::Configure(kind);
-        cx.notify();
-    }
-
     fn go_back(&mut self, cx: &mut Context<Self>) {
         self.step = Step::Pick;
         cx.notify();
     }
 
-    /// A server was saved: making it active is also what starts whichever sign-in it needs.
-    fn adopt_server(&mut self, id: String, window: &mut Window, cx: &mut Context<Self>) {
+    /// A source was saved: making it active is also what starts whichever sign-in it needs.
+    fn adopt(&mut self, id: String, window: &mut Window, cx: &mut Context<Self>) {
         self.step = Step::Sync;
-        self.job = None;
         self.target = Some(id.clone());
         SourcesModel::global(cx).update(cx, |sources, cx| sources.switch(id, window, cx));
         cx.notify();
@@ -291,7 +248,6 @@ impl Render for FirstRun {
         let step = self.step;
         let body = match step {
             Step::Pick => self.pick_step(window, cx),
-            Step::Configure(kind) => self.configure_step(kind, window, cx),
             Step::Sync => self.sync_step(window, cx),
         };
         v_flex()
@@ -335,67 +291,44 @@ fn wanted(
     in_flow || (ready && !dismissed && !has_content && !configured)
 }
 
-/// A source that could hold music: one that scans folders needs at least one to scan.
+/// A source that could hold music: one whose settings list folders needs at least one of them.
 fn configured(sources: &[SourceInfo]) -> bool {
-    sources
-        .iter()
-        .any(|source| !source.capabilities.scan_folders || !source.directories.is_empty())
-}
-
-/// The local library the first run writes folders into: the live one, or whichever the daemon lists.
-fn local_source(cx: &App) -> Option<SourceInfo> {
-    let model = SourcesModel::global(cx);
-    let sources = model.read(cx).sources();
-    sources
-        .iter()
-        .find(|source| source.capabilities.scan_folders && source.active)
-        .or_else(|| {
-            sources
-                .iter()
-                .find(|source| source.capabilities.scan_folders)
-        })
-        .cloned()
+    sources.iter().any(|source| {
+        api::schema::spec_value(&source.settings, settings_sources::folders::KEY)
+            .is_none_or(|folders| !api::schema::decode_directories(folders).is_empty())
+    })
 }
 
 fn active_source(cx: &App) -> Option<SourceInfo> {
     SourcesModel::global(cx).read(cx).active().cloned()
 }
 
-/// Nothing can be read from a source that is still waiting on a sign-in or has nowhere to look.
+/// Nothing can be read from a source still waiting on a sign-in.
 fn ready_to_sync(source: &SourceInfo) -> bool {
-    if source.capabilities.scan_folders {
-        return !source.directories.is_empty();
-    }
     source.authenticated || source.anonymous
-}
-
-fn job_for(source: &SourceInfo) -> JobKind {
-    if source.capabilities.scan_folders {
-        JobKind::Scan
-    } else {
-        JobKind::LibrarySync
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use api::schema::{FieldKind, FieldSpec};
 
-    fn local(directories: &[&str]) -> SourceInfo {
+    fn with_folders(folders: &[&str]) -> SourceInfo {
+        let folders: Vec<String> = folders.iter().map(|path| path.to_string()).collect();
         SourceInfo {
-            capabilities: api::SourceCapabilities {
-                scan_folders: true,
-                ..Default::default()
-            },
             authenticated: true,
-            directories: directories.iter().map(|path| path.to_string()).collect(),
+            settings: vec![FieldSpec {
+                key: settings_sources::folders::KEY.into(),
+                kind: FieldKind::Directories,
+                value: Some(api::schema::encode_directories(&folders)),
+                ..Default::default()
+            }],
             ..Default::default()
         }
     }
 
-    fn server(authenticated: bool) -> SourceInfo {
+    fn signed_in(authenticated: bool) -> SourceInfo {
         SourceInfo {
-            service: Some(Default::default()),
             authenticated,
             ..Default::default()
         }
@@ -428,27 +361,19 @@ mod tests {
     }
 
     #[test]
-    fn a_local_source_counts_once_it_has_somewhere_to_scan() {
-        assert!(!configured(&[local(&[])]));
-        assert!(configured(&[local(&["/music"])]));
+    fn a_source_listing_folders_counts_once_it_has_one() {
+        assert!(!configured(&[with_folders(&[])]));
+        assert!(configured(&[with_folders(&["/music"])]));
     }
 
     #[test]
-    fn a_server_counts_before_it_is_signed_in() {
-        assert!(configured(&[server(false)]));
+    fn a_source_without_folders_counts_before_it_is_signed_in() {
+        assert!(configured(&[signed_in(false)]));
     }
 
     #[test]
-    fn a_source_waiting_on_a_sign_in_starts_no_job() {
-        assert!(!ready_to_sync(&server(false)));
-        assert!(ready_to_sync(&server(true)));
-        assert!(!ready_to_sync(&local(&[])));
-        assert!(ready_to_sync(&local(&["/music"])));
-    }
-
-    #[test]
-    fn a_server_syncs_where_a_local_library_scans() {
-        assert_eq!(job_for(&server(true)), JobKind::LibrarySync);
-        assert_eq!(job_for(&local(&["/music"])), JobKind::Scan);
+    fn a_source_waiting_on_a_sign_in_is_not_ready() {
+        assert!(!ready_to_sync(&signed_in(false)));
+        assert!(ready_to_sync(&signed_in(true)));
     }
 }

@@ -174,7 +174,7 @@ pub struct Library {
     _filter_delay: Option<Task<()>>,
     _resolve: Option<Task<()>>,
     _photos: Option<Task<()>>,
-    asked_photos: Vec<api::ArtistKey>,
+    asked_photos: Vec<String>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -732,7 +732,7 @@ impl Library {
         if self.filters.facet != Facet::Artists {
             return;
         }
-        let names: Vec<api::ArtistKey> = self
+        let names: Vec<String> = self
             .artists
             .read(cx)
             .value()

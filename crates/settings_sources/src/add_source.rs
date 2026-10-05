@@ -1,7 +1,7 @@
-//! The "add media server" dialog: a name, a service, and whatever form the daemon publishes for it.
+//! The "add source" dialog: a name, a service, and whatever form the daemon publishes for it.
 
 use api::schema::{FieldKind, FieldValue};
-use api::{DraftCheck, ServerDraft, ServiceInfo, SignInKind, Table};
+use api::{DraftCheck, ServiceInfo, SignInKind, SourceDraft, Table};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
@@ -19,11 +19,11 @@ use widgets::{FieldChanged, SchemaForm};
 
 use crate::ui;
 
-/// A server was saved; the owner makes it active and picks up whatever sign-in it needs.
+/// A source was saved; the owner makes it active and picks up whatever sign-in it needs.
 #[derive(Debug, Clone)]
-pub struct ServerAdded(pub String);
+pub struct SourceAdded(pub String);
 
-pub struct AddServer {
+pub struct AddSource {
     services: Entity<Query<Vec<ServiceInfo>>>,
     service: Option<ServiceInfo>,
     name: Entity<InputState>,
@@ -39,9 +39,9 @@ pub struct AddServer {
     _subscriptions: Vec<Subscription>,
 }
 
-impl EventEmitter<ServerAdded> for AddServer {}
+impl EventEmitter<SourceAdded> for AddSource {}
 
-impl AddServer {
+impl AddSource {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let services = cx.new(|cx| {
             Query::new(
@@ -50,7 +50,7 @@ impl AddServer {
                 cx,
             )
         });
-        let name = cx.new(|cx| InputState::new(window, cx).placeholder(t("server_name")));
+        let name = cx.new(|cx| InputState::new(window, cx).placeholder(t("source_name")));
         let subscriptions = vec![
             cx.observe_in(&services, window, |this, _, window, cx| {
                 this.ensure_service(window, cx)
@@ -84,7 +84,7 @@ impl AddServer {
         }
     }
 
-    /// Clear the form for a fresh server, keeping the service list already read.
+    /// Clear the form for a fresh source, keeping the service list already read.
     pub fn reset(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.name
             .update(cx, |state, cx| state.set_value("", window, cx));
@@ -130,9 +130,9 @@ impl AddServer {
         cx.notify();
     }
 
-    fn draft(&self, cx: &App) -> ServerDraft {
+    fn draft(&self, cx: &App) -> SourceDraft {
         let Some(service) = self.service.as_ref() else {
-            return ServerDraft::default();
+            return SourceDraft::default();
         };
         let secret_keys: Vec<String> = service
             .fields
@@ -148,7 +148,7 @@ impl AddServer {
         let (secrets, values): (Vec<FieldValue>, Vec<FieldValue>) = answers
             .into_iter()
             .partition(|answer| secret_keys.contains(&answer.key));
-        ServerDraft {
+        SourceDraft {
             id: None,
             name: self.name.read(cx).value().to_string(),
             service: service.id.clone(),
@@ -166,7 +166,7 @@ impl AddServer {
         self.generation += 1;
         let generation = self.generation;
         let call =
-            Link::global(cx).call(move |api| async move { api.check_server_draft(draft).await });
+            Link::global(cx).call(move |api| async move { api.check_source_draft(draft).await });
         cx.spawn(async move |this, cx| {
             let result = call.await;
             this.update(cx, |this, cx| {
@@ -216,7 +216,7 @@ impl AddServer {
         let link = Link::global(cx).clone();
         let checked = link.call({
             let draft = draft.clone();
-            move |api| async move { api.check_server_draft(draft).await }
+            move |api| async move { api.check_source_draft(draft).await }
         });
         cx.spawn_in(window, async move |this, cx| {
             let problem = match checked.await {
@@ -234,7 +234,7 @@ impl AddServer {
             }
             let saved = cx
                 .update(|_, cx| {
-                    Link::global(cx).call(move |api| async move { api.upsert_server(draft).await })
+                    Link::global(cx).call(move |api| async move { api.upsert_source(draft).await })
                 })
                 .ok();
             let Some(saved) = saved else { return };
@@ -247,10 +247,10 @@ impl AddServer {
             match result {
                 Ok(source) => {
                     cx.update(|window, cx| window.close_dialog(cx)).ok();
-                    // A secret left in a live form is one the next server could pick up.
+                    // A secret left in a live form is one the next source could pick up.
                     this.update_in(cx, |this, window, cx| this.reset(window, cx))
                         .ok();
-                    this.update(cx, |_, cx| cx.emit(ServerAdded(source.id.clone())))
+                    this.update(cx, |_, cx| cx.emit(SourceAdded(source.id.clone())))
                         .ok();
                 }
                 Err(error) => {
@@ -275,7 +275,7 @@ impl AddServer {
     }
 }
 
-impl Render for AddServer {
+impl Render for AddSource {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let services = self.offered(cx);
         let chosen = self
@@ -292,7 +292,7 @@ impl Render for AddServer {
             .gap_3()
             .when(blocked, |form| {
                 form.child(ui::host_access_warning(
-                    "add-server-host-access",
+                    "add-source-host-access",
                     t("browser_sign_in_needs_host"),
                     cx,
                 ))
@@ -307,7 +307,7 @@ impl Render for AddServer {
                     }),
             )
             .child(
-                Button::new("add-server-service")
+                Button::new("add-source-service")
                     .outline()
                     .w_full()
                     .justify_between()
@@ -341,14 +341,14 @@ impl Render for AddServer {
                     .gap_2()
                     .justify_end()
                     .child(
-                        Button::new("cancel-add-server")
+                        Button::new("cancel-add-source")
                             .outline()
                             .label(t("cancel"))
                             .disabled(saving)
                             .on_click(|_, window, cx| window.close_dialog(cx)),
                     )
                     .child(
-                        Button::new("save-add-server")
+                        Button::new("save-add-source")
                             .primary()
                             .label(t("save"))
                             .loading(saving)

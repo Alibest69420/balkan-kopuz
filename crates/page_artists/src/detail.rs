@@ -5,8 +5,8 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use api::{
-    AlbumInfo, ArtistKey, ArtworkTarget, ArtworkUpload, JobKind, PlaylistCapability,
-    SourceCapabilities, Table, TrackInfo, TrackPage,
+    AlbumInfo, ArtworkTarget, ArtworkUpload, JobKind, PlaylistCapability, SourceCapabilities,
+    Table, TrackInfo, TrackPage,
 };
 use config::{AlbumSortField, AlbumViewMode, ArtistViewOrder, SortCriterion, SortDirection};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -65,7 +65,7 @@ impl Column {
 
 /// One artist from the library: tracks and albums.
 pub struct ArtistDetail {
-    key: ArtistKey,
+    key: String,
     tracks: Entity<Query<TrackPage>>,
     detail: Entity<Query<api::ArtistDetail>>,
     list: Entity<TrackList>,
@@ -76,7 +76,7 @@ pub struct ArtistDetail {
 }
 
 impl ArtistDetail {
-    pub fn new(key: ArtistKey, _: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(key: String, _: &mut Window, cx: &mut Context<Self>) -> Self {
         let artist = key.clone();
         let tracks = cx.new(|cx| {
             Query::new(

@@ -1,9 +1,8 @@
 //! One album: the standard detail, and the catalog-styled one a remote source presents.
 
 use api::{
-    AlbumInfo, AlbumPage, AlbumPresentation, ArtistKey, ArtworkRef, CatalogDetail,
-    CatalogDetailRequest, CatalogItemKind, PlaylistCapability, SourceCapabilities, Table,
-    TrackInfo,
+    AlbumInfo, AlbumPage, AlbumPresentation, ArtworkRef, CatalogDetail, CatalogDetailRequest,
+    CatalogItemKind, PlaylistCapability, SourceCapabilities, Table, TrackInfo,
 };
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_flex, v_flex};
@@ -178,7 +177,7 @@ impl AlbumDetail {
             point_tracks(&self.tracks, ids, cx);
         }
 
-        // A remote source holds only the saved subset locally; a DB miss has nothing local at all.
+        // A catalog-presented source stores only the saved subset; a miss means none of it is stored.
         let remote_id = if capabilities.albums == AlbumPresentation::Remote {
             Some(
                 album
@@ -569,7 +568,7 @@ impl AlbumDetail {
     fn artist_link(
         &self,
         artist: &str,
-        key: Option<ArtistKey>,
+        key: Option<String>,
         id: &'static str,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -1037,7 +1036,7 @@ impl Render for AlbumDetail {
     }
 }
 
-/// The header the catalog-styled page draws, from the local row, the remote listing, or both.
+/// The header the catalog-styled page draws, from the stored row, the catalog listing, or both.
 struct RemoteView {
     id: String,
     title: SharedString,
@@ -1045,7 +1044,7 @@ struct RemoteView {
     year: Option<SharedString>,
     artwork: Option<ArtworkRef>,
     browse_id: Option<String>,
-    artist_key: Option<ArtistKey>,
+    artist_key: Option<String>,
 }
 
 impl RemoteView {

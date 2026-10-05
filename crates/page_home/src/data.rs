@@ -2,9 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use api::{
-    AlbumInfo, AlbumPage, ArtistKey, ArtistPage, ArtworkRef, PlaylistInfo, TrackInfo, TrackPage,
-};
+use api::{AlbumInfo, AlbumPage, ArtistPage, ArtworkRef, PlaylistInfo, TrackInfo, TrackPage};
 use gpui_kit::SharedString;
 use store::{Route, Target};
 use widgets::format::t_with;
@@ -286,8 +284,8 @@ pub(crate) const RANKED: usize = 8;
 pub(crate) fn plays_by_artist(
     played: &[TrackInfo],
     plays: &HashMap<String, u64>,
-) -> Vec<(ArtistKey, String, u64)> {
-    let mut totals: HashMap<ArtistKey, (String, u64)> = HashMap::new();
+) -> Vec<(String, String, u64)> {
+    let mut totals: HashMap<String, (String, u64)> = HashMap::new();
     for track in played {
         if is_unknown_artist(&track.artist) {
             continue;
@@ -307,7 +305,7 @@ pub(crate) fn plays_by_artist(
             .or_insert_with(|| (credit.name.clone(), 0))
             .1 += count;
     }
-    let mut ranked: Vec<(ArtistKey, String, u64)> = totals
+    let mut ranked: Vec<(String, String, u64)> = totals
         .into_iter()
         .map(|(key, (name, count))| (key, name, count))
         .collect();
@@ -334,7 +332,7 @@ fn top_artists(
         return Vec::new();
     };
     let played = played.items.as_slice();
-    let photos: HashMap<&ArtistKey, &ArtworkRef> = artists
+    let photos: HashMap<&String, &ArtworkRef> = artists
         .map(|page| page.artists.as_slice())
         .unwrap_or(&[])
         .iter()
@@ -384,7 +382,7 @@ mod tests {
             album_id: album_id.into(),
             credits: vec![ArtistCredit {
                 name: artist.into(),
-                key: Some(ArtistKey::new(artist)),
+                key: Some(String::from(artist)),
             }],
             ..Default::default()
         }
@@ -474,8 +472,8 @@ mod tests {
         assert_eq!(
             plays_by_artist(&played, &plays),
             vec![
-                (ArtistKey::new("NONEP"), "NONEP".to_string(), 7),
-                (ArtistKey::new("AKASAKI"), "AKASAKI".to_string(), 5)
+                (String::from("NONEP"), "NONEP".to_string(), 7),
+                (String::from("AKASAKI"), "AKASAKI".to_string(), 5)
             ]
         );
     }

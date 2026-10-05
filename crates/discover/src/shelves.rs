@@ -437,7 +437,7 @@ impl Shelves {
 
     fn artist_tile(&self, shelf: usize, item: &CatalogItem) -> AnyElement {
         // An artist tile's id is the key the daemon minted for it.
-        let key = api::ArtistKey::new(item.id.clone());
+        let key = item.id.clone();
         let target = Target::Artist {
             key: key.clone(),
             name: item.title.clone().into(),

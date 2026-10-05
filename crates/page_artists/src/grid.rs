@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use api::{AlbumPage, ArtistInfo, ArtistKey, ArtistPage, Table};
+use api::{AlbumPage, ArtistInfo, ArtistPage, Table};
 use config::{AlbumViewMode, ArtistSortField};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::{
@@ -35,7 +35,7 @@ pub struct Artists {
     // Built on change, not per frame: render runs on every playhead tick.
     entries: Vec<ArtistInfo>,
     // What the last photo request asked for; the answer dirties Tracks, which would ask again forever.
-    asked: Vec<ArtistKey>,
+    asked: Vec<String>,
     _refresh: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
@@ -81,7 +81,7 @@ impl Artists {
 
     /// Ask the daemon to fill in the photos this grid is missing; it announces what it finds.
     fn request_photos(&mut self, cx: &mut Context<Self>) {
-        let wanted: Vec<ArtistKey> = self
+        let wanted: Vec<String> = self
             .entries
             .iter()
             .map(|artist| artist.key.clone())

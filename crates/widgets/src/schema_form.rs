@@ -11,9 +11,9 @@ use gpui_kit::component::switch::Switch;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AppContext as _, Context, Entity, EventEmitter, InteractiveElement as _, IntoElement,
-    ParentElement as _, PathPromptOptions, Render, SharedString, StatefulInteractiveElement as _,
-    Styled, Subscription, Window, div,
+    AnyElement, AppContext as _, Context, Entity, EventEmitter, InteractiveElement as _,
+    IntoElement, ParentElement as _, PathPromptOptions, Render, SharedString,
+    StatefulInteractiveElement as _, Styled, Subscription, Window, div,
 };
 
 use crate::format::{t, text};
@@ -267,6 +267,7 @@ impl SchemaForm {
                         })),
                 )
                 .into_any_element(),
+            FieldKind::Directories => self.directories(&key, &value, locked, cx),
             FieldKind::Radio { options } => v_flex()
                 .gap_1p5()
                 .children(
@@ -467,6 +468,95 @@ impl SchemaForm {
                 this.update(cx, |this, cx| this.answer(&key, value, cx))
                     .ok();
             }
+        })
+        .detach();
+    }
+
+    /// A list of folders: each with a remove button, and one button that adds several.
+    fn directories(
+        &self,
+        key: &str,
+        value: &str,
+        locked: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let paths = api::schema::decode_directories(value);
+        v_flex()
+            .gap_1p5()
+            .when(paths.is_empty(), |list| {
+                list.child(
+                    div()
+                        .text_xs()
+                        .text_color(style::white(style::TEXT_SUBTLE, cx))
+                        .child(t("no_music_folders")),
+                )
+            })
+            .children(paths.iter().enumerate().map(|(index, path)| {
+                h_flex()
+                    .gap_2()
+                    .items_center()
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_sm()
+                            .child(path.clone()),
+                    )
+                    .child(
+                        Button::new(SharedString::from(format!("remove-{key}-{index}")))
+                            .icon(crate::icons::icon(icons::CLOSE))
+                            .tooltip(t("remove"))
+                            .disabled(locked)
+                            .on_click(cx.listener({
+                                let key = key.to_string();
+                                let path = path.clone();
+                                move |this, _, _, cx| {
+                                    let held = this.values.get(&key).cloned().unwrap_or_default();
+                                    let mut paths = api::schema::decode_directories(&held);
+                                    paths.retain(|kept| kept != &path);
+                                    let value = api::schema::encode_directories(&paths);
+                                    this.answer(&key, value, cx);
+                                }
+                            })),
+                    )
+            }))
+            .child(
+                Button::new(SharedString::from(format!("add-{key}")))
+                    .icon(crate::icons::icon(icons::FOLDER))
+                    .label(t("add_folder"))
+                    .disabled(locked)
+                    .on_click(cx.listener({
+                        let key = key.to_string();
+                        move |this, _, _, cx| this.add_directories(key.clone(), cx)
+                    })),
+            )
+            .into_any_element()
+    }
+
+    fn add_directories(&mut self, key: String, cx: &mut Context<Self>) {
+        let picked = cx.prompt_for_paths(PathPromptOptions {
+            files: false,
+            directories: true,
+            multiple: true,
+            prompt: None,
+        });
+        cx.spawn(async move |this, cx| {
+            let Ok(Ok(Some(picked))) = picked.await else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                let held = this.values.get(&key).cloned().unwrap_or_default();
+                let mut paths = api::schema::decode_directories(&held);
+                for path in picked {
+                    let path = path.to_string_lossy().to_string();
+                    if !paths.contains(&path) {
+                        paths.push(path);
+                    }
+                }
+                this.answer(&key, api::schema::encode_directories(&paths), cx);
+            })
+            .ok();
         })
         .detach();
     }

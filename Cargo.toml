@@ -10,10 +10,10 @@ license = "EUPL-1.2"
 publish = false
 
 [workspace.dependencies]
-api = { package = "kopuz-api", git = "https://github.com/Kopuz-org/kopuz", rev = "6fe8a59a83fff80de216dbbb4321c25134403ac1" }
-client = { package = "kopuz-client", git = "https://github.com/Kopuz-org/kopuz", rev = "6fe8a59a83fff80de216dbbb4321c25134403ac1" }
-config = { package = "kopuz-config", git = "https://github.com/Kopuz-org/kopuz", rev = "6fe8a59a83fff80de216dbbb4321c25134403ac1" }
-i18n = { package = "kopuz-i18n", git = "https://github.com/Kopuz-org/kopuz", rev = "6fe8a59a83fff80de216dbbb4321c25134403ac1" }
+api = { package = "kopuz-api", git = "https://github.com/Kopuz-org/kopuz", rev = "c7e8104067c85a0d997a5f85201481ed363e7346" }
+client = { package = "kopuz-client", git = "https://github.com/Kopuz-org/kopuz", rev = "c7e8104067c85a0d997a5f85201481ed363e7346" }
+config = { package = "kopuz-config", git = "https://github.com/Kopuz-org/kopuz", rev = "c7e8104067c85a0d997a5f85201481ed363e7346" }
+i18n = { package = "kopuz-i18n", git = "https://github.com/Kopuz-org/kopuz", rev = "c7e8104067c85a0d997a5f85201481ed363e7346" }
 
 gpui-kit = "0.6.4"
 

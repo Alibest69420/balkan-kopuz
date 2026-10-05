@@ -7,11 +7,9 @@ use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::{ActiveTheme as _, Icon, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Anchor, Animation, AnimationExt as _, AnyElement, App, Context, Entity, Hsla, IntoElement,
-    ParentElement as _, Pixels, RenderOnce, Rgba, SharedString, Styled, Subscription, Task, Window,
-    div, pulsating_between, px, svg,
+    Anchor, Animation, AnimationExt as _, AnyElement, App, Hsla, IntoElement, ParentElement as _,
+    Pixels, RenderOnce, Rgba, SharedString, Styled, Window, div, pulsating_between, px, svg,
 };
-use link::Link;
 use store::{Navigator, Route, SourcesModel};
 use widgets::format::{t, text};
 use widgets::{icons, style};
@@ -29,7 +27,7 @@ const SUBLINE_GAP: Pixels = px(2.);
 const HEAD_COUNT: f32 = 0.38;
 const ROW_NAME: f32 = 0.85;
 
-const LOCAL_ICON: &str = "icons/hard-drive.svg";
+const DRIVE_ICON: &str = "icons/hard-drive.svg";
 const LIBRARY_ICON: &str = "icons/folder-tree.svg";
 const SERVICE_ICON: &str = "icons/server.svg";
 const CLOUD_ICON: &str = "icons/cloud.svg";
@@ -43,87 +41,14 @@ pub enum Status {
     Offline,
 }
 
-/// Asks the daemon whether the active source is still reachable, and keeps asking when it resyncs.
-pub struct SourceProbe {
-    status: Status,
-    probed: Option<String>,
-    _probe: Option<Task<()>>,
-    _subscriptions: Vec<Subscription>,
-}
-
-impl SourceProbe {
-    pub fn new(cx: &mut Context<Self>) -> Self {
-        let sources = SourcesModel::global(cx);
-        let subscriptions = vec![
-            cx.observe(&sources, |this, sources, cx| {
-                this.probe(&sources, cx);
-                cx.notify();
-            }),
-            // The probe runs once per source id, so without these the dot kept whatever it found
-            // the first time — green long after the server stopped answering, and green right
-            // through a daemon disconnect, since a reconnect keeps the same active source.
-            cx.subscribe(
-                &Link::connection(cx),
-                |this, _, event: &api::ApiEvent, cx| match event {
-                    api::ApiEvent::SourceStatus { source, state }
-                        if this.probed.as_deref() == Some(source.as_str()) =>
-                    {
-                        this.status = match state {
-                            SourceState::Online => Status::Online,
-                            _ => Status::Offline,
-                        };
-                        cx.notify();
-                    }
-                    // A reattach says nothing about the source behind it, so ask again.
-                    api::ApiEvent::Resync => {
-                        this.probed = None;
-                        let sources = SourcesModel::global(cx);
-                        this.probe(&sources, cx);
-                        cx.notify();
-                    }
-                    _ => {}
-                },
-            ),
-        ];
-        let mut this = Self {
-            status: Status::Connecting,
-            probed: None,
-            _probe: None,
-            _subscriptions: subscriptions,
-        };
-        this.probe(&sources, cx);
-        this
-    }
-
-    pub fn status(&self) -> Status {
-        self.status
-    }
-
-    /// The daemon answers for every source, local ones included.
-    fn probe(&mut self, sources: &Entity<SourcesModel>, cx: &mut Context<Self>) {
-        let Some(active) = sources.read(cx).active().cloned() else {
-            self.probed = None;
-            self.status = Status::Connecting;
-            return;
-        };
-        if self.probed.as_deref() == Some(active.id.as_str()) {
-            return;
-        }
-        self.probed = Some(active.id.clone());
-        self.status = Status::Connecting;
-        let call =
-            Link::global(cx).call(move |api| async move { api.validate_source(active.id).await });
-        self._probe = Some(cx.spawn(async move |this, cx| {
-            let state = call.await;
-            this.update(cx, |this, cx| {
-                this.status = match state {
-                    Ok(SourceState::Online) => Status::Online,
-                    _ => Status::Offline,
-                };
-                cx.notify();
-            })
-            .ok();
-        }));
+/// The active source's link, as the daemon's own probe last found it.
+pub fn status(cx: &App) -> Status {
+    let sources = SourcesModel::global(cx);
+    let sources = sources.read(cx);
+    match sources.active().and_then(|source| source.state) {
+        Some(SourceState::Online) => Status::Online,
+        Some(SourceState::AuthExpired | SourceState::Offline) => Status::Offline,
+        Some(SourceState::Checking) | None => Status::Connecting,
     }
 }
 
@@ -170,8 +95,8 @@ impl RenderOnce for SourceSwitcher {
         let active = self.sources.iter().find(|source| source.active);
         let label: SharedString = active
             .map(|source| SharedString::from(source.name.clone()))
-            .unwrap_or_else(|| t("local"));
-        let mark = active.map_or(Mark::Bundled(LOCAL_ICON), mark_of);
+            .unwrap_or_default();
+        let mark = active.map_or(Mark::Bundled(SERVICE_ICON), mark_of);
         let accent = accent_of(active, cx);
         let collapsed = self.collapsed;
         let bare = self.bare;
@@ -377,10 +302,9 @@ fn document(path: &str) -> String {
 }
 
 fn mark_of(source: &SourceInfo) -> Mark {
-    match source.service.as_ref().map(|service| &service.icon) {
-        Some(api::Icon::Svg(path)) => Mark::Path(path.clone()),
-        Some(api::Icon::Class(class)) => Mark::Bundled(bundled(class)),
-        None => Mark::Bundled(LOCAL_ICON),
+    match &source.service.icon {
+        api::Icon::Svg(path) => Mark::Path(path.clone()),
+        api::Icon::Class(class) => Mark::Bundled(bundled(class)),
     }
 }
 
@@ -395,24 +319,20 @@ fn bundled(class: &str) -> &'static str {
     } else if class.contains("folder") {
         LIBRARY_ICON
     } else if class.contains("hard-drive") {
-        LOCAL_ICON
+        DRIVE_ICON
     } else {
         SERVICE_ICON
     }
 }
 
 fn subline(source: &SourceInfo) -> SharedString {
-    match source.service.as_ref() {
-        Some(service) => text(&service.name).to_uppercase().into(),
-        None => t("source_on_this_device"),
-    }
+    text(&source.service.name).to_uppercase().into()
 }
 
-/// A service's brand colour; a local source wears the app's own accent.
+/// A service's brand colour; one without a colour wears the app's own accent.
 fn accent_of(source: Option<&SourceInfo>, cx: &App) -> Hsla {
     source
-        .and_then(|source| source.service.as_ref())
-        .and_then(|service| Rgba::try_from(service.accent.as_str()).ok())
+        .and_then(|source| Rgba::try_from(source.service.accent.as_str()).ok())
         .map(Hsla::from)
         .unwrap_or(cx.theme().primary)
 }

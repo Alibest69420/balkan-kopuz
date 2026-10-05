@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use api::{AlbumInfo, ArtistInfo, ArtistKey};
+use api::{AlbumInfo, ArtistInfo};
 use config::{ArtistSortField, SortCriterion, SortDirection};
 
 /// The grid, in its sorted order; the name, then the key, break remaining ties.
@@ -11,7 +11,7 @@ pub fn grid_entries(
     artists: &[ArtistInfo],
     criteria: &[SortCriterion<ArtistSortField>],
 ) -> Vec<ArtistInfo> {
-    let mut album_counts: HashMap<&ArtistKey, u32> = HashMap::new();
+    let mut album_counts: HashMap<&String, u32> = HashMap::new();
     for artist in albums.iter().filter_map(|album| album.artist_key.as_ref()) {
         *album_counts.entry(artist).or_default() += 1;
     }
@@ -49,7 +49,7 @@ mod tests {
 
     fn artist(key: &str, name: &str, track_count: u32) -> ArtistInfo {
         ArtistInfo {
-            key: ArtistKey::new(key),
+            key: String::from(key),
             name: name.into(),
             track_count,
             artwork: None,
@@ -59,7 +59,7 @@ mod tests {
     fn album(artist: &str) -> AlbumInfo {
         AlbumInfo {
             id: format!("al-{artist}"),
-            artist_key: Some(ArtistKey::new(artist)),
+            artist_key: Some(String::from(artist)),
             ..Default::default()
         }
     }
@@ -97,7 +97,7 @@ mod tests {
             SortDirection::Desc,
         )];
         let entries = grid_entries(&albums, &artists, &criteria);
-        assert_eq!(entries[0].key, ArtistKey::new("two"));
+        assert_eq!(entries[0].key, String::from("two"));
         assert_eq!(entries.len(), 2);
     }
 }

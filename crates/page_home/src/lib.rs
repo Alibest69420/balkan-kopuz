@@ -11,9 +11,7 @@ pub use settings::register;
 
 use std::collections::HashMap;
 
-use api::{
-    AlbumPage, ArtistPage, JobKind, Page, StatsView, Table, TrackFilter, TrackPage, TrackSort,
-};
+use api::{AlbumPage, ArtistPage, Page, StatsView, Table, TrackFilter, TrackPage, TrackSort};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -22,7 +20,7 @@ use gpui_kit::{
     IntoElement, ParentElement as _, Render, ScrollHandle, SharedString,
     StatefulInteractiveElement as _, Styled, Subscription, Window, div, rems,
 };
-use store::{JobsModel, Navigator, PlaylistsModel, Query, Route, SourcesModel};
+use store::{Navigator, PlaylistsModel, Query, Route, SourcesModel};
 use widgets::format::t;
 use widgets::{EmptyState, icons, style};
 
@@ -43,7 +41,6 @@ pub struct Home {
     page: ScrollHandle,
     seed: u64,
     // The empty-library sync is offered once per visit, not once per refetch.
-    synced: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -138,7 +135,6 @@ impl Home {
                 .collect(),
             page: ScrollHandle::default(),
             seed: seed(),
-            synced: false,
             _subscriptions: subscriptions,
         }
     }
@@ -160,23 +156,7 @@ impl Home {
             playlists: &playlists,
             seed: self.seed,
         });
-        self.start_empty_library_sync(cx);
         cx.notify();
-    }
-
-    /// A server fills an empty cache by syncing; a local library is populated by the scan instead.
-    fn start_empty_library_sync(&mut self, cx: &mut Context<Self>) {
-        if self.synced || !SourcesModel::global(cx).read(cx).capabilities().sync {
-            return;
-        }
-        let empty = match self.albums.read(cx).value() {
-            Some(page) => page.albums.is_empty(),
-            None => return,
-        };
-        self.synced = true;
-        if empty {
-            JobsModel::global(cx).update(cx, |jobs, cx| jobs.start(JobKind::LibrarySync, cx));
-        }
     }
 
     /// The shelves the layout asks for, in its order, skipping the ones with nothing in them.

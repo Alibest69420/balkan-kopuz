@@ -95,13 +95,9 @@ fn password(source: &SourceInfo, window: &mut Window, cx: &mut App) {
         return;
     };
     // Daemon-supplied text: a key is translated, a literal is shown as it came.
-    let service = source
-        .service
-        .as_ref()
-        .map(|service| match &service.name {
-            api::Text::Key(key) => SharedString::from(i18n::t(key)),
-            api::Text::Literal(literal) => SharedString::from(literal.clone()),
-        })
-        .unwrap_or_else(|| SharedString::from(source.name.clone()));
+    let service = match &source.service.name {
+        api::Text::Key(key) => SharedString::from(i18n::t(key)),
+        api::Text::Literal(literal) => SharedString::from(literal.clone()),
+    };
     opener(source.id.clone(), service, window, cx);
 }

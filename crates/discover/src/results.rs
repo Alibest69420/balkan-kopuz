@@ -1,6 +1,6 @@
 //! What a query turned up: the strips of albums and artists over the list of matching tracks.
 
-use api::{AlbumInfo, ArtistKey, TrackInfo};
+use api::{AlbumInfo, TrackInfo};
 use gpui_kit::component::menu::ContextMenuExt as _;
 use gpui_kit::component::{ActiveTheme as _, h_flex};
 use gpui_kit::{
@@ -34,8 +34,8 @@ impl Playing {
 }
 
 /// Search answers with tracks and albums; the artists behind them are worth a row of their own.
-pub fn artists_of(tracks: &[TrackInfo], albums: &[AlbumInfo]) -> Vec<(ArtistKey, SharedString)> {
-    let mut artists: Vec<(ArtistKey, SharedString)> = Vec::new();
+pub fn artists_of(tracks: &[TrackInfo], albums: &[AlbumInfo]) -> Vec<(String, SharedString)> {
+    let mut artists: Vec<(String, SharedString)> = Vec::new();
     let credits = tracks
         .iter()
         .filter_map(|track| {
@@ -107,7 +107,7 @@ fn album_card(album: &AlbumInfo, playing: &Playing, cx: &App) -> AnyElement {
 }
 
 /// One artist credited on what a query turned up.
-fn artist_card(key: &ArtistKey, name: &SharedString, playing: &Playing, cx: &App) -> AnyElement {
+fn artist_card(key: &String, name: &SharedString, playing: &Playing, cx: &App) -> AnyElement {
     let target = Target::Artist {
         key: key.clone(),
         name: name.clone(),
@@ -180,7 +180,7 @@ pub fn album_strip(
 
 /// The artists credited on what a query turned up.
 pub fn artist_strip(
-    artists: &[(ArtistKey, SharedString)],
+    artists: &[(String, SharedString)],
     title: SharedString,
     playing: &Playing,
     cx: &App,
@@ -199,36 +199,45 @@ pub fn artist_strip(
 mod tests {
     use super::*;
 
-    fn track(artist: &str) -> TrackInfo {
+    fn track(artist: &str, key: &str) -> TrackInfo {
         TrackInfo {
             artist: artist.to_string(),
             credits: vec![api::ArtistCredit {
                 name: artist.to_string(),
-                key: Some(ArtistKey::new(artist.to_lowercase())),
+                key: Some(key.to_string()),
             }],
             ..TrackInfo::default()
         }
     }
 
-    fn names(artists: &[(ArtistKey, SharedString)]) -> Vec<&str> {
+    fn names(artists: &[(String, SharedString)]) -> Vec<&str> {
         artists.iter().map(|(_, name)| name.as_ref()).collect()
     }
 
     #[test]
-    fn an_artist_is_only_listed_once_however_their_credit_is_cased() {
-        let tracks = [track("Boards of Canada"), track("boards of canada")];
-        assert_eq!(names(&artists_of(&tracks, &[])), ["Boards of Canada"]);
+    fn an_artist_is_listed_once_per_key_whatever_its_credits_say() {
+        let tracks = [
+            track("Boards of Canada", "boc"),
+            track("boards of canada", "boc"),
+            track("Boards of Canada", "a-namesake"),
+        ];
+        assert_eq!(
+            names(&artists_of(&tracks, &[])),
+            ["Boards of Canada", "Boards of Canada"]
+        );
     }
 
     #[test]
     fn a_track_with_no_credit_contributes_no_artist() {
-        let tracks = [track("  "), track("Autechre")];
+        let tracks = [track("  ", "blank"), track("Autechre", "autechre")];
         assert_eq!(names(&artists_of(&tracks, &[])), ["Autechre"]);
     }
 
     #[test]
     fn a_strip_never_grows_past_what_it_can_show() {
-        let tracks: Vec<TrackInfo> = (0..40).map(|at| track(&format!("artist {at}"))).collect();
+        let tracks: Vec<TrackInfo> = (0..40)
+            .map(|at| track(&format!("artist {at}"), &format!("key-{at}")))
+            .collect();
         assert_eq!(artists_of(&tracks, &[]).len(), STRIP);
     }
 

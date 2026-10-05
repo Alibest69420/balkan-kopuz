@@ -11,14 +11,14 @@ pub enum Route {
         id: SharedString,
         title: SharedString,
     },
-    DiscoverArtist(api::ArtistKey),
+    DiscoverArtist(String),
     Library,
     /// The library with a facet and a filter set on it, encoded so back and forward restore them.
     LibraryView(SharedString),
     Albums,
     Album(SharedString),
     Artists,
-    Artist(api::ArtistKey),
+    Artist(String),
     Playlists,
     PlaylistFolder(SharedString),
     Playlist(SharedString),
@@ -341,7 +341,7 @@ mod tests {
     /// An artist lights the destination the page actually opened under, which is what the source presents.
     #[test]
     fn an_artist_lights_up_by_presentation() {
-        let artist = Route::Artist(api::ArtistKey::new("lib:1"));
+        let artist = Route::Artist(String::from("lib:1"));
 
         assert_eq!(artist.destination_of(true), Some("discover"));
         assert_eq!(artist.destination_of(false), Some("library"));

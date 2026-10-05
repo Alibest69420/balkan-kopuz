@@ -21,9 +21,13 @@ impl FirstRun {
     pub(crate) fn sync_step(&mut self, _: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let source = active_source(cx);
         let waiting = source.as_ref().is_none_or(|source| !ready_to_sync(source));
-        let progress = self
-            .job
-            .and_then(|kind| JobsModel::global(cx).read(cx).progress(kind).cloned());
+        // Whichever library job the daemon started for the source, scan or sync alike.
+        let progress = JobsModel::global(cx)
+            .read(cx)
+            .running()
+            .iter()
+            .find(|job| matches!(job.kind, api::JobKind::Scan | api::JobKind::LibrarySync))
+            .cloned();
         let share = progress.as_ref().and_then(percent);
         v_flex()
             .w_full()

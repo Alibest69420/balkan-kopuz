@@ -697,9 +697,7 @@ async fn gather(
                 keys.extend(page.items.into_iter().map(|track| track.key));
             }
             Facet::Artists => {
-                let page = api
-                    .artist_tracks(api::ArtistKey::new(id), store::all())
-                    .await?;
+                let page = api.artist_tracks(id, store::all()).await?;
                 keys.extend(page.items.into_iter().map(|track| track.key));
             }
             Facet::Playlists => {
@@ -766,7 +764,8 @@ fn scan_roots(cx: &App) -> Vec<String> {
     store::SourcesModel::global(cx)
         .read(cx)
         .active()
-        .map(|source| source.directories.clone())
+        .and_then(|source| api::schema::spec_value(&source.settings, "directories"))
+        .map(api::schema::decode_directories)
         .unwrap_or_default()
 }
 

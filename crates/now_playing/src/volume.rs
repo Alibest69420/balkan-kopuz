@@ -7,7 +7,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Axis, Context, Hsla, InteractiveElement as _, IntoElement, ParentElement as _, Pixels,
     ScrollDelta, ScrollWheelEvent, StatefulInteractiveElement as _, Styled, Window, div, px,
-    relative,
+    relative, rems,
 };
 use store::{ConfigModel, PlayerModel};
 use widgets::format::t;

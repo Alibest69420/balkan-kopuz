@@ -1,6 +1,6 @@
 //! What the catalog opens onto: one browsed playlist, and a source's own page for an artist.
 
-use api::{ArtistKey, CatalogDetail, CatalogDetailRequest, CatalogItemKind};
+use api::{CatalogDetail, CatalogDetailRequest, CatalogItemKind};
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, h_flex, v_flex};
@@ -142,7 +142,7 @@ impl Render for CatalogPlaylist {
 
 /// A remote artist profile: the source's own page for an artist the library does not hold.
 pub struct CatalogArtist {
-    key: ArtistKey,
+    key: String,
     detail: Option<CatalogDetail>,
     shelves: Entity<Shelves>,
     loading: bool,
@@ -154,7 +154,7 @@ pub struct CatalogArtist {
 }
 
 impl CatalogArtist {
-    pub fn new(key: ArtistKey, _: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(key: String, _: &mut Window, cx: &mut Context<Self>) -> Self {
         let mut page = Self {
             key,
             detail: None,
