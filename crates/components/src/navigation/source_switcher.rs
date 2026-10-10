@@ -79,6 +79,8 @@ fn entries(sources: &[api::SourceInfo], internet_down: bool) -> Vec<Entry> {
             let available = source.active || !internet_down || source.works_offline;
             let sub = if !available {
                 i18n::t("source_needs_internet").to_string()
+            } else if source.temporary {
+                i18n::t("removable_temporary").to_string()
             } else if source.needs_network {
                 crate::forms::text(&source.service.name).to_uppercase()
             } else {

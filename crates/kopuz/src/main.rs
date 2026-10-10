@@ -1362,6 +1362,7 @@ fn App() -> Element {
                     evt.prevent_default();
                 }
             },
+            components::RemovablePrompt {}
             if let Some(cover) = cover_background() {
                 CoverArtBackground { cover }
             }

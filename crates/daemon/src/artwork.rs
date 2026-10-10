@@ -262,15 +262,22 @@ impl ArtworkService {
         hq: bool,
     ) -> Result<ArtworkPayload, ApiError> {
         let sources = self.session.sources();
-        let width = if hq { HQ_MAX } else { THUMB_MAX };
         let cover = self.cover_for(target, &sources).await?;
+        self.fetch_cover(sources.server.as_ref(), cover, hq).await
+    }
+
+    pub(crate) async fn fetch_cover(
+        &self,
+        server: Option<&config::MusicServer>,
+        cover: CoverRef,
+        hq: bool,
+    ) -> Result<ArtworkPayload, ApiError> {
+        let width = if hq { HQ_MAX } else { THUMB_MAX };
         let missing = || ApiError::not_found("no artwork for this entity");
-        match server::cover::locate(sources.server.as_ref(), cover.clone(), width)
-            .ok_or_else(missing)?
-        {
+        match server::cover::locate(server, cover.clone(), width).ok_or_else(missing)? {
             Located::File(path) => self.local_payload(&path.to_string_lossy(), hq).await,
             Located::Url(url) => {
-                let cache_name = remote_cache_name(sources.server.as_ref(), &cover, &url);
+                let cache_name = remote_cache_name(server, &cover, &url);
                 self.proxied_payload(&url, &cache_name, hq).await
             }
         }

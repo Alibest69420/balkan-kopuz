@@ -10,6 +10,7 @@ pub fn capabilities_to_proto(value: &api::SourceCapabilities) -> SourceCapabilit
         folders: value.folders,
         sync: value.sync,
         downloads: value.downloads,
+        rip_audio: value.rip_audio,
         uploads: value.uploads,
         storage_quota: value.storage_quota,
         discover: value.discover,
@@ -109,6 +110,7 @@ pub fn capabilities_from_proto(value: Option<&SourceCapabilities>) -> api::Sourc
         folders: value.folders,
         sync: value.sync,
         downloads: value.downloads,
+        rip_audio: value.rip_audio,
         uploads: value.uploads,
         storage_quota: value.storage_quota,
         discover: value.discover,
@@ -313,6 +315,7 @@ pub fn source_info_to_proto(value: &api::SourceInfo) -> SourceInfo {
         needs_network: value.needs_network,
         works_offline: value.works_offline,
         permanent: value.permanent,
+        temporary: value.temporary,
         state: value
             .state
             .map(|state| super::enums::source_state_to_proto(state) as i32),
@@ -340,6 +343,7 @@ pub fn source_info_from_proto(value: &SourceInfo) -> api::SourceInfo {
         needs_network: value.needs_network,
         works_offline: value.works_offline,
         permanent: value.permanent,
+        temporary: value.temporary,
         state: value.state.map(super::enums::source_state_from_proto),
         avatar: value.avatar.as_ref().and_then(artwork_ref_from_proto),
     }
@@ -502,6 +506,7 @@ mod tests {
                 delete_from_disk: false,
                 sync: true,
                 downloads: true,
+                rip_audio: true,
                 uploads: true,
                 storage_quota: true,
                 browse_folders: true,
@@ -533,6 +538,7 @@ mod tests {
             needs_network: true,
             works_offline: true,
             permanent: true,
+            temporary: true,
             state: Some(api::SourceState::AuthExpired),
             avatar: Some(api::ArtworkRef::new(
                 api::ArtworkTarget::Account("yt".into()),

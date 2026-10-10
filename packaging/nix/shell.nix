@@ -9,6 +9,8 @@
   appstream,
   nodejs_22,
   ffmpeg,
+  libcdio,
+  libcdio-paranoia,
   glib-networking,
   glib,
   gtk3,
@@ -50,7 +52,12 @@ mkShell {
         gst-libav
       ]
     );
-    LD_LIBRARY_PATH = "${lib.makeLibraryPath kopuzPkg.buildInputs}:${libayatana-appindicator}/lib:$LD_LIBRARY_PATH";
+    LD_LIBRARY_PATH = "${
+      lib.makeLibraryPath [
+        libcdio
+        libcdio-paranoia
+      ]
+    }:${lib.makeLibraryPath kopuzPkg.buildInputs}:${libayatana-appindicator}/lib:$LD_LIBRARY_PATH";
     WEBKIT_DISABLE_COMPOSITING_MODE = "1";
     RUSTFLAGS = "-C link-arg=-fuse-ld=lld";
   };

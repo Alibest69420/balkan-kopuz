@@ -270,6 +270,7 @@ pub async fn assemble(args: &CoreArgs) -> Result<Core, Box<dyn std::error::Error
             .map(|dirs| dirs.cache_dir().join("artwork"))
             .unwrap_or_else(|| std::env::temp_dir().join("kopuz-artwork")),
     );
+    downloads.attach_artwork(artwork.clone());
     let mutations = crate::MutationService::new(
         database.clone(),
         session.clone(),
@@ -284,6 +285,7 @@ pub async fn assemble(args: &CoreArgs) -> Result<Core, Box<dyn std::error::Error
         sources,
     );
     sources.spawn_credential_upkeep();
+    sources.watch_removable();
     sources.watch_active(session.sources_watch());
     sources.watch_network();
     if args.offline {
