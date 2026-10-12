@@ -1571,7 +1571,7 @@ message Config {
   bool show_source_toggle = 36;
   bool show_row_images = 37;
   repeated string sidebar_order = 38;
-  float volume = 39;
+  reserved 39; // was volume, which PlayerState carries
   float volume_scroll_step = 40;
   uint32 crossfade_seconds = 41;
   map<string, CustomTheme> custom_themes = 42;

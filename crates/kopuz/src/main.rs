@@ -470,8 +470,7 @@ fn App() -> Element {
     let current_song_bitrate = use_signal(|| 0u16);
     let current_song_progress = use_signal(|| 0u64);
     let current_track_snapshot = use_signal(|| None::<api::TrackInfo>);
-    let mut volume = use_signal(|| 1.0f32);
-    let mut persisted_volume = use_signal(|| 1.0f32);
+    let volume = use_signal(|| 1.0f32);
 
     let is_playing = use_signal(|| false);
     let mut is_fullscreen = use_signal(|| false);
@@ -514,11 +513,7 @@ fn App() -> Element {
                 // already committed as a targeted write when it happened. The
                 // queue is the core's: it owns the store and persists on the
                 // way out, so only the config surface is ours to push.
-                let cfg = (*config_loaded_ok.peek()).then(|| {
-                    let mut cfg = config.peek().clone();
-                    cfg.volume = *volume.peek();
-                    cfg
-                });
+                let cfg = (*config_loaded_ok.peek()).then(|| config.peek().clone());
                 exit_flush::persist_on_fresh_thread(cfg);
             }
             backend::shutdown();
@@ -669,22 +664,12 @@ fn App() -> Element {
         let _ = config.read();
         config_dirty += 1;
     });
-    use_effect(move || {
-        if !*initial_load_done.read() || !*config_loaded_ok.read() {
-            return;
-        }
-        let _ = *persisted_volume.read();
-        config_dirty += 1;
-    });
     #[cfg(not(target_os = "android"))]
     use_effect(move || {
         if !*initial_load_done.read() || !*config_loaded_ok.read() {
             return;
         }
-        let mut snapshot = config.read().clone();
-        let _ = *persisted_volume.read();
-        snapshot.volume = *volume.peek();
-        exit_flush::stash_config(snapshot);
+        exit_flush::stash_config(config.read().clone());
     });
     // Settings are written through the daemon, which owns the file and the
     // blob: a direct database write would leave its copy stale and lose the
@@ -699,8 +684,7 @@ fn App() -> Element {
             }
             utils::sleep(std::time::Duration::from_millis(STORE_SAVE_SETTLE_MS)).await;
             flushed = *config_dirty.peek();
-            let mut snapshot = config.peek().clone();
-            snapshot.volume = *volume.peek();
+            let snapshot = config.peek().clone();
             match api
                 .set_config(snapshot.clone())
                 .instrument(tracing::info_span!("config.persist"))
@@ -881,8 +865,6 @@ fn App() -> Element {
                     let _apply = tracing::info_span!("startup.apply_config").entered();
                     let loaded = cfg_loaded;
                     config.set(loaded.clone());
-                    volume.set(loaded.volume);
-                    persisted_volume.set(loaded.volume);
                     i18n::set_locale(&loaded.language);
                 }
 
@@ -1535,7 +1517,6 @@ fn App() -> Element {
                     queue: queue,
                     current_queue_index: current_queue_index,
                     volume: volume,
-                    persisted_volume: persisted_volume,
                     is_rightbar_open: is_rightbar_open,
                     is_devices_open: is_devices_open,
                 }
@@ -1869,7 +1850,6 @@ fn App() -> Element {
                 current_song_bitrate: current_song_bitrate,
                 current_song_artist: current_song_artist,
                 volume: volume,
-                persisted_volume: persisted_volume,
                 palette: palette,
             }
             DownloadOverlay {}
@@ -1919,7 +1899,6 @@ fn App() -> Element {
                     queue: queue,
                     current_queue_index: current_queue_index,
                     volume: volume,
-                    persisted_volume: persisted_volume,
                     is_rightbar_open: is_rightbar_open,
                     is_devices_open: is_devices_open,
                 }
