@@ -640,14 +640,14 @@ pub async fn artists_page(
         .iter()
         .map(|sort| {
             let col = match sort.field {
-                ArtistSortField::Name => "ar.name COLLATE FOLDED",
+                ArtistSortField::Name => "ar.name COLLATE LOCALE",
                 ArtistSortField::TrackCount => "n_tracks",
                 ArtistSortField::AlbumCount => "n_albums",
             };
             format!("{col} {}", direction(sort.descending))
         })
         .collect();
-    order.push("ar.name COLLATE FOLDED ASC".into());
+    order.push("ar.name COLLATE LOCALE ASC".into());
     order.push("ar.key ASC".into());
     let (limit_n, offset_n) = c.page_slots();
     let sql = format!(
@@ -894,10 +894,10 @@ pub async fn albums_page(
     for sort in &query.sort {
         let dir = direction(sort.descending);
         match sort.field {
-            AlbumSortField::Title => order.push(format!("al.title COLLATE FOLDED {dir}")),
-            AlbumSortField::Artist => order.push(format!("al.artist COLLATE FOLDED {dir}")),
+            AlbumSortField::Title => order.push(format!("al.title COLLATE LOCALE {dir}")),
+            AlbumSortField::Artist => order.push(format!("al.artist COLLATE LOCALE {dir}")),
             AlbumSortField::Year => order.push(format!("al.year {dir}")),
-            AlbumSortField::Genre => order.push(format!("al.genre COLLATE FOLDED {dir}")),
+            AlbumSortField::Genre => order.push(format!("al.genre COLLATE LOCALE {dir}")),
             AlbumSortField::RecentlyAdded => {
                 order.push(format!("COALESCE(tc.added_at, 0) {dir}"));
                 order.push(format!("COALESCE(tc.last_pk, 0) {dir}"));
@@ -905,8 +905,8 @@ pub async fn albums_page(
             AlbumSortField::TrackCount => order.push(format!("COALESCE(tc.n, 0) {dir}")),
         }
     }
-    order.push("al.artist COLLATE FOLDED ASC".into());
-    order.push("al.title COLLATE FOLDED ASC".into());
+    order.push("al.artist COLLATE LOCALE ASC".into());
+    order.push("al.title COLLATE LOCALE ASC".into());
     order.push("al.rowid_pk ASC".into());
     let (limit_n, offset_n) = c.page_slots();
     let sql = format!(
