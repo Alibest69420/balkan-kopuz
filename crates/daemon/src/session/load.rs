@@ -28,7 +28,8 @@ impl Session {
         let use_crossfade = allow_crossfade
             && self.should_crossfade()
             && restore_seek.is_none_or(|position| position.is_zero());
-        let crossfade_duration = Duration::from_secs(self.config.crossfade_seconds as u64);
+        let crossfade_duration =
+            Duration::from_secs(self.settings.playback.crossfade_seconds as u64);
         let item_ref = PlaybackItemRef::parse(&track_key);
         let is_radio = item_ref.is_radio();
         let is_server = item_ref.is_server();

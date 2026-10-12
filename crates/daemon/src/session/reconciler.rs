@@ -118,7 +118,7 @@ impl Session {
         let remaining = duration.saturating_sub(position);
         if duration.is_zero()
             || position >= duration
-            || remaining > Duration::from_secs(self.config.crossfade_seconds as u64)
+            || remaining > Duration::from_secs(self.settings.playback.crossfade_seconds as u64)
         {
             return false;
         }

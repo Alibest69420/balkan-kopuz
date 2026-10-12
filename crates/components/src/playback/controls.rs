@@ -1,5 +1,5 @@
 use crate::shared::fmt_time;
-use config::AppConfig;
+use config::Settings;
 use dioxus::prelude::*;
 use hooks::use_player_controller::{BufferedRange, LoopMode, PlayerController};
 
@@ -120,7 +120,7 @@ pub struct VolumeMute {
     pub on_input: Callback<FormEvent>,
 }
 
-pub fn use_volume_mute(config: Signal<AppConfig>, volume: Signal<f32>) -> VolumeMute {
+pub fn use_volume_mute(settings: Signal<Settings>, volume: Signal<f32>) -> VolumeMute {
     let mut ctrl = use_context::<PlayerController>();
     let muted = ctrl.muted;
 
@@ -135,7 +135,7 @@ pub fn use_volume_mute(config: Signal<AppConfig>, volume: Signal<f32>) -> Volume
         if dy.abs() < f64::EPSILON {
             return;
         }
-        let step = config.read().volume_scroll_step.max(0.0);
+        let step = settings.read().playback.volume_scroll_step.max(0.0);
         let dir = if dy < 0.0 { 1.0 } else { -1.0 };
         let current = *volume.read();
         let new_val = (current + dir * step).clamp(0.0, 1.0);
@@ -382,11 +382,11 @@ pub fn SeekSlider(
 
 #[component]
 pub fn VolumeSlider(
-    config: Signal<AppConfig>,
+    settings: Signal<Settings>,
     volume: Signal<f32>,
     variant: ControlsVariant,
 ) -> Element {
-    let vol = use_volume_mute(config, volume);
+    let vol = use_volume_mute(settings, volume);
     let volume_percent = vol.volume_percent;
     let is_muted = vol.is_muted;
     let toggle_mute = vol.toggle_mute;

@@ -111,7 +111,7 @@ impl Session {
     }
 
     pub(super) fn should_crossfade(&self) -> bool {
-        self.config.crossfade_seconds > 0
+        self.settings.playback.crossfade_seconds > 0
             && self.phase == ApiPhase::Playing
             && self.player.can_resume()
     }

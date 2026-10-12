@@ -300,7 +300,7 @@ struct Harness {
     sink: FakeSinkHandle,
 }
 
-fn harness(configure: impl FnOnce(&mut config::AppConfig)) -> Harness {
+fn harness(configure: impl FnOnce(&mut config::Settings)) -> Harness {
     harness_with_provider(
         configure,
         Arc::new(|track| Some(wav_factory(track.duration.min(6)))),
@@ -308,14 +308,14 @@ fn harness(configure: impl FnOnce(&mut config::AppConfig)) -> Harness {
 }
 
 fn harness_with_provider(
-    configure: impl FnOnce(&mut config::AppConfig),
+    configure: impl FnOnce(&mut config::Settings),
     provider: FactoryOverride,
 ) -> Harness {
     harness_with_services(configure, provider, None)
 }
 
 fn harness_with_services(
-    configure: impl FnOnce(&mut config::AppConfig),
+    configure: impl FnOnce(&mut config::Settings),
     provider: FactoryOverride,
     recorder: Option<Arc<dyn PlaybackRecorder>>,
 ) -> Harness {
@@ -323,8 +323,8 @@ fn harness_with_services(
         recorder,
         ..Default::default()
     };
-    services.config.crossfade_seconds = 0;
-    configure(&mut services.config);
+    services.settings.playback.crossfade_seconds = 0;
+    configure(&mut services.settings);
     spawn_harness(services, provider)
 }
 
@@ -334,7 +334,7 @@ fn harness_at_volume(volume: f32, muted: bool) -> Harness {
         muted,
         ..Default::default()
     };
-    services.config.crossfade_seconds = 0;
+    services.settings.playback.crossfade_seconds = 0;
     spawn_harness(
         services,
         Arc::new(|track| Some(wav_factory(track.duration.min(6)))),
@@ -384,8 +384,8 @@ fn replay_gain_harness(provider: FactoryOverride) -> Harness {
     let sink = FakeSinkHandle::default();
     let player = Player::try_with_sink(Box::new(FakeSink(sink.clone()))).unwrap();
     let mut services = PlaybackServices::default();
-    services.config.crossfade_seconds = 0;
-    services.config.replay_gain.mode = config::ReplayGainMode::Auto;
+    services.settings.playback.crossfade_seconds = 0;
+    services.settings.playback.replay_gain.mode = config::ReplayGainMode::Auto;
     let session =
         SessionHandle::spawn_with_factory(Arc::new(GainLibrary), player, services, provider);
     Harness {
@@ -450,7 +450,7 @@ async fn replay_gain_settings_reach_playing_audio_through_config_api() {
     let mut harness = harness(|_| {});
     let dir = tempfile::tempdir().unwrap();
     let database = db::init(&dir.path().join("test.db")).await.unwrap();
-    let config = harness.api.session.config_rx.borrow().clone();
+    let config = harness.api.session.settings_rx.borrow().clone();
     let service = Arc::new(crate::config_service::ConfigService::new(
         database,
         dir.path().join("settings.toml"),
@@ -468,9 +468,9 @@ async fn replay_gain_settings_reach_playing_audio_through_config_api() {
         (config::ReplayGainMode::Off, -12.0, 0.0),
         (config::ReplayGainMode::Auto, -12.0, -12.0),
     ] {
-        let mut next = harness.api.config().await.unwrap().config;
-        next.replay_gain.mode = mode;
-        next.replay_gain.preamp_db = preamp;
+        let mut next = harness.api.config().await.unwrap().settings;
+        next.playback.replay_gain.mode = mode;
+        next.playback.replay_gain.preamp_db = preamp;
         harness.api.set_config(next).await.unwrap();
         wait_replay_gain(&harness, expected).await;
     }
@@ -974,7 +974,7 @@ async fn crossfade_load_can_be_superseded_without_a_stale_switch() {
             wav_factory(6)
         })
     });
-    let harness = harness_with_provider(|config| config.crossfade_seconds = 1, provider);
+    let harness = harness_with_provider(|config| config.playback.crossfade_seconds = 1, provider);
     harness
         .api
         .set_queue(replace(&["track-0", "track-1"]))
@@ -1060,7 +1060,7 @@ async fn queue_titles(api: &LocalApi) -> Vec<String> {
 
 #[tokio::test]
 async fn append_during_a_crossfade_survives_the_commit() {
-    let harness = harness(|config| config.crossfade_seconds = 1);
+    let harness = harness(|config| config.playback.crossfade_seconds = 1);
     harness
         .api
         .set_queue(replace(&["track-0", "track-1"]))
@@ -1089,7 +1089,7 @@ async fn append_during_a_crossfade_survives_the_commit() {
 
 #[tokio::test]
 async fn play_next_during_a_crossfade_lands_after_the_incoming_track() {
-    let harness = harness(|config| config.crossfade_seconds = 1);
+    let harness = harness(|config| config.playback.crossfade_seconds = 1);
     harness
         .api
         .set_queue(replace(&["track-0", "track-1"]))
@@ -1120,7 +1120,7 @@ async fn play_next_during_a_crossfade_lands_after_the_incoming_track() {
 
 #[tokio::test]
 async fn remove_during_a_crossfade_is_not_resurrected_by_the_commit() {
-    let harness = harness(|config| config.crossfade_seconds = 1);
+    let harness = harness(|config| config.playback.crossfade_seconds = 1);
     harness
         .api
         .set_queue(replace(&["track-0", "track-1", "track-2"]))
@@ -1145,7 +1145,7 @@ async fn remove_during_a_crossfade_is_not_resurrected_by_the_commit() {
 
 #[tokio::test]
 async fn removing_the_track_being_faded_into_is_refused() {
-    let harness = harness(|config| config.crossfade_seconds = 1);
+    let harness = harness(|config| config.playback.crossfade_seconds = 1);
     harness
         .api
         .set_queue(replace(&["track-0", "track-1"]))
@@ -1173,7 +1173,7 @@ async fn removing_the_track_being_faded_into_is_refused() {
 
 #[tokio::test]
 async fn move_during_a_crossfade_follows_the_incoming_track() {
-    let harness = harness(|config| config.crossfade_seconds = 1);
+    let harness = harness(|config| config.playback.crossfade_seconds = 1);
     harness
         .api
         .set_queue(replace(&["track-0", "track-1", "track-2"]))
@@ -1204,7 +1204,7 @@ async fn move_during_a_crossfade_follows_the_incoming_track() {
 
 #[tokio::test]
 async fn seek_during_crossfade_is_guarded_to_the_visible_token() {
-    let harness = harness(|config| config.crossfade_seconds = 1);
+    let harness = harness(|config| config.playback.crossfade_seconds = 1);
     harness
         .api
         .set_queue(replace(&["track-0", "track-1"]))
@@ -1485,7 +1485,7 @@ async fn failed_crossfade_preparation_records_no_listen_and_can_retry() {
         )
     });
     let harness = harness_with_services(
-        |config| config.crossfade_seconds = 1,
+        |config| config.playback.crossfade_seconds = 1,
         provider,
         Some(recorder.clone()),
     );
@@ -1621,8 +1621,8 @@ async fn switching_sources_parks_and_resumes_each_queue() {
     let sink = FakeSinkHandle::default();
     let player =
         Player::try_with_sink(Box::new(FakeSink(sink.clone()))).expect("headless player starts");
-    let mut config = config::AppConfig::default();
-    config.local_sources.push(config::SavedLocalSource {
+    let mut config = config::Settings::default();
+    config.library.local_sources.push(config::SavedLocalSource {
         id: "local:b".into(),
         name: "B".into(),
         directories: Vec::new(),
@@ -1630,7 +1630,7 @@ async fn switching_sources_parks_and_resumes_each_queue() {
     let on_a = active_on(config::Source::default());
     let on_b = active_on(config::Source::LocalLibrary("local:b".into()));
     let services = PlaybackServices {
-        config,
+        settings: config,
         sources: on_a.clone(),
         queue_store: Some(store.clone()),
         ..Default::default()
@@ -1676,14 +1676,14 @@ async fn leaving_a_deleted_source_parks_nothing() {
     let sink = FakeSinkHandle::default();
     let player =
         Player::try_with_sink(Box::new(FakeSink(sink.clone()))).expect("headless player starts");
-    let mut on_b = config::AppConfig::default();
-    on_b.local_sources.push(config::SavedLocalSource {
+    let mut on_b = config::Settings::default();
+    on_b.library.local_sources.push(config::SavedLocalSource {
         id: "local:b".into(),
         name: "B".into(),
         directories: Vec::new(),
     });
     let services = PlaybackServices {
-        config: on_b.clone(),
+        settings: on_b.clone(),
         sources: active_on(config::Source::LocalLibrary("local:b".into())),
         queue_store: Some(store.clone()),
         ..Default::default()
@@ -1711,8 +1711,8 @@ async fn leaving_a_deleted_source_parks_nothing() {
 
     // The order SourceService sends them in: the folder list first, then the active source.
     let mut deleted = on_b.clone();
-    deleted.remove_local_source("local:b");
-    session.set_config(deleted, vec!["local_sources".into()]);
+    deleted.library.remove_local_source("local:b");
+    session.set_settings(deleted, vec!["local_sources".into()]);
     session.set_sources(active_on(config::Source::default()));
     session.persist_now().await;
 
@@ -1988,16 +1988,19 @@ async fn switching_source_releases_the_integration_that_owned_playback() {
     })
     .await;
 
-    let mut elsewhere = config::AppConfig::default();
-    elsewhere.local_sources.push(config::SavedLocalSource {
-        id: "local:b".into(),
-        name: "B".into(),
-        directories: Vec::new(),
-    });
+    let mut elsewhere = config::Settings::default();
+    elsewhere
+        .library
+        .local_sources
+        .push(config::SavedLocalSource {
+            id: "local:b".into(),
+            name: "B".into(),
+            directories: Vec::new(),
+        });
     harness
         .api
         .session
-        .set_config(elsewhere, vec!["local_sources".into()]);
+        .set_settings(elsewhere, vec!["local_sources".into()]);
     harness
         .api
         .session
@@ -2057,8 +2060,8 @@ async fn an_unreadable_queue_is_not_saved_over() {
     let sink = FakeSinkHandle::default();
     let player =
         Player::try_with_sink(Box::new(FakeSink(sink.clone()))).expect("headless player starts");
-    let mut config = config::AppConfig::default();
-    config.local_sources.push(config::SavedLocalSource {
+    let mut config = config::Settings::default();
+    config.library.local_sources.push(config::SavedLocalSource {
         id: "local:b".into(),
         name: "B".into(),
         directories: Vec::new(),
@@ -2066,7 +2069,7 @@ async fn an_unreadable_queue_is_not_saved_over() {
     let on_a = active_on(config::Source::default());
     let on_b = active_on(b.clone());
     let services = PlaybackServices {
-        config,
+        settings: config,
         sources: on_a.clone(),
         queue_store: Some(store.clone()),
         ..Default::default()
@@ -2120,12 +2123,12 @@ async fn an_unreadable_queue_is_not_saved_over() {
 #[tokio::test]
 async fn an_equalizer_preview_leaves_the_settings_alone() {
     let harness = harness(|_| {});
-    let before = harness.api.session.config_watch().borrow().clone();
-    let mut preview = before.equalizer.clone();
+    let before = harness.api.session.settings_watch().borrow().clone();
+    let mut preview = before.playback.equalizer.clone();
     preview.enabled = !preview.enabled;
     harness.api.session.preview_equalizer(preview);
     harness.api.session.persist_now().await;
-    assert_eq!(*harness.api.session.config_watch().borrow(), before);
+    assert_eq!(*harness.api.session.settings_watch().borrow(), before);
 }
 
 #[tokio::test]
@@ -2434,7 +2437,7 @@ async fn config_changes_reach_the_session_in_the_order_they_were_saved() {
     let service = Arc::new(crate::ConfigService::new(
         database,
         dir.path().join("settings.toml"),
-        config::AppConfig::default(),
+        config::Settings::default(),
     ));
     let player = Player::try_with_sink(Box::new(FakeSink(FakeSinkHandle::default())))
         .expect("headless player starts");
@@ -2453,7 +2456,7 @@ async fn config_changes_reach_the_session_in_the_order_they_were_saved() {
             tokio::spawn(async move {
                 service
                     .mutate_state(&["crossfade_seconds"], move |config| {
-                        config.crossfade_seconds = crossfade;
+                        config.playback.crossfade_seconds = crossfade;
                     })
                     .await
             })
@@ -2464,9 +2467,9 @@ async fn config_changes_reach_the_session_in_the_order_they_were_saved() {
     }
     session.persist_now().await;
 
-    let saved = service.snapshot().await.crossfade_seconds;
+    let saved = service.snapshot().await.playback.crossfade_seconds;
     assert_eq!(
-        session.config_watch().borrow().crossfade_seconds,
+        session.settings_watch().borrow().playback.crossfade_seconds,
         saved,
         "the session holds what was saved last"
     );
@@ -2752,8 +2755,8 @@ async fn each_source_keeps_its_own_origin_across_a_switch() {
     });
     let player = Player::try_with_sink(Box::new(FakeSink(FakeSinkHandle::default())))
         .expect("headless player starts");
-    let mut config = config::AppConfig::default();
-    config.local_sources.push(config::SavedLocalSource {
+    let mut config = config::Settings::default();
+    config.library.local_sources.push(config::SavedLocalSource {
         id: "local:b".into(),
         name: "B".into(),
         directories: Vec::new(),
@@ -2764,7 +2767,7 @@ async fn each_source_keeps_its_own_origin_across_a_switch() {
         Arc::new(StubLibrary),
         player,
         PlaybackServices {
-            config,
+            settings: config,
             sources: on_a.clone(),
             queue_store: Some(store.clone()),
             ..Default::default()
@@ -3273,7 +3276,7 @@ async fn shuffle_upcoming_with_fewer_than_two_upcoming_is_a_quiet_no_op() {
 
 #[tokio::test]
 async fn upcoming_edits_during_a_crossfade_spare_the_track_fading_in() {
-    let harness = harness(|config| config.crossfade_seconds = 1);
+    let harness = harness(|config| config.playback.crossfade_seconds = 1);
     harness
         .api
         .set_queue(replace(&["track-0", "track-1", "track-2", "track-3"]))

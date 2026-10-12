@@ -182,7 +182,7 @@ impl FavoritesService {
 
     /// A favorites sync run inside another job: push pending likes, then import unless one ran within the interval.
     pub(crate) async fn refresh(&self, ctx: &crate::jobs::JobCtx) -> Result<(), ApiError> {
-        let config = self.session.config_watch().borrow().clone();
+        let config = self.session.settings_watch().borrow().clone();
         let source = self.session.sources().active.clone();
         ctx.progress("reconciling favorites", None, None, None);
         let reconciled = self.reconcile(SyncReason::Manual).await;
@@ -198,7 +198,7 @@ impl FavoritesService {
     }
 
     /// Whether the last favorites sync is younger than the sync interval (a day when it is "never").
-    async fn imported_recently(&self, config: &config::AppConfig, source: &config::Source) -> bool {
+    async fn imported_recently(&self, config: &config::Settings, source: &config::Source) -> bool {
         let window =
             crate::auto_sync::interval(config).unwrap_or(Duration::from_secs(24 * 60 * 60));
         let Some(at) =

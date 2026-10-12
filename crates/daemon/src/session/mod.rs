@@ -67,7 +67,7 @@ pub trait PlaybackRecorder: Send + Sync {
 /// Keeping them together lets the actor land before ConfigService and source
 /// lifecycle extraction do.
 pub struct PlaybackServices {
-    pub config: config::AppConfig,
+    pub settings: config::Settings,
     /// The level and mute the engine was left at, as the database stored them.
     pub volume: f32,
     pub muted: bool,
@@ -83,7 +83,7 @@ pub struct PlaybackServices {
 impl Default for PlaybackServices {
     fn default() -> Self {
         Self {
-            config: config::AppConfig::default(),
+            settings: config::Settings::default(),
             volume: 1.0,
             muted: false,
             sources: Arc::default(),
@@ -116,8 +116,8 @@ enum SessionCmd {
         Box<db::QueueSnapshot>,
         oneshot::Sender<Result<CommandAck, ApiError>>,
     ),
-    SetConfig {
-        config: Box<config::AppConfig>,
+    SetSettings {
+        settings: Box<config::Settings>,
         changed: Vec<String>,
     },
     SetSources(Arc<server::sources::Sources>),
@@ -154,7 +154,7 @@ enum SessionCmd {
 pub struct SessionHandle {
     cmd_tx: mpsc::UnboundedSender<SessionCmd>,
     state_rx: watch::Receiver<PlayerState>,
-    config_rx: watch::Receiver<config::AppConfig>,
+    settings_rx: watch::Receiver<config::Settings>,
     sources_rx: watch::Receiver<Arc<server::sources::Sources>>,
     events: broadcast::Sender<ApiEvent>,
     materializer: Arc<dyn QueueMaterializer>,
@@ -186,16 +186,16 @@ impl SessionHandle {
     ) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let (events, _) = broadcast::channel(EVENT_BUFFER);
-        let (config_tx, config_rx) = watch::channel(services.config.clone());
+        let (settings_tx, settings_rx) = watch::channel(services.settings.clone());
         let (sources_tx, sources_rx) = watch::channel(services.sources.clone());
         let engine_events = player.subscribe();
         let volume = services.volume.clamp(0.0, 1.0);
         player.set_volume(if services.muted { 0.0 } else { volume });
-        player.set_channel_mode(services.config.channel_mode);
-        player.set_equalizer(services.config.equalizer.clone());
-        player.set_replay_gain(services.config.replay_gain);
-        player.set_device_change_behavior(services.config.device_change_behavior);
-        player.set_sample_rate_mode(services.config.sample_rate_mode);
+        player.set_channel_mode(services.settings.playback.channel_mode);
+        player.set_equalizer(services.settings.playback.equalizer.clone());
+        player.set_replay_gain(services.settings.playback.replay_gain);
+        player.set_device_change_behavior(services.settings.playback.device_change_behavior);
+        player.set_sample_rate_mode(services.settings.playback.sample_rate_mode);
 
         let session = Session {
             model: QueueModel::default(),
@@ -230,8 +230,8 @@ impl SessionHandle {
             last_recent_key: None,
             external: None,
             sink: None,
-            config_tx,
-            config: services.config,
+            settings_tx,
+            settings: services.settings,
             sources_tx,
             sources: services.sources,
             active_source: services.active_source,
@@ -245,7 +245,7 @@ impl SessionHandle {
         Self {
             cmd_tx,
             state_rx,
-            config_rx,
+            settings_rx,
             sources_rx,
             events,
             materializer,
@@ -284,10 +284,9 @@ impl SessionHandle {
         self.events.subscribe()
     }
 
-    /// The session's live config copy: seeded at spawn, updated by
-    /// `set_config`. Integration tasks watch this instead of polling.
-    pub fn config_watch(&self) -> watch::Receiver<config::AppConfig> {
-        self.config_rx.clone()
+    /// The session's live settings copy, seeded at spawn and updated by `set_settings`, which integration tasks watch instead of polling.
+    pub fn settings_watch(&self) -> watch::Receiver<config::Settings> {
+        self.settings_rx.clone()
     }
 
     /// The session's live sources copy: seeded at spawn, updated by `set_sources`.
@@ -453,8 +452,6 @@ impl SessionHandle {
             .find(|track| track.id.key() == key)
     }
 
-    /// Adopt a new config (a ConfigService patch): applies live audio
-    /// settings and emits `config.changed`.
     /// The stored queue could not be read, so nothing may be saved over it until a new queue is built.
     pub fn hold_unread_queue(&self) {
         let _ = self.cmd_tx.send(SessionCmd::QueueUnread);
@@ -465,9 +462,10 @@ impl SessionHandle {
         let _ = self.cmd_tx.send(SessionCmd::PreviewEqualizer(equalizer));
     }
 
-    pub(crate) fn set_config(&self, config: config::AppConfig, changed: Vec<String>) {
-        let _ = self.cmd_tx.send(SessionCmd::SetConfig {
-            config: Box::new(config),
+    /// Adopt new settings (a ConfigService change): applies live audio settings and emits `config.changed`.
+    pub(crate) fn set_settings(&self, settings: config::Settings, changed: Vec<String>) {
+        let _ = self.cmd_tx.send(SessionCmd::SetSettings {
+            settings: Box::new(settings),
             changed,
         });
     }
@@ -593,8 +591,8 @@ struct Session {
     /// The integration that can play tracks the engine cannot, whether or
     /// not it currently owns playback.
     sink: Option<crate::external::SharedExternalPlayer>,
-    config_tx: watch::Sender<config::AppConfig>,
-    config: config::AppConfig,
+    settings_tx: watch::Sender<config::Settings>,
+    settings: config::Settings,
     sources_tx: watch::Sender<Arc<server::sources::Sources>>,
     sources: Arc<server::sources::Sources>,
     active_source: Option<server::source::ActiveSource>,
@@ -670,8 +668,8 @@ impl Session {
                 let result = self.handle_restore(*snapshot, state_tx);
                 let _ = reply.send(result);
             }
-            SessionCmd::SetConfig { config, changed } => {
-                self.apply_config(*config, changed, state_tx)
+            SessionCmd::SetSettings { settings, changed } => {
+                self.apply_settings(*settings, changed, state_tx)
             }
             SessionCmd::SetSources(sources) => {
                 if sources.active != self.sources.active {
@@ -1154,7 +1152,7 @@ impl Session {
             return Ok(());
         }
 
-        if self.config.back_behavior == config::BackBehavior::RewindThenPrev
+        if self.settings.playback.back_behavior == config::BackBehavior::RewindThenPrev
             && self.displayed_position().as_secs() > 3
         {
             let _ = self.seek(0, state_tx);
@@ -1303,27 +1301,31 @@ impl Session {
         Ok(())
     }
 
-    fn apply_config(
+    fn apply_settings(
         &mut self,
-        config: config::AppConfig,
+        settings: config::Settings,
         changed: Vec<String>,
         state_tx: &watch::Sender<PlayerState>,
     ) {
         for key in &changed {
             match key.as_str() {
-                "equalizer" => self.player.set_equalizer(config.equalizer.clone()),
-                "replay_gain" => self.player.set_replay_gain(config.replay_gain),
-                "channel_mode" => self.player.set_channel_mode(config.channel_mode),
-                "sample_rate_mode" => self.player.set_sample_rate_mode(config.sample_rate_mode),
+                "equalizer" => self
+                    .player
+                    .set_equalizer(settings.playback.equalizer.clone()),
+                "replay_gain" => self.player.set_replay_gain(settings.playback.replay_gain),
+                "channel_mode" => self.player.set_channel_mode(settings.playback.channel_mode),
+                "sample_rate_mode" => self
+                    .player
+                    .set_sample_rate_mode(settings.playback.sample_rate_mode),
                 "device_change_behavior" => {
                     self.player
-                        .set_device_change_behavior(config.device_change_behavior);
+                        .set_device_change_behavior(settings.playback.device_change_behavior);
                 }
                 _ => {}
             }
         }
-        self.config = config;
-        let _ = self.config_tx.send(self.config.clone());
+        self.settings = settings;
+        let _ = self.settings_tx.send(self.settings.clone());
         self.emit(ApiEvent::ConfigChanged { keys: changed });
         self.publish(state_tx, false);
     }
@@ -1631,7 +1633,7 @@ impl Session {
             Some(store) => {
                 self.settle_persists().await;
                 let leaving = self.sources.active.clone();
-                if !next.has_source(&self.config.local_sources, &leaving) {
+                if !next.has_source(&self.settings.library.local_sources, &leaving) {
                     store.forget(&leaving).await;
                 } else if !self.queue_unread {
                     store.save(&leaving, self.snapshot()).await;
