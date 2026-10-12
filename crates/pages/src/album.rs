@@ -10,7 +10,7 @@ use components::view_mode_toggle::ViewModeToggle;
 use config::{AlbumViewMode, AppConfig};
 use dioxus::prelude::*;
 use hooks::db_reactivity::Table;
-use hooks::use_db_queries::{use_active_source, use_album, use_albums, use_tracks_by_keys};
+use hooks::use_db_queries::{use_active_source, use_album, use_albums, use_downloaded_tracks};
 use std::collections::HashSet;
 
 /// Copy a link to the clipboard and flash a small toast. Used by the catalog album
@@ -80,7 +80,6 @@ pub fn Album(
                 }
             } else {
                 AlbumDetail {
-                    config,
                     album_id_str: album_id.read().clone(),
                     queue,
                     current_queue_index,
@@ -126,19 +125,8 @@ fn AlbumGrid(
     // Offline (server): only albums with downloaded tracks. Album ids come from
     // the downloaded tracks themselves. The grid dedupes by title — the detail
     // re-aggregates same-titled albums.
-    let offline_keys = use_memo(move || -> Vec<String> {
-        if !(caps().downloads && *is_offline.read()) {
-            return Vec::new();
-        }
-        config
-            .read()
-            .offline_tracks
-            .iter()
-            .filter(|(_, p)| std::path::Path::new(p).exists())
-            .map(|(id, _)| id.clone())
-            .collect()
-    });
-    let offline_tracks_res = use_tracks_by_keys(source, offline_keys);
+    let offline_tracks_res =
+        use_downloaded_tracks(source, move || caps().downloads && *is_offline.read());
     let downloaded_album_ids = use_memo(move || -> HashSet<String> {
         if !(caps().downloads && *is_offline.read()) {
             return HashSet::new();
@@ -292,7 +280,6 @@ fn AlbumGrid(
 
 #[component]
 fn AlbumDetail(
-    config: Signal<AppConfig>,
     album_id_str: String,
     mut queue: Signal<Vec<api::TrackInfo>>,
     current_queue_index: Signal<usize>,
@@ -357,7 +344,6 @@ fn AlbumDetail(
                 return rsx! {
                     div { class: "absolute inset-0 flex flex-col overflow-hidden p-8",
                         RemoteAlbumDetail {
-                            config,
                             title: remote.title,
                             artist: remote.subtitle.unwrap_or_default(),
                             artist_key: remote.artist_key,
@@ -449,7 +435,6 @@ fn AlbumDetail(
 
     let tracks = use_memo(move || {
         let offline = caps().downloads && *is_offline.read();
-        let conf = config.read();
 
         // Full album from the catalog remote (already in album order). Used
         // whenever it resolved; the saved subset is the fallback.
@@ -473,7 +458,7 @@ fn AlbumDetail(
             .clone()
             .unwrap_or_default()
             .into_iter()
-            .filter(|t| !offline || conf.offline_tracks.contains_key(&t.key))
+            .filter(|t| !offline || t.offline)
             .collect();
         tracks.sort_by(|a, b| {
             a.disc_number
@@ -550,7 +535,6 @@ fn AlbumDetail(
         div { class: "absolute inset-0 flex flex-col overflow-hidden p-8",
             if cap.albums == api::AlbumPresentation::Remote {
                 RemoteAlbumDetail {
-                    config,
                     title: remote_title,
                     artist: remote_artist,
                     artist_key: remote_artist_key,
@@ -620,10 +604,7 @@ fn AlbumDetail(
                             return;
                         }
 
-                        let downloaded = config.read().offline_tracks.get(key)
-                            .map(|p| std::path::Path::new(p).exists())
-                            .unwrap_or(false);
-                        if downloaded {
+                        if t.offline {
                             hooks::downloads::remove(vec![key.to_string()]);
                         } else {
                             hooks::downloads::start(vec![key.to_string()]);
@@ -658,7 +639,6 @@ fn AlbumDetail(
 /// download behave exactly as everywhere else.
 #[component]
 fn RemoteAlbumDetail(
-    config: Signal<AppConfig>,
     title: String,
     artist: String,
     artist_key: Option<String>,
@@ -695,17 +675,12 @@ fn RemoteAlbumDetail(
         let idx = *ctrl.current_queue_index.read();
         ctrl.get_track_at(idx).map(|t| t.uid)
     };
-    let offline_tracks = config.read().offline_tracks.clone();
+    // Catalog rows are not re-read when a download lands, so the stored list is what's current.
+    let stored = downloads.read().clone();
 
     // Whether every album track is downloaded for offline — drives the download
     // button's toggle (download all ⇄ remove all).
-    let all_downloaded = !tracks.is_empty()
-        && tracks.iter().all(|t| {
-            offline_tracks
-                .get(&t.key)
-                .map(|p| std::path::Path::new(p).exists())
-                .unwrap_or(false)
-        });
+    let all_downloaded = !tracks.is_empty() && tracks.iter().all(|t| stored.is_stored(&t.key));
 
     let tracks_play_all = tracks.clone();
     let tracks_download_all = tracks.clone();
@@ -849,10 +824,7 @@ fn RemoteAlbumDetail(
                             let is_menu_open = active_menu.read().as_ref() == Some(&track.uid);
                             let is_current = current_id.as_ref() == Some(&track.uid);
                             let key = track.key.clone();
-                            let is_downloaded = offline_tracks
-                                .get(&key)
-                                .map(|p| std::path::Path::new(p).exists())
-                                .unwrap_or(false);
+                            let is_downloaded = stored.is_stored(&key);
                             let row_tracks = tracks.clone();
                             let menu_id = track.uid.clone();
                             let pl_id = track.uid.clone();
@@ -892,10 +864,7 @@ fn RemoteAlbumDetail(
                                             return;
                                         }
 
-                                        let downloaded = config.read().offline_tracks.get(k)
-                                            .map(|p| std::path::Path::new(p).exists())
-                                            .unwrap_or(false);
-                                        if downloaded {
+                                        if downloads.peek().is_stored(k) {
                                             hooks::downloads::remove(vec![k.to_string()]);
                                         } else {
                                             hooks::downloads::start(vec![k.to_string()]);

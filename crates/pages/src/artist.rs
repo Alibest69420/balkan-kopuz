@@ -12,7 +12,8 @@ use components::view_mode_toggle::ViewModeToggle;
 use config::{AlbumSortField, AlbumViewMode, AppConfig, ArtistSortField, ArtistViewOrder};
 use dioxus::prelude::*;
 use hooks::use_db_queries::{
-    use_active_source, use_albums, use_artist, use_artist_tracks, use_artists, use_tracks_by_keys,
+    use_active_source, use_albums, use_artist, use_artist_tracks, use_artists,
+    use_downloaded_tracks,
 };
 use std::collections::HashSet;
 
@@ -51,19 +52,8 @@ pub fn Artist(
 
     // Server + offline: keys of tracks downloaded for offline, used to restrict the
     // artist/album listing to what's actually available. Empty otherwise (cheap).
-    let offline_keys = use_memo(move || -> Vec<String> {
-        if !caps().downloads || !*is_offline.read() {
-            return Vec::new();
-        }
-        config
-            .read()
-            .offline_tracks
-            .iter()
-            .filter(|(_, path)| std::path::Path::new(path).exists())
-            .map(|(id, _)| id.clone())
-            .collect()
-    });
-    let offline_tracks_res = use_tracks_by_keys(source, offline_keys);
+    let offline_tracks_res =
+        use_downloaded_tracks(source, move || caps().downloads && *is_offline.read());
 
     let sort_order = use_signal(move || config.read().artist_view_order.clone());
     use_effect(move || {
@@ -206,16 +196,7 @@ pub fn Artist(
         if !(caps().downloads && *is_offline.read()) {
             return tracks;
         }
-        let conf = config.read();
-        tracks
-            .into_iter()
-            .filter(|t| {
-                conf.offline_tracks
-                    .get(&t.key)
-                    .map(|p| std::path::Path::new(p).exists())
-                    .unwrap_or(false)
-            })
-            .collect()
+        tracks.into_iter().filter(|t| t.offline).collect()
     });
 
     let artist_cover = use_memo(move || {
@@ -490,14 +471,9 @@ pub fn Artist(
                                             // Whether every track of this album is downloaded (servers only).
                                             let downloaded = cap.downloads && {
                                                 let all = artist_tracks_res.read().clone().and_then(Result::ok).unwrap_or_default();
-                                                let conf = config.read();
                                                 let aid = album.id.clone();
                                                 let tracks: Vec<_> = all.iter().filter(|t| t.album_id == aid).collect();
-                                                !tracks.is_empty() && tracks.iter().all(|t| {
-                                                    conf.offline_tracks.get(&t.key)
-                                                        .map(|p| std::path::Path::new(p).exists())
-                                                        .unwrap_or(false)
-                                                })
+                                                !tracks.is_empty() && tracks.iter().all(|t| t.offline)
                                             };
                                             rsx! {
                                                 div {
@@ -703,11 +679,7 @@ pub fn Artist(
                                     if let Some(track) = artist_tracks().get(idx) {
                                         let item_id = &track.key;
                                         if !item_id.is_empty() {
-
-                                            let is_downloaded = config.read().offline_tracks.get(item_id)
-                                                .map(|p| std::path::Path::new(p).exists())
-                                                .unwrap_or(false);
-                                            if is_downloaded {
+                                            if track.offline {
                                                 hooks::downloads::remove(vec![item_id.to_string()]);
                                             } else {
                                                 hooks::downloads::start(vec![item_id.to_string()]);

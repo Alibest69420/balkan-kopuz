@@ -238,6 +238,13 @@ impl LibraryService {
             .unwrap_or_default()
     }
 
+    fn offline(&self) -> crate::offline::OfflineIndex {
+        self.session
+            .get()
+            .map(|session| session.offline().clone())
+            .unwrap_or_default()
+    }
+
     fn invalidate(&self, table: Table) {
         if let Some(session) = self.session.get() {
             session.invalidate(table);
@@ -267,14 +274,14 @@ impl LibraryService {
     }
 
     pub async fn tracks(&self, filter: TrackFilter, page: Page) -> Result<TrackPage, ApiError> {
-        let config = self.current_config();
+        let offline = self.offline();
         let (total, rows) = self.tracks_raw(filter, page).await?;
         Ok(TrackPage {
             total,
             offset: page.offset,
             items: rows
                 .iter()
-                .map(|track| crate::wire::track_info(track, &config))
+                .map(|track| crate::wire::track_info(track, &offline))
                 .collect(),
         })
     }
@@ -314,7 +321,7 @@ impl LibraryService {
         prefix: &str,
         page: Page,
     ) -> Result<api::TrackPage, ApiError> {
-        let config = self.current_config();
+        let offline = self.offline();
         let rows = self
             .db
             .folder_tracks(&self.query_source(), prefix)
@@ -325,7 +332,7 @@ impl LibraryService {
             .iter()
             .skip(page.offset as usize)
             .take(page.limit as usize)
-            .map(|track| crate::wire::track_info(track, &config))
+            .map(|track| crate::wire::track_info(track, &offline))
             .collect();
         Ok(api::TrackPage {
             total,
@@ -334,21 +341,23 @@ impl LibraryService {
         })
     }
 
-    pub fn stats(&self) -> api::StatsView {
-        let config = self.current_config();
-        let own = config.active_source.listen_count_key("");
-        let listen_counts = config
-            .listen_counts
-            .iter()
+    pub async fn stats(&self) -> Result<api::StatsView, ApiError> {
+        let own = self.current_config().active_source.listen_count_key("");
+        let listen_counts = self
+            .db
+            .listen_counts()
+            .await
+            .map_err(db_error)?
+            .into_iter()
             .filter_map(|(key, count)| {
                 if own.is_empty() {
-                    (!key.starts_with("local:")).then(|| (key.clone(), *count))
+                    (!key.starts_with("local:")).then_some((key, count))
                 } else {
-                    key.strip_prefix(&own).map(|uid| (uid.to_owned(), *count))
+                    key.strip_prefix(&own).map(|uid| (uid.to_owned(), count))
                 }
             })
             .collect();
-        api::StatsView { listen_counts }
+        Ok(api::StatsView { listen_counts })
     }
 
     /// Lyrics for one library track, through the app's full provider chain

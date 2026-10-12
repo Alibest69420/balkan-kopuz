@@ -283,6 +283,42 @@ pub fn use_tracks_by_keys(
     })
 }
 
+/// This source's tracks with a downloaded copy still on disk, asked for only while `enabled` says so.
+pub fn use_downloaded_tracks(
+    source: Memo<String>,
+    enabled: impl Fn() -> bool + 'static,
+) -> Resource<Vec<api::TrackInfo>> {
+    let api = use_api();
+    let gens = use_generations();
+    use_resource(move || {
+        let _ = gens.generation(Table::Tracks);
+        let (api, s, on) = (api.clone(), source(), enabled());
+        let span = tracing::info_span!(
+            "query.downloaded_tracks",
+            source = s.as_str(),
+            rows = tracing::field::Empty,
+        );
+        async move {
+            if !on {
+                tracing::Span::current().record("rows", 0);
+                return Vec::new();
+            }
+            let filter = TrackFilter {
+                downloaded: Some(true),
+                ..Default::default()
+            };
+            let rows: Vec<api::TrackInfo> = api
+                .tracks(filter, all())
+                .await
+                .map(|page| page.items.into_iter().filter(|t| t.offline).collect())
+                .unwrap_or_default();
+            tracing::Span::current().record("rows", rows.len());
+            rows
+        }
+        .instrument(span)
+    })
+}
+
 /// This source's recently-played tracks, newest first.
 pub fn use_recently_played(source: Memo<String>) -> Resource<Vec<api::TrackInfo>> {
     let api = use_api();

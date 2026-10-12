@@ -4,8 +4,8 @@ use config::{AppConfig, ListenNowStyle, UiStyle};
 use dioxus::prelude::*;
 use hooks::use_db_queries::{
     use_active_source, use_album_tracks, use_albums, use_albums_window, use_artist_sample_tracks,
-    use_artists, use_favorites, use_playlists, use_recently_added_albums, use_top_genre,
-    use_tracks_by_keys,
+    use_artists, use_downloaded_tracks, use_favorites, use_playlists, use_recently_added_albums,
+    use_top_genre,
 };
 use rand::rng;
 use rand::seq::SliceRandom;
@@ -105,19 +105,8 @@ pub fn HomeBody(
             .collect::<HashMap<String, utils::CoverUrl>>()
     });
     let playlists_res = use_playlists();
-    let offline_keys = use_memo(move || -> Vec<String> {
-        if !(caps().downloads && *is_offline.read()) {
-            return Vec::new();
-        }
-        config
-            .read()
-            .offline_tracks
-            .iter()
-            .filter(|(_, path)| std::path::Path::new(path).exists())
-            .map(|(id, _)| id.clone())
-            .collect()
-    });
-    let offline_tracks_res = use_tracks_by_keys(source, offline_keys);
+    let offline_tracks_res =
+        use_downloaded_tracks(source, move || caps().downloads && *is_offline.read());
     // Recently-played for the active source (each source keeps its own history).
     let recent_tracks_res = hooks::use_db_queries::use_recently_played(source);
     let top_genre_res = use_top_genre(source);
@@ -379,8 +368,13 @@ pub fn HomeBody(
 
     let recent_playlists = use_memo(move || {
         let store = playlists_res.read().clone().unwrap_or_default();
-        let conf = config.read();
         let offline = caps().downloads && *is_offline.read();
+        let downloaded: std::collections::HashSet<String> = offline_tracks_res
+            .read()
+            .iter()
+            .flatten()
+            .map(|t| t.key.clone())
+            .collect();
         store
             .playlists
             .iter()
@@ -388,14 +382,7 @@ pub fn HomeBody(
                 if !offline {
                     return true;
                 }
-                !p.track_keys.is_empty()
-                    && p.track_keys.iter().all(|tid| {
-                        if let Some(path_str) = conf.offline_tracks.get(tid) {
-                            std::path::Path::new(path_str).exists()
-                        } else {
-                            false
-                        }
-                    })
+                !p.track_keys.is_empty() && p.track_keys.iter().all(|tid| downloaded.contains(tid))
             })
             .rev()
             .take(10)
