@@ -117,33 +117,16 @@ pub struct VolumeMute {
     pub is_muted: bool,
     pub toggle_mute: Callback<()>,
     pub on_wheel: Callback<WheelEvent>,
-    pub on_commit: Callback<FormEvent>,
     pub on_input: Callback<FormEvent>,
 }
 
 pub fn use_volume_mute(config: Signal<AppConfig>, volume: Signal<f32>) -> VolumeMute {
     let mut ctrl = use_context::<PlayerController>();
-    let initial_volume = *volume.read();
-    let mut is_muted = use_signal(move || initial_volume <= f32::EPSILON);
-    let mut volume_before_mute = use_signal(move || {
-        if initial_volume > f32::EPSILON {
-            initial_volume
-        } else {
-            0.5f32
-        }
-    });
+    let muted = ctrl.muted;
 
     let toggle_mute = use_callback(move |_: ()| {
-        let muted = *is_muted.read();
-        if muted {
-            let vol = *volume_before_mute.read();
-            ctrl.set_volume(vol);
-            is_muted.set(false);
-        } else {
-            volume_before_mute.set(*volume.read());
-            ctrl.set_volume(0.0);
-            is_muted.set(true);
-        }
+        let muted = *muted.read();
+        ctrl.set_muted(!muted);
     });
 
     let on_wheel = use_callback(move |evt: WheelEvent| {
@@ -157,34 +140,24 @@ pub fn use_volume_mute(config: Signal<AppConfig>, volume: Signal<f32>) -> Volume
         let current = *volume.read();
         let new_val = (current + dir * step).clamp(0.0, 1.0);
         ctrl.set_volume(new_val);
-        is_muted.set(new_val <= f32::EPSILON);
-        if new_val > f32::EPSILON {
-            volume_before_mute.set(new_val);
-        }
-    });
-
-    let on_commit = use_callback(move |evt: FormEvent| {
-        if let Ok(val) = evt.value().parse::<f32>() {
-            is_muted.set(val == 0.0);
-        }
     });
 
     let on_input = use_callback(move |evt: FormEvent| {
         if let Ok(val) = evt.value().parse::<f32>() {
             ctrl.set_volume(val);
-            is_muted.set(val == 0.0);
-            if val > f32::EPSILON {
-                volume_before_mute.set(val);
-            }
         }
     });
 
+    let is_muted = *muted.read() || *volume.read() <= f32::EPSILON;
     VolumeMute {
-        volume_percent: *volume.read() * 100.0,
-        is_muted: *is_muted.read(),
+        volume_percent: if is_muted {
+            0.0
+        } else {
+            *volume.read() * 100.0
+        },
+        is_muted,
         toggle_mute,
         on_wheel,
-        on_commit,
         on_input,
     }
 }
@@ -418,7 +391,6 @@ pub fn VolumeSlider(
     let is_muted = vol.is_muted;
     let toggle_mute = vol.toggle_mute;
     let on_wheel = vol.on_wheel;
-    let on_commit = vol.on_commit;
     let on_input = vol.on_input;
 
     match variant {
@@ -450,9 +422,8 @@ pub fn VolumeSlider(
                         min: "0",
                         max: "1",
                         step: "0.01",
-                        value: "{*volume.read()}",
+                        value: "{volume_percent / 100.0}",
                         class: "slider-hit absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer",
-                        onchange: move |evt| on_commit.call(evt),
                         oninput: move |evt| on_input.call(evt),
                     }
                 }
@@ -480,9 +451,8 @@ pub fn VolumeSlider(
                         min: "0",
                         max: "1",
                         step: "0.01",
-                        value: "{*volume.read()}",
+                        value: "{volume_percent / 100.0}",
                         class: "slider-hit absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer z-10",
-                        onchange: move |evt| on_commit.call(evt),
                         oninput: move |evt| on_input.call(evt),
                     }
                 }
