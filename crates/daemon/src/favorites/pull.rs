@@ -75,9 +75,9 @@ impl super::FavoritesService {
     /// unattended, reporting no progress and answering to no cancel.
     pub(super) async fn pull(&self, ctx: Option<&JobCtx>, force: bool) -> Result<(), ApiError> {
         let _walk = self.pulling.lock().await;
-        let config = self.session.config_watch().borrow().clone();
+        let sources = self.session.sources();
         let source: ActiveSource =
-            std::sync::Arc::from(server::source::active(self.db.clone(), &config));
+            std::sync::Arc::from(server::source::active(self.db.clone(), &sources));
         if !source.capabilities().sync {
             return Ok(());
         }

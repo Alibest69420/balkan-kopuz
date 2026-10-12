@@ -38,8 +38,6 @@ const NIX_STORE_PREFIX: &str = "/nix/store";
 
 /// What the app changes by being used rather than through its settings: the DB keeps it, and no settings layer holds it.
 pub const STATE_KEYS: &[&str] = &[
-    "device_id",
-    "active_source",
     "source_explicitly_set",
     "volume",
     "discord_presence_paused",
@@ -70,12 +68,9 @@ pub const SECRET_KEYS: &[&str] = &[
     "librefm_session_key",
 ];
 
-/// Library data the DB keeps in its own tables.
-pub const DATA_KEYS: &[&str] = &["server", "servers", "server_folders"];
-
 /// Whether a top-level `AppConfig` field is a setting, which only the settings layers hold.
 pub fn is_setting(key: &str) -> bool {
-    ![STATE_KEYS, SECRET_KEYS, DATA_KEYS]
+    ![STATE_KEYS, SECRET_KEYS]
         .iter()
         .any(|keys| keys.contains(&key))
 }
@@ -582,7 +577,6 @@ mod tests {
         let cfg = no_layers().merge_and_parse(serde_json::json!({})).unwrap();
         assert_eq!(cfg.local_sources.len(), 1);
         assert!(default_dirs(&cfg).is_empty());
-        assert_eq!(cfg.active_source.as_str(), "local");
     }
 
     #[test]
@@ -734,7 +728,6 @@ mod tests {
                     directories: vec![],
                 },
             ],
-            active_source: crate::Source::LocalLibrary("local:two".into()),
             spotify_browser: Some("brave".into()),
             spotify_prefer_active_device: false,
             theme: "custom-one".into(),
@@ -887,17 +880,17 @@ mod tests {
     fn nothing_but_settings_reaches_or_leaves_a_settings_layer() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.toml");
-        let mut cfg = AppConfig::default();
-        cfg.server_folders
-            .insert("srv".into(), vec!["/music".into()]);
-        cfg.lastfm_session_key = "secret".into();
-        cfg.volume = 0.2;
+        let cfg = AppConfig {
+            lastfm_session_key: "secret".into(),
+            volume: 0.2,
+            ..Default::default()
+        };
         let cfg_json = serde_json::to_value(&cfg).unwrap();
 
         save_settings_file(&path, &cfg_json, &BTreeSet::new()).unwrap();
 
         let written: toml::Table = std::fs::read_to_string(&path).unwrap().parse().unwrap();
-        for key in [STATE_KEYS, SECRET_KEYS, DATA_KEYS].concat() {
+        for key in [STATE_KEYS, SECRET_KEYS].concat() {
             assert!(!written.contains_key(key), "{key} leaked into the file");
         }
 

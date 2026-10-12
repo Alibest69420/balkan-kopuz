@@ -77,7 +77,7 @@ async fn next_state(
 pub fn spawn_jellyfin_reporter(
     session: &SessionHandle,
     source: server::source::ActiveSource,
-    config: watch::Receiver<config::AppConfig>,
+    sources: watch::Receiver<Arc<server::sources::Sources>>,
 ) -> tokio::task::JoinHandle<()> {
     let mut events = session.subscribe();
     tokio::spawn(async move {
@@ -89,7 +89,7 @@ pub fn spawn_jellyfin_reporter(
         report.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
         loop {
-            let jellyfin_configured = config
+            let jellyfin_configured = sources
                 .borrow()
                 .server
                 .as_ref()
@@ -205,6 +205,7 @@ impl Drop for DiscordState {
 pub fn spawn_discord_presence(
     session: &SessionHandle,
     config: watch::Receiver<config::AppConfig>,
+    sources: watch::Receiver<Arc<server::sources::Sources>>,
 ) -> tokio::task::JoinHandle<()> {
     let mut events = session.subscribe();
     let session = session.clone();
@@ -239,7 +240,8 @@ pub fn spawn_discord_presence(
                     let Some(state) = state else { break };
                     let Some(state) = state else { continue };
                     let received = Instant::now();
-                    project(&presence, &config.borrow(), &state, received, &mut discord, &session, &cover_tx);
+                    let service = sources.borrow().active_service();
+                    project(&presence, &config.borrow(), service, &state, received, &mut discord, &session, &cover_tx);
                     last_state = Some((state, received));
                 }
                 resolved = cover_rx.recv() => {
@@ -249,7 +251,8 @@ pub fn spawn_discord_presence(
                         discord.cover = url;
                         discord.cover_sent = false;
                         if let Some((state, received)) = &last_state {
-                            project(&presence, &config.borrow(), state, *received, &mut discord, &session, &cover_tx);
+                            let service = sources.borrow().active_service();
+                            project(&presence, &config.borrow(), service, state, *received, &mut discord, &session, &cover_tx);
                         }
                     }
                 }
@@ -264,6 +267,7 @@ pub fn spawn_discord_presence(
 fn project(
     presence: &discord_presence::Presence,
     config: &config::AppConfig,
+    service: Option<config::MusicService>,
     state: &PlayerState,
     received: Instant,
     discord: &mut DiscordState,
@@ -273,8 +277,7 @@ fn project(
     let enabled = config.discord_presence.unwrap_or(true);
     let paused_enabled = config.discord_presence_paused.unwrap_or(true);
     let source_name = config.discord_presence_source.unwrap_or(true).then(|| {
-        config
-            .active_service()
+        service
             .map_or("Local", |service| service.display_name())
             .to_string()
     });
