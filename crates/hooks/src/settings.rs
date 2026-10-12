@@ -21,7 +21,7 @@ pub struct SettingsHandle {
     in_flight: Signal<Vec<SettingsEdit>>,
     revision: Signal<u64>,
     loaded: Signal<bool>,
-    locked: Signal<Vec<SettingKey>>,
+    locked: Signal<Vec<api::SettingLock>>,
     dirty: Signal<u64>,
     generation: Signal<u64>,
 }
@@ -100,8 +100,8 @@ impl SettingsHandle {
             return;
         }
         self.revision.set(view.revision);
-        if *self.locked.peek() != view.locked {
-            self.locked.set(view.locked);
+        if *self.locked.peek() != view.locks {
+            self.locked.set(view.locks);
         }
         let mut next = view.settings;
         for edit in self
