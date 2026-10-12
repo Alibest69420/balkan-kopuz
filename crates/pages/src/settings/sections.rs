@@ -3,7 +3,10 @@ use components::settings_items::{
     ReplayGainModeSelector, SampleRateModeSelector, SettingItem, SettingsGroup, SettingsSection,
     ToggleSetting,
 };
-use config::{LYRICS_OFFSET_LIMIT_MS, OfflineQuality, ReplayGainMode, Settings};
+use config::{
+    LYRICS_OFFSET_LIMIT_MS, LibraryEdit, LyricsEdit, OfflineQuality, PlaybackEdit, ReplayGainMode,
+    Settings, SettingsEdit,
+};
 use dioxus::prelude::*;
 use hooks::use_player_controller::PlayerController;
 
@@ -68,7 +71,8 @@ fn IntegrationRows(integration: api::IntegrationInfo, changed: Signal<u64>) -> E
 }
 
 #[component]
-pub(super) fn DownloadsSection(mut settings: Signal<Settings>) -> Element {
+pub(super) fn DownloadsSection(settings: Signal<Settings>) -> Element {
+    let edits = hooks::settings::use_settings();
     rsx! {
         SettingsSection { title: i18n::t("offline_downloads").to_string(),
             SettingItem {
@@ -83,7 +87,7 @@ pub(super) fn DownloadsSection(mut settings: Signal<Settings>) -> Element {
                             .map(|q| (q.value_str().to_string(), q.label().to_string()))
                             .collect::<Vec<_>>(),
                         on_change: move |value: String| {
-                            settings.write().library.offline_quality = OfflineQuality::from_value_str(&value);
+                            edits.edit(SettingsEdit::Library(LibraryEdit::OfflineQuality(OfflineQuality::from_value_str(&value))));
                         },
                     }
                 }
@@ -93,7 +97,8 @@ pub(super) fn DownloadsSection(mut settings: Signal<Settings>) -> Element {
 }
 
 #[component]
-pub(super) fn MetadataSection(mut settings: Signal<Settings>) -> Element {
+pub(super) fn MetadataSection(settings: Signal<Settings>) -> Element {
+    let edits = hooks::settings::use_settings();
     let ctrl = use_context::<PlayerController>();
     let artwork_changed = use_signal(|| 0u64);
     let artwork = hooks::artwork_settings::use_settings(artwork_changed);
@@ -130,7 +135,7 @@ pub(super) fn MetadataSection(mut settings: Signal<Settings>) -> Element {
                 control: rsx! {
                     ToggleSetting {
                         enabled: settings.read().lyrics.prefer_local_lyrics,
-                        on_change: move |val| settings.write().lyrics.prefer_local_lyrics = val,
+                        on_change: move |val| edits.edit(SettingsEdit::Lyrics(LyricsEdit::PreferLocalLyrics(val))),
                     }
                 }
             }
@@ -140,7 +145,7 @@ pub(super) fn MetadataSection(mut settings: Signal<Settings>) -> Element {
                 control: rsx! {
                     ToggleSetting {
                         enabled: settings.read().lyrics.enable_musixmatch_lyrics,
-                        on_change: move |val| settings.write().lyrics.enable_musixmatch_lyrics = val,
+                        on_change: move |val| edits.edit(SettingsEdit::Lyrics(LyricsEdit::EnableMusixmatchLyrics(val))),
                     }
                 }
             }
@@ -150,7 +155,7 @@ pub(super) fn MetadataSection(mut settings: Signal<Settings>) -> Element {
                 control: rsx! {
                     ToggleSetting {
                         enabled: lyrics_offset_auto,
-                        on_change: move |val| settings.write().lyrics.lyrics_offset_auto = val,
+                        on_change: move |val| edits.edit(SettingsEdit::Lyrics(LyricsEdit::LyricsOffsetAuto(val))),
                     }
                 }
             }
@@ -170,8 +175,9 @@ pub(super) fn MetadataSection(mut settings: Signal<Settings>) -> Element {
                             style: components::settings::items::range_style(f64::from(lyrics_offset), f64::from(-LYRICS_OFFSET_LIMIT_MS), f64::from(LYRICS_OFFSET_LIMIT_MS)),
                             oninput: move |evt| {
                                 if let Ok(value) = evt.value().parse::<i32>() {
-                                    settings.write().lyrics.lyrics_offset_ms = value
-                                        .clamp(-LYRICS_OFFSET_LIMIT_MS, LYRICS_OFFSET_LIMIT_MS);
+                                    edits.edit(SettingsEdit::Lyrics(LyricsEdit::LyricsOffsetMs(
+                                        value.clamp(-LYRICS_OFFSET_LIMIT_MS, LYRICS_OFFSET_LIMIT_MS),
+                                    )));
                                 }
                             }
                         }
@@ -187,7 +193,8 @@ pub(super) fn MetadataSection(mut settings: Signal<Settings>) -> Element {
 }
 
 #[component]
-pub(super) fn PlayerSection(mut settings: Signal<Settings>) -> Element {
+pub(super) fn PlayerSection(settings: Signal<Settings>) -> Element {
+    let edits = hooks::settings::use_settings();
     let crossfade_label = if settings.read().playback.crossfade_seconds == 0 {
         i18n::t("crossfade_off")
     } else {
@@ -212,7 +219,7 @@ pub(super) fn PlayerSection(mut settings: Signal<Settings>) -> Element {
                             style: components::settings::items::range_style(f64::from(settings.read().playback.crossfade_seconds), 0.0, 12.0),
                             oninput: move |evt| {
                                 if let Ok(value) = evt.value().parse::<u8>() {
-                                    settings.write().playback.crossfade_seconds = value.min(12);
+                                    edits.edit(SettingsEdit::Playback(PlaybackEdit::CrossfadeSeconds(value.min(12))));
                                 }
                             }
                         }
@@ -241,7 +248,7 @@ pub(super) fn PlayerSection(mut settings: Signal<Settings>) -> Element {
                                 oninput: move |evt| {
                                     if let Ok(pct) = evt.value().parse::<i32>() {
                                         let clamped = pct.clamp(1, 50);
-                                        settings.write().playback.volume_scroll_step = clamped as f32 / 100.0;
+                                        edits.edit(SettingsEdit::Playback(PlaybackEdit::VolumeScrollStep(clamped as f32 / 100.0)));
                                     }
                                 }
                             }
@@ -261,7 +268,7 @@ pub(super) fn PlayerSection(mut settings: Signal<Settings>) -> Element {
                     ChannelModeSelector {
                         current: settings.read().playback.channel_mode,
                         on_change: move |mode| {
-                            settings.write().playback.channel_mode = mode;
+                            edits.edit(SettingsEdit::Playback(PlaybackEdit::ChannelMode(mode)));
                         }
                     }
                 }
@@ -273,7 +280,7 @@ pub(super) fn PlayerSection(mut settings: Signal<Settings>) -> Element {
                     DeviceChangeBehaviorSelector {
                         current: settings.read().playback.device_change_behavior,
                         on_change: move |behavior| {
-                            settings.write().playback.device_change_behavior = behavior;
+                            edits.edit(SettingsEdit::Playback(PlaybackEdit::DeviceChangeBehavior(behavior)));
                         }
                     }
                 }
@@ -285,7 +292,7 @@ pub(super) fn PlayerSection(mut settings: Signal<Settings>) -> Element {
                     SampleRateModeSelector {
                         current: settings.read().playback.sample_rate_mode,
                         on_change: move |mode| {
-                            settings.write().playback.sample_rate_mode = mode;
+                            edits.edit(SettingsEdit::Playback(PlaybackEdit::SampleRateMode(mode)));
                         }
                     }
                 }
@@ -300,7 +307,7 @@ pub(super) fn PlayerSection(mut settings: Signal<Settings>) -> Element {
                         on_change: move |mode| {
                             let mut replay_gain = settings.peek().playback.replay_gain;
                             replay_gain.mode = mode;
-                            settings.write().playback.replay_gain = replay_gain;
+                            edits.edit(SettingsEdit::Playback(PlaybackEdit::ReplayGain(replay_gain)));
                         }
                     }
                 }
@@ -316,7 +323,7 @@ pub(super) fn PlayerSection(mut settings: Signal<Settings>) -> Element {
                             on_change: move |enabled| {
                                 let mut replay_gain = settings.peek().playback.replay_gain;
                                 replay_gain.prevent_clipping = enabled;
-                                settings.write().playback.replay_gain = replay_gain;
+                                edits.edit(SettingsEdit::Playback(PlaybackEdit::ReplayGain(replay_gain)));
                             }
                         }
                     }
@@ -333,7 +340,7 @@ pub(super) fn PlayerSection(mut settings: Signal<Settings>) -> Element {
                             on_change: move |db| {
                                 let mut replay_gain = settings.peek().playback.replay_gain;
                                 replay_gain.preamp_db = db;
-                                settings.write().playback.replay_gain = replay_gain;
+                                edits.edit(SettingsEdit::Playback(PlaybackEdit::ReplayGain(replay_gain)));
                             }
                         }
                     }
@@ -350,7 +357,7 @@ pub(super) fn PlayerSection(mut settings: Signal<Settings>) -> Element {
                             on_change: move |db| {
                                 let mut replay_gain = settings.peek().playback.replay_gain;
                                 replay_gain.fallback_gain_db = db;
-                                settings.write().playback.replay_gain = replay_gain;
+                                edits.edit(SettingsEdit::Playback(PlaybackEdit::ReplayGain(replay_gain)));
                             }
                         }
                     }
@@ -373,7 +380,8 @@ pub(super) fn EqualizerSection(settings: Signal<Settings>) -> Element {
 }
 
 #[component]
-fn EqualizerItem(mut settings: Signal<Settings>) -> Element {
+fn EqualizerItem(settings: Signal<Settings>) -> Element {
+    let edits = hooks::settings::use_settings();
     let ctrl = use_context::<PlayerController>();
     rsx! {
         SettingItem {
@@ -387,7 +395,7 @@ fn EqualizerItem(mut settings: Signal<Settings>) -> Element {
                         ctrl.preview_equalizer(equalizer);
                     },
                     on_commit: move |equalizer: config::EqualizerSettings| {
-                        settings.write().playback.equalizer = equalizer;
+                        edits.edit(SettingsEdit::Playback(PlaybackEdit::Equalizer(equalizer)));
                     }
                 }
             }

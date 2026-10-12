@@ -25,8 +25,10 @@ pub fn SettingItem(
     #[props(default)] nested: bool,
 ) -> Element {
     let locked = try_consume_context::<hooks::config_view::LockedKeys>().is_some_and(|layers| {
-        (!config_key.is_empty() && layers.is_locked(&config_key))
-            || extra_config_keys.iter().any(|key| layers.is_locked(key))
+        (!config_key.is_empty() && layers.is_name_locked(&config_key))
+            || extra_config_keys
+                .iter()
+                .any(|key| layers.is_name_locked(key))
     });
     let nested_class = if nested { "settings-row-nested" } else { "" };
     rsx! {

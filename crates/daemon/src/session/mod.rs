@@ -118,7 +118,8 @@ enum SessionCmd {
     ),
     SetSettings {
         settings: Box<config::Settings>,
-        changed: Vec<String>,
+        changed: Vec<config::SettingKey>,
+        revision: u64,
     },
     SetSources(Arc<server::sources::Sources>),
     QueueUnread,
@@ -463,10 +464,16 @@ impl SessionHandle {
     }
 
     /// Adopt new settings (a ConfigService change): applies live audio settings and emits `config.changed`.
-    pub(crate) fn set_settings(&self, settings: config::Settings, changed: Vec<String>) {
+    pub(crate) fn set_settings(
+        &self,
+        settings: config::Settings,
+        changed: Vec<config::SettingKey>,
+        revision: u64,
+    ) {
         let _ = self.cmd_tx.send(SessionCmd::SetSettings {
             settings: Box::new(settings),
             changed,
+            revision,
         });
     }
 
@@ -668,9 +675,11 @@ impl Session {
                 let result = self.handle_restore(*snapshot, state_tx);
                 let _ = reply.send(result);
             }
-            SessionCmd::SetSettings { settings, changed } => {
-                self.apply_settings(*settings, changed, state_tx)
-            }
+            SessionCmd::SetSettings {
+                settings,
+                changed,
+                revision,
+            } => self.apply_settings(*settings, changed, revision, state_tx),
             SessionCmd::SetSources(sources) => {
                 if sources.active != self.sources.active {
                     self.swap_queue(&sources, state_tx).await;
@@ -1304,20 +1313,26 @@ impl Session {
     fn apply_settings(
         &mut self,
         settings: config::Settings,
-        changed: Vec<String>,
+        changed: Vec<config::SettingKey>,
+        revision: u64,
         state_tx: &watch::Sender<PlayerState>,
     ) {
-        for key in &changed {
-            match key.as_str() {
-                "equalizer" => self
+        use config::{PlaybackKey, SettingKey};
+        for key in changed {
+            match key {
+                SettingKey::Playback(PlaybackKey::Equalizer) => self
                     .player
                     .set_equalizer(settings.playback.equalizer.clone()),
-                "replay_gain" => self.player.set_replay_gain(settings.playback.replay_gain),
-                "channel_mode" => self.player.set_channel_mode(settings.playback.channel_mode),
-                "sample_rate_mode" => self
+                SettingKey::Playback(PlaybackKey::ReplayGain) => {
+                    self.player.set_replay_gain(settings.playback.replay_gain)
+                }
+                SettingKey::Playback(PlaybackKey::ChannelMode) => {
+                    self.player.set_channel_mode(settings.playback.channel_mode)
+                }
+                SettingKey::Playback(PlaybackKey::SampleRateMode) => self
                     .player
                     .set_sample_rate_mode(settings.playback.sample_rate_mode),
-                "device_change_behavior" => {
+                SettingKey::Playback(PlaybackKey::DeviceChangeBehavior) => {
                     self.player
                         .set_device_change_behavior(settings.playback.device_change_behavior);
                 }
@@ -1326,7 +1341,7 @@ impl Session {
         }
         self.settings = settings;
         let _ = self.settings_tx.send(self.settings.clone());
-        self.emit(ApiEvent::ConfigChanged { keys: changed });
+        self.emit(ApiEvent::ConfigChanged { revision });
         self.publish(state_tx, false);
     }
 

@@ -468,10 +468,24 @@ async fn replay_gain_settings_reach_playing_audio_through_config_api() {
         (config::ReplayGainMode::Off, -12.0, 0.0),
         (config::ReplayGainMode::Auto, -12.0, -12.0),
     ] {
-        let mut next = harness.api.config().await.unwrap().settings;
-        next.playback.replay_gain.mode = mode;
-        next.playback.replay_gain.preamp_db = preamp;
-        harness.api.set_config(next).await.unwrap();
+        let mut next = harness
+            .api
+            .config()
+            .await
+            .unwrap()
+            .settings
+            .playback
+            .replay_gain;
+        next.mode = mode;
+        next.preamp_db = preamp;
+        let report = harness
+            .api
+            .edit_config(vec![config::SettingsEdit::Playback(
+                config::PlaybackEdit::ReplayGain(next),
+            )])
+            .await
+            .unwrap();
+        assert_eq!(report.outcomes, vec![api::EditOutcome::Applied]);
         wait_replay_gain(&harness, expected).await;
     }
 }
@@ -1712,7 +1726,13 @@ async fn leaving_a_deleted_source_parks_nothing() {
     // The order SourceService sends them in: the folder list first, then the active source.
     let mut deleted = on_b.clone();
     deleted.library.remove_local_source("local:b");
-    session.set_settings(deleted, vec!["local_sources".into()]);
+    session.set_settings(
+        deleted,
+        vec![config::SettingKey::Library(
+            config::LibraryKey::LocalSources,
+        )],
+        0,
+    );
     session.set_sources(active_on(config::Source::default()));
     session.persist_now().await;
 
@@ -1997,10 +2017,13 @@ async fn switching_source_releases_the_integration_that_owned_playback() {
             name: "B".into(),
             directories: Vec::new(),
         });
-    harness
-        .api
-        .session
-        .set_settings(elsewhere, vec!["local_sources".into()]);
+    harness.api.session.set_settings(
+        elsewhere,
+        vec![config::SettingKey::Library(
+            config::LibraryKey::LocalSources,
+        )],
+        0,
+    );
     harness
         .api
         .session
@@ -2455,9 +2478,14 @@ async fn config_changes_reach_the_session_in_the_order_they_were_saved() {
             let service = service.clone();
             tokio::spawn(async move {
                 service
-                    .mutate_state(&["crossfade_seconds"], move |config| {
-                        config.playback.crossfade_seconds = crossfade;
-                    })
+                    .mutate_state(
+                        &[config::SettingKey::Playback(
+                            config::PlaybackKey::CrossfadeSeconds,
+                        )],
+                        move |config| {
+                            config.playback.crossfade_seconds = crossfade;
+                        },
+                    )
                     .await
             })
         })

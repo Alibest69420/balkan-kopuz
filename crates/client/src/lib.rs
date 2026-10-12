@@ -737,15 +737,18 @@ impl api::ConfigApi for GrpcApi {
         Ok(convert::config_view_from_proto(view.get_ref()))
     }
 
-    async fn set_config(&self, settings: config::Settings) -> Result<ConfigView, ApiError> {
-        let view = self
+    async fn edit_config(
+        &self,
+        edits: Vec<config::SettingsEdit>,
+    ) -> Result<api::EditReport, ApiError> {
+        let report = self
             .client()
-            .set_config(Request::new(proto::SetConfigRequest {
-                config: Some(convert::config_to_proto(&settings)),
+            .edit_config(Request::new(proto::EditConfigRequest {
+                edits: edits.iter().map(convert::config_edit_to_proto).collect(),
             }))
             .await
             .map_err(wire_error)?;
-        Ok(convert::config_view_from_proto(view.get_ref()))
+        Ok(convert::edit_report_from_proto(report.get_ref()))
     }
 
     async fn preview_equalizer(
