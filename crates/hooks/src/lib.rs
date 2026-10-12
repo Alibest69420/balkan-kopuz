@@ -22,6 +22,7 @@ pub mod sort;
 pub mod source_switch;
 pub mod sources;
 pub mod toast;
+pub mod ui_prefs;
 pub mod use_db_queries;
 pub mod use_player_controller;
 pub mod use_player_task;

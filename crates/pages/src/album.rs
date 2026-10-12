@@ -7,7 +7,7 @@ use components::playlist_modal::PlaylistModal;
 use components::sort_control::SortControl;
 use components::track_list_view::TrackListView;
 use components::view_mode_toggle::ViewModeToggle;
-use config::{AlbumViewMode, AppConfig};
+use config::AlbumViewMode;
 use dioxus::prelude::*;
 use hooks::db_reactivity::Table;
 use hooks::use_db_queries::{use_active_source, use_album, use_albums, use_downloaded_tracks};
@@ -33,7 +33,6 @@ fn copy_album_link(url: String) {
 
 #[component]
 pub fn Album(
-    config: Signal<AppConfig>,
     album_id: Signal<String>,
     mut queue: Signal<Vec<api::TrackInfo>>,
     mut current_queue_index: Signal<usize>,
@@ -72,7 +71,6 @@ pub fn Album(
                     }
 
                     AlbumGrid {
-                        config,
                         album_id,
                         open_album_menu,
                     }
@@ -91,19 +89,16 @@ pub fn Album(
 }
 
 #[component]
-fn AlbumGrid(
-    mut config: Signal<AppConfig>,
-    mut album_id: Signal<String>,
-    mut open_album_menu: Signal<Option<String>>,
-) -> Element {
+fn AlbumGrid(mut album_id: Signal<String>, mut open_album_menu: Signal<Option<String>>) -> Element {
     let source = use_active_source();
     let caps = hooks::sources::use_capabilities();
     let is_offline = use_context::<Signal<bool>>();
-    let album_sort = use_signal(|| config.peek().album_sort.clone());
+    let mut prefs = hooks::ui_prefs::use_ui_prefs();
+    let album_sort = use_signal(|| prefs.peek().album_sort.clone());
     use_effect(move || {
         let curr = album_sort.read().clone();
-        if config.peek().album_sort != curr {
-            config.write().album_sort = curr;
+        if prefs.peek().album_sort != curr {
+            prefs.write().album_sort = curr;
         }
     });
     let albums_query = use_memo(move || hooks::AlbumQuery {
@@ -111,11 +106,11 @@ fn AlbumGrid(
         ..Default::default()
     });
     let albums_res = use_albums(source, albums_query);
-    let view_mode = use_signal(|| config.peek().album_view_mode);
+    let view_mode = use_signal(|| prefs.peek().album_view_mode);
     use_effect(move || {
         let curr = *view_mode.read();
-        if config.peek().album_view_mode != curr {
-            config.write().album_view_mode = curr;
+        if prefs.peek().album_view_mode != curr {
+            prefs.write().album_view_mode = curr;
         }
     });
     let available_sort_fields = use_memo(move || {
