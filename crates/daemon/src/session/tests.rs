@@ -1331,8 +1331,10 @@ fn the_playing_row_carries_both_the_library_ref_and_the_source_qualified_id() {
     assert_eq!(now.key, now.uid);
 }
 
+#[derive(Default)]
 struct MemoryStore {
     saved: Mutex<Vec<(config::Source, db::QueueSnapshot)>>,
+    synced: Mutex<HashMap<String, String>>,
 }
 
 #[async_trait::async_trait]
@@ -1359,6 +1361,21 @@ impl crate::persistence::QueueStore for MemoryStore {
             .lock()
             .expect("store lock")
             .retain(|(at, _)| at != source);
+    }
+
+    async fn synced_remote(&self, source: &config::Source) -> Option<String> {
+        self.synced
+            .lock()
+            .expect("store lock")
+            .get(source.as_str())
+            .cloned()
+    }
+
+    async fn set_synced_remote(&self, source: &config::Source, fingerprint: &str) {
+        self.synced
+            .lock()
+            .expect("store lock")
+            .insert(source.as_str().to_string(), fingerprint.to_string());
     }
 }
 
@@ -1612,9 +1629,7 @@ async fn restore_seeds_a_paused_resume_point_and_play_continues_there() {
 
 #[tokio::test]
 async fn persist_now_writes_the_current_snapshot() {
-    let store = Arc::new(MemoryStore {
-        saved: Mutex::new(Vec::new()),
-    });
+    let store = Arc::new(MemoryStore::default());
     let sink = FakeSinkHandle::default();
     let player =
         Player::try_with_sink(Box::new(FakeSink(sink.clone()))).expect("headless player starts");
@@ -1647,9 +1662,7 @@ async fn persist_now_writes_the_current_snapshot() {
 /// Each source keeps its queue: leaving one parks it, coming back resumes it, and a source never visited starts empty.
 #[tokio::test]
 async fn switching_sources_parks_and_resumes_each_queue() {
-    let store = Arc::new(MemoryStore {
-        saved: Mutex::new(Vec::new()),
-    });
+    let store = Arc::new(MemoryStore::default());
     let sink = FakeSinkHandle::default();
     let player =
         Player::try_with_sink(Box::new(FakeSink(sink.clone()))).expect("headless player starts");
@@ -1701,9 +1714,7 @@ async fn switching_sources_parks_and_resumes_each_queue() {
 /// A deleted source is not parked: its queue would outlive it.
 #[tokio::test]
 async fn leaving_a_deleted_source_parks_nothing() {
-    let store = Arc::new(MemoryStore {
-        saved: Mutex::new(Vec::new()),
-    });
+    let store = Arc::new(MemoryStore::default());
     let sink = FakeSinkHandle::default();
     let player =
         Player::try_with_sink(Box::new(FakeSink(sink.clone()))).expect("headless player starts");
@@ -2107,6 +2118,14 @@ impl crate::persistence::QueueStore for UnreadableStore {
     async fn forget(&self, source: &config::Source) {
         self.inner.forget(source).await;
     }
+
+    async fn synced_remote(&self, source: &config::Source) -> Option<String> {
+        self.inner.synced_remote(source).await
+    }
+
+    async fn set_synced_remote(&self, source: &config::Source, fingerprint: &str) {
+        self.inner.set_synced_remote(source, fingerprint).await;
+    }
 }
 
 /// A queue that could not be read is not saved over, until a new one is built in its place.
@@ -2114,9 +2133,7 @@ impl crate::persistence::QueueStore for UnreadableStore {
 async fn an_unreadable_queue_is_not_saved_over() {
     let b = config::Source::LocalLibrary("local:b".into());
     let store = Arc::new(UnreadableStore {
-        inner: MemoryStore {
-            saved: Mutex::new(Vec::new()),
-        },
+        inner: MemoryStore::default(),
         unreadable: b.clone(),
     });
     let sink = FakeSinkHandle::default();
@@ -3186,4 +3203,259 @@ async fn a_restored_radio_queue_picks_its_cursor_back_up() {
     })
     .await;
     assert_eq!(library.asked(), ["p1"]);
+}
+
+/// A server keeping a play queue of its own, recording each queue it takes and refusing them while `failing` is set.
+struct QueueServer {
+    inner: server::source::ActiveSource,
+    saves: Mutex<Vec<Vec<String>>>,
+    failing: std::sync::atomic::AtomicBool,
+}
+
+#[async_trait::async_trait]
+impl server::source::MediaSource for QueueServer {
+    fn source(&self) -> &config::Source {
+        self.inner.source()
+    }
+
+    fn db(&self) -> &db::Db {
+        self.inner.db()
+    }
+
+    fn capabilities(&self) -> server::source::Capabilities {
+        server::source::Capabilities {
+            play_queue: true,
+            ..self.inner.capabilities()
+        }
+    }
+
+    async fn add_to_playlist(
+        &self,
+        playlist_id: &str,
+        item_refs: &[String],
+    ) -> Result<Vec<String>, server::source::SourceError> {
+        self.inner.add_to_playlist(playlist_id, item_refs).await
+    }
+
+    async fn create_playlist(
+        &self,
+        name: &str,
+        item_refs: &[String],
+    ) -> Result<String, server::source::SourceError> {
+        self.inner.create_playlist(name, item_refs).await
+    }
+
+    async fn remove_from_playlist(
+        &self,
+        playlist_id: &str,
+        track: &Track,
+        position: usize,
+    ) -> Result<(), server::source::SourceError> {
+        self.inner
+            .remove_from_playlist(playlist_id, track, position)
+            .await
+    }
+
+    async fn resolve_stream(
+        &self,
+        item_id: &str,
+    ) -> Result<server::source::StreamInfo, server::source::SourceError> {
+        self.inner.resolve_stream(item_id).await
+    }
+
+    async fn validate(&self) -> server::source::AuthOutcome {
+        self.inner.validate().await
+    }
+
+    async fn fetch_favorites(&self) -> Result<Vec<String>, server::source::SourceError> {
+        self.inner.fetch_favorites().await
+    }
+
+    async fn push_favorite(
+        &self,
+        item_id: &str,
+        on: bool,
+    ) -> Result<(), server::source::SourceError> {
+        self.inner.push_favorite(item_id, on).await
+    }
+
+    async fn save_play_queue(
+        &self,
+        queue: &[Track],
+        _current_index: usize,
+        _position_ms: u64,
+    ) -> Result<bool, server::source::SourceError> {
+        if self.failing.load(Ordering::SeqCst) {
+            return Err(server::source::SourceError::Connectivity);
+        }
+        self.saves
+            .lock()
+            .expect("saves lock")
+            .push(queue.iter().map(|track| track.title.clone()).collect());
+        Ok(true)
+    }
+}
+
+async fn queue_server() -> (Arc<QueueServer>, tempfile::TempDir) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db = db::init(&dir.path().join("server.db")).await.expect("db");
+    let inner = Arc::from(server::source::active(db, &config::AppConfig::default()));
+    let server = Arc::new(QueueServer {
+        inner,
+        saves: Mutex::new(Vec::new()),
+        failing: std::sync::atomic::AtomicBool::new(false),
+    });
+    (server, dir)
+}
+
+async fn flush_remote_queue(jobs: &mpsc::UnboundedSender<RemoteQueueJob>) {
+    let (done, flushed) = oneshot::channel();
+    jobs.send(RemoteQueueJob::Flush(done))
+        .expect("writer alive");
+    flushed.await.expect("writer answers");
+}
+
+/// A push the server refused is not marked as synced, so the next tick sends it again.
+#[tokio::test]
+async fn a_remote_queue_push_counts_only_once_the_server_takes_it() {
+    use crate::persistence::QueueStore as _;
+    let (server, _dir) = queue_server().await;
+    let store = Arc::new(MemoryStore::default());
+    let synced = SyncedMark::default();
+    let (jobs, rx) = mpsc::unbounded_channel();
+    let writer_store: Arc<dyn crate::persistence::QueueStore> = store.clone();
+    tokio::spawn(write_remote_queue(rx, synced.clone(), Some(writer_store)));
+    let mark = RemoteQueueMark {
+        queue_rev: 1,
+        current_key: Some("a".into()),
+        playing: false,
+    };
+    let push = || {
+        RemoteQueueJob::Push(RemoteQueuePush {
+            source: server.clone(),
+            store_key: config::Source::default(),
+            queue: vec![test_track(&"a".to_string())],
+            current_index: 0,
+            position_ms: 1000,
+            mark: mark.clone(),
+        })
+    };
+
+    server.failing.store(true, Ordering::SeqCst);
+    jobs.send(push()).expect("writer alive");
+    flush_remote_queue(&jobs).await;
+    assert_eq!(*synced.lock().expect("lock"), None);
+    assert_eq!(store.synced_remote(&config::Source::default()).await, None);
+
+    server.failing.store(false, Ordering::SeqCst);
+    jobs.send(push()).expect("writer alive");
+    flush_remote_queue(&jobs).await;
+    assert_eq!(*synced.lock().expect("lock"), Some(mark));
+    assert_eq!(
+        store.synced_remote(&config::Source::default()).await,
+        Some(crate::persistence::queue_fingerprint(
+            ["a"],
+            Some("a"),
+            1000
+        ))
+    );
+}
+
+/// Clearing the queue clears the server's, or the next start would adopt it back; a session that never had one sends nothing.
+#[tokio::test]
+async fn clearing_the_queue_clears_the_servers_too() {
+    let (server, _dir) = queue_server().await;
+    let player = Player::try_with_sink(Box::new(FakeSink(FakeSinkHandle::default())))
+        .expect("headless player starts");
+    let services = PlaybackServices {
+        active_source: Some(server.clone()),
+        queue_store: Some(Arc::new(MemoryStore::default())),
+        ..Default::default()
+    };
+    let session = SessionHandle::spawn_with_factory(
+        Arc::new(StubLibrary),
+        player,
+        services,
+        Arc::new(|track| Some(wav_factory(track.duration.min(6)))),
+    );
+    let api = LocalApi::new(session.clone());
+
+    session.persist_now().await;
+    assert!(server.saves.lock().expect("lock").is_empty());
+
+    api.set_queue(replace(&["track-0", "track-1"]))
+        .await
+        .expect("set queue");
+    wait_committed(&api).await;
+    session.persist_now().await;
+    session.reset_playback().await.expect("clear");
+    session.persist_now().await;
+
+    let saves = server.saves.lock().expect("lock").clone();
+    assert_eq!(saves.first().map(Vec::len), Some(2));
+    assert_eq!(saves.last(), Some(&Vec::new()));
+}
+
+/// A queue fetched from the server lands only if nothing changed the local one while it was on its way.
+#[tokio::test]
+async fn an_adopted_queue_never_replaces_a_newer_local_one() {
+    let harness = harness(|_| {});
+    let session = harness.api.session.clone();
+    let remote = db::QueueSnapshot {
+        version: 1,
+        queue: ["remote-0", "remote-1", "remote-2"]
+            .iter()
+            .map(|key| test_track(&(*key).to_string()))
+            .collect(),
+        ..Default::default()
+    };
+    let before_fetch = session.state().queue.rev;
+    harness
+        .api
+        .set_queue(replace(&["track-0", "track-1"]))
+        .await
+        .expect("set queue");
+
+    let adopted = session
+        .adopt_queue(remote.clone(), &config::Source::default(), before_fetch)
+        .await
+        .expect("adopt");
+    assert!(adopted.is_none());
+    assert_eq!(queue_titles(&harness.api).await, ["track-0", "track-1"]);
+
+    let adopted = session
+        .adopt_queue(
+            remote,
+            &config::Source::default(),
+            session.state().queue.rev,
+        )
+        .await
+        .expect("adopt");
+    assert!(adopted.is_some());
+    assert_eq!(
+        queue_titles(&harness.api).await,
+        ["remote-0", "remote-1", "remote-2"]
+    );
+
+    let elsewhere = config::Source::LocalLibrary("local:b".into());
+    let adopted = session
+        .adopt_queue(
+            db::QueueSnapshot::default(),
+            &elsewhere,
+            session.state().queue.rev,
+        )
+        .await
+        .expect("adopt");
+    assert!(adopted.is_none(), "fetched from a source no longer active");
+
+    let cleared = session
+        .adopt_queue(
+            db::QueueSnapshot::default(),
+            &config::Source::default(),
+            session.state().queue.rev,
+        )
+        .await
+        .expect("adopt");
+    assert!(cleared.is_some());
+    assert!(queue_titles(&harness.api).await.is_empty());
 }

@@ -195,6 +195,22 @@ pub trait MediaSource: Send + Sync {
         Err(SourceError::unsupported("radio continuation"))
     }
 
+    /// Whether the server now holds `queue`. A queue holding tracks the source
+    /// does not own has no remote form, so an impl skips it (`false`) rather
+    /// than saving a partial one. An empty queue clears the server's.
+    async fn save_play_queue(
+        &self,
+        _queue: &[reader::Track],
+        _current_index: usize,
+        _position_ms: u64,
+    ) -> Result<bool, SourceError> {
+        Err(SourceError::unsupported("play queue sync"))
+    }
+
+    async fn get_play_queue(&self) -> Result<Option<RemotePlayQueue>, SourceError> {
+        Err(SourceError::unsupported("play queue sync"))
+    }
+
     /// The track's canonical public web URL, when this source has shareable web
     /// pages (e.g. a YouTube Music watch link or Spotify track link). `None` otherwise — callers fall
     /// back to a metadata lookup (MusicBrainz). Sync: it's a pure id→URL mapping.

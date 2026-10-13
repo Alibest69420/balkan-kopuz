@@ -171,7 +171,11 @@ pub async fn assemble(args: &CoreArgs) -> Result<Core, Box<dyn std::error::Error
     let playlists = crate::PlaylistService::new(database.clone(), session.clone());
     spawn_volume_persistence(&session, config_service.clone());
     crate::os_media::spawn(&session);
-    crate::integrations::spawn_jellyfin_reporter(&session, active_source, session.config_watch());
+    crate::integrations::spawn_jellyfin_reporter(
+        &session,
+        active_source.clone(),
+        session.config_watch(),
+    );
     crate::integrations::spawn_youtube_reporter(&session, database.clone(), session.config_watch());
     crate::integrations::spawn_discord_presence(&session, session.config_watch());
     let restored_source = session.config_watch().borrow().active_source.clone();
@@ -192,6 +196,17 @@ pub async fn assemble(args: &CoreArgs) -> Result<Core, Box<dyn std::error::Error
             tracing::warn!(%error, "the last session's queue could not be read");
             session.hold_unread_queue();
         }
+    }
+    // Asking the source for its queue costs a round trip, so startup does not wait on it.
+    {
+        let session = session.clone();
+        let library = library.clone();
+        let source = active_source.clone();
+        let store = queue_store.clone();
+        tokio::spawn(async move {
+            crate::persistence::adopt_remote_queue(&session, &library, &source, store.as_ref())
+                .await;
+        });
     }
     let artwork = crate::ArtworkService::new(
         database.clone(),

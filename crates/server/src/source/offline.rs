@@ -37,6 +37,7 @@ impl MediaSource for OfflineServerSource {
             discover: false,
             dont_recommend: false,
             radio: RadioSeeds::NONE,
+            play_queue: false,
             playlists: PlaylistOps::None,
             artist_view: ArtistView::Library,
             albums: AlbumType::Standard,

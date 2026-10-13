@@ -34,6 +34,7 @@ pub const EVENT_BUFFER: usize = 512;
 const POSITION_CORRECTION_INTERVAL: Duration = Duration::from_secs(10);
 const MATERIALIZE_TIMEOUT: Duration = Duration::from_secs(30);
 const PERSIST_INTERVAL: Duration = Duration::from_secs(5);
+const REMOTE_PUSH_TIMEOUT: Duration = Duration::from_secs(3);
 const PROGRESS_STEP_SECS: u64 = 5;
 
 /// The embedded frontend's raw view of the queue model.
@@ -97,6 +98,94 @@ impl Default for PlaybackServices {
     }
 }
 
+/// Only a move to another track or a stop is worth a network call.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RemoteQueueMark {
+    queue_rev: u64,
+    current_key: Option<String>,
+    playing: bool,
+}
+
+/// The mark of the last push the server took, set by the writer once it has.
+type SyncedMark = Arc<std::sync::Mutex<Option<RemoteQueueMark>>>;
+
+struct RemoteQueuePush {
+    source: server::source::ActiveSource,
+    /// Whose server this is, for the fingerprint the adopt at boot compares against.
+    store_key: config::Source,
+    queue: Vec<Track>,
+    current_index: usize,
+    position_ms: u64,
+    mark: RemoteQueueMark,
+}
+
+impl RemoteQueuePush {
+    async fn send(self, synced: &SyncedMark, store: Option<&dyn crate::persistence::QueueStore>) {
+        let saved = match self
+            .source
+            .save_play_queue(&self.queue, self.current_index, self.position_ms)
+            .await
+        {
+            Ok(saved) => saved,
+            Err(error) => {
+                tracing::debug!(%error, "play queue push failed");
+                return;
+            }
+        };
+        if saved && let Some(store) = store {
+            let current = self
+                .queue
+                .get(self.current_index)
+                .map(|track| track.id.key());
+            let fingerprint = match self.queue.is_empty() {
+                true => crate::persistence::empty_queue_fingerprint(),
+                false => crate::persistence::queue_fingerprint(
+                    self.queue.iter().map(|track| track.id.key()),
+                    current.as_deref(),
+                    self.position_ms,
+                ),
+            };
+            store.set_synced_remote(&self.store_key, &fingerprint).await;
+        }
+        if let Ok(mut synced) = synced.lock() {
+            *synced = Some(self.mark);
+        }
+    }
+}
+
+enum RemoteQueueJob {
+    Push(RemoteQueuePush),
+    /// Answered once every push sent before it has been tried.
+    Flush(oneshot::Sender<()>),
+}
+
+/// The only task that writes the server's queue, so a slow push can never land after a newer one.
+async fn write_remote_queue(
+    mut jobs: mpsc::UnboundedReceiver<RemoteQueueJob>,
+    synced: SyncedMark,
+    store: Option<Arc<dyn crate::persistence::QueueStore>>,
+) {
+    while let Some(job) = jobs.recv().await {
+        // Pushes that queued up behind a slow one are stale; only the newest is sent.
+        let mut latest = None;
+        let mut flushes = Vec::new();
+        let mut next = Some(job);
+        while let Some(job) = next {
+            match job {
+                RemoteQueueJob::Push(push) => latest = Some(push),
+                RemoteQueueJob::Flush(done) => flushes.push(done),
+            }
+            next = jobs.try_recv().ok();
+        }
+        if let Some(push) = latest {
+            push.send(&synced, store.as_deref()).await;
+        }
+        for done in flushes {
+            let _ = done.send(());
+        }
+    }
+}
+
 pub type FactoryOverride = Arc<dyn Fn(&Track) -> Option<SourceFactory> + Send + Sync>;
 
 enum SessionCmd {
@@ -121,6 +210,12 @@ enum SessionCmd {
         Box<db::QueueSnapshot>,
         oneshot::Sender<Result<CommandAck, ApiError>>,
     ),
+    AdoptQueue {
+        snapshot: Box<db::QueueSnapshot>,
+        source: config::Source,
+        queue_rev: u64,
+        reply: oneshot::Sender<Result<Option<CommandAck>, ApiError>>,
+    },
     SetConfig {
         config: Box<config::AppConfig>,
         changed: Vec<String>,
@@ -199,6 +294,13 @@ impl SessionHandle {
         player.set_replay_gain(services.config.replay_gain);
         player.set_device_change_behavior(services.config.device_change_behavior);
         player.set_sample_rate_mode(services.config.sample_rate_mode);
+        let remote_synced = SyncedMark::default();
+        let (remote_writer, remote_jobs) = mpsc::unbounded_channel();
+        tokio::spawn(write_remote_queue(
+            remote_jobs,
+            remote_synced.clone(),
+            services.queue_store.clone(),
+        ));
 
         let session = Session {
             model: QueueModel::default(),
@@ -229,6 +331,8 @@ impl SessionHandle {
             queue_dirty: false,
             queue_unread: false,
             persisting: None,
+            remote_synced,
+            remote_writer,
             recorder: services.recorder,
             scrobbler: services.scrobbler,
             last_recent_key: None,
@@ -345,6 +449,24 @@ impl SessionHandle {
     pub async fn restore_queue(&self, snapshot: db::QueueSnapshot) -> Result<CommandAck, ApiError> {
         self.request(|tx| SessionCmd::RestoreQueue(Box::new(snapshot), tx))
             .await
+    }
+
+    /// Restore `snapshot`, fetched from `source`, only while that source is
+    /// still active and the queue is still at `queue_rev`, the revision read
+    /// before the fetch; `None` when either moved on.
+    pub async fn adopt_queue(
+        &self,
+        snapshot: db::QueueSnapshot,
+        source: &config::Source,
+        queue_rev: u64,
+    ) -> Result<Option<CommandAck>, ApiError> {
+        self.request(|reply| SessionCmd::AdoptQueue {
+            snapshot: Box::new(snapshot),
+            source: source.clone(),
+            queue_rev,
+            reply,
+        })
+        .await
     }
 
     /// Emit an event through the session's sequenced stream (services use
@@ -569,6 +691,8 @@ struct Session {
     queue_unread: bool,
     /// The last queue save in flight; each waits for the one before, so awaiting this awaits them all.
     persisting: Option<tokio::task::JoinHandle<()>>,
+    remote_synced: SyncedMark,
+    remote_writer: mpsc::UnboundedSender<RemoteQueueJob>,
     recorder: Option<Arc<dyn PlaybackRecorder>>,
     scrobbler: Option<Arc<crate::scrobbler::Scrobbler>>,
     last_recent_key: Option<String>,
@@ -618,8 +742,9 @@ impl Session {
                 _ = correction.tick(), if self.phase == ApiPhase::Playing => {
                     self.publish_position_anchor(&state_tx, None, None, true);
                 }
-                _ = persist.tick(), if self.queue_dirty && self.queue_store.is_some() => {
+                _ = persist.tick(), if self.queue_dirty => {
                     self.persist_async();
+                    self.push_remote_queue(false);
                 }
             }
         }
@@ -654,6 +779,23 @@ impl Session {
             } => self.apply_radio_page(feed, cursor, *result, state_tx),
             SessionCmd::RestoreQueue(snapshot, reply) => {
                 let result = self.handle_restore(*snapshot, state_tx);
+                let _ = reply.send(result);
+            }
+            SessionCmd::AdoptQueue {
+                snapshot,
+                source,
+                queue_rev,
+                reply,
+            } => {
+                let current = self.queue_rev == queue_rev && self.config.active_source == source;
+                let result = match current {
+                    true => self.handle_restore(*snapshot, state_tx).map(|ack| {
+                        // Unlike a restore from disk, nothing has stored this queue here yet.
+                        self.queue_dirty = true;
+                        Some(ack)
+                    }),
+                    false => Ok(None),
+                };
                 let _ = reply.send(result);
             }
             SessionCmd::SetConfig { config, changed } => {
@@ -711,6 +853,12 @@ impl Session {
                     let snapshot = self.snapshot();
                     self.queue_dirty = false;
                     store.save(&self.config.active_source, snapshot).await;
+                }
+                if self.push_remote_queue(true) {
+                    let (done, flushed) = oneshot::channel();
+                    let _ = self.remote_writer.send(RemoteQueueJob::Flush(done));
+                    // A quit waits on this, so a dead server costs only the timeout.
+                    let _ = tokio::time::timeout(REMOTE_PUSH_TIMEOUT, flushed).await;
                 }
                 let _ = reply.send(());
             }
@@ -1590,6 +1738,47 @@ impl Session {
         self.materializer.register_restored(&resumed.queue);
         let _ = self.handle_restore(resumed, state_tx);
         self.queue_unread = unread;
+    }
+
+    /// Hand the queue to the remote writer, unless the server already took this
+    /// mark; `force` skips that check, for the flush on quit. Whether it was sent.
+    fn push_remote_queue(&mut self, force: bool) -> bool {
+        let Some(source) = self.active_source.clone() else {
+            return false;
+        };
+        // An empty queue nobody touched yet is a fresh start, not a clear, and
+        // must not wipe what another device saved before the boot adopt reads it.
+        if !source.capabilities().play_queue || (self.model.is_empty() && self.queue_rev == 0) {
+            return false;
+        }
+        let mark = RemoteQueueMark {
+            queue_rev: self.queue_rev,
+            current_key: self.model.current_track().map(|track| track.id.uid()),
+            playing: self.phase == ApiPhase::Playing,
+        };
+        let synced = self
+            .remote_synced
+            .lock()
+            .is_ok_and(|synced| synced.as_ref() == Some(&mark));
+        if !force && synced {
+            return false;
+        }
+        // Play order, not storage order: another client reading this queue
+        // plays it top to bottom and has no shuffle permutation to apply.
+        let queue: Vec<Track> = (0..self.model.len())
+            .filter_map(|position| self.model.track_at(position).cloned())
+            .collect();
+        let push = RemoteQueuePush {
+            source,
+            store_key: self.config.active_source.clone(),
+            queue,
+            current_index: self.model.current_position(),
+            position_ms: crate::persistence::whole_seconds(
+                self.displayed_position().as_millis() as u64
+            ) * 1000,
+            mark,
+        };
+        self.remote_writer.send(RemoteQueueJob::Push(push)).is_ok()
     }
 
     fn commit_transition_model(&mut self, token: u64) -> bool {

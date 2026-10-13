@@ -6,8 +6,8 @@ use crate::{server_ops::ServerConn, subsonic::SubsonicClient};
 
 use super::{
     AlbumType, ArtistView, AuthOutcome, Capabilities, FavoritesSync, LibrarySnapshot, MediaSource,
-    PlaylistMeta, PlaylistOps, RadioPage, RadioSeeds, SourceError, StreamInfo, mirror_added,
-    mirror_created,
+    PlaylistMeta, PlaylistOps, RadioPage, RadioSeeds, RemotePlayQueue, SourceError, StreamInfo,
+    mirror_added, mirror_created,
 };
 
 pub(super) struct SubsonicSource {
@@ -282,6 +282,7 @@ impl MediaSource for SubsonicSource {
             discover: false,
             dont_recommend: false,
             radio: RadioSeeds::TRACK,
+            play_queue: true,
             playlists: PlaylistOps::Reorder,
             artist_view: ArtistView::Library,
             albums: AlbumType::Standard,
@@ -461,6 +462,48 @@ impl MediaSource for SubsonicSource {
             }
         }
         Ok(out)
+    }
+
+    async fn save_play_queue(
+        &self,
+        queue: &[reader::Track],
+        current_index: usize,
+        position_ms: u64,
+    ) -> Result<bool, SourceError> {
+        let mut ids: Vec<&str> = Vec::with_capacity(queue.len());
+        for track in queue {
+            match &track.id {
+                reader::TrackId::Server { service, item_id } if *service == self.service => {
+                    ids.push(item_id)
+                }
+                // The server stores ids, so a queue it cannot name every entry
+                // of would come back short to the next client that reads it.
+                _ => return Ok(false),
+            }
+        }
+        let current = ids.get(current_index).copied();
+        let position = (!ids.is_empty()).then_some(position_ms);
+        self.client
+            .save_play_queue(&ids, current, position)
+            .await
+            .map_err(SourceError::from)?;
+        Ok(true)
+    }
+
+    async fn get_play_queue(&self) -> Result<Option<RemotePlayQueue>, SourceError> {
+        let Some(queue) = self.client.get_play_queue().await? else {
+            return Ok(None);
+        };
+        Ok(Some(RemotePlayQueue {
+            tracks: queue
+                .entry
+                .into_iter()
+                .map(|item| song_to_track(&self.client, self.service, item))
+                .collect(),
+            current_id: queue.current,
+            position_ms: queue.position.unwrap_or(0),
+            changed_by: queue.changed_by,
+        }))
     }
 }
 
