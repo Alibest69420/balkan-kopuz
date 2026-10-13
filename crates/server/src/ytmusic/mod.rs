@@ -14,6 +14,7 @@ pub mod mutations;
 pub mod player;
 pub mod playlists;
 pub mod search;
+pub mod tracking;
 pub mod verify_session_keepalive;
 
 pub use player::YtStreamInfo;
@@ -89,6 +90,10 @@ impl YouTubeMusicClient {
         Self {
             cookies: (!cookies.is_empty()).then_some(cookies),
         }
+    }
+
+    pub fn cookies(&self) -> Option<&str> {
+        self.cookies.as_deref()
     }
 
     pub async fn search_tracks(&self, query: &str) -> Result<Vec<Track>, String> {
