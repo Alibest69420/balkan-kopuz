@@ -46,6 +46,20 @@ impl From<db::DbError> for SourceError {
     }
 }
 
+/// One batch of a radio. The cursor is opaque to everyone but the source that
+/// issued it, and is stored with the queue so a restart picks the radio up.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct RadioPage {
+    pub tracks: Vec<reader::Track>,
+    pub more: Option<String>,
+}
+
+impl RadioPage {
+    pub fn last(tracks: Vec<reader::Track>) -> Self {
+        Self { tracks, more: None }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PlaylistOps {
     None,
