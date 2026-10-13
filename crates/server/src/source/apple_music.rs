@@ -176,6 +176,7 @@ impl MediaSource for AppleMusicSource {
             duration_secs: None,
             bitrate: Some(256_000),
             content_length: None,
+            loudness_db: None,
         })
     }
 

@@ -138,6 +138,7 @@ impl MediaSource for ClippslySource {
             duration_secs: stream.duration_seconds.map(|value| value.max(0.0) as u64),
             bitrate: stream.bitrate,
             content_length: None,
+            loudness_db: None,
         })
     }
 
