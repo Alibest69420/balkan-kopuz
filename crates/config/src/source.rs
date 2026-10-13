@@ -257,6 +257,14 @@ impl MusicServer {
     pub fn yt_browser(&self) -> Option<Browser> {
         self.yt_browser
     }
+
+    /// An anonymous source sends no cookies even if an old sign-in's token is stored.
+    pub fn ytmusic_cookies(&self) -> Option<&str> {
+        if self.service != MusicService::YtMusic || self.yt_anonymous {
+            return None;
+        }
+        self.access_token.as_deref()
+    }
 }
 
 impl Default for MusicServer {
