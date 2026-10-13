@@ -69,6 +69,7 @@ pub struct Player {
     engine: EngineHandle,
     now_playing: Option<NowPlayingMeta>,
     metadata_token: Option<u64>,
+    incoming: Option<(u64, NowPlayingMeta)>,
 }
 
 impl Player {
@@ -77,6 +78,7 @@ impl Player {
             engine,
             now_playing: None,
             metadata_token: None,
+            incoming: None,
         }
     }
 
@@ -148,21 +150,25 @@ impl Player {
             service_replay_gain,
             reply,
         }));
-        self.now_playing = Some(meta);
-        self.metadata_token = Some(token);
         // Push the OS now-playing display now only for an immediate switch (the
-        // UI hydrates to the new track at the same time). A crossfade keeps
-        // showing the outgoing track until the fade completes, so its metadata
-        // is pushed then, via `commit_now_playing`.
+        // UI hydrates to the new track at the same time). A crossfade or gapless
+        // switch keeps showing the outgoing track until the engine switches, so
+        // its metadata is pushed then, via `commit_now_playing`.
         if matches!(transition, Transition::Immediate) {
+            self.now_playing = Some(meta);
+            self.metadata_token = Some(token);
+            self.incoming = None;
             self.push_now_playing(start_at.unwrap_or(Duration::ZERO), true);
+        } else {
+            self.incoming = Some((token, meta));
         }
     }
 
-    /// Push the stored now-playing metadata to the OS display. Used to commit a
-    /// crossfade's incoming track once its fade completes (its push was deferred
-    /// in `load`).
-    pub fn commit_now_playing(&self) {
+    pub fn commit_now_playing(&mut self, token: u64) {
+        if let Some((_, meta)) = self.incoming.take_if(|(incoming, _)| *incoming == token) {
+            self.now_playing = Some(meta);
+            self.metadata_token = Some(token);
+        }
         self.update_now_playing_system();
     }
 
@@ -214,6 +220,7 @@ impl Player {
         self.engine.send(Command::Stop { pause_device: true });
         self.now_playing = None;
         self.metadata_token = None;
+        self.incoming = None;
         // Tear down the Android foreground service + media notification so the OS can
         // reclaim the process; otherwise the dismissed-notification state lingers.
         #[cfg(target_os = "android")]
@@ -263,14 +270,33 @@ impl Player {
         self.engine.send(Command::SetSampleRateMode(mode));
     }
 
-    pub fn update_metadata(&mut self, meta: NowPlayingMeta) {
-        self.engine.send(Command::SetDuration(meta.duration));
+    pub fn update_metadata(&mut self, token: u64, meta: NowPlayingMeta) {
+        if let Some((_, incoming)) = self
+            .incoming
+            .as_mut()
+            .filter(|(incoming, _)| *incoming == token)
+        {
+            *incoming = meta;
+            return;
+        }
+        if self.metadata_token != Some(token) {
+            return;
+        }
+        // Artwork can arrive after the engine switches, so keep its duration untouched.
         self.now_playing = Some(meta);
         self.update_now_playing_system();
     }
 
     /// Update stored artwork; `commit_now_playing` publishes it when the track is visible.
     pub fn set_artwork(&mut self, token: u64, artwork: Option<String>) -> bool {
+        if let Some((_, meta)) = self
+            .incoming
+            .as_mut()
+            .filter(|(incoming, _)| *incoming == token)
+        {
+            meta.artwork = artwork;
+            return true;
+        }
         if self.metadata_token != Some(token) {
             return false;
         }
@@ -378,12 +404,25 @@ mod tests {
             service_replay_gain: ReplayGainInfo::default(),
             reply: None,
         };
-        player.load(load(1));
+        let mut first = load(1);
+        first.transition = Transition::Immediate;
+        player.load(first);
         assert!(!player.set_artwork(2, Some("/cache/incoming.jpg".into())));
         assert!(player.now_playing.as_ref().unwrap().artwork.is_none());
         player.load(load(2));
         assert!(player.set_artwork(2, Some("/cache/incoming.jpg".into())));
-        assert!(!player.set_artwork(1, Some("/cache/outgoing.jpg".into())));
+        assert!(player.set_artwork(1, Some("/cache/outgoing.jpg".into())));
+        for (token, artwork) in [(1, "/cache/outgoing.jpg"), (2, "/cache/incoming.jpg")] {
+            let mut fetched = load(token).meta;
+            fetched.artwork = Some(artwork.into());
+            player.update_metadata(token, fetched);
+        }
+        let outgoing = player.now_playing.as_ref().unwrap();
+        assert_eq!(outgoing.title, "Track 1");
+        assert_eq!(outgoing.artwork.as_deref(), Some("/cache/outgoing.jpg"));
+        player.commit_now_playing(2);
+        assert!(!player.set_artwork(1, Some("/cache/stale.jpg".into())));
+        player.update_metadata(1, load(1).meta);
         let current = player.now_playing.as_ref().unwrap();
         assert_eq!(current.title, "Track 2");
         assert_eq!(current.artwork.as_deref(), Some("/cache/incoming.jpg"));

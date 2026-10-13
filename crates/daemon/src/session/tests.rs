@@ -110,6 +110,8 @@ fn test_track(key: &String) -> Track {
         u64::MAX
     } else if key.contains("short") {
         1
+    } else if key.contains("long") {
+        60
     } else {
         6
     };
@@ -279,6 +281,7 @@ fn gated_failing_factory(gate: Arc<(Mutex<bool>, Condvar)>) -> SourceFactory {
 struct Harness {
     api: LocalApi,
     sink: FakeSinkHandle,
+    engine_events: mpsc::UnboundedReceiver<EngineEvent>,
 }
 
 fn harness(configure: impl FnOnce(&mut config::AppConfig)) -> Harness {
@@ -303,6 +306,7 @@ fn harness_with_services(
     let sink = FakeSinkHandle::default();
     let player =
         Player::try_with_sink(Box::new(FakeSink(sink.clone()))).expect("headless player starts");
+    let engine_events = player.subscribe();
     let mut services = PlaybackServices {
         recorder,
         ..Default::default()
@@ -314,6 +318,7 @@ fn harness_with_services(
     Harness {
         api: LocalApi::new(session),
         sink,
+        engine_events,
     }
 }
 
@@ -347,6 +352,7 @@ fn replay_gain_harness(provider: FactoryOverride) -> Harness {
     }
     let sink = FakeSinkHandle::default();
     let player = Player::try_with_sink(Box::new(FakeSink(sink.clone()))).unwrap();
+    let engine_events = player.subscribe();
     let mut services = PlaybackServices::default();
     services.config.crossfade_seconds = 0;
     services.config.volume = 1.0;
@@ -356,6 +362,7 @@ fn replay_gain_harness(provider: FactoryOverride) -> Harness {
     Harness {
         api: LocalApi::new(session),
         sink,
+        engine_events,
     }
 }
 
@@ -899,7 +906,7 @@ async fn resume_re_adopts_the_live_engine_token_after_mid_load_pause() {
     let gate = Arc::new((Mutex::new(true), Condvar::new()));
     let provider_gate = gate.clone();
     let provider: FactoryOverride = Arc::new(move |track| {
-        Some(if track.title == "slow" {
+        Some(if track.title == "long-slow" {
             gated_factory(6, provider_gate.clone())
         } else {
             wav_factory(6)
@@ -908,7 +915,7 @@ async fn resume_re_adopts_the_live_engine_token_after_mid_load_pause() {
     let harness = harness_with_provider(|_| {}, provider);
     harness
         .api
-        .set_queue(replace(&["fast", "slow"]))
+        .set_queue(replace(&["long-fast", "long-slow"]))
         .await
         .expect("set queue");
     wait_committed(&harness.api).await;
@@ -2517,6 +2524,431 @@ async fn stored_volume(database: &db::Db) -> f32 {
         .volume
 }
 
+/// Like `drive_until`, keeping every sample, plus `tail` more pulls.
+async fn record_until(
+    harness: &Harness,
+    description: &str,
+    tail: usize,
+    predicate: impl Fn(&PlayerState) -> bool,
+) -> (PlayerState, Vec<f32>) {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    let mut samples = Vec::new();
+    loop {
+        samples.extend(harness.sink.pull(2048));
+        let state = harness.api.player_state().await.expect("player state");
+        if predicate(&state) {
+            for _ in 0..tail {
+                samples.extend(harness.sink.pull(2048));
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            return (state, samples);
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "timed out driving audio until {description}: {state:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
+
+fn longest_inner_silence(samples: &[f32]) -> usize {
+    let audible = |sample: &f32| *sample != 0.0;
+    let (Some(first), Some(last)) = (
+        samples.iter().position(audible),
+        samples.iter().rposition(audible),
+    ) else {
+        return samples.len();
+    };
+    samples[first..=last]
+        .split(audible)
+        .map(<[f32]>::len)
+        .max()
+        .unwrap_or(0)
+}
+
+#[tokio::test]
+async fn gapless_switches_on_the_last_sample_of_the_outgoing_track() {
+    let harness = harness(|_| {});
+    harness
+        .api
+        .set_queue(replace(&["short-a", "short-b"]))
+        .await
+        .expect("set queue");
+    wait_committed(&harness.api).await;
+
+    let mut audible_before_switch = 0;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    let mut samples = Vec::new();
+    loop {
+        let block = harness.sink.pull(2048);
+        samples.extend_from_slice(&block);
+        let state = harness.api.player_state().await.expect("player state");
+        if state.queue.index == Some(1) {
+            assert!(matches!(state.intent, Intent::Committed { token: 2 }));
+            assert!(state.fading.is_none());
+            break;
+        }
+        assert_eq!(
+            state.track.as_ref().map(|track| track.title.as_str()),
+            Some("short-a")
+        );
+        audible_before_switch = samples.iter().filter(|sample| **sample != 0.0).count();
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "no switch: {state:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    // The queue only moves once all of the first track has been heard.
+    let one_second = TEST_CONFIG.sample_rate as usize * TEST_CONFIG.channels;
+    assert!(
+        audible_before_switch >= one_second - 2 * 2048,
+        "switched after {audible_before_switch} samples"
+    );
+    let (_, tail) = record_until(&harness, "second track audible", 10, |_| true).await;
+    samples.extend(tail);
+    assert_eq!(longest_inner_silence(&samples), 0);
+}
+
+async fn finish_track_during_preload(harness: &mut Harness) {
+    wait_state(&harness.api, "next track preloading", |state| {
+        matches!(state.intent, Intent::Loading { token: 2, .. })
+    })
+    .await;
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            harness.sink.pull(2048);
+            while let Ok(event) = harness.engine_events.try_recv() {
+                if event == (EngineEvent::Ended { token: 1 }) {
+                    return;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("outgoing track ends while the preload is blocked");
+}
+
+#[tokio::test]
+async fn failed_gapless_preload_retries_only_after_the_outgoing_track_ends() {
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let provider_attempts = attempts.clone();
+    let mut harness = harness_with_provider(
+        |_| {},
+        Arc::new(move |track| {
+            Some(
+                if track.title == "track-b"
+                    && provider_attempts.fetch_add(1, Ordering::Relaxed) == 0
+                {
+                    Box::new(|| Err("preload failed".into()))
+                } else {
+                    wav_factory(track.duration)
+                },
+            )
+        }),
+    );
+    harness
+        .api
+        .set_queue(replace(&["track-a", "track-b"]))
+        .await
+        .unwrap();
+    wait_state(&harness.api, "preload failed", |state| {
+        state.error.is_some() && state.intent == Intent::Committed { token: 1 }
+    })
+    .await;
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            harness.sink.pull(2048);
+            while let Ok(event) = harness.engine_events.try_recv() {
+                if matches!(event, EngineEvent::Position { token: 1, position } if position >= Duration::from_secs(2)) {
+                    return;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(attempts.load(Ordering::Relaxed), 1);
+
+    drive_until(&harness, "retry after outgoing track ends", |state| {
+        state.queue.index == Some(1) && state.intent == Intent::Committed { token: 3 }
+    })
+    .await;
+    assert_eq!(attempts.load(Ordering::Relaxed), 2);
+}
+
+#[tokio::test]
+async fn late_failed_gapless_preload_stops_and_can_retry_the_next_track() {
+    let gate = Arc::new((Mutex::new(true), Condvar::new()));
+    let provider_gate = gate.clone();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let provider_attempts = attempts.clone();
+    let recorder = Arc::new(MemoryRecorder {
+        recents: Mutex::new(Vec::new()),
+        listens: Mutex::new(Vec::new()),
+    });
+    let mut harness = harness_with_services(
+        |_| {},
+        Arc::new(move |track| {
+            Some(
+                if track.title == "track-b"
+                    && provider_attempts.fetch_add(1, Ordering::Relaxed) == 0
+                {
+                    gated_failing_factory(provider_gate.clone())
+                } else {
+                    wav_factory(track.duration)
+                },
+            )
+        }),
+        Some(recorder.clone()),
+    );
+    harness
+        .api
+        .set_queue(replace(&["short-a", "track-b"]))
+        .await
+        .unwrap();
+    finish_track_during_preload(&mut harness).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    *gate.0.lock().unwrap() = false;
+    gate.1.notify_all();
+
+    let failed = wait_state(&harness.api, "late preload failed", |state| {
+        state.error.is_some()
+    })
+    .await;
+    assert_eq!(failed.intent, Intent::Stopped);
+    assert_eq!(failed.phase, ApiPhase::Ended);
+    assert_eq!(failed.queue.index, Some(1));
+    assert_eq!(
+        failed.position.map(|anchor| (anchor.ms, anchor.playing)),
+        Some((0, false))
+    );
+    assert_eq!(attempts.load(Ordering::Relaxed), 1);
+    assert!(harness.sink.pull(2048).iter().all(|sample| *sample == 0.0));
+
+    harness
+        .api
+        .player_command(PlayerCommand::Play)
+        .await
+        .unwrap();
+    wait_committed(&harness.api).await;
+    assert_eq!(attempts.load(Ordering::Relaxed), 2);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(harness.sink.pull(2048).iter().any(|sample| *sample != 0.0));
+    assert_eq!(recorder.listens.lock().unwrap().as_slice(), ["short-a"]);
+    assert_eq!(
+        recorder.recents.lock().unwrap().as_slice(),
+        ["short-a", "track-b"]
+    );
+}
+
+#[tokio::test]
+async fn late_successful_gapless_preload_commits_history_and_seek_duration() {
+    let gate = Arc::new((Mutex::new(true), Condvar::new()));
+    let provider_gate = gate.clone();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let provider_attempts = attempts.clone();
+    let recorder = Arc::new(MemoryRecorder {
+        recents: Mutex::new(Vec::new()),
+        listens: Mutex::new(Vec::new()),
+    });
+    let mut harness = harness_with_services(
+        |_| {},
+        Arc::new(move |track| {
+            Some(if track.title == "track-b" {
+                provider_attempts.fetch_add(1, Ordering::Relaxed);
+                gated_factory(track.duration, provider_gate.clone())
+            } else {
+                wav_factory(track.duration)
+            })
+        }),
+        Some(recorder.clone()),
+    );
+    harness
+        .api
+        .set_queue(replace(&["short-a", "track-b"]))
+        .await
+        .unwrap();
+    finish_track_during_preload(&mut harness).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let waiting = harness.api.player_state().await.unwrap();
+    *gate.0.lock().unwrap() = false;
+    gate.1.notify_all();
+    assert_eq!(waiting.phase, ApiPhase::Ended);
+    assert_eq!(waiting.position.map(|anchor| anchor.playing), Some(false));
+
+    wait_state(&harness.api, "late preload committed", |state| {
+        state.queue.index == Some(1)
+            && state.phase == ApiPhase::Playing
+            && matches!(state.intent, Intent::Committed { token: 2 })
+    })
+    .await;
+    assert_eq!(attempts.load(Ordering::Relaxed), 1);
+    harness
+        .api
+        .player_command(PlayerCommand::Seek { position_ms: 3_000 })
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while let Some(event) = harness.engine_events.recv().await {
+            if matches!(event, EngineEvent::Position { token: 2, position } if position >= Duration::from_secs(3)) {
+                return;
+            }
+        }
+        panic!("engine events closed before the seek");
+    })
+    .await
+    .expect("seek uses the incoming duration rather than the outgoing one-second track");
+    assert_eq!(recorder.listens.lock().unwrap().as_slice(), ["short-a"]);
+    assert_eq!(
+        recorder.recents.lock().unwrap().as_slice(),
+        ["short-a", "track-b"]
+    );
+}
+
+#[tokio::test]
+async fn late_gapless_preload_can_be_cancelled_after_the_queue_advances() {
+    for command in [PlayerCommand::Pause, PlayerCommand::Next] {
+        let gate = Arc::new((Mutex::new(true), Condvar::new()));
+        let provider_gate = gate.clone();
+        let mut harness = harness_with_provider(
+            |_| {},
+            Arc::new(move |track| {
+                Some(if track.title == "track-b" {
+                    gated_factory(track.duration, provider_gate.clone())
+                } else {
+                    wav_factory(track.duration)
+                })
+            }),
+        );
+        harness
+            .api
+            .set_queue(replace(&["short-a", "track-b", "track-c"]))
+            .await
+            .unwrap();
+        finish_track_during_preload(&mut harness).await;
+        wait_state(&harness.api, "queue advanced while preloading", |state| {
+            state.queue.index == Some(1) && state.phase == ApiPhase::Ended
+        })
+        .await;
+        harness.api.player_command(command).await.unwrap();
+        *gate.0.lock().unwrap() = false;
+        gate.1.notify_all();
+        if command == PlayerCommand::Next {
+            wait_committed(&harness.api).await;
+        }
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        let state = harness.api.player_state().await.unwrap();
+        if command == PlayerCommand::Pause {
+            assert_eq!(state.intent, Intent::Stopped);
+            assert_eq!(state.queue.index, Some(1));
+            assert!(harness.sink.pull(2048).iter().all(|sample| *sample == 0.0));
+        } else {
+            assert_eq!(state.intent, Intent::Committed { token: 3 });
+            assert_eq!(state.queue.index, Some(2));
+            assert!(harness.sink.pull(2048).iter().any(|sample| *sample != 0.0));
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_queue_edit_after_gapless_arming_rearms_the_next_track() {
+    let harness = harness(|_| {});
+    harness
+        .api
+        .set_queue(replace(&["short-a", "short-b"]))
+        .await
+        .expect("set queue");
+    wait_committed(&harness.api).await;
+    wait_state(&harness.api, "gapless armed", |state| {
+        state.queue.index == Some(0) && matches!(state.intent, Intent::Committed { token: 2 })
+    })
+    .await;
+
+    harness
+        .api
+        .set_queue(enqueue(QueueMode::PlayNext, &["short-c"]))
+        .await
+        .expect("play next after arming");
+    assert_eq!(
+        queue_titles(&harness.api).await,
+        vec!["short-a", "short-c", "short-b"]
+    );
+    wait_state(&harness.api, "re-armed", |state| {
+        state.queue.index == Some(0) && matches!(state.intent, Intent::Committed { token: 3 })
+    })
+    .await;
+
+    let (state, samples) = record_until(&harness, "edited next track playing", 10, |state| {
+        state.queue.index == Some(1)
+    })
+    .await;
+    assert_eq!(
+        state.track.as_ref().map(|track| track.title.as_str()),
+        Some("short-c")
+    );
+    assert_eq!(longest_inner_silence(&samples), 0);
+}
+
+#[tokio::test]
+async fn repeat_one_loops_the_track_gapless() {
+    let harness = harness(|_| {});
+    harness
+        .api
+        .set_queue(replace(&["short-a", "short-b"]))
+        .await
+        .expect("set queue");
+    harness
+        .api
+        .player_command(PlayerCommand::SetMode {
+            shuffle: None,
+            loop_mode: Some(LoopMode::Track),
+        })
+        .await
+        .expect("repeat one");
+    wait_committed(&harness.api).await;
+
+    let (state, samples) = record_until(&harness, "track replayed", 10, |state| {
+        matches!(state.intent, Intent::Committed { token } if token >= 3)
+            && state.queue.index == Some(0)
+    })
+    .await;
+    assert_eq!(
+        state.track.as_ref().map(|track| track.title.as_str()),
+        Some("short-a")
+    );
+    assert_eq!(longest_inner_silence(&samples), 0);
+}
+
+#[tokio::test]
+async fn crossfade_above_zero_still_fades_instead_of_queueing() {
+    let harness = harness(|config| config.crossfade_seconds = 1);
+    harness
+        .api
+        .set_queue(replace(&["track-0", "track-1"]))
+        .await
+        .expect("set queue");
+    wait_committed(&harness.api).await;
+
+    // Nothing is armed until the crossfade window, unlike the gapless preload.
+    let early = harness.api.player_state().await.expect("state");
+    assert!(matches!(early.intent, Intent::Committed { token: 1 }));
+
+    let state = drive_until(&harness, "crossfade running", |state| {
+        state.fading.is_some()
+    })
+    .await;
+    assert_eq!(state.queue.index, Some(0));
+    assert!(matches!(state.intent, Intent::Committed { token: 2 }));
+    drive_until(&harness, "crossfade committed", |state| {
+        state.queue.index == Some(1) && state.fading.is_none()
+    })
+    .await;
+}
+
 /// A source whose radio pages by cursor: `p1` and `p2` add tracks, and `p2`
 /// hands back `p1` again, the loop a source echoing its token makes.
 #[derive(Default)]
@@ -2578,6 +3010,7 @@ impl QueueMaterializer for RadioLibrary {
 fn radio_harness(library: Arc<RadioLibrary>) -> Harness {
     let sink = FakeSinkHandle::default();
     let player = Player::try_with_sink(Box::new(FakeSink(sink.clone()))).unwrap();
+    let engine_events = player.subscribe();
     let mut services = PlaybackServices::default();
     services.config.crossfade_seconds = 0;
     let session = SessionHandle::spawn_with_factory(
@@ -2589,6 +3022,7 @@ fn radio_harness(library: Arc<RadioLibrary>) -> Harness {
     Harness {
         api: LocalApi::new(session),
         sink,
+        engine_events,
     }
 }
 
@@ -2604,6 +3038,24 @@ fn track_radio(key: &str) -> SetQueueRequest {
 async fn queue_keys(api: &LocalApi) -> Vec<String> {
     let snapshot = api.queue_snapshot().await.expect("queue snapshot");
     snapshot.items.into_iter().map(|track| track.key).collect()
+}
+
+#[tokio::test]
+async fn a_radio_tops_up_after_a_gapless_switch() {
+    let library = Arc::new(RadioLibrary::default());
+    let harness = radio_harness(library.clone());
+    harness.api.set_queue(track_radio("seed")).await.unwrap();
+    wait_committed(&harness.api).await;
+
+    let (state, samples) = record_until(&harness, "radio topped up after switching", 10, |state| {
+        state.queue.index == Some(1) && state.queue.length == 11
+    })
+    .await;
+
+    assert_eq!(state.track.as_ref().unwrap().title, "r1");
+    assert!(state.fading.is_none());
+    assert_eq!(library.asked(), ["p1"]);
+    assert_eq!(longest_inner_silence(&samples), 0);
 }
 
 #[tokio::test]

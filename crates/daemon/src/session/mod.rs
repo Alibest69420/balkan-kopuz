@@ -473,7 +473,8 @@ enum PlaybackIntent {
     Loading {
         token: u64,
         idx: usize,
-        crossfade: bool,
+        /// A crossfade or gapless candidate; the outgoing track keeps playing.
+        deferred: bool,
         from_token: u64,
     },
     Committed {
@@ -519,6 +520,7 @@ struct PendingResumeState {
 enum TransitionStage {
     Loading,
     Fading,
+    Queued,
 }
 
 /// A crossfade in flight. The queue itself is not forked: only the logical
@@ -528,9 +530,12 @@ enum TransitionStage {
 /// remap `current`.
 struct PendingTransition {
     to_position: usize,
+    to_key: String,
     to_token: u64,
     from_token: u64,
     stage: TransitionStage,
+    /// Nothing is audible before the switch, so a queue edit re-arms it instead.
+    gapless: bool,
 }
 
 struct Session {
@@ -716,8 +721,8 @@ impl Session {
                 self.apply_album_covers(source, covers, state_tx)
             }
             SessionCmd::ArtworkFetched { token, meta } => {
-                if self.intent.token() == token {
-                    self.player.update_metadata(*meta);
+                if self.intent.token() == token || self.is_outgoing(token) {
+                    self.player.update_metadata(token, *meta);
                 }
             }
         }
@@ -819,6 +824,7 @@ impl Session {
                 if let Some(mode) = loop_mode {
                     self.model.set_loop_mode(mode);
                 }
+                self.rearm_gapless();
             }
         }
         Ok(self.publish(state_tx, queue_changed))
@@ -861,6 +867,7 @@ impl Session {
                     return Err(ApiError::not_found("none of those keys are in the library"));
                 }
                 self.model.insert_at(index, tracks);
+                self.rearm_gapless();
                 Ok(self.publish(state_tx, true))
             }
             QueueEdit::Jump { index } => {
@@ -881,6 +888,7 @@ impl Session {
                     pending.to_position =
                         QueueModel::remap_queue_index(pending.to_position, from, to);
                 }
+                self.rearm_gapless();
                 Ok(self.publish(state_tx, true))
             }
             QueueEdit::Remove { index } => {
@@ -899,7 +907,7 @@ impl Session {
                 if self
                     .pending_transition
                     .as_ref()
-                    .is_some_and(|pending| pending.to_position == index)
+                    .is_some_and(|pending| !pending.gapless && pending.to_position == index)
                 {
                     return Err(ApiError::invalid_input(
                         "cannot remove the track being faded into; skip or stop first",
@@ -911,6 +919,7 @@ impl Session {
                 {
                     pending.to_position -= 1;
                 }
+                self.rearm_gapless();
                 Ok(self.publish(state_tx, true))
             }
         }
@@ -1004,9 +1013,14 @@ impl Session {
                 // Mid-crossfade the queue still reads as the outgoing track,
                 // but "next" means after the one already fading in, or the
                 // insertion would be skipped the moment the fade commits.
-                Some(pending) => self.model.insert_at(pending.to_position + 1, tracks),
-                None => self.model.insert_next(tracks),
+                Some(pending) if !pending.gapless => {
+                    self.model.insert_at(pending.to_position + 1, tracks)
+                }
+                _ => self.model.insert_next(tracks),
             },
+        }
+        if request.mode != QueueMode::Replace {
+            self.rearm_gapless();
         }
         Ok(self.publish(state_tx, true))
     }
@@ -1054,7 +1068,11 @@ impl Session {
 
     fn play_previous(&mut self, state_tx: &watch::Sender<PlayerState>) -> Result<(), ApiError> {
         let idx = self.model.current_position();
-        if self.revert_transition().is_some() {
+        let gapless = self
+            .pending_transition
+            .as_ref()
+            .is_some_and(|pending| pending.gapless);
+        if self.revert_transition().is_some() && !gapless {
             let candidate = self.model.clone();
             self.start_immediate_load(candidate, idx)?;
             return Ok(());
@@ -1080,7 +1098,11 @@ impl Session {
         // Pausing mid-load cancels it, else a cancelled reply leaves intent
         // stuck Loading. Resolving crossfades revert whole; immediate loads
         // record a resume point. A running fade is merely frozen.
-        if self.intent.is_loading() && self.revert_transition().is_none() {
+        let queued = self
+            .pending_transition
+            .as_ref()
+            .is_some_and(|pending| pending.stage == TransitionStage::Queued);
+        if (self.intent.is_loading() || queued) && self.revert_transition().is_none() {
             self.cancel_load_task();
             if !is_radio {
                 self.store_pending_resume();
@@ -1605,8 +1627,47 @@ impl Session {
         if !self.commit_transition_model(token) {
             return false;
         }
-        self.player.commit_now_playing();
+        self.player.commit_now_playing(token);
         true
+    }
+
+    /// A track shorter than the preload never reaches the next position event.
+    pub(super) fn arm_gapless_now(&mut self) -> bool {
+        let arm =
+            self.should_play_gapless() && self.should_arm_transition(self.player.get_position());
+        if arm {
+            self.arm_transition();
+        }
+        arm
+    }
+
+    fn rearm_gapless(&mut self) {
+        let Some(pending) = self
+            .pending_transition
+            .as_ref()
+            .filter(|pending| pending.gapless)
+        else {
+            return;
+        };
+        let (position, key) = (pending.to_position, pending.to_key.clone());
+        let still_next = matches!(self.model.peek_next(), NextOutcome::Play(next) if next == position)
+            && self
+                .model
+                .track_at(position)
+                .is_some_and(|track| track.id.uid() == key);
+        if still_next {
+            return;
+        }
+        let _ = self.revert_transition();
+        if self.should_arm_transition(self.player.get_position()) {
+            self.arm_transition();
+        }
+    }
+
+    pub(super) fn scrobble_committed(&self, track: Track, token: u64) {
+        if let Some(scrobbler) = self.scrobbler.clone() {
+            scrobbler.track_committed(track, token);
+        }
     }
 
     fn start_immediate_load(&mut self, model: QueueModel, idx: usize) -> Result<(), ApiError> {
@@ -1630,7 +1691,7 @@ impl Session {
     /// whole undo.
     fn revert_transition(&mut self) -> Option<u64> {
         let pending = self.pending_transition.take()?;
-        if pending.stage == TransitionStage::Loading {
+        if pending.stage != TransitionStage::Fading {
             self.cancel_load_task();
         }
         self.armed_transition = None;
@@ -1670,16 +1731,22 @@ impl Session {
         self.buffered.clear();
         match intent {
             PlaybackIntent::Loading {
-                crossfade: true,
+                deferred: true,
                 from_token,
                 ..
             } => {
-                self.pending_transition = None;
-                self.armed_transition = None;
+                self.armed_transition = self
+                    .pending_transition
+                    .take()
+                    .filter(|pending| pending.gapless)
+                    .map(|_| from_token);
                 self.set_intent(PlaybackIntent::Committed { token: from_token });
             }
             _ => {
                 self.set_intent(PlaybackIntent::Stopped);
+                if self.phase == ApiPhase::Ended {
+                    self.player.pause();
+                }
             }
         }
         true
