@@ -653,7 +653,7 @@ dependencies = [
  "bitflags 2.13.2",
  "cexpr",
  "clang-sys",
- "itertools 0.11.0",
+ "itertools 0.13.0",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -890,6 +890,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "castaway"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dec551ab6e7578819132c713a93c022a05d60159dc86e7a7050223577484c55a"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "cbc"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1092,6 +1101,20 @@ dependencies = [
  "link",
  "store",
  "tracing",
+]
+
+[[package]]
+name = "compact_str"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9dfdd1c2274d9aa354115b09dc9a901d6c5576818cdf70d14cae2bdb47df00ab"
+dependencies = [
+ "castaway",
+ "cfg-if",
+ "itoa",
+ "rustversion",
+ "ryu",
+ "static_assertions",
 ]
 
 [[package]]
@@ -1566,7 +1589,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.3",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1809,7 +1832,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2250,6 +2273,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "garde"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d7f479d28d1daedf23970890723b8774d120aa627abcb33c1d7c93d0965e6c3"
+dependencies = [
+ "compact_str",
+ "garde_derive",
+ "smallvec",
+]
+
+[[package]]
+name = "garde_derive"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b0252cacdca8e6f30a900e6d436fbf294e23f674b9288ca4a5bd35976bef87c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2612,7 +2657,7 @@ dependencies = [
  "slotmap",
  "smallvec",
  "spin 0.10.1",
- "strum",
+ "strum 0.28.0",
  "taffy",
  "thiserror 2.0.20",
  "tracing",
@@ -2726,7 +2771,7 @@ dependencies = [
  "raw-window-handle",
  "smallvec",
  "smol",
- "strum",
+ "strum 0.28.0",
  "url",
  "uuid",
  "wayland-backend",
@@ -2785,7 +2830,7 @@ dependencies = [
  "raw-window-handle",
  "semver",
  "smallvec",
- "strum",
+ "strum 0.28.0",
  "uuid",
  "zed-font-kit",
 ]
@@ -3814,8 +3859,8 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
 name = "kopuz-api"
-version = "0.19.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=1508dce7db3e183c9c3280ec098b2e44ab310d87#1508dce7db3e183c9c3280ec098b2e44ab310d87"
+version = "0.20.0"
+source = "git+https://github.com/Kopuz-org/kopuz?rev=0d56afc7864b954c58d2522752e2913013052ad3#0d56afc7864b954c58d2522752e2913013052ad3"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -3826,10 +3871,11 @@ dependencies = [
 
 [[package]]
 name = "kopuz-client"
-version = "0.19.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=1508dce7db3e183c9c3280ec098b2e44ab310d87#1508dce7db3e183c9c3280ec098b2e44ab310d87"
+version = "0.20.0"
+source = "git+https://github.com/Kopuz-org/kopuz?rev=0d56afc7864b954c58d2522752e2913013052ad3#0d56afc7864b954c58d2522752e2913013052ad3"
 dependencies = [
  "async-trait",
+ "directories",
  "futures-util",
  "hyper-util",
  "kopuz-api",
@@ -3844,12 +3890,14 @@ dependencies = [
 
 [[package]]
 name = "kopuz-config"
-version = "0.19.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=1508dce7db3e183c9c3280ec098b2e44ab310d87#1508dce7db3e183c9c3280ec098b2e44ab310d87"
+version = "0.20.0"
+source = "git+https://github.com/Kopuz-org/kopuz?rev=0d56afc7864b954c58d2522752e2913013052ad3#0d56afc7864b954c58d2522752e2913013052ad3"
 dependencies = [
  "directories",
+ "garde",
  "serde",
  "serde_json",
+ "strum 0.25.0",
  "toml 0.8.23",
  "tracing",
  "uuid",
@@ -3898,8 +3946,8 @@ dependencies = [
 
 [[package]]
 name = "kopuz-i18n"
-version = "0.19.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=1508dce7db3e183c9c3280ec098b2e44ab310d87#1508dce7db3e183c9c3280ec098b2e44ab310d87"
+version = "0.20.0"
+source = "git+https://github.com/Kopuz-org/kopuz?rev=0d56afc7864b954c58d2522752e2913013052ad3#0d56afc7864b954c58d2522752e2913013052ad3"
 dependencies = [
  "fluent-bundle",
  "unic-langid",
@@ -3907,8 +3955,8 @@ dependencies = [
 
 [[package]]
 name = "kopuz-proto"
-version = "0.19.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=1508dce7db3e183c9c3280ec098b2e44ab310d87#1508dce7db3e183c9c3280ec098b2e44ab310d87"
+version = "0.20.0"
+source = "git+https://github.com/Kopuz-org/kopuz?rev=0d56afc7864b954c58d2522752e2913013052ad3#0d56afc7864b954c58d2522752e2913013052ad3"
 dependencies = [
  "futures-util",
  "kopuz-api",
@@ -4685,7 +4733,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5851,8 +5899,8 @@ version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be769465445e8c1474e9c5dac2018218498557af32d9ed057325ec9a41ae81bf"
 dependencies = [
- "heck 0.4.1",
- "itertools 0.11.0",
+ "heck 0.5.0",
+ "itertools 0.13.0",
  "log",
  "multimap",
  "once_cell",
@@ -5872,7 +5920,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d"
 dependencies = [
  "anyhow",
- "itertools 0.11.0",
+ "itertools 0.13.0",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -6039,7 +6087,7 @@ dependencies = [
  "once_cell",
  "socket2 0.6.5",
  "tracing",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6581,7 +6629,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7316,11 +7364,33 @@ dependencies = [
 
 [[package]]
 name = "strum"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "290d54ea6f91c969195bdbcd7442c8c2a2ba87da8bf60a7ee86a235d4bc1e125"
+dependencies = [
+ "strum_macros 0.25.3",
+]
+
+[[package]]
+name = "strum"
 version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
 dependencies = [
- "strum_macros",
+ "strum_macros 0.28.0",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.25.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23dc1fa9ac9c169a78ba62f0b841814b7abae11bdd047b9c58f893439e309ea0"
+dependencies = [
+ "heck 0.4.1",
+ "proc-macro2",
+ "quote",
+ "rustversion",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -7585,10 +7655,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
