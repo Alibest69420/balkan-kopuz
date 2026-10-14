@@ -31,7 +31,7 @@ use gpui_kit::{
 };
 use store::layout::{Column, Density, TileSize, ViewMode};
 use store::{
-    DownloadsModel, LayoutModel, Link, Navigator, Pager, PlayerModel, PlaylistsModel, Query, Route,
+    DownloadsModel, LayoutModel, Navigator, Pager, PlayerModel, PlaylistsModel, Query, Route,
     SourcesModel, Target,
 };
 
@@ -168,8 +168,6 @@ pub struct Library {
 
     _filter_delay: Option<Task<()>>,
     _resolve: Option<Task<()>>,
-    _photos: Option<Task<()>>,
-    asked_photos: Vec<String>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -304,8 +302,6 @@ impl Library {
             type_ahead_at: None,
             _filter_delay: None,
             _resolve: None,
-            _photos: None,
-            asked_photos: Vec::new(),
             _subscriptions: subscriptions,
         };
         page.read_layout(cx);
@@ -645,7 +641,6 @@ impl Library {
             let total = page.total.max(page.artists.len() as u32) as usize;
             self.pager.adopt(page.offset, page.artists.len(), total);
         }
-        self.request_photos(cx);
         self.rebuild(cx);
     }
 
@@ -678,36 +673,6 @@ impl Library {
             true => self.refetch(cx),
             false => cx.notify(),
         }
-    }
-
-    /// Ask the daemon for photos for the artists actually on screen, once per set of names.
-    fn request_photos(&mut self, cx: &mut Context<Self>) {
-        if self.filters.facet != Facet::Artists {
-            return;
-        }
-        let names: Vec<String> = self
-            .artists
-            .read(cx)
-            .value()
-            .map(|page| {
-                page.artists
-                    .iter()
-                    .filter(|artist| artist.artwork.is_none())
-                    .map(|artist| artist.key.clone())
-                    .collect()
-            })
-            .unwrap_or_default();
-        if names.is_empty() || names == self.asked_photos {
-            return;
-        }
-        self.asked_photos = names.clone();
-        let call = Link::global(cx)
-            .call(move |api| async move { api.refresh_artist_artwork(names).await });
-        self._photos = Some(cx.spawn(async move |_, _| {
-            if let Err(error) = call.await {
-                tracing::debug!(%error, "artist artwork refresh failed");
-            }
-        }));
     }
 
     /// Everything a frame reads, computed once per change: lines, tiles and the playing mark.

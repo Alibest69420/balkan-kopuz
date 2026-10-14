@@ -1,24 +1,18 @@
 //! The artists grid: every credited name in the library, with the photo the daemon found for it.
 
-use std::collections::HashSet;
-use std::ops::Range;
-use std::time::Duration;
-
 use api::{ArtistInfo, ArtistPage, Table};
 use components::format::t;
 use components::{EmptyState, GridMode, Loading, PageHeader, TileGrid, icons};
 use config::{AlbumViewMode, ArtistSortField, SortCriterion};
 use gpui_kit::{
     App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
-    Subscription, Task, Window, div, px,
+    Subscription, Window, div, px,
 };
-use store::{ConfigModel, LayoutModel, Link, Query};
+use store::{ConfigModel, LayoutModel, Query};
 
 use crate::controls::{self, ViewModeKey};
 
 const TILE: f32 = 160.;
-// Bands land one after another while a list scrolls; their missing photos travel as one request.
-const PHOTO_BATCH: Duration = Duration::from_millis(150);
 
 /// The artists grid.
 pub struct Artists {
@@ -28,11 +22,6 @@ pub struct Artists {
     grid: TileGrid,
     // Built on change, not per frame: render runs on every playhead tick.
     entries: Vec<ArtistInfo>,
-    // Every artist a photo was asked for, so the Tracks refresh its answer causes asks nothing again.
-    asked: HashSet<String>,
-    // Shown without a photo and not yet sent, waiting out the batch window.
-    pending: Vec<String>,
-    _refresh: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -59,9 +48,6 @@ impl Artists {
             // `gap-8` between round tiles.
             grid: TileGrid::new("artists-scroll").gap(px(32.)).fallback(5),
             entries: Vec::new(),
-            asked: HashSet::new(),
-            pending: Vec::new(),
-            _refresh: None,
             _subscriptions: subscriptions,
         }
     }
@@ -87,37 +73,6 @@ impl Artists {
             self.ordered = wanted;
         }
         cx.notify();
-    }
-
-    /// Queue the photos the bands on screen lack; only what is seen is ever looked up, and once.
-    fn want_photos(&mut self, shown: Range<usize>, cx: &mut Context<Self>) {
-        let Some(entries) = self.entries.get(shown) else {
-            return;
-        };
-        let missing: Vec<String> = entries
-            .iter()
-            .filter(|artist| artist.artwork.is_none())
-            .filter(|artist| self.asked.insert(artist.key.clone()))
-            .map(|artist| artist.key.clone())
-            .collect();
-        let before = self.pending.len();
-        self.pending.extend(missing);
-        if before == 0 && !self.pending.is_empty() {
-            self._refresh = Some(cx.spawn(async move |this, cx| {
-                cx.background_executor().timer(PHOTO_BATCH).await;
-                let Ok(wanted) = this.update(cx, |this, _| std::mem::take(&mut this.pending))
-                else {
-                    return;
-                };
-                let call = cx.update(|cx| {
-                    Link::global(cx)
-                        .call(move |api| async move { api.refresh_artist_artwork(wanted).await })
-                });
-                if let Err(error) = call.await {
-                    tracing::debug!(%error, "artist artwork refresh failed");
-                }
-            }));
-        }
     }
 
     fn is_settled(&self, cx: &App) -> bool {
@@ -163,7 +118,6 @@ impl Render for Artists {
                                 }
                             },
                         )
-                        .visit(|this: &mut Artists, shown, _, cx| this.want_photos(shown, cx))
                         .build(window, cx),
                 )
                 .into_any_element(),
