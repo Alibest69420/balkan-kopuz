@@ -13,6 +13,7 @@ use components::{
     TrackListOptions, TrackSection, icons,
 };
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
     ParentElement as _, Pixels, Render, ScrollHandle, SharedString,
@@ -45,7 +46,7 @@ pub struct AlbumDetail {
     rows: Vec<TrackInfo>,
     // Derived from the rows and the downloads once per change, not once per frame.
     keys: Rc<[String]>,
-    total_ms: u64,
+    total_ms: Option<u64>,
     offline: Offline,
     groups: Vec<DiscGroup>,
     // The album ids the track query is pointed at, and the id the remote one is.
@@ -112,7 +113,7 @@ impl AlbumDetail {
             remote,
             rows: Vec::new(),
             keys: Rc::from([]),
-            total_ms: 0,
+            total_ms: None,
             offline: Offline::default(),
             groups: Vec::new(),
             aggregated: vec![album_id],
@@ -173,11 +174,7 @@ impl AlbumDetail {
         ops::in_album_order(&mut rows);
         if rows != self.rows {
             self.keys = ops::keys_of(&rows).into();
-            self.total_ms = rows
-                .iter()
-                .filter_map(|row| row.duration_secs())
-                .sum::<u64>()
-                * 1000;
+            self.total_ms = api::total_duration_secs(&rows).map(|secs| secs * 1000);
             self.rows = rows;
             self.refresh_offline(cx);
             self.rebuild_groups(cx);
@@ -364,8 +361,9 @@ impl AlbumDetail {
         t_with("showcase_song_count", &[("count", self.rows.len().into())])
     }
 
-    fn minutes(&self) -> String {
-        format!("{} {}", self.total_ms / 60_000, t("min"))
+    fn minutes(&self) -> Option<String> {
+        self.total_ms
+            .map(|total| format!("{} {}", total / 60_000, t("min")))
     }
 
     fn standard_detail(
@@ -388,7 +386,7 @@ impl AlbumDetail {
                 "album-artist",
             ))
             .meta(self.count())
-            .meta(self.minutes())
+            .when_some(self.minutes(), |header, minutes| header.meta(minutes))
             .action(
                 DetailActions::new("album", self.keys.clone())
                     .offline(self.offline)
@@ -436,7 +434,7 @@ impl AlbumDetail {
             ))
             .kind(t("album"))
             .meta(self.count())
-            .meta(self.minutes())
+            .when_some(self.minutes(), |header, minutes| header.meta(minutes))
             .action(
                 DetailActions::new("album-remote", self.keys.clone())
                     .look(Look::Catalog)

@@ -62,7 +62,7 @@ pub struct ArtistDetail {
     column: Option<(Column, SortDirection)>,
     // Derived once per change, not once per frame.
     keys: Rc<[String]>,
-    total_ms: u64,
+    total_ms: Option<u64>,
     offline: Offline,
     billed: Entity<Query<AlbumPage>>,
     // The order the albums were last asked for; the daemon sorts, so a new one is a new read.
@@ -130,7 +130,7 @@ impl ArtistDetail {
             list,
             column: None,
             keys: Rc::from([]),
-            total_ms: 0,
+            total_ms: None,
             offline: Offline::default(),
             billed,
             asked,
@@ -172,10 +172,7 @@ impl ArtistDetail {
         };
         let rows = self.rows(cx);
         self.keys = rows.iter().map(|row| row.key.clone()).collect();
-        self.total_ms = rows
-            .iter()
-            .map(|row| row.duration_ms.unwrap_or_default())
-            .sum();
+        self.total_ms = api::total_duration_secs(&rows).map(|secs| secs * 1000);
         self.refresh_offline(cx);
         self.list.update(cx, |list, cx| {
             list.set_options(options, cx);
@@ -338,7 +335,9 @@ impl ArtistDetail {
                 "showcase_song_count",
                 &[("count", self.keys.len().into())],
             ))
-            .meta(total_duration(self.total_ms))
+            .when_some(self.total_ms, |header, total| {
+                header.meta(total_duration(total))
+            })
             .action(
                 DetailActions::new("artist", self.keys.clone())
                     .offline(self.offline)

@@ -298,12 +298,11 @@ impl QueueView {
         let summary = queue.summary();
         let upcoming = queue.upcoming().len();
         let empty = queue.is_empty();
-        let label = SharedString::from(format!(
-            "{}/{} • {}",
-            summary.position.max(1),
-            summary.count,
-            duration(summary.total_ms)
-        ));
+        let place = format!("{}/{}", summary.position.max(1), summary.count);
+        let label = SharedString::from(match summary.total_ms {
+            Some(total) => format!("{place} • {}", duration(total)),
+            None => place,
+        });
 
         h_flex()
             .w_full()

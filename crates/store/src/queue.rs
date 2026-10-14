@@ -8,7 +8,8 @@ pub struct QueueSummary {
     /// One-based place of the current row; zero when nothing is current.
     pub position: usize,
     pub count: usize,
-    pub total_ms: u64,
+    /// What the known durations add up to; `None` when no row has one.
+    pub total_ms: Option<u64>,
 }
 
 /// The whole queue in play order, refetched whenever its revision moves.
@@ -52,12 +53,7 @@ impl QueueModel {
 
     /// Recomputed where the queue changes, which is rarely; reading it is what happens per frame.
     fn resummarize(&mut self) {
-        let total_ms = self
-            .snapshot
-            .items
-            .iter()
-            .filter_map(|track| track.duration_secs())
-            .fold(0u64, |sum, secs| sum.saturating_add(secs * 1000));
+        let total_ms = api::total_duration_secs(&self.snapshot.items).map(|secs| secs * 1000);
         self.summary = QueueSummary {
             position: self.snapshot.position.map_or(0, |at| at as usize + 1),
             count: self.snapshot.items.len(),
