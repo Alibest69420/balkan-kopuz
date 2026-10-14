@@ -1,4 +1,5 @@
 use api::schema::Text;
+use fluent_bundle::FluentValue;
 use gpui_kit::SharedString;
 
 /// A translated string, ready to hand to an element.
@@ -6,8 +7,8 @@ pub fn t(key: &str) -> SharedString {
     i18n::t(key).into()
 }
 
-/// A translated string with Fluent arguments.
-pub fn t_with(key: &str, args: &[(&str, String)]) -> SharedString {
+/// A translated string with Fluent arguments; a count goes in as a number so its plural selects.
+pub fn t_with(key: &str, args: &[(&str, FluentValue<'_>)]) -> SharedString {
     i18n::t_with(key, args).into()
 }
 

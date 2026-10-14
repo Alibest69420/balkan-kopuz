@@ -77,7 +77,7 @@ impl PlayerModel {
                 playing,
             } => {
                 // Only a position for the track we are showing may move our clock anchor.
-                if Some(*token) == self.token() {
+                if Some(*token) == self.visible_token() {
                     // A seek in flight means the daemon is still reporting where it was.
                     match self.seeking {
                         Some(seek)
@@ -93,13 +93,6 @@ impl PlayerModel {
                             });
                         }
                     }
-                } else if let Some(fading) = self
-                    .state
-                    .fading
-                    .as_mut()
-                    .filter(|fading| fading.from_token == *token)
-                {
-                    fading.position_ms = *position_ms;
                 } else if self.resynced_for != Some(*token) {
                     self.resynced_for = Some(*token);
                     self.refetch(cx);
@@ -155,6 +148,14 @@ impl PlayerModel {
         }
     }
 
+    /// The token whose position the daemon anchors: the outgoing track's while a crossfade runs.
+    fn visible_token(&self) -> Option<u64> {
+        match &self.state.fading {
+            Some(fading) => Some(fading.from_token),
+            None => self.token(),
+        }
+    }
+
     fn daemon_now_ms(&self) -> u64 {
         self.state.now_ms + self.observed_at.elapsed().as_millis() as u64
     }
@@ -193,9 +194,6 @@ impl PlayerModel {
     }
 
     pub fn position_ms(&self) -> u64 {
-        if let Some(fading) = &self.state.fading {
-            return fading.position_ms;
-        }
         let Some(anchor) = self.state.position else {
             return 0;
         };

@@ -160,10 +160,12 @@ impl RenderOnce for SelectionBar {
                     .bg(cx.theme().primary)
                     .text_color(ink)
                     .shadow_2xl()
-                    .child(div().pl_2().font_weight(FontWeight::BOLD).child(t_with(
-                        "library_selected",
-                        &[("count", self.count.to_string())],
-                    )))
+                    .child(
+                        div()
+                            .pl_2()
+                            .font_weight(FontWeight::BOLD)
+                            .child(t_with("library_selected", &[("count", self.count.into())])),
+                    )
                     .child(divider())
                     .children(verbs)
                     .children(delete)

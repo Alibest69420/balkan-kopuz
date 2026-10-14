@@ -4,9 +4,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use api::{
-    AlbumPage, AlbumQuery, AlbumSort, ApiError, ArtistPage, ArtistQuery, ArtistSort, KopuzApi,
-};
+use api::{AlbumPage, AlbumQuery, ApiError, ArtistPage, ArtistQuery, KopuzApi};
 use components::format::t;
 use components::{Segment, Segmented, SortControl};
 use config::{
@@ -70,6 +68,8 @@ impl SortTarget for AlbumSortField {
             Self::Artist => "sort_field_artist",
             Self::Year => "sort_field_year",
             Self::Genre => "sort_field_genre",
+            Self::RecentlyAdded => "sort_field_date_added",
+            Self::TrackCount => "sort_field_tracks",
         }
     }
 
@@ -89,7 +89,7 @@ pub fn artist_listing(
     criteria: &[SortCriterion<ArtistSortField>],
 ) -> impl Fn(Arc<dyn KopuzApi>) -> Listing<ArtistPage> + 'static {
     let query = ArtistQuery {
-        sort: criteria.iter().copied().map(ArtistSort::from).collect(),
+        sort: criteria.to_vec(),
         ..ArtistQuery::default()
     };
     move |api| {
@@ -105,7 +105,7 @@ pub fn album_listing(
 ) -> impl Fn(Arc<dyn KopuzApi>) -> Listing<AlbumPage> + 'static {
     let query = AlbumQuery {
         artist_key: Some(artist),
-        sort: criteria.iter().copied().map(AlbumSort::from).collect(),
+        sort: criteria.to_vec(),
         ..AlbumQuery::default()
     };
     move |api| {

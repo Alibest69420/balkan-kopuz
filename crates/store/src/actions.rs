@@ -144,7 +144,10 @@ pub fn queue_remove(index: u32, cx: &mut App) {
     let Some(track) = removed else { return };
     let key = track.key.clone();
     Notices::undo(
-        i18n::t_with("removed_from_queue", &[("title", track.title.clone())]),
+        i18n::t_with(
+            "removed_from_queue",
+            &[("title", track.title.clone().into())],
+        ),
         move |cx| {
             let key = key.clone();
             crate::QueueModel::global(cx)
@@ -169,7 +172,7 @@ pub fn set_favorites(keys: Vec<String>, favorite: bool, cx: &mut App) {
     }
     let undone = keys.clone();
     Notices::undo(
-        i18n::t_with("unfavorited_count", &[("count", keys.len().to_string())]),
+        i18n::t_with("unfavorited_count", &[("count", keys.len().into())]),
         move |cx| {
             let keys = undone.clone();
             crate::FavoritesModel::global(cx).update(cx, |favorites, cx| {

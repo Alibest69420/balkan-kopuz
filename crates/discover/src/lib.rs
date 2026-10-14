@@ -394,7 +394,7 @@ impl Discover {
                 PageHeader::new(t("browse_genres"))
                     .subtitle(t_with(
                         "discover_genre_count",
-                        &[("count", self.genres.len().to_string())],
+                        &[("count", self.genres.len().into())],
                     ))
                     .action(
                         heading_link("discover-fewer-genres", t("discover_show_less")).on_click(
@@ -445,7 +445,7 @@ impl Discover {
                 .child(
                     EmptyState::new(t_with(
                         "no_results_found",
-                        &[("query", self.query.to_string())],
+                        &[("query", self.query.to_string().into())],
                     ))
                     .detail(t("discover_no_results_hint"))
                     .icon(icons::SEARCH),
@@ -477,7 +477,7 @@ impl Discover {
             .child(
                 PageHeader::new(t_with(
                     "discover_results_for",
-                    &[("query", self.query.to_string())],
+                    &[("query", self.query.to_string().into())],
                 ))
                 .action(self.clear_chip(cx)),
             )

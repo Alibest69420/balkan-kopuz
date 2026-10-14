@@ -5,7 +5,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use api::{AlbumInfo, AlbumPage, AlbumQuery, AlbumSort, ApiError, KopuzApi, Table};
+use api::{AlbumInfo, AlbumPage, AlbumQuery, ApiError, KopuzApi, Table};
 use components::album_collection::{available_fields, field_label};
 use components::format::t;
 use components::{AlbumCollection, EmptyState, GridMode, Loading, PageHeader, SortControl, icons};
@@ -164,7 +164,7 @@ fn listing(
     criteria: &[SortCriterion<AlbumSortField>],
 ) -> impl Fn(Arc<dyn KopuzApi>) -> Listing + 'static {
     let query = AlbumQuery {
-        sort: criteria.iter().copied().map(AlbumSort::from).collect(),
+        sort: criteria.to_vec(),
         ..AlbumQuery::default()
     };
     move |api| {

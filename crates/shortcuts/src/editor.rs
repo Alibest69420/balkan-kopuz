@@ -85,8 +85,11 @@ impl Shortcuts {
             self.refused = Some(t_with(
                 "shortcuts_conflict",
                 &[
-                    ("key", components::keycap::written(&written).to_string()),
-                    ("command", label.to_string()),
+                    (
+                        "key",
+                        components::keycap::written(&written).to_string().into(),
+                    ),
+                    ("command", label.to_string().into()),
                 ],
             ));
             self.stop(cx);

@@ -260,13 +260,15 @@ pub fn lock_cause(by: &LockSource) -> String {
     match by {
         LockSource::Managed(path) => i18n::t_with(
             "setting_locked_by_file",
-            &[("path", path.display().to_string())],
+            &[("path", path.display().to_string().into())],
         ),
         LockSource::DropIn(path) => i18n::t_with(
             "setting_locked_by_dropin",
-            &[("path", path.display().to_string())],
+            &[("path", path.display().to_string().into())],
         ),
-        LockSource::Env(var) => i18n::t_with("setting_locked_by_env", &[("var", var.clone())]),
+        LockSource::Env(var) => {
+            i18n::t_with("setting_locked_by_env", &[("var", var.clone().into())])
+        }
     }
 }
 

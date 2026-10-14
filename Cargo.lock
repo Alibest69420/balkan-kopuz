@@ -5793,6 +5793,7 @@ dependencies = [
 name = "primitives"
 version = "0.1.0"
 dependencies = [
+ "fluent-bundle",
  "gpui-kit",
  "kopuz-api",
  "kopuz-i18n",

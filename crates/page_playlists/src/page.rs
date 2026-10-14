@@ -191,7 +191,7 @@ impl Playlists {
                 t("server_playlist"),
                 components::format::t_with(
                     "playlist_track_count",
-                    &[("count", playlist.track_keys.len().to_string())],
+                    &[("count", playlist.track_keys.len().into())],
                 )
             ))
             .corner(corner)

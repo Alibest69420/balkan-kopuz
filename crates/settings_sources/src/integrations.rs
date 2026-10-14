@@ -118,7 +118,10 @@ impl Integrations {
             }
             Err(error) => {
                 cx.update(|cx| {
-                    Notices::error(t_with("signin_failed", &[("error", error.to_string())]), cx);
+                    Notices::error(
+                        t_with("signin_failed", &[("error", error.to_string().into())]),
+                        cx,
+                    );
                 });
             }
         })
@@ -154,9 +157,12 @@ impl Integrations {
                                 }
                             })
                             .label(if configured {
-                                t_with("integration_connected", &[("name", name.to_string())])
+                                t_with(
+                                    "integration_connected",
+                                    &[("name", name.to_string().into())],
+                                )
                             } else {
-                                t_with("integration_connect", &[("name", name.to_string())])
+                                t_with("integration_connect", &[("name", name.to_string().into())])
                             })
                             .disabled(configured)
                             .on_click(cx.listener({

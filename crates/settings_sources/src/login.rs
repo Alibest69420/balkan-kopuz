@@ -74,7 +74,10 @@ impl LoginForm {
     }
 
     pub fn title(&self) -> SharedString {
-        t_with("login_to_service", &[("service", self.service.to_string())])
+        t_with(
+            "login_to_service",
+            &[("service", self.service.to_string().into())],
+        )
     }
 
     /// Send the sign-in; it closes the dialog itself on success, so a caller must not close it too.
@@ -113,7 +116,10 @@ impl LoginForm {
                 }
                 Err(error) => {
                     this.update(cx, |this, cx| {
-                        this.error = Some(t_with("login_failed", &[("error", error.to_string())]));
+                        this.error = Some(t_with(
+                            "login_failed",
+                            &[("error", error.to_string().into())],
+                        ));
                         cx.notify();
                     })
                     .ok();

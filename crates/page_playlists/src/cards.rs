@@ -14,7 +14,7 @@ pub(crate) fn playlist_card(playlist: &PlaylistInfo) -> Tile {
     Tile::new(playlist.id.clone(), playlist.name.clone())
         .subtitle(t_with(
             "playlist_track_count",
-            &[("count", playlist.track_keys.len().to_string())],
+            &[("count", playlist.track_keys.len().into())],
         ))
         .artwork(playlist.artwork.as_ref())
         .placeholder(icons::LIST)

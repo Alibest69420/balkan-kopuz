@@ -260,7 +260,7 @@ impl PlaybackSettings {
                 .bind("lyrics_offset_auto", cx)
                 .description(t_with(
                     "lyrics_offset_auto_description",
-                    &[("latency", latency_ms.to_string())],
+                    &[("latency", latency_ms.into())],
                 ))
                 .shown(cx),
             )

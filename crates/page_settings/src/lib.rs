@@ -313,7 +313,7 @@ impl Render for Settings {
                             .when(empty, |page| {
                                 page.child(EmptyState::new(t_with(
                                     "no_results_found",
-                                    &[("query", typed.to_string())],
+                                    &[("query", typed.to_string().into())],
                                 )))
                             })
                             .child(self.panel())

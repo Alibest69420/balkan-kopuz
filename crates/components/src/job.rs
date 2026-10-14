@@ -117,7 +117,7 @@ pub fn counted(progress: &JobProgress, of: bool) -> Option<SharedString> {
     Some(match of {
         true => t_with(
             "first_run_progress",
-            &[("current", done.to_string()), ("total", total.to_string())],
+            &[("current", done.into()), ("total", total.into())],
         ),
         false => SharedString::from(format!("{done} / {total}")),
     })

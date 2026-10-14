@@ -95,7 +95,7 @@ impl RadioRegistries {
                     Err(error) => {
                         this.error = Some(t_with(
                             "radio_registry_enable_failed",
-                            &[("error", error.to_string())],
+                            &[("error", error.to_string().into())],
                         ));
                     }
                 }
@@ -158,8 +158,8 @@ impl Render for RadioRegistries {
         let summary = t_with(
             "radio_registries_active",
             &[
-                ("enabled_count", active.to_string()),
-                ("total", entries.len().to_string()),
+                ("enabled_count", active.into()),
+                ("total", entries.len().into()),
             ],
         );
         let expanded = self.expanded;
@@ -292,7 +292,7 @@ impl AddRegistry {
                     this.update(cx, |this, cx| {
                         this.error = Some(t_with(
                             "radio_registry_import_failed",
-                            &[("error", error.to_string())],
+                            &[("error", error.to_string().into())],
                         ));
                         cx.notify();
                     })

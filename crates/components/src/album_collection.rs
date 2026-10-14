@@ -76,6 +76,8 @@ pub fn field_label(field: AlbumSortField) -> SharedString {
         AlbumSortField::Artist => "sort_field_artist",
         AlbumSortField::Year => "sort_field_year",
         AlbumSortField::Genre => "sort_field_genre",
+        AlbumSortField::RecentlyAdded => "sort_field_date_added",
+        AlbumSortField::TrackCount => "sort_field_tracks",
     })
 }
 

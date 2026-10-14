@@ -112,13 +112,19 @@ impl JobsModel {
                     )),
                     (false, None) => Some(Notice::new(
                         api::NoticeLevel::Error,
-                        i18n::t_with("job_failed", &[("job", kind_label(*kind).to_string())]),
+                        i18n::t_with(
+                            "job_failed",
+                            &[("job", kind_label(*kind).to_string().into())],
+                        ),
                     )),
                     // The schedule's own runs succeed on the activity list, not as a toast each interval.
                     (true, _) if *automatic => None,
                     (true, _) => Some(Notice::new(
                         api::NoticeLevel::Info,
-                        i18n::t_with("job_finished", &[("job", kind_label(*kind).to_string())]),
+                        i18n::t_with(
+                            "job_finished",
+                            &[("job", kind_label(*kind).to_string().into())],
+                        ),
                     )),
                 };
                 if let Some(notice) = notice {

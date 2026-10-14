@@ -36,7 +36,7 @@ impl Library {
             .pb_4()
             .child(
                 PageHeader::new(t("your_library"))
-                    .count(t_with("library_count", &[("count", count.to_string())]))
+                    .count(t_with("library_count", &[("count", count.into())]))
                     .flush()
                     .action(controls),
             )

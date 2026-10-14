@@ -46,7 +46,7 @@ impl ConnectionBanner {
             ConnectionStatus::Connecting => t("connecting"),
             ConnectionStatus::Unreachable(_) if attempts <= 1 => t("connecting"),
             ConnectionStatus::Unreachable(_) => {
-                t_with("reconnecting_attempt", &[("attempt", attempts.to_string())])
+                t_with("reconnecting_attempt", &[("attempt", attempts.into())])
             }
             // Which of the two to rebuild is the only useful thing to say, so say it.
             ConnectionStatus::Mismatched { daemon, client } => t(match daemon < client {

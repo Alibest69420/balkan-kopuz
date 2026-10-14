@@ -15,7 +15,7 @@ fn label(minutes: u32) -> SharedString {
         minutes if minutes % 60 == 0 => ("sync_interval_hours", minutes / 60),
         minutes => ("sync_interval_minutes", minutes),
     };
-    t_with(key, &[("count", count.to_string())])
+    t_with(key, &[("count", count.into())])
 }
 
 /// The presets, plus the current value when a settings file set one that is not among them.

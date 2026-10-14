@@ -223,8 +223,8 @@ impl Render for DownloadsList {
                         .child(t_with(
                             "downloads_summary",
                             &[
-                                ("done", batch.downloaded.to_string()),
-                                ("failed", batch.failed.to_string()),
+                                ("done", batch.downloaded.into()),
+                                ("failed", batch.failed.into()),
                             ],
                         )),
                 )

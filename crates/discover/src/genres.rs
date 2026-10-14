@@ -56,11 +56,7 @@ pub fn genres_of(albums: &[AlbumInfo]) -> Vec<GenreTile> {
 }
 
 fn track_count(count: usize) -> SharedString {
-    if count == 1 {
-        t("track_count_singular")
-    } else {
-        t_with("track_count", &[("count", count.to_string())])
-    }
+    t_with("track_count", &[("count", count.into())])
 }
 
 pub(crate) fn row_actions(cx: &App) -> TrackActions {

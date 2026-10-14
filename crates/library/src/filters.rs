@@ -1,10 +1,7 @@
 //! What the library is showing, in a form that fits in the route: the facet and every active chip.
 
-use api::{
-    AlbumQuery, AlbumSort, AlbumSortField, ArtistQuery, ArtistSort, ArtistSortField, TrackFilter,
-    TrackSort,
-};
-use config::{SortCriterion, SortDirection, TrackSortField};
+use api::{AlbumQuery, ArtistQuery, TrackFilter, TrackSort};
+use config::{AlbumSortField, ArtistSortField, SortCriterion, SortDirection, TrackSortField};
 
 use crate::facet::Facet;
 
@@ -77,8 +74,10 @@ impl Filters {
             year_from: self.years.map(|(from, _)| from),
             year_to: self.years.map(|(_, to)| to),
             artist_key: None,
+            ids: None,
+            downloaded: None,
             sort: album_sort_field(&sort.field)
-                .map(|field| AlbumSort::new(field, sort.descending))
+                .map(|field| SortCriterion::new(field, sort.direction()))
                 .into_iter()
                 .collect(),
         }
@@ -88,8 +87,9 @@ impl Filters {
     pub fn artist_query(&self, sort: &Sort) -> ArtistQuery {
         ArtistQuery {
             search: non_empty(&self.search),
+            downloaded: None,
             sort: artist_sort_field(&sort.field)
-                .map(|field| ArtistSort::new(field, sort.descending))
+                .map(|field| SortCriterion::new(field, sort.direction()))
                 .into_iter()
                 .collect(),
         }
@@ -294,8 +294,8 @@ pub fn album_sort_field(id: &str) -> Option<AlbumSortField> {
 pub fn artist_sort_field(id: &str) -> Option<ArtistSortField> {
     Some(match id {
         "title" => ArtistSortField::Name,
-        "tracks" => ArtistSortField::TrackCount,
-        "albums" => ArtistSortField::AlbumCount,
+        "tracks" => ArtistSortField::Tracks,
+        "albums" => ArtistSortField::Albums,
         _ => return None,
     })
 }
@@ -456,7 +456,13 @@ mod tests {
         assert_eq!(query.search.as_deref(), Some("blue"));
         assert_eq!(query.genre.as_deref(), Some("Jazz"));
         assert_eq!((query.year_from, query.year_to), (Some(1950), Some(1959)));
-        assert_eq!(query.sort, [AlbumSort::new(AlbumSortField::Year, true)]);
+        assert_eq!(
+            query.sort,
+            [SortCriterion::new(
+                AlbumSortField::Year,
+                SortDirection::Desc
+            )]
+        );
     }
 
     #[test]
@@ -468,7 +474,10 @@ mod tests {
         let query = Filters::on(Facet::Artists).artist_query(&sort);
         assert_eq!(
             query.sort,
-            [ArtistSort::new(ArtistSortField::AlbumCount, true)]
+            [SortCriterion::new(
+                ArtistSortField::Albums,
+                SortDirection::Desc
+            )]
         );
         assert_eq!(query.search, None);
     }

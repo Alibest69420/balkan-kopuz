@@ -269,7 +269,7 @@ impl Render for ArtistDetail {
                 api::ErrorCode::NotFound => t("artist_not_found"),
                 _ => t_with(
                     "artist_load_failed",
-                    &[("error", store::human(&error).to_string())],
+                    &[("error", store::human(&error).to_string().into())],
                 ),
             };
             EmptyState::new(message).icon(icons::MIC).into_any_element()
@@ -336,7 +336,7 @@ impl ArtistDetail {
             })
             .meta(t_with(
                 "showcase_song_count",
-                &[("count", self.keys.len().to_string())],
+                &[("count", self.keys.len().into())],
             ))
             .meta(total_duration(self.total_ms))
             .action(

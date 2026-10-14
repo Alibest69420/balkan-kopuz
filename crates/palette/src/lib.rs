@@ -475,7 +475,7 @@ impl Palette {
                     // The block names the track once, so its rows do not each repeat it.
                     (Part::CurrentTrack, Some(target)) => t_with(
                         "palette_current_track",
-                        &[("title", target.label().to_string())],
+                        &[("title", target.label().to_string().into())],
                     ),
                     _ => t(part.label()),
                 };
@@ -562,7 +562,10 @@ impl Palette {
             return Vec::new();
         }
         vec![Item {
-            title: t_with("palette_all_results", &[("query", self.query.clone())]),
+            title: t_with(
+                "palette_all_results",
+                &[("query", self.query.clone().into())],
+            ),
             subtitle: None,
             icon: icons::COMPASS,
             hint: None,
@@ -701,7 +704,7 @@ impl Palette {
                         title: SharedString::from(artist.name.clone()),
                         subtitle: Some(t_with(
                             "track_count",
-                            &[("count", artist.track_count.to_string())],
+                            &[("count", artist.track_count.into())],
                         )),
                         icon: icons::MIC,
                         hint: None,
@@ -732,7 +735,7 @@ impl Palette {
                         title: SharedString::from(playlist.name.clone()),
                         subtitle: Some(t_with(
                             "track_count",
-                            &[("count", playlist.track_keys.len().to_string())],
+                            &[("count", playlist.track_keys.len().into())],
                         )),
                         icon: icons::LIST,
                         hint: None,
@@ -895,7 +898,7 @@ impl Palette {
     fn empty(&self) -> EmptyState {
         EmptyState::new(match self.query.is_empty() {
             true => t("palette_empty"),
-            false => t_with("no_results_found", &[("query", self.query.clone())]),
+            false => t_with("no_results_found", &[("query", self.query.clone().into())]),
         })
         .icon(icons::SEARCH)
         .compact()

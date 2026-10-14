@@ -86,5 +86,5 @@ impl Render for Prefs {
 }
 
 fn count(kept: usize) -> SharedString {
-    components::format::t_with("palette_recents_count", &[("count", kept.to_string())])
+    components::format::t_with("palette_recents_count", &[("count", kept.into())])
 }

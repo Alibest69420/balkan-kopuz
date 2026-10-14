@@ -119,9 +119,8 @@ impl RenderOnce for ResumeCard {
                     .layout(MetaLayout::Card)
                     .eyebrow(t("home_continue"))
                     .note(
-                        (self.left > 0).then(|| {
-                            t_with("home_queue_left", &[("count", self.left.to_string())])
-                        }),
+                        (self.left > 0)
+                            .then(|| t_with("home_queue_left", &[("count", self.left.into())])),
                     ),
             )
             .child(

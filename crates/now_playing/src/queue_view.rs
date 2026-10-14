@@ -160,7 +160,7 @@ impl QueueView {
         let count = keys.len();
         model.update(cx, |queue, cx| queue.clear_upcoming(cx));
         store::Notices::undo(
-            components::format::t_with("cleared_upcoming", &[("count", count.to_string())]),
+            components::format::t_with("cleared_upcoming", &[("count", count.into())]),
             move |cx| {
                 let keys = keys.clone();
                 QueueModel::global(cx).update(cx, |queue, cx| queue.replace_upcoming(keys, cx));

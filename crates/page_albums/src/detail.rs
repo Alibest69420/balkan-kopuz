@@ -312,12 +312,9 @@ impl AlbumDetail {
                 match group.disc {
                     Some(disc) => section
                         .heading(
-                            SectionHeading::new(t_with(
-                                "disc_heading",
-                                &[("number", disc.to_string())],
-                            ))
-                            .heading(Heading::Group)
-                            .icon(icons::DISC),
+                            SectionHeading::new(t_with("disc_heading", &[("number", disc.into())]))
+                                .heading(Heading::Group)
+                                .icon(icons::DISC),
                         )
                         .wash(true),
                     None => section,
@@ -364,10 +361,7 @@ impl AlbumDetail {
     }
 
     fn count(&self) -> SharedString {
-        t_with(
-            "showcase_song_count",
-            &[("count", self.rows.len().to_string())],
-        )
+        t_with("showcase_song_count", &[("count", self.rows.len().into())])
     }
 
     fn minutes(&self) -> String {

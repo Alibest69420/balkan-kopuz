@@ -258,7 +258,7 @@ impl Render for PlaylistDetail {
             })
             .meta(t_with(
                 "playlist_track_count",
-                &[("count", self.keys.len().to_string())],
+                &[("count", self.keys.len().into())],
             ))
             .action(
                 DetailActions::new("playlist", self.keys.clone())

@@ -275,7 +275,7 @@ impl Sources {
                         this.browser.entries.clear();
                         this.browser.error = Some(t_with(
                             "folder_browse_failed",
-                            &[("error", error.to_string())],
+                            &[("error", error.to_string().into())],
                         ));
                     }
                 }
@@ -391,7 +391,7 @@ impl Sources {
 
         SourceCard::new(id.clone(), source.name.clone())
             .mark(SourceMark::new(&source.service))
-            .service(t_with("service", &[("name", service.to_string())]))
+            .service(t_with("service", &[("name", service.to_string().into())]))
             .detail(source.detail.clone().unwrap_or_default())
             .active(source.active)
             .when(source.active && source.needs_network, |card| {

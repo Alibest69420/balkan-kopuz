@@ -118,7 +118,7 @@ impl Render for BatchDialog {
                     .text_color(style::slate_400(cx))
                     .child(t_with(
                         "metadata_batch_count",
-                        &[("count", self.keys.len().to_string())],
+                        &[("count", self.keys.len().into())],
                     )),
             )
             .child(

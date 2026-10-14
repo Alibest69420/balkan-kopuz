@@ -254,7 +254,7 @@ fn playlist_tile(playlist: &PlaylistInfo) -> Tile {
         title: playlist.name.clone().into(),
         subtitle: t_with(
             "playlist_track_count",
-            &[("count", playlist.track_keys.len().to_string())],
+            &[("count", playlist.track_keys.len().into())],
         ),
         artwork: playlist.artwork.clone(),
         route: Some(Route::Playlist(playlist.id.clone().into())),
@@ -334,7 +334,7 @@ fn top_artists(
         .map(|(artist, name, count)| Tile {
             key: SharedString::from(format!("artist-{artist}")),
             title: name.clone().into(),
-            subtitle: t_with("home_plays", &[("count", count.to_string())]),
+            subtitle: t_with("home_plays", &[("count", count.into())]),
             artwork: photos.get(&artist).map(|art| (*art).clone()),
             route: Some(Route::Artist(artist.clone())),
             target: Target::Artist {

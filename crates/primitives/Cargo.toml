@@ -11,6 +11,7 @@ workspace = true
 
 [dependencies]
 api = { workspace = true }
+fluent-bundle = { workspace = true }
 i18n = { workspace = true }
 link = { workspace = true }
 profile = { path = "../profile" }

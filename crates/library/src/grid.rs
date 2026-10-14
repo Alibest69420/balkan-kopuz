@@ -94,7 +94,7 @@ impl Library {
             title: SharedString::from(artist.name.clone()),
             subtitle: t_with(
                 "library_artist_tracks",
-                &[("count", artist.track_count.to_string())],
+                &[("count", artist.track_count.into())],
             ),
             artwork: artist.artwork.clone(),
             sort_key: artist.name.to_lowercase(),
@@ -280,7 +280,7 @@ fn playlist_tile(playlist: &PlaylistInfo, playing: Option<&str>) -> Tile {
         title: SharedString::from(playlist.name.clone()),
         subtitle: t_with(
             "playlist_track_count",
-            &[("count", playlist.track_keys.len().to_string())],
+            &[("count", playlist.track_keys.len().into())],
         ),
         artwork: playlist.artwork.clone(),
         sort_key: playlist.name.to_lowercase(),
