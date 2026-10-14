@@ -17,7 +17,8 @@ use gpui_kit::{
     Render, SharedString, Styled as _, Subscription, Window, div, px, rems,
 };
 use store::{
-    ConfigModel, DownloadsModel, Offline, PlayerModel, Query, SourcesModel, Target, actions,
+    ConfigModel, DownloadsModel, LayoutModel, Offline, PlayerModel, Query, SourcesModel, Target,
+    actions,
 };
 
 use crate::controls::{self, ViewModeKey};
@@ -109,10 +110,11 @@ impl ArtistDetail {
         let subscriptions = vec![
             cx.observe(&tracks, |this, _, cx| this.sync_rows(cx)),
             cx.observe(&billed, |this, _, cx| this.rebuild_albums(cx)),
-            cx.observe(&ConfigModel::global(cx), |this, _, cx| {
-                this.sync_rows(cx);
+            cx.observe(&LayoutModel::global(cx), |this, _, cx| {
                 this.reorder_albums(cx);
+                cx.notify();
             }),
+            cx.observe(&ConfigModel::global(cx), |this, _, cx| this.sync_rows(cx)),
             cx.observe(&SourcesModel::global(cx), |this, _, cx| this.sync_rows(cx)),
             cx.observe(&DownloadsModel::global(cx), |this, _, cx| {
                 this.refresh_offline(cx);

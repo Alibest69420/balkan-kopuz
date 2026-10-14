@@ -15,6 +15,7 @@ impl NowPlaying {
         let step = ConfigModel::global(cx)
             .read(cx)
             .config()
+            .playback
             .volume_scroll_step
             .max(0.);
         let state = self.volume.clone();

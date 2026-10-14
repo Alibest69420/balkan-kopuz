@@ -12,7 +12,7 @@ use gpui_kit::{
     App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
     Subscription, Task, Window, div, px,
 };
-use store::{ConfigModel, Link, Query};
+use store::{ConfigModel, LayoutModel, Link, Query};
 
 use crate::controls::{self, ViewModeKey};
 
@@ -49,8 +49,9 @@ impl Artists {
         });
         let subscriptions = vec![
             cx.observe(&artists, |this, _, cx| this.reread(cx)),
-            // The sort and the view mode live in config, so a change there reorders the grid.
-            cx.observe(&ConfigModel::global(cx), |this, _, cx| this.reorder(cx)),
+            // The sort and the view mode live in the prefs, so a change there reorders the grid.
+            cx.observe(&LayoutModel::global(cx), |this, _, cx| this.reorder(cx)),
+            cx.observe(&ConfigModel::global(cx), |_, _, cx| cx.notify()),
         ];
         Self {
             artists,
@@ -76,7 +77,7 @@ impl Artists {
         cx.notify();
     }
 
-    /// Ask the daemon again when the order changed; anything else in config only repaints.
+    /// Ask the daemon again when the order changed; anything else only repaints.
     fn reorder(&mut self, cx: &mut Context<Self>) {
         let wanted = controls::criteria::<ArtistSortField>(cx);
         if wanted != self.ordered {

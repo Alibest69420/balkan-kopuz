@@ -7,7 +7,10 @@ use components::settings::{
     Choice, SettingRow, SliderRow, on_slider_change, section, set_slider, slider_state, toggle_row,
 };
 use components::{PathField, PathKind};
-use config::{AppConfig, BackBehavior, PlayerBarPosition};
+use config::{
+    BackBehavior, BackgroundEdit, LyricsEdit, PlaybackEdit, PlayerBarPosition, Settings,
+    SettingsEdit, SystemEdit, UiEdit,
+};
 use gpui_kit::component::slider::SliderState;
 use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -63,10 +66,11 @@ impl AppearanceSettings {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let config = ConfigModel::global(cx);
         let cfg = config.read(cx).config().clone();
-        let darkening = cx.new(|_| slider_state(0., 95., 5., cfg.cover_art_darkening as f32));
-        let blur = cx.new(|_| slider_state(0., 100., 5., cfg.cover_art_blur as f32));
+        let darkening =
+            cx.new(|_| slider_state(0., 95., 5., cfg.background.cover_art_darkening as f32));
+        let blur = cx.new(|_| slider_state(0., 100., 5., cfg.background.cover_art_blur as f32));
         let lyrics_blur =
-            cx.new(|_| slider_state(10., 200., 10., cfg.lyrics_depth_blur_strength as f32));
+            cx.new(|_| slider_state(10., 200., 10., cfg.lyrics.lyrics_depth_blur_strength as f32));
 
         let subscriptions = vec![
             cx.observe_in(&config, window, |this, _, window, cx| {
@@ -76,22 +80,28 @@ impl AppearanceSettings {
             on_slider_change(
                 &darkening,
                 cx,
-                ConfigModel::writer("cover_art_darkening", |cfg, value: f32| {
-                    cfg.cover_art_darkening = value.clamp(0., 95.) as u8
+                ConfigModel::writer(|value: f32| {
+                    SettingsEdit::Background(BackgroundEdit::CoverArtDarkening(
+                        value.clamp(0., 95.) as u8,
+                    ))
                 }),
             ),
             on_slider_change(
                 &blur,
                 cx,
-                ConfigModel::writer("cover_art_blur", |cfg, value: f32| {
-                    cfg.cover_art_blur = value.clamp(0., 100.) as u8
+                ConfigModel::writer(|value: f32| {
+                    SettingsEdit::Background(BackgroundEdit::CoverArtBlur(
+                        value.clamp(0., 100.) as u8
+                    ))
                 }),
             ),
             on_slider_change(
                 &lyrics_blur,
                 cx,
-                ConfigModel::writer("lyrics_depth_blur_strength", |cfg, value: f32| {
-                    cfg.lyrics_depth_blur_strength = value.clamp(10., 200.) as u8
+                ConfigModel::writer(|value: f32| {
+                    SettingsEdit::Lyrics(LyricsEdit::LyricsDepthBlurStrength(
+                        value.clamp(10., 200.) as u8,
+                    ))
                 }),
             ),
         ];
@@ -109,11 +119,16 @@ impl AppearanceSettings {
     /// The daemon can answer with values this app did not type, so the sliders follow the config.
     fn sync(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let cfg = ConfigModel::global(cx).read(cx).config().clone();
-        set_slider(&self.darkening, cfg.cover_art_darkening as f32, window, cx);
-        set_slider(&self.blur, cfg.cover_art_blur as f32, window, cx);
+        set_slider(
+            &self.darkening,
+            cfg.background.cover_art_darkening as f32,
+            window,
+            cx,
+        );
+        set_slider(&self.blur, cfg.background.cover_art_blur as f32, window, cx);
         set_slider(
             &self.lyrics_blur,
-            cfg.lyrics_depth_blur_strength as f32,
+            cfg.lyrics.lyrics_depth_blur_strength as f32,
             window,
             cx,
         );
@@ -134,20 +149,22 @@ impl AppearanceSettings {
             .removable(true)
             .locked(locked)
             .on_change(move |value, cx| {
-                ConfigModel::edit_key(key, cx, |cfg| set_path(cfg, key, value))
+                if let Some(edit) = path_edit(key, value) {
+                    ConfigModel::edit(cx, edit)
+                }
             })
             .into_any_element()
     }
 
-    fn general(&self, cfg: &AppConfig, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    fn general(&self, cfg: &Settings, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let mut rows = Vec::new();
         push(
             &mut rows,
             toggle_row(
                 "auto_check_updates",
                 t("auto_check_updates"),
-                cfg.auto_check_updates,
-                ConfigModel::writer("auto_check_updates", |cfg, on| cfg.auto_check_updates = on),
+                cfg.system.auto_check_updates,
+                ConfigModel::writer(|on| SettingsEdit::System(SystemEdit::AutoCheckUpdates(on))),
             )
             .bind("auto_check_updates", cx)
             .description(t("auto_check_updates_description")),
@@ -158,8 +175,8 @@ impl AppearanceSettings {
             toggle_row(
                 "minimize_to_tray",
                 t("minimize_to_tray"),
-                cfg.minimize_to_tray,
-                ConfigModel::writer("minimize_to_tray", |cfg, on| cfg.minimize_to_tray = on),
+                cfg.system.minimize_to_tray,
+                ConfigModel::writer(|on| SettingsEdit::System(SystemEdit::MinimizeToTray(on))),
             )
             .bind("minimize_to_tray", cx)
             .description(t("minimize_to_tray_description")),
@@ -173,14 +190,14 @@ impl AppearanceSettings {
                 .setting(
                     Choice::new(
                         "back_behavior",
-                        cfg.back_behavior,
+                        cfg.playback.back_behavior,
                         vec![
                             (BackBehavior::RewindThenPrev, t("back_behavior_rewind")),
                             (BackBehavior::AlwaysPrev, t("back_behavior_always_prev")),
                         ],
                     )
-                    .on_change(ConfigModel::writer("back_behavior", |cfg, value| {
-                        cfg.back_behavior = value
+                    .on_change(ConfigModel::writer(|value| {
+                        SettingsEdit::Playback(PlaybackEdit::BackBehavior(value))
                     })),
                 ),
             cx,
@@ -188,7 +205,7 @@ impl AppearanceSettings {
         rows
     }
 
-    fn appearance(&self, cfg: &AppConfig, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    fn appearance(&self, cfg: &Settings, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let mut rows = Vec::new();
         push(
             &mut rows,
@@ -210,9 +227,9 @@ impl AppearanceSettings {
             toggle_row(
                 "cover_art_background",
                 t("cover_art_background"),
-                cfg.cover_art_background,
-                ConfigModel::writer("cover_art_background", |cfg, on| {
-                    cfg.cover_art_background = on
+                cfg.background.cover_art_background,
+                ConfigModel::writer(|on| {
+                    SettingsEdit::Background(BackgroundEdit::CoverArtBackground(on))
                 }),
             )
             .bind("cover_art_background", cx)
@@ -226,7 +243,7 @@ impl AppearanceSettings {
                 .description(t("custom_background_description"))
                 .control(self.path_row(
                     "custom_background_path",
-                    cfg.custom_background_path.clone(),
+                    cfg.background.custom_background_path.clone(),
                     t("choose_image"),
                     cx,
                 )),
@@ -239,14 +256,15 @@ impl AppearanceSettings {
                 .description(t("custom_font_description"))
                 .control(self.path_row(
                     "custom_font_path",
-                    cfg.custom_font_path.clone(),
+                    cfg.ui.custom_font_path.clone(),
                     t("choose_font"),
                     cx,
                 )),
             cx,
         );
 
-        if cfg.cover_art_background || !cfg.custom_background_path.is_empty() {
+        if cfg.background.cover_art_background || !cfg.background.custom_background_path.is_empty()
+        {
             push(
                 &mut rows,
                 SettingRow::new(t("cover_art_darkening"))
@@ -271,13 +289,13 @@ impl AppearanceSettings {
             toggle_row(
                 "lyrics_depth_blur",
                 t("lyrics_depth_blur"),
-                cfg.lyrics_depth_blur,
-                ConfigModel::writer("lyrics_depth_blur", |cfg, on| cfg.lyrics_depth_blur = on),
+                cfg.lyrics.lyrics_depth_blur,
+                ConfigModel::writer(|on| SettingsEdit::Lyrics(LyricsEdit::LyricsDepthBlur(on))),
             )
             .bind("lyrics_depth_blur", cx),
             cx,
         );
-        if cfg.lyrics_depth_blur {
+        if cfg.lyrics.lyrics_depth_blur {
             push(
                 &mut rows,
                 SettingRow::new(t("lyrics_depth_blur_strength"))
@@ -292,8 +310,8 @@ impl AppearanceSettings {
             toggle_row(
                 "reduce_animations",
                 t("reduce_animations"),
-                cfg.reduce_animations,
-                ConfigModel::writer("reduce_animations", |cfg, on| cfg.reduce_animations = on),
+                cfg.ui.reduce_animations,
+                ConfigModel::writer(|on| SettingsEdit::Ui(UiEdit::ReduceAnimations(on))),
             )
             .bind("reduce_animations", cx)
             .description(t("reduce_animations_description")),
@@ -304,10 +322,8 @@ impl AppearanceSettings {
             toggle_row(
                 "fullscreen_use_player_bar",
                 t("fullscreen_use_player_bar"),
-                cfg.fullscreen_use_player_bar,
-                ConfigModel::writer("fullscreen_use_player_bar", |cfg, on| {
-                    cfg.fullscreen_use_player_bar = on
-                }),
+                cfg.ui.fullscreen_use_player_bar,
+                ConfigModel::writer(|on| SettingsEdit::Ui(UiEdit::FullscreenUsePlayerBar(on))),
             )
             .bind("fullscreen_use_player_bar", cx),
             cx,
@@ -317,8 +333,8 @@ impl AppearanceSettings {
             toggle_row(
                 "show_source_toggle",
                 t("show_source_toggle"),
-                cfg.show_source_toggle,
-                ConfigModel::writer("show_source_toggle", |cfg, on| cfg.show_source_toggle = on),
+                cfg.ui.show_source_toggle,
+                ConfigModel::writer(|on| SettingsEdit::Ui(UiEdit::ShowSourceToggle(on))),
             )
             .bind("show_source_toggle", cx)
             .description(t("show_source_toggle_description")),
@@ -329,8 +345,8 @@ impl AppearanceSettings {
             toggle_row(
                 "show_row_images",
                 t("show_row_images"),
-                cfg.show_row_images,
-                ConfigModel::writer("show_row_images", |cfg, on| cfg.show_row_images = on),
+                cfg.ui.show_row_images,
+                ConfigModel::writer(|on| SettingsEdit::Ui(UiEdit::ShowRowImages(on))),
             )
             .bind("show_row_images", cx)
             .description(t("show_row_images_description")),
@@ -343,14 +359,14 @@ impl AppearanceSettings {
                 .setting(
                     Choice::new(
                         "player_bar_position",
-                        cfg.player_bar_position,
+                        cfg.ui.player_bar_position,
                         vec![
                             (PlayerBarPosition::Bottom, t("position_bottom")),
                             (PlayerBarPosition::Top, t("position_top")),
                         ],
                     )
-                    .on_change(ConfigModel::writer("player_bar_position", |cfg, value| {
-                        cfg.player_bar_position = value
+                    .on_change(ConfigModel::writer(|value| {
+                        SettingsEdit::Ui(UiEdit::PlayerBarPosition(value))
                     })),
                 ),
             cx,
@@ -359,31 +375,32 @@ impl AppearanceSettings {
         rows
     }
 
-    fn language(&self, cfg: &AppConfig) -> Choice<String> {
+    fn language(&self, cfg: &Settings) -> Choice<String> {
         let options = i18n::available_languages()
             .iter()
             .map(|(code, name)| (code.to_string(), SharedString::from(*name)))
             .collect();
-        Choice::new("language", cfg.language.clone(), options)
-            .on_change(ConfigModel::writer("language", |cfg, value| {
-                cfg.language = value
-            }))
+        Choice::new("language", cfg.ui.language.clone(), options).on_change(ConfigModel::writer(
+            |value| SettingsEdit::Ui(UiEdit::Language(value)),
+        ))
     }
 
-    fn theme(&self, cfg: &AppConfig) -> Choice<String> {
+    fn theme(&self, cfg: &Settings) -> Choice<String> {
         let mut options: Vec<(String, SharedString)> = theme::BUILT_IN
             .iter()
             .map(|palette| (palette.name.to_string(), theme_label(palette.name)))
             .collect();
         let mut custom: Vec<(String, SharedString)> = cfg
+            .ui
             .custom_themes
             .iter()
             .map(|(id, custom)| (id.clone(), SharedString::from(custom.name.clone())))
             .collect();
         custom.sort_by(|left, right| left.1.cmp(&right.1));
         options.extend(custom);
-        Choice::new("theme", cfg.theme.clone(), options)
-            .on_change(ConfigModel::writer("theme", |cfg, value| cfg.theme = value))
+        Choice::new("theme", cfg.ui.theme.clone(), options).on_change(ConfigModel::writer(
+            |value| SettingsEdit::Ui(UiEdit::Theme(value)),
+        ))
     }
 }
 
@@ -394,11 +411,16 @@ fn push(rows: &mut Vec<AnyElement>, row: SettingRow, cx: &App) {
     }
 }
 
-fn set_path(cfg: &mut AppConfig, key: &str, value: String) {
+fn path_edit(key: &str, value: String) -> Option<SettingsEdit> {
     match key {
-        "custom_background_path" => cfg.custom_background_path = value,
-        "custom_font_path" => cfg.custom_font_path = value,
-        other => tracing::warn!(key = other, "no path setting by that name"),
+        "custom_background_path" => Some(SettingsEdit::Background(
+            BackgroundEdit::CustomBackgroundPath(value),
+        )),
+        "custom_font_path" => Some(SettingsEdit::Ui(UiEdit::CustomFontPath(value))),
+        other => {
+            tracing::warn!(key = other, "no path setting by that name");
+            None
+        }
     }
 }
 

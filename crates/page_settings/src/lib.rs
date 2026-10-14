@@ -283,7 +283,7 @@ impl Render for Settings {
         components::scroll::smooth("settings-panel", &self.scroll, window, cx);
         let config = ConfigModel::global(cx);
         let loaded = config.read(cx).is_loaded();
-        let locked = !config.read(cx).locked_keys().is_empty();
+        let locked = !config.read(cx).locks().is_empty();
         let empty = self.searching && components::settings::nothing_matched(cx);
         let typed = SharedString::from(self.search.read(cx).value().to_string());
         // The page root is the scroller: a nested `flex_1 min_h_0` child measured no height here.

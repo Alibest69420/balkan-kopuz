@@ -20,6 +20,7 @@ fn place_toasts(cx: &mut gpui_kit::App) {
     let at_top = ConfigModel::global(cx)
         .read(cx)
         .config()
+        .ui
         .player_bar_position
         == config::PlayerBarPosition::Top;
     let clearance = match at_top {
@@ -97,20 +98,20 @@ impl Shell {
             cx.observe_in(&config, window, |this, config, window, cx| {
                 let settings = config.read(cx).config();
                 // Every transition in the app asks GPUI whether motion is reduced.
-                let reduced = settings.reduce_animations;
+                let reduced = settings.ui.reduce_animations;
                 if reduced != cx.reduce_motion() {
                     cx.set_reduce_motion(reduced);
                 }
                 let settings = config.read(cx).config();
                 // Re-editing a custom theme keeps its name, so the colors are the key.
                 let applied = (
-                    settings.theme.clone(),
-                    settings.custom_themes.get(&settings.theme).cloned(),
+                    settings.ui.theme.clone(),
+                    settings.ui.custom_themes.get(&settings.ui.theme).cloned(),
                 );
                 if applied != this.applied_theme {
                     this.applied_theme = applied;
                     let settings = settings.clone();
-                    theme::apply_config(&settings, Some(window), cx);
+                    theme::apply_config(&settings.ui, Some(window), cx);
                 }
                 place_toasts(cx);
                 cx.notify();
@@ -212,6 +213,7 @@ impl Render for Shell {
         let player_at_top = ConfigModel::global(cx)
             .read(cx)
             .config()
+            .ui
             .player_bar_position
             == config::PlayerBarPosition::Top;
         let route = Navigator::global(cx).read(cx).current().clone();

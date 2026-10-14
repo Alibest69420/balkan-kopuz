@@ -431,7 +431,7 @@ pub const BUILT_IN: &[Palette] = &[
     },
 ];
 
-/// The palette named by `AppConfig::theme`, if it is a built-in one.
+/// The palette named by `Ui::theme`, if it is a built-in one.
 pub fn palette(name: &str) -> Option<&'static Palette> {
     BUILT_IN.iter().find(|palette| palette.name == name)
 }

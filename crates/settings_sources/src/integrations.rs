@@ -82,7 +82,7 @@ impl Integrations {
 
     /// One form per integration, rebuilt only when the daemon's fields change under it.
     fn sync_forms(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let locked = ConfigModel::global(cx).read(cx).locked_keys().to_vec();
+        let locked = ConfigModel::global(cx).read(cx).locked_names();
         let listed = self.listed(cx);
         self.forms
             .retain(|id, _| listed.iter().any(|integration| &integration.id == id));

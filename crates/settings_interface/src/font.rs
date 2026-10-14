@@ -28,6 +28,7 @@ fn load(cx: &mut App) {
     let path = ConfigModel::global(cx)
         .read(cx)
         .config()
+        .ui
         .custom_font_path
         .clone();
     if cx.global::<CustomFont>().path == path {

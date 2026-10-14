@@ -2,6 +2,7 @@
 
 use components::format::{t, t_with};
 use components::settings::{SettingRow, choice, section};
+use config::{LibraryEdit, SettingsEdit};
 use gpui_kit::{App, IntoElement, ParentElement as _, SharedString};
 use store::ConfigModel;
 
@@ -32,6 +33,7 @@ pub fn settings(cx: &App) -> impl IntoElement {
     let current = ConfigModel::global(cx)
         .read(cx)
         .config()
+        .library
         .sync_interval_minutes;
     let options = options(current)
         .into_iter()
@@ -44,8 +46,8 @@ pub fn settings(cx: &App) -> impl IntoElement {
                 "sync-interval",
                 &current,
                 options,
-                ConfigModel::writer("sync_interval_minutes", |config, minutes| {
-                    config.sync_interval_minutes = minutes
+                ConfigModel::writer(|minutes| {
+                    SettingsEdit::Library(LibraryEdit::SyncIntervalMinutes(minutes))
                 }),
             ))
             .shown(cx),

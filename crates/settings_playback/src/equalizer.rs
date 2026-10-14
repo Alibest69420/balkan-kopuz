@@ -3,7 +3,7 @@
 use components::format::t;
 use components::settings::{Choice, READOUT, SliderRow, Toggle, set_slider, slider_state};
 use components::{Lockable as _, motion, style};
-use config::{EqPreset, EqualizerSettings};
+use config::{EqPreset, EqualizerSettings, PlaybackEdit, SettingsEdit};
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::{
@@ -250,7 +250,12 @@ fn panel(cx: &App) -> Div {
 }
 
 fn current(cx: &App) -> EqualizerSettings {
-    ConfigModel::global(cx).read(cx).config().equalizer.clone()
+    ConfigModel::global(cx)
+        .read(cx)
+        .config()
+        .playback
+        .equalizer
+        .clone()
 }
 
 /// How often a drag may preview: `Change` fires per pointer move, and unlike the config write a preview is not debounced.
@@ -275,7 +280,10 @@ fn preview_due(cx: &mut App) -> bool {
 /// Save the curve and preview it; a `settled` drag always previews, or the engine would sit on a stale curve.
 fn apply(settings: EqualizerSettings, settled: bool, cx: &mut App) {
     let preview = settings.clone();
-    ConfigModel::edit(cx, move |config| config.equalizer = settings);
+    ConfigModel::edit(
+        cx,
+        SettingsEdit::Playback(PlaybackEdit::Equalizer(settings)),
+    );
     if !settled && !preview_due(cx) {
         return;
     }

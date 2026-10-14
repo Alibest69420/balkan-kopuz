@@ -59,7 +59,8 @@ impl NowPlaying {
             let config = ConfigModel::global(cx);
             let config = config.read(cx);
             let config = config.config();
-            config.cover_art_background || !config.custom_background_path.is_empty()
+            config.background.cover_art_background
+                || !config.background.custom_background_path.is_empty()
         };
         let scrim = if over_art {
             SCRIM_OVER_ART

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use components::format::t;
 use components::{ColorChanged, ColorField, Panel, ThemePreview, icons, style};
-use config::CustomTheme;
+use config::{CustomTheme, CustomThemeOp, SettingsEdit, UiEdit};
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{ActiveTheme as _, Selectable as _, h_flex, v_flex};
@@ -147,6 +147,7 @@ impl ThemeEditor {
             Some(id) => ConfigModel::global(cx)
                 .read(cx)
                 .config()
+                .ui
                 .custom_themes
                 .get(id)
                 .map(|theme| (theme.name.clone(), theme.vars.clone()))
@@ -183,11 +184,15 @@ impl ThemeEditor {
         let id = self
             .selected
             .clone()
-            .unwrap_or_else(|| theme_id(&name, &config.read(cx).config().custom_themes));
+            .unwrap_or_else(|| theme_id(&name, &config.read(cx).config().ui.custom_themes));
         let saved = id.clone();
-        ConfigModel::edit(cx, |cfg| {
-            cfg.custom_themes.insert(saved, CustomTheme { name, vars });
-        });
+        ConfigModel::edit(
+            cx,
+            SettingsEdit::Ui(UiEdit::CustomThemes(CustomThemeOp::Put {
+                name: saved,
+                theme: CustomTheme { name, vars },
+            })),
+        );
         self.load(Some(id), window, cx);
     }
 
@@ -199,6 +204,7 @@ impl ThemeEditor {
         ConfigModel::global(cx)
             .read(cx)
             .config()
+            .ui
             .custom_themes
             .get(id)
             .map(|theme| SharedString::from(theme.name.clone()))
@@ -210,12 +216,16 @@ impl ThemeEditor {
         let Some(id) = self.selected.clone() else {
             return;
         };
-        ConfigModel::edit(cx, |cfg| {
-            cfg.custom_themes.remove(&id);
-            if cfg.theme == id {
-                cfg.theme = "default".to_string();
-            }
-        });
+        let in_use = ConfigModel::global(cx).read(cx).config().ui.theme == id;
+        ConfigModel::edit(
+            cx,
+            SettingsEdit::Ui(UiEdit::CustomThemes(CustomThemeOp::Delete {
+                name: id.clone(),
+            })),
+        );
+        if in_use {
+            ConfigModel::edit(cx, SettingsEdit::Ui(UiEdit::Theme("default".to_string())));
+        }
         self.load(None, window, cx);
     }
 
@@ -223,6 +233,7 @@ impl ThemeEditor {
         let mut themes: Vec<(String, String)> = ConfigModel::global(cx)
             .read(cx)
             .config()
+            .ui
             .custom_themes
             .iter()
             .map(|(id, theme)| (id.clone(), theme.name.clone()))

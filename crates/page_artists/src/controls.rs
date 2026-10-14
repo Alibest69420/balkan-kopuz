@@ -10,12 +10,12 @@ use api::{
 use components::format::t;
 use components::{Segment, Segmented, SortControl};
 use config::{
-    AlbumSortField, AlbumViewMode, AppConfig, ArtistSortField, ArtistViewOrder, SortCriterion,
+    AlbumSortField, AlbumViewMode, ArtistSortField, ArtistViewOrder, SortCriterion, UiPrefs,
 };
 use gpui_kit::{App, IntoElement};
-use store::ConfigModel;
+use store::LayoutModel;
 
-/// Which config key a view-mode toggle writes.
+/// Which pref a view-mode toggle writes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewModeKey {
     Artists,
@@ -23,14 +23,14 @@ pub enum ViewModeKey {
 }
 
 impl ViewModeKey {
-    fn read(self, config: &AppConfig) -> AlbumViewMode {
+    fn read(self, config: &UiPrefs) -> AlbumViewMode {
         match self {
             Self::Artists => config.artists_view_mode,
             Self::ArtistAlbums => config.artist_album_view_mode,
         }
     }
 
-    fn write(self, config: &mut AppConfig, mode: AlbumViewMode) {
+    fn write(self, config: &mut UiPrefs, mode: AlbumViewMode) {
         match self {
             Self::Artists => config.artists_view_mode = mode,
             Self::ArtistAlbums => config.artist_album_view_mode = mode,
@@ -38,11 +38,11 @@ impl ViewModeKey {
     }
 }
 
-/// A sortable field: its label, and the config key the criteria stack lives under.
+/// A sortable field: its label, and the pref the criteria stack lives under.
 pub trait SortTarget: Copy + PartialEq + std::fmt::Debug + 'static {
     fn label_key(self) -> &'static str;
-    fn read(config: &AppConfig) -> Vec<SortCriterion<Self>>;
-    fn write(config: &mut AppConfig, criteria: Vec<SortCriterion<Self>>);
+    fn read(config: &UiPrefs) -> Vec<SortCriterion<Self>>;
+    fn write(config: &mut UiPrefs, criteria: Vec<SortCriterion<Self>>);
 }
 
 impl SortTarget for ArtistSortField {
@@ -54,11 +54,11 @@ impl SortTarget for ArtistSortField {
         }
     }
 
-    fn read(config: &AppConfig) -> Vec<SortCriterion<Self>> {
+    fn read(config: &UiPrefs) -> Vec<SortCriterion<Self>> {
         config.artist_sort.clone()
     }
 
-    fn write(config: &mut AppConfig, criteria: Vec<SortCriterion<Self>>) {
+    fn write(config: &mut UiPrefs, criteria: Vec<SortCriterion<Self>>) {
         config.artist_sort = criteria;
     }
 }
@@ -73,11 +73,11 @@ impl SortTarget for AlbumSortField {
         }
     }
 
-    fn read(config: &AppConfig) -> Vec<SortCriterion<Self>> {
+    fn read(config: &UiPrefs) -> Vec<SortCriterion<Self>> {
         config.artist_album_sort.clone()
     }
 
-    fn write(config: &mut AppConfig, criteria: Vec<SortCriterion<Self>>) {
+    fn write(config: &mut UiPrefs, criteria: Vec<SortCriterion<Self>>) {
         config.artist_album_sort = criteria;
     }
 }
@@ -114,23 +114,23 @@ pub fn album_listing(
     }
 }
 
-/// Read the criteria stack a control edits; empty until the daemon config loads.
+/// Read the criteria stack a control edits; the defaults until the daemon's prefs load.
 pub fn criteria<F: SortTarget>(cx: &App) -> Vec<SortCriterion<F>> {
-    let model = ConfigModel::global(cx);
-    F::read(model.read(cx).config())
+    let model = LayoutModel::global(cx);
+    F::read(&model.read(cx).get().ui)
 }
 
-/// How `key`'s listing is laid out, read off the config without copying it.
+/// How `key`'s listing is laid out, read off the prefs without copying them.
 pub fn view_mode(key: ViewModeKey, cx: &App) -> AlbumViewMode {
-    key.read(ConfigModel::global(cx).read(cx).config())
+    key.read(&LayoutModel::global(cx).read(cx).get().ui)
 }
 
 /// Whether an artist's page opens on their albums rather than their tracks.
 pub fn albums_first(cx: &App) -> bool {
-    ConfigModel::global(cx).read(cx).config().artist_view_order == ArtistViewOrder::Albums
+    LayoutModel::global(cx).read(cx).get().ui.artist_view_order == ArtistViewOrder::Albums
 }
 
-/// Grid ⇄ list, writing `key`'s config field.
+/// Grid ⇄ list, writing `key`'s pref.
 pub fn view_mode_toggle(key: ViewModeKey, cx: &App) -> impl IntoElement {
     let grid = view_mode(key, cx) == AlbumViewMode::Grid;
     let id = match key {
@@ -142,7 +142,7 @@ pub fn view_mode_toggle(key: ViewModeKey, cx: &App) -> impl IntoElement {
             true => AlbumViewMode::Grid,
             false => AlbumViewMode::List,
         };
-        ConfigModel::edit(cx, |config| key.write(config, mode))
+        LayoutModel::edit(cx, |layout| key.write(&mut layout.ui, mode))
     })
     .pill(true)
 }
@@ -159,10 +159,12 @@ pub fn sort_control<F: SortTarget>(
                 .into_iter()
                 .map(|field| (field, t(field.label_key()))),
         )
-        .on_change(|criteria, cx| ConfigModel::edit(cx, move |config| F::write(config, criteria)))
+        .on_change(|criteria, cx| {
+            LayoutModel::edit(cx, move |layout| F::write(&mut layout.ui, criteria))
+        })
 }
 
-/// Tracks ⇄ Albums for one artist, writing `cfg.artist_view_order`.
+/// Tracks ⇄ Albums for one artist, writing the `artist_view_order` pref.
 pub fn view_order_toggle(albums: bool) -> impl IntoElement {
     Segmented::new("artist-order")
         .pill(true)
@@ -174,6 +176,6 @@ pub fn view_order_toggle(albums: bool) -> impl IntoElement {
                 0 => ArtistViewOrder::Tracks,
                 _ => ArtistViewOrder::Albums,
             };
-            ConfigModel::edit(cx, move |config| config.artist_view_order = order)
+            LayoutModel::edit(cx, move |layout| layout.ui.artist_view_order = order)
         })
 }

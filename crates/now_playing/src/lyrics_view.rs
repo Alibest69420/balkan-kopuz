@@ -490,10 +490,10 @@ fn lyric_time(cx: &App) -> f64 {
     let player = PlayerModel::global(cx).read(cx);
     let config = ConfigModel::global(cx).read(cx);
     let config = config.config();
-    let offset = if config.lyrics_offset_auto {
+    let offset = if config.lyrics.lyrics_offset_auto {
         seconds(player.output_latency_ms().unwrap_or_default())
     } else {
-        f64::from(config.lyrics_offset_ms) / 1000.0
+        f64::from(config.lyrics.lyrics_offset_ms) / 1000.0
     };
     player.position_ms() as f64 / 1000.0 - offset
 }
@@ -588,8 +588,8 @@ impl Render for LyricsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let config = ConfigModel::global(cx).read(cx);
         let config = config.config();
-        let strength = if config.lyrics_depth_blur {
-            f32::from(config.lyrics_depth_blur_strength) / 100.0
+        let strength = if config.lyrics.lyrics_depth_blur {
+            f32::from(config.lyrics.lyrics_depth_blur_strength) / 100.0
         } else {
             0.0
         };

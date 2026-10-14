@@ -559,6 +559,9 @@ pub struct Layout {
     pub shortcuts: BTreeMap<String, String>,
     /// The first-run guide was skipped; cleared again once a source holds something.
     pub first_run_dismissed: bool,
+    /// The sorts and view modes every Kopuz frontend keeps, under the same keys the daemon seeded.
+    #[serde(flatten)]
+    pub ui: config::UiPrefs,
 }
 
 impl Default for Layout {
@@ -581,6 +584,7 @@ impl Default for Layout {
             skin: "normal".into(),
             shortcuts: BTreeMap::new(),
             first_run_dismissed: false,
+            ui: config::UiPrefs::default(),
         }
     }
 }
@@ -1104,6 +1108,24 @@ mod tests {
         assert!(keys.contains(&"nav".to_string()));
         assert!(keys.contains(&"window".to_string()));
         assert!(!keys.contains(&IMPORTED.to_string()));
+        assert!(keys.contains(&"album_sort".to_string()));
+        assert!(!keys.contains(&"ui".to_string()));
+    }
+
+    #[test]
+    fn a_sort_the_daemon_seeded_reads_back() {
+        let stored = Fields::from([(
+            "album_sort".to_string(),
+            r#"[{"field":"Year","direction":"Desc"}]"#.to_string(),
+        )]);
+        let layout = overlay(&Layout::default(), &stored);
+        assert_eq!(
+            layout.ui.album_sort,
+            vec![config::SortCriterion::new(
+                config::AlbumSortField::Year,
+                config::SortDirection::Desc
+            )]
+        );
     }
 
     #[test]

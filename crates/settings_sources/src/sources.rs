@@ -130,7 +130,7 @@ impl Sources {
 
     /// Keep one form per source over its options, rebuilt only when the daemon's fields change.
     fn sync_options(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let locked = ConfigModel::global(cx).read(cx).locked_keys().to_vec();
+        let locked = ConfigModel::global(cx).read(cx).locked_names();
         let sources = Self::sources(cx);
         self.options
             .retain(|id, _| sources.iter().any(|source| &source.id == id));

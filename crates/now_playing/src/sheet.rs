@@ -91,8 +91,8 @@ impl NowPlaying {
         let owner = cx.entity().downgrade();
         let showing = self.tab;
         let config = ConfigModel::global(cx).read(cx).config();
-        let use_bar = config.fullscreen_use_player_bar;
-        let bar_at_top = config.player_bar_position == config::PlayerBarPosition::Top;
+        let use_bar = config.ui.fullscreen_use_player_bar;
+        let bar_at_top = config.ui.player_bar_position == config::PlayerBarPosition::Top;
 
         let stage = self.stage(window, cx);
         let panel = v_flex()
@@ -173,6 +173,7 @@ impl NowPlaying {
         let use_bar = ConfigModel::global(cx)
             .read(cx)
             .config()
+            .ui
             .fullscreen_use_player_bar;
         let track = self.track(cx);
         let owner = cx.entity().downgrade();

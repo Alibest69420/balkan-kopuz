@@ -18,7 +18,7 @@ nix develop --command cargo run
 
 The app finds the daemon at the standard socket path. `KOPUZ_SOCKET` points it
 at another one, and `KOPUZ_DAEMON_ADDR=host:port` attaches to a daemon started
-with `--listen` (with `KOPUZ_DAEMON_TOKEN` for its token).
+with `--listen`.
 
 ## Status
 

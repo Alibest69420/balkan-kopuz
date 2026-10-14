@@ -9,7 +9,8 @@ use components::settings::{
 };
 use components::{Callout, CalloutTone, FieldChanged, Lockable as _, SchemaForm, icons};
 use config::{
-    ChannelMode, DeviceChangeBehavior, LYRICS_OFFSET_LIMIT_MS, OfflineQuality, SampleRateMode,
+    ChannelMode, DeviceChangeBehavior, LYRICS_OFFSET_LIMIT_MS, LibraryEdit, LyricsEdit,
+    OfflineQuality, PlaybackEdit, SampleRateMode, SettingsEdit, SystemEdit,
 };
 use equalizer::Equalizer;
 use gpui_kit::component::slider::SliderState;
@@ -44,9 +45,9 @@ impl PlaybackSettings {
         let (crossfade_seconds, volume_step, lyrics_offset_ms) = {
             let current = config.read(cx).config();
             (
-                current.crossfade_seconds,
-                current.volume_scroll_step,
-                current.lyrics_offset_ms,
+                current.playback.crossfade_seconds,
+                current.playback.volume_scroll_step,
+                current.lyrics.lyrics_offset_ms,
             )
         };
         let crossfade =
@@ -84,24 +85,28 @@ impl PlaybackSettings {
             on_slider_change(
                 &crossfade,
                 cx,
-                ConfigModel::writer("crossfade_seconds", |config, value: f32| {
-                    config.crossfade_seconds = value.clamp(0.0, CROSSFADE_MAX_SECONDS) as u8;
+                ConfigModel::writer(|value: f32| {
+                    SettingsEdit::Playback(PlaybackEdit::CrossfadeSeconds(
+                        value.clamp(0.0, CROSSFADE_MAX_SECONDS) as u8,
+                    ))
                 }),
             ),
             on_slider_change(
                 &volume_scroll,
                 cx,
-                ConfigModel::writer("volume_scroll_step", |config, value: f32| {
-                    config.volume_scroll_step =
-                        value.clamp(VOLUME_STEP_MIN_PERCENT, VOLUME_STEP_MAX_PERCENT) / 100.0;
+                ConfigModel::writer(|value: f32| {
+                    SettingsEdit::Playback(PlaybackEdit::VolumeScrollStep(
+                        value.clamp(VOLUME_STEP_MIN_PERCENT, VOLUME_STEP_MAX_PERCENT) / 100.0,
+                    ))
                 }),
             ),
             on_slider_change(
                 &lyrics_offset,
                 cx,
-                ConfigModel::writer("lyrics_offset_ms", |config, value: f32| {
-                    config.lyrics_offset_ms =
-                        (value as i32).clamp(-LYRICS_OFFSET_LIMIT_MS, LYRICS_OFFSET_LIMIT_MS);
+                ConfigModel::writer(|value: f32| {
+                    SettingsEdit::Lyrics(LyricsEdit::LyricsOffsetMs(
+                        (value as i32).clamp(-LYRICS_OFFSET_LIMIT_MS, LYRICS_OFFSET_LIMIT_MS),
+                    ))
                 }),
             ),
         ];
@@ -124,9 +129,9 @@ impl PlaybackSettings {
         let (crossfade, volume, offset) = {
             let config = model.read(cx).config();
             (
-                config.crossfade_seconds as f32,
-                volume_percent(config.volume_scroll_step),
-                config.lyrics_offset_ms as f32,
+                config.playback.crossfade_seconds as f32,
+                volume_percent(config.playback.volume_scroll_step),
+                config.lyrics.lyrics_offset_ms as f32,
             )
         };
         set_slider(&self.crossfade, crossfade, window, cx);
@@ -149,7 +154,7 @@ impl PlaybackSettings {
         let Some(specs) = query.value().cloned() else {
             return;
         };
-        let locked = ConfigModel::global(cx).read(cx).locked_keys().to_vec();
+        let locked = ConfigModel::global(cx).read(cx).locked_names();
         self.artwork
             .update(cx, |form, cx| form.sync(specs, locked, false, window, cx));
     }
@@ -177,7 +182,11 @@ impl PlaybackSettings {
     }
 
     fn offline(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let quality = ConfigModel::global(cx).read(cx).config().offline_quality;
+        let quality = ConfigModel::global(cx)
+            .read(cx)
+            .config()
+            .library
+            .offline_quality;
         section(t("offline_downloads")).children(
             SettingRow::new(t("download_quality"))
                 .bind("offline_quality", cx)
@@ -189,8 +198,8 @@ impl PlaybackSettings {
                         OfflineQuality::ALL.iter().copied(),
                         |quality| SharedString::from(quality.label()),
                     )
-                    .on_change(ConfigModel::writer("offline_quality", |config, quality| {
-                        config.offline_quality = quality
+                    .on_change(ConfigModel::writer(|quality| {
+                        SettingsEdit::Library(LibraryEdit::OfflineQuality(quality))
                     })),
                 )
                 .shown(cx),
@@ -200,9 +209,9 @@ impl PlaybackSettings {
     fn metadata(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let model = ConfigModel::global(cx);
         let config = model.read(cx).config();
-        let prefer_local = config.prefer_local_lyrics;
-        let musixmatch = config.enable_musixmatch_lyrics;
-        let auto = config.lyrics_offset_auto;
+        let prefer_local = config.lyrics.prefer_local_lyrics;
+        let musixmatch = config.lyrics.enable_musixmatch_lyrics;
+        let auto = config.lyrics.lyrics_offset_auto;
         let latency_ms = PlayerModel::global(cx)
             .read(cx)
             .output_latency_ms()
@@ -218,8 +227,8 @@ impl PlaybackSettings {
                     "prefer_local_lyrics",
                     t("prefer_local_lyrics"),
                     prefer_local,
-                    ConfigModel::writer("prefer_local_lyrics", |config, on| {
-                        config.prefer_local_lyrics = on
+                    ConfigModel::writer(|on| {
+                        SettingsEdit::Lyrics(LyricsEdit::PreferLocalLyrics(on))
                     }),
                 )
                 .bind("prefer_local_lyrics", cx)
@@ -231,8 +240,8 @@ impl PlaybackSettings {
                     "enable_musixmatch_lyrics",
                     t("enable_musixmatch_lyrics"),
                     musixmatch,
-                    ConfigModel::writer("enable_musixmatch_lyrics", |config, on| {
-                        config.enable_musixmatch_lyrics = on
+                    ConfigModel::writer(|on| {
+                        SettingsEdit::Lyrics(LyricsEdit::EnableMusixmatchLyrics(on))
                     }),
                 )
                 .bind("enable_musixmatch_lyrics", cx)
@@ -244,8 +253,8 @@ impl PlaybackSettings {
                     "lyrics_offset_auto",
                     t("lyrics_offset_auto"),
                     auto,
-                    ConfigModel::writer("lyrics_offset_auto", |config, on| {
-                        config.lyrics_offset_auto = on
+                    ConfigModel::writer(|on| {
+                        SettingsEdit::Lyrics(LyricsEdit::LyricsOffsetAuto(on))
                     }),
                 )
                 .bind("lyrics_offset_auto", cx)
@@ -277,9 +286,9 @@ impl PlaybackSettings {
     fn player(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let model = ConfigModel::global(cx);
         let config = model.read(cx).config();
-        let channel_mode = config.channel_mode;
-        let device_change = config.device_change_behavior;
-        let sample_rate = config.sample_rate_mode;
+        let channel_mode = config.playback.channel_mode;
+        let device_change = config.playback.device_change_behavior;
+        let sample_rate = config.playback.sample_rate_mode;
 
         section(t("player_settings"))
             .children(
@@ -315,8 +324,8 @@ impl PlaybackSettings {
                             ChannelMode::ALL.iter().copied(),
                             channel_mode_label,
                         )
-                        .on_change(ConfigModel::writer("channel_mode", |config, mode| {
-                            config.channel_mode = mode
+                        .on_change(ConfigModel::writer(|mode| {
+                            SettingsEdit::Playback(PlaybackEdit::ChannelMode(mode))
                         })),
                     )
                     .shown(cx),
@@ -332,10 +341,9 @@ impl PlaybackSettings {
                             DeviceChangeBehavior::ALL.iter().copied(),
                             device_change_label,
                         )
-                        .on_change(ConfigModel::writer(
-                            "device_change_behavior",
-                            |config, behavior| config.device_change_behavior = behavior,
-                        )),
+                        .on_change(ConfigModel::writer(|behavior| {
+                            SettingsEdit::Playback(PlaybackEdit::DeviceChangeBehavior(behavior))
+                        })),
                     )
                     .shown(cx),
             )
@@ -350,8 +358,8 @@ impl PlaybackSettings {
                             SampleRateMode::ALL.iter().copied(),
                             sample_rate_label,
                         )
-                        .on_change(ConfigModel::writer("sample_rate_mode", |config, mode| {
-                            config.sample_rate_mode = mode
+                        .on_change(ConfigModel::writer(|mode| {
+                            SettingsEdit::Playback(PlaybackEdit::SampleRateMode(mode))
                         })),
                     )
                     .shown(cx),
@@ -368,16 +376,18 @@ impl PlaybackSettings {
 
     // TODO(logs): opening and exporting the log folder is local filesystem work a socket-only client has no business doing.
     fn tools(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let tracing_enabled = ConfigModel::global(cx).read(cx).config().tracing_enabled;
+        let tracing_enabled = ConfigModel::global(cx)
+            .read(cx)
+            .config()
+            .system
+            .tracing_enabled;
         section(t("logs"))
             .children(
                 toggle_row(
                     "tracing_enabled",
                     t("enable_tracing"),
                     tracing_enabled,
-                    ConfigModel::writer("tracing_enabled", |config, on| {
-                        config.tracing_enabled = on
-                    }),
+                    ConfigModel::writer(|on| SettingsEdit::System(SystemEdit::TracingEnabled(on))),
                 )
                 .bind("tracing_enabled", cx)
                 .description(t("enable_tracing_description"))

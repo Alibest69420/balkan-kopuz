@@ -16,7 +16,7 @@ use gpui_kit::{
     App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled,
     Subscription, Window, div,
 };
-use store::{ConfigModel, Query};
+use store::{ConfigModel, LayoutModel, Query};
 
 // TODO(offline): filtering the grid to downloaded albums waits on an offline seam the checklist flags as wrong.
 
@@ -36,11 +36,13 @@ impl Albums {
     pub fn new(_: &mut Window, cx: &mut Context<Self>) -> Self {
         let asked = criteria(cx);
         let albums = cx.new(|cx| Query::new(&[Table::Albums], listing(&asked), cx));
+        let prefs = LayoutModel::global(cx);
         let config = ConfigModel::global(cx);
         let subscriptions = vec![
             cx.observe(&albums, |this, _, cx| this.rebuild(cx)),
-            // The sort lives in config, so a change there is a change to the order.
-            cx.observe(&config, |this, _, cx| this.reorder(cx)),
+            // The sort lives in the prefs, so a change there is a change to the order.
+            cx.observe(&prefs, |this, _, cx| this.reorder(cx)),
+            cx.observe(&config, |_, _, cx| cx.notify()),
         ];
         Self {
             albums,
@@ -52,7 +54,7 @@ impl Albums {
         }
     }
 
-    /// Ask the daemon again when the order changed; anything else in config only repaints.
+    /// Ask the daemon again when the order changed; anything else only repaints.
     fn reorder(&mut self, cx: &mut Context<Self>) {
         let wanted = criteria(cx);
         if wanted != self.asked {
@@ -88,7 +90,7 @@ impl Albums {
                     true => AlbumViewMode::Grid,
                     false => AlbumViewMode::List,
                 };
-                ConfigModel::edit(cx, |config| config.album_view_mode = mode);
+                LayoutModel::edit(cx, |layout| layout.ui.album_view_mode = mode);
             },
         )
     }
@@ -100,7 +102,7 @@ impl Albums {
                     .iter()
                     .map(|field| (*field, field_label(*field))),
             )
-            .on_change(|sorted, cx| ConfigModel::edit(cx, |config| config.album_sort = sorted))
+            .on_change(|sorted, cx| LayoutModel::edit(cx, |layout| layout.ui.album_sort = sorted))
     }
 }
 
@@ -148,11 +150,11 @@ impl Render for Albums {
 }
 
 fn view_mode(cx: &App) -> AlbumViewMode {
-    ConfigModel::global(cx).read(cx).config().album_view_mode
+    LayoutModel::global(cx).read(cx).get().ui.album_view_mode
 }
 
 fn criteria(cx: &App) -> Vec<SortCriterion<AlbumSortField>> {
-    ConfigModel::global(cx).read(cx).config().album_sort.clone()
+    LayoutModel::global(cx).read(cx).get().ui.album_sort.clone()
 }
 
 type Listing = Pin<Box<dyn Future<Output = Result<AlbumPage, ApiError>> + Send>>;

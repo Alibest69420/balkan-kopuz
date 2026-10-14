@@ -4,7 +4,7 @@ use components::dialogs::{DialogSize, FormDialog};
 use components::format::{t, t_with};
 use components::{CheckRow, Disclosure, EmptyState, ErrorBanner};
 use components::{icons, style};
-use config::RegistryEntry;
+use config::{IntegrationsEdit, RadioRegistryOp, RegistryEntry, SettingsEdit};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
@@ -20,8 +20,25 @@ use store::ConfigModel;
 use crate::ui;
 
 /// Change the stored registries; the config model debounces the write.
-fn edit_registries(cx: &mut App, edit: impl FnOnce(&mut Vec<RegistryEntry>)) {
-    ConfigModel::edit(cx, |config| edit(&mut config.radio_registries));
+fn edit_registry(cx: &mut App, op: RadioRegistryOp) {
+    ConfigModel::edit(
+        cx,
+        SettingsEdit::Integrations(IntegrationsEdit::RadioRegistries(op)),
+    );
+}
+
+fn set_enabled(cx: &mut App, url: &str, enabled: bool) {
+    let held = ConfigModel::global(cx)
+        .read(cx)
+        .config()
+        .integrations
+        .radio_registries
+        .iter()
+        .find(|entry| entry.url == url)
+        .cloned();
+    if let Some(entry) = held {
+        edit_registry(cx, RadioRegistryOp::Put(RegistryEntry { enabled, ..entry }));
+    }
 }
 
 pub struct RadioRegistries {
@@ -47,6 +64,7 @@ impl RadioRegistries {
         ConfigModel::global(cx)
             .read(cx)
             .config()
+            .integrations
             .radio_registries
             .clone()
     }
@@ -61,11 +79,7 @@ impl RadioRegistries {
     fn toggle(&mut self, url: String, enable: bool, cx: &mut Context<Self>) {
         self.error = None;
         if !enable {
-            edit_registries(cx, |entries| {
-                if let Some(entry) = entries.iter_mut().find(|entry| entry.url == url) {
-                    entry.enabled = false;
-                }
-            });
+            set_enabled(cx, &url, false);
             cx.notify();
             return;
         }
@@ -77,11 +91,7 @@ impl RadioRegistries {
             let result = call.await;
             this.update(cx, |this, cx| {
                 match result {
-                    Ok(_) => edit_registries(cx, |entries| {
-                        if let Some(entry) = entries.iter_mut().find(|entry| entry.url == url) {
-                            entry.enabled = true;
-                        }
-                    }),
+                    Ok(_) => set_enabled(cx, &url, true),
                     Err(error) => {
                         this.error = Some(t_with(
                             "radio_registry_enable_failed",
@@ -97,9 +107,7 @@ impl RadioRegistries {
     }
 
     fn delete(&mut self, url: String, cx: &mut Context<Self>) {
-        edit_registries(cx, |entries| {
-            entries.retain(|entry| entry.is_default || entry.url != url);
-        });
+        edit_registry(cx, RadioRegistryOp::Remove { url });
         cx.notify();
     }
 
@@ -233,6 +241,7 @@ impl AddRegistry {
         let taken = ConfigModel::global(cx)
             .read(cx)
             .config()
+            .integrations
             .radio_registries
             .iter()
             .any(|entry| entry.url == url);
@@ -258,15 +267,23 @@ impl AddRegistry {
             match result {
                 Ok(_) => {
                     cx.update(|window, cx| {
-                        edit_registries(cx, |entries| {
-                            if !entries.iter().any(|entry| entry.url == url) {
-                                entries.push(RegistryEntry {
+                        let listed = ConfigModel::global(cx)
+                            .read(cx)
+                            .config()
+                            .integrations
+                            .radio_registries
+                            .iter()
+                            .any(|entry| entry.url == url);
+                        if !listed {
+                            edit_registry(
+                                cx,
+                                RadioRegistryOp::Put(RegistryEntry {
                                     url,
                                     enabled: true,
                                     is_default: false,
-                                });
-                            }
-                        });
+                                }),
+                            );
+                        }
                         window.close_dialog(cx);
                     })
                     .ok();

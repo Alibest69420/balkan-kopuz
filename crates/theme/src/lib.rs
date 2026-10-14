@@ -7,7 +7,7 @@ mod palettes;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use config::AppConfig;
+use config::Ui;
 use gpui_kit::component::{Theme, ThemeConfig, ThemeMode};
 use gpui_kit::{App, Window};
 
@@ -78,7 +78,7 @@ impl From<&Palette> for Colors {
 }
 
 impl Colors {
-    /// The editor's variable names, as `AppConfig::custom_themes` stores them.
+    /// The editor's variable names, as `Ui::custom_themes` stores them.
     pub fn from_vars(vars: &HashMap<String, String>) -> Option<Self> {
         let get = |key: &str| vars.get(key).cloned();
         let bg = get("bg")?;
@@ -178,8 +178,8 @@ pub fn apply_named(name: &str, window: Option<&mut Window>, cx: &mut App) {
     apply(palette.name, &palette.into(), window, cx);
 }
 
-/// Apply whatever `AppConfig::theme` names: a built-in, or one of `custom_themes`.
-pub fn apply_config(config: &AppConfig, window: Option<&mut Window>, cx: &mut App) {
+/// Apply whatever `Ui::theme` names: a built-in, or one of `custom_themes`.
+pub fn apply_config(config: &Ui, window: Option<&mut Window>, cx: &mut App) {
     let name = config.theme.as_str();
     if let Some(palette) = palette(name) {
         apply(palette.name, &palette.into(), window, cx);

@@ -199,7 +199,11 @@ impl TopBar {
             .items_center()
             .children(self.activity.clone())
             .when(
-                ConfigModel::global(cx).read(cx).config().show_source_toggle,
+                ConfigModel::global(cx)
+                    .read(cx)
+                    .config()
+                    .ui
+                    .show_source_toggle,
                 |cluster| {
                     cluster.child(
                         div().when(!compact, |slot| slot.w(px(180.))).child(

@@ -56,10 +56,10 @@ pub fn layer(
         let config = store::ConfigModel::global(cx);
         let config = config.read(cx).config();
         (
-            config.custom_background_path.clone(),
-            config.cover_art_background,
-            config.cover_art_darkening.max(min_darkening),
-            config.cover_art_blur,
+            config.background.custom_background_path.clone(),
+            config.background.cover_art_background,
+            config.background.cover_art_darkening.max(min_darkening),
+            config.background.cover_art_blur,
         )
     };
     if !custom.is_empty() {

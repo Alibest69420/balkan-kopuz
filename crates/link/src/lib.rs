@@ -111,10 +111,7 @@ pub fn init(address: Address, cx: &mut App) -> anyhow::Result<()> {
         let _guard = runtime.enter();
         match &address {
             Address::Socket(path) => Arc::new(client::GrpcApi::new(path.clone())?),
-            Address::Tcp(host) => {
-                let token = std::env::var("KOPUZ_DAEMON_TOKEN").unwrap_or_default();
-                Arc::new(client::GrpcApi::connect_tcp(host.clone(), &token)?)
-            }
+            Address::Tcp(host) => Arc::new(client::GrpcApi::connect_tcp(host.clone())?),
         }
     };
     let link = Link {
