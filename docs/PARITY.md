@@ -1,7 +1,7 @@
 # Kopuz GPUI port: feature-parity checklist
 
 Source of truth: Dioxus frontend at kopuz `master` (6fe8a59a). Crates read: `pages`, `components`, `hooks`, `kopuz_route`, plus `kopuz/src/main.rs` (the App shell lives there, not in `pages`).
-Notation: `api.x()` = `KopuzApi` method; `ev:X` = `ApiEvent::X`; `inv:T` = `ev:LibraryInvalidated{table:T}` re-runs the read; `caps.x` = `SourceCapabilities.x` of the active `SourceInfo`; `cfg.x` = `AppConfig.x` field (persisted via the debounced `api.set_config`, see §5).
+Notation: `api.x()` = `KopuzApi` method; `ev:X` = `ApiEvent::X`; `inv:T` = `ev:LibraryInvalidated{table:T}` re-runs the read; `caps.x` = `SourceCapabilities.x` of the active `SourceInfo`; `cfg.x` = `config::Settings` field (persisted as a typed `SettingsEdit` through the debounced `api.edit_config`, see §5).
 Shared verbs used below:
 - **PLAY_LIST(rows, i)** = `api.set_queue(SetQueueRequest{Replace, Tracks{keys}, start_index:i})`
 - **PLAY_ALL(rows)** = if shuffle on: PLAY_LIST at a random start index (shuffle flag untouched), else PLAY_LIST(rows, None)
@@ -185,7 +185,7 @@ Data: `api.download_formats()`, `api.downloader_settings()`, `api.downloader_his
 
 ### 2.14 Settings (see §4 for fields)
 - [ ] Category navigation "fan" (8 categories; Tools hidden on Android); `cfg.settings_layout` Cd (fan) vs TopBar
-- [ ] Managed-settings notice when `ConfigView.locked_keys` non-empty; locked rows show lock + disabled control
+- [ ] Managed-settings notice per lock kind when `ConfigView.locks` is non-empty; locked rows show lock + disabled control, citing the pinning file or env var
 - [ ] Build info card (version + commit, copy to clipboard)
 
 ### 2.15 Theme editor (desktop; embedded in Settings → Appearance)
@@ -331,7 +331,7 @@ Shown only when active source has `caps.external_devices` and `authenticated`
 
 ## 4. Settings
 
-Category → rows. **[H]** = hardcoded `AppConfig` field (edited in the local `cfg` signal, persisted by the debounced `api.set_config`); **[S]** = daemon `FieldSpec` schema form via `SchemaForm`; **[A]** = explicit API calls. Every [H] row takes `config_key` and renders locked when that key is in `ConfigView.locked_keys`.
+Category → rows. **[H]** = hardcoded `Settings` field (applied to the local copy at once, persisted as a typed `SettingsEdit` by the debounced `api.edit_config`); **[S]** = daemon `FieldSpec` schema form via `SchemaForm`; **[A]** = explicit API calls. Every [H] row takes `config_key` and renders locked when that key is in `ConfigView.locks`.
 
 ### 4.1 General
 - [ ] [H] `auto_check_updates` toggle
@@ -426,7 +426,7 @@ Category → rows. **[H]** = hardcoded `AppConfig` field (edited in the local `c
 ### 5.3 Config lifecycle
 - [ ] Startup: `api.config()` → `cfg` + locale; only if that succeeded is saving armed (never persist a defaulted config)
 - [ ] Any `cfg` change or persisted-volume change marks dirty; saver loop: 600 ms settle → `api.set_config(cfg with current volume)` → 2.5 s cooldown
-- [ ] Locked keys read once from `ConfigView.locked_keys`
+- [ ] Locked keys read once from `ConfigView.locks`
 - [ ] After `switch_source`, pull `api.config()` back into `cfg`
 - [ ] Final flush on window close/quit
 
