@@ -446,21 +446,28 @@ impl ArtistDetail {
         v_flex()
             .flex_1()
             .min_h_0()
-            .gap_4()
+            .gap_12()
+            .child(self.hero(cx))
             .child(
-                h_flex()
-                    .w_full()
-                    .justify_end()
-                    .gap_2()
-                    .items_center()
-                    .child(controls::view_mode_toggle(ViewModeKey::ArtistAlbums, cx))
-                    .child(controls::sort_control(
-                        "artist-album-sort",
-                        self.album_fields.clone(),
-                        cx,
-                    )),
+                v_flex()
+                    .flex_1()
+                    .min_h_0()
+                    .gap_4()
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .justify_end()
+                            .gap_2()
+                            .items_center()
+                            .child(controls::view_mode_toggle(ViewModeKey::ArtistAlbums, cx))
+                            .child(controls::sort_control(
+                                "artist-album-sort",
+                                self.album_fields.clone(),
+                                cx,
+                            )),
+                    )
+                    .child(body),
             )
-            .child(body)
             .into_any_element()
     }
 }
