@@ -33,7 +33,7 @@ pub use artwork::{ArtworkBytes, ArtworkKey, Residents, artwork_source};
 pub use artwork_edit::{content_type_for, pick_and_upload, pick_image, remove_artwork};
 pub use backdrop::blurred_backdrop;
 pub use chrome::{Chrome, SidePanel, register_mini_player, toggle_mini_player};
-pub use config::ConfigModel;
+pub use config::{ConfigModel, lock_cause};
 pub use downloads::{BatchFinished, DownloadItem, DownloadsModel, ItemState, Offline};
 pub use favorites::FavoritesModel;
 pub use invalidation::{Invalidation, TablesChanged};

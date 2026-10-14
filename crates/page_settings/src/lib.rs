@@ -269,12 +269,13 @@ impl Settings {
             )
     }
 
-    /// The notice a managed settings file puts above the fan.
-    fn managed_notice(&self) -> impl IntoElement {
-        div()
-            .w_full()
-            .mb_4()
-            .child(Callout::new(t("settings_managed_notice")).icon(icons::LOCK))
+    /// One notice per kind of layer that pins a setting, above the fan.
+    fn managed_notice(&self, locks: &[api::SettingLock]) -> impl IntoElement {
+        v_flex().w_full().mb_4().gap_2().children(
+            lock_notices(locks)
+                .into_iter()
+                .map(|notice| Callout::new(t(notice)).icon(icons::LOCK)),
+        )
     }
 }
 
@@ -283,7 +284,7 @@ impl Render for Settings {
         components::scroll::smooth("settings-panel", &self.scroll, window, cx);
         let config = ConfigModel::global(cx);
         let loaded = config.read(cx).is_loaded();
-        let locked = !config.read(cx).locks().is_empty();
+        let locks = config.read(cx).locks().to_vec();
         let empty = self.searching && components::settings::nothing_matched(cx);
         let typed = SharedString::from(self.search.read(cx).value().to_string());
         // The page root is the scroller: a nested `flex_1 min_h_0` child measured no height here.
@@ -305,7 +306,9 @@ impl Render for Settings {
                             return page.child(self.unavailable(cx));
                         }
                         page.child(self.search_box())
-                            .when(locked, |page| page.child(self.managed_notice()))
+                            .when(!locks.is_empty(), |page| {
+                                page.child(self.managed_notice(&locks))
+                            })
                             .child(self.rail(cx))
                             .when(empty, |page| {
                                 page.child(EmptyState::new(t_with(
@@ -316,5 +319,54 @@ impl Render for Settings {
                             .child(self.panel())
                     }),
             )
+    }
+}
+
+/// The notice keys for each kind of layer that pins a setting, so the banner names only what does.
+fn lock_notices(locks: &[api::SettingLock]) -> Vec<&'static str> {
+    let pinned_by = |kind: fn(&api::LockSource) -> bool| locks.iter().any(|lock| kind(&lock.by));
+    [
+        (
+            pinned_by(|by| matches!(by, api::LockSource::Managed(_))),
+            "settings_managed_notice",
+        ),
+        (
+            pinned_by(|by| matches!(by, api::LockSource::DropIn(_))),
+            "settings_dropin_notice",
+        ),
+        (
+            pinned_by(|by| matches!(by, api::LockSource::Env(_))),
+            "settings_env_notice",
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(pinned, notice)| pinned.then_some(notice))
+    .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::lock_notices;
+
+    fn lock(by: api::LockSource) -> api::SettingLock {
+        api::SettingLock {
+            key: config::SettingKey::Ui(config::UiKey::Theme),
+            by,
+        }
+    }
+
+    #[test]
+    fn the_banner_names_only_the_layers_that_pin() {
+        let dropin = lock(api::LockSource::DropIn("/x/settings.d/30-c.toml".into()));
+        let env = lock(api::LockSource::Env("KOPUZ_CONFIG_THEME".into()));
+        assert!(lock_notices(&[]).is_empty());
+        assert_eq!(
+            lock_notices(std::slice::from_ref(&dropin)),
+            vec!["settings_dropin_notice"]
+        );
+        assert_eq!(
+            lock_notices(&[env.clone(), dropin, env]),
+            vec!["settings_dropin_notice", "settings_env_notice"]
+        );
     }
 }

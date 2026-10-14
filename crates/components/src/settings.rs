@@ -518,13 +518,13 @@ impl RenderOnce for Section {
     }
 }
 
-/// Answers whether a config key is pinned and whether its write just landed; the app wiring installs it.
-struct Binding(fn(&str, &App) -> (bool, bool));
+/// Answers what pins a config key, if anything, and whether its write just landed; the app wiring installs it.
+struct Binding(fn(&str, &App) -> (Option<SharedString>, bool));
 
 impl Global for Binding {}
 
 /// Install how a row learns the state of its key; `commands::init` is the only caller.
-pub fn register_binding(resolve: fn(&str, &App) -> (bool, bool), cx: &mut App) {
+pub fn register_binding(resolve: fn(&str, &App) -> (Option<SharedString>, bool), cx: &mut App) {
     cx.set_global(Binding(resolve));
 }
 
@@ -537,6 +537,7 @@ pub struct SettingRow {
     title: SharedString,
     description: Option<SharedString>,
     locked: bool,
+    lock_cause: Option<SharedString>,
     stacked: bool,
     saved: bool,
     control: Option<Control>,
@@ -548,6 +549,7 @@ impl SettingRow {
             title: title.into(),
             description: None,
             locked: false,
+            lock_cause: None,
             stacked: false,
             saved: false,
             control: None,
@@ -585,12 +587,14 @@ impl SettingRow {
         self
     }
 
-    /// Tie the row to a config key: locked when a managed file pins it, ticked once its write lands.
-    pub fn bind(self, key: &str, cx: &App) -> Self {
-        let (locked, saved) = cx
+    /// Tie the row to a config key: locked, citing the layer, when one pins it; ticked once its write lands.
+    pub fn bind(mut self, key: &str, cx: &App) -> Self {
+        let (cause, saved) = cx
             .try_global::<Binding>()
-            .map_or((false, false), |binding| (binding.0)(key, cx));
-        self.locked(locked).saved(saved)
+            .map_or((None, false), |binding| (binding.0)(key, cx));
+        self.locked = cause.is_some();
+        self.lock_cause = cause;
+        self.saved(saved)
     }
 
     /// Put the control under the label instead of beside it, for a control that needs the width.
@@ -649,12 +653,16 @@ impl RenderOnce for SettingRow {
                             .child(self.title.clone()),
                     )
                     .when(self.locked, |heading| {
+                        let cause = self
+                            .lock_cause
+                            .clone()
+                            .unwrap_or_else(|| t("setting_managed_by_system"));
                         heading.child(
                             div()
                                 .id(scoped("row-lock", &self.title))
                                 .flex_shrink_0()
-                                .tooltip(|window, cx| {
-                                    Tooltip::new(t("setting_managed_by_system")).build(window, cx)
+                                .tooltip(move |window, cx| {
+                                    Tooltip::new(cause.clone()).build(window, cx)
                                 })
                                 .child(
                                     icons::icon(icons::LOCK)

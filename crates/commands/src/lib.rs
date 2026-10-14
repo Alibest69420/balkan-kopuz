@@ -102,7 +102,12 @@ pub fn init(cx: &mut App) {
     components::settings::register_binding(
         |key, cx| {
             let config = store::ConfigModel::global(cx).read(cx);
-            (config.is_locked(key), config.just_saved(key))
+            (
+                config
+                    .lock_of(key)
+                    .map(|by| SharedString::from(store::lock_cause(by))),
+                config.just_saved(key),
+            )
         },
         cx,
     );
