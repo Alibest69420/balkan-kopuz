@@ -89,7 +89,7 @@ impl ArtistDetail {
         let artist = key.clone();
         let detail = cx.new(|cx| {
             Query::new(
-                &[Table::Tracks, Table::Albums],
+                &[Table::Tracks, Table::Albums, Table::Artists],
                 move |api| {
                     let artist = artist.clone();
                     async move { api.artist(artist).await }

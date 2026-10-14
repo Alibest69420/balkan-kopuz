@@ -66,7 +66,7 @@ impl Home {
         });
         let artists = cx.new(|cx| {
             Query::new(
-                &[Table::Tracks],
+                &[Table::Tracks, Table::Artists],
                 |client| async move { client.artists(Default::default(), store::all()).await },
                 cx,
             )

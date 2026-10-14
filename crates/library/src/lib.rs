@@ -212,7 +212,7 @@ impl Library {
         });
         let artists = cx.new(|cx| {
             Query::new(
-                &[Table::Tracks],
+                &[Table::Tracks, Table::Artists],
                 move |api| async move {
                     Ok(CatalogWindow {
                         offset: 0,

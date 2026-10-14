@@ -42,7 +42,7 @@ impl Artists {
         // An album count is part of each row, so an album change is a change to the listing.
         let artists = cx.new(|cx| {
             Query::new(
-                &[Table::Tracks, Table::Albums],
+                &[Table::Tracks, Table::Albums, Table::Artists],
                 controls::artist_listing(&ordered),
                 cx,
             )

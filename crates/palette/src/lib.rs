@@ -247,7 +247,7 @@ impl Palette {
         });
         let artists = cx.new(|cx| {
             Query::new(
-                &[Table::Tracks],
+                &[Table::Tracks, Table::Artists],
                 |api| async move { api.artists(Default::default(), store::all()).await },
                 cx,
             )
