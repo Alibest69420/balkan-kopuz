@@ -6,6 +6,7 @@ mod socket;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::task::Poll;
 use std::time::Duration;
 
@@ -26,6 +27,47 @@ pub struct Link {
     api: Arc<dyn KopuzApi>,
     runtime: tokio::runtime::Handle,
     address: Address,
+    /// Open only while the connection is `Connected`; a daemon on another wire would misread every call.
+    gate: Arc<Gate>,
+}
+
+/// Why calls may not reach the daemon right now, as the supervisor last found it.
+struct Gate(Mutex<Option<ApiError>>);
+
+impl Gate {
+    fn closed() -> Self {
+        let gate = Self(Mutex::new(None));
+        gate.follow(&ConnectionStatus::Connecting);
+        gate
+    }
+
+    fn refusal(&self) -> Option<ApiError> {
+        self.0
+            .lock()
+            .unwrap_or_else(|held| held.into_inner())
+            .clone()
+    }
+
+    fn follow(&self, status: &ConnectionStatus) {
+        let refusal = match status {
+            ConnectionStatus::Connected => None,
+            ConnectionStatus::Mismatched { daemon, client } => {
+                Some(protocol_mismatch(*daemon, *client))
+            }
+            ConnectionStatus::Connecting | ConnectionStatus::Unreachable(_) => Some(ApiError::new(
+                api::ErrorCode::DaemonGone,
+                "the daemon is not attached",
+            )),
+        };
+        *self.0.lock().unwrap_or_else(|held| held.into_inner()) = refusal;
+    }
+}
+
+/// What a call to a daemon on another wire fails with, worded as `kopuzctl` words it.
+fn protocol_mismatch(daemon: u32, client: u32) -> ApiError {
+    ApiError::unsupported(format!(
+        "protocol mismatch: daemon {daemon}, client {client}; install matching Kopuz versions"
+    ))
 }
 
 struct GlobalLink {
@@ -51,8 +93,20 @@ impl Link {
         &self.address
     }
 
-    /// Run `f` on the link's runtime; the returned future is awaitable from a GPUI task.
+    /// Run `f` on the link's runtime, awaitable from a GPUI task; until the daemon is attached it fails saying why not.
     pub fn call<T, Fut>(&self, f: impl FnOnce(Arc<dyn KopuzApi>) -> Fut) -> Call<T>
+    where
+        T: Send + 'static,
+        Fut: Future<Output = Result<T, ApiError>> + Send + 'static,
+    {
+        match self.gate.refusal() {
+            Some(error) => Call(self.runtime.spawn(async { Err(error) })),
+            None => self.probe(f),
+        }
+    }
+
+    /// The supervisor's own calls, which are how the gate learns it may open.
+    fn probe<T, Fut>(&self, f: impl FnOnce(Arc<dyn KopuzApi>) -> Fut) -> Call<T>
     where
         T: Send + 'static,
         Fut: Future<Output = Result<T, ApiError>> + Send + 'static,
@@ -115,6 +169,7 @@ pub fn init(address: Address, cx: &mut App) -> anyhow::Result<()> {
         api,
         runtime: runtime.handle().clone(),
         address,
+        gate: Arc::new(Gate::closed()),
     };
     let connection = cx.new(|cx| Connection::new(link.clone(), cx));
     cx.set_global(GlobalLink {
@@ -158,7 +213,7 @@ impl Connection {
             let link = link.clone();
             async move |this, cx| {
                 loop {
-                    let probe = link.call(|api| async move { api.player_state().await });
+                    let probe = link.probe(|api| async move { api.player_state().await });
                     if let Err(error) = probe.await {
                         let unreachable = ConnectionStatus::Unreachable(error);
                         if this
@@ -180,7 +235,7 @@ impl Connection {
                     // A daemon from another checkout reads fields by its own numbers, so a
                     // mismatch is said out loud rather than left to show as a missing button.
                     let spoken = link
-                        .call(|api| async move { api.daemon_status().await })
+                        .probe(|api| async move { api.daemon_status().await })
                         .await
                         .map(|status| status.proto_revision)
                         .unwrap_or(api::WIRE_REVISION);
@@ -259,6 +314,7 @@ impl Connection {
     }
 
     fn set_status(&mut self, status: ConnectionStatus, cx: &mut Context<Self>) {
+        self.link.gate.follow(&status);
         if self.status != status {
             self.status = status;
             cx.notify();
@@ -307,6 +363,28 @@ mod tests {
             client: api::WIRE_REVISION,
         };
         assert_eq!(older(&status), Some(true));
+    }
+
+    #[test]
+    fn the_gate_refuses_with_what_actually_happened() {
+        let gate = Gate::closed();
+        assert_eq!(
+            gate.refusal().map(|error| error.code),
+            Some(api::ErrorCode::DaemonGone)
+        );
+        gate.follow(&ConnectionStatus::Mismatched {
+            daemon: 1,
+            client: 2,
+        });
+        let refused = gate.refusal().expect("a mismatch refuses");
+        assert_eq!(refused.code, api::ErrorCode::Unsupported);
+        assert!(
+            refused
+                .message
+                .starts_with("protocol mismatch: daemon 1, client 2")
+        );
+        gate.follow(&ConnectionStatus::Connected);
+        assert!(gate.refusal().is_none());
     }
 
     #[test]

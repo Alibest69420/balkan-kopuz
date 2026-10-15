@@ -118,8 +118,13 @@ impl<T: Send + 'static> Query<T> {
                         // empty library rather than a refused call. Say so once per new failure;
                         // a daemon outage refreshes every query and would otherwise toast each.
                         let fresh = this.error.as_ref() != Some(&error);
+                        // Without an attached daemon the connection banner is what says so.
+                        let attached = Link::connection(cx).read(cx).is_connected();
                         this.error = Some(error);
-                        if fresh && let Some(error) = this.error.as_ref() {
+                        if fresh
+                            && attached
+                            && let Some(error) = this.error.as_ref()
+                        {
                             crate::Notices::error(crate::human(error), cx);
                         }
                     }
