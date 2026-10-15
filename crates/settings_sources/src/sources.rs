@@ -15,7 +15,7 @@ use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render,
-    SharedString, Styled, Subscription, Window,
+    SharedString, Styled, Subscription, WeakEntity, Window,
 };
 use link::Link;
 use store::{ConfigModel, Notices, Query, SourceStatus, SourcesModel};
@@ -24,21 +24,34 @@ use crate::add_source::{AddSource, SourceAdded};
 use crate::folders;
 use crate::ui;
 
-/// Answer one of a source's own options. The value is never logged.
-fn write_setting(id: String, value: FieldValue, cx: &mut App) {
+/// Answer one of a source's own options; a refusal puts the form back. The value is never logged.
+fn write_setting(
+    id: String,
+    value: FieldValue,
+    form: WeakEntity<SchemaForm>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let key = value.key.clone();
     let call = Link::global(cx)
         .call(move |api| async move { api.set_source_settings(id, vec![value]).await });
-    cx.spawn(async move |cx| match call.await {
-        Ok(_) => {
-            cx.update(|cx| {
-                SourcesModel::global(cx).update(cx, |sources, cx| sources.refetch(cx));
-            });
-        }
-        Err(error) => {
-            cx.update(|cx| Notices::error(store::human(&error), cx));
-        }
-    })
-    .detach();
+    window
+        .spawn(cx, async move |cx| match call.await {
+            Ok(_) => {
+                cx.update(|_, cx| {
+                    SourcesModel::global(cx).update(cx, |sources, cx| sources.refetch(cx));
+                })
+                .ok();
+            }
+            Err(error) => {
+                form.update_in(cx, |form, window, cx| {
+                    form.revert(&key, window, cx);
+                    Notices::failed(&error, cx);
+                })
+                .ok();
+            }
+        })
+        .detach();
 }
 
 /// The fields a source's form shows: a folder tree the source browses itself is picked with the browser below it.
@@ -143,9 +156,13 @@ impl Sources {
             let options = self.options.entry(source.id.clone()).or_insert_with(|| {
                 let form = cx.new(|cx| SchemaForm::new(specs.clone(), window, cx));
                 let id = source.id.clone();
-                let subscription = cx.subscribe(&form, move |_, _, event: &FieldChanged, cx| {
-                    write_setting(id.clone(), event.0.clone(), cx);
-                });
+                let subscription = cx.subscribe_in(
+                    &form,
+                    window,
+                    move |_, form, event: &FieldChanged, window, cx| {
+                        write_setting(id.clone(), event.0.clone(), form.downgrade(), window, cx);
+                    },
+                );
                 SourceOptions {
                     form,
                     _subscription: subscription,

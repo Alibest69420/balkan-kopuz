@@ -157,6 +157,19 @@ impl SchemaForm {
         self.values.get(key).map(String::as_str)
     }
 
+    /// The daemon refused the answer to `key`: show what it last said it holds again.
+    pub fn revert(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(spec) = self.specs.iter().find(|spec| spec.key == key) else {
+            return;
+        };
+        let held = spec.value.clone().unwrap_or_default();
+        if let Some(input) = self.inputs.get(key) {
+            input.update(cx, |state, cx| state.set_value(held.clone(), window, cx));
+        }
+        self.values.insert(key.to_string(), held);
+        cx.notify();
+    }
+
     fn answer(&mut self, key: &str, value: String, cx: &mut Context<Self>) {
         if self.values.get(key).is_some_and(|held| held == &value) {
             return;
@@ -363,5 +376,44 @@ impl Render for SchemaForm {
                 .into_iter()
                 .map(|problem| div().px_5().py_1().child(FieldProblem::new(problem))),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use api::schema::{Text, encode_directories};
+
+    fn folders(held: &[&str]) -> FieldSpec {
+        let held: Vec<String> = held.iter().map(|path| path.to_string()).collect();
+        FieldSpec {
+            key: "directories".into(),
+            label: Text::literal("Folders"),
+            help: None,
+            placeholder: None,
+            section: None,
+            kind: FieldKind::Directories,
+            required: false,
+            value: Some(encode_directories(&held)),
+            config_key: Some("local_sources".into()),
+            show_when: None,
+        }
+    }
+
+    #[gpui_kit::test]
+    fn a_refused_answer_shows_what_the_daemon_holds_again(cx: &mut gpui_kit::TestAppContext) {
+        let spec = folders(&["/music", "/more"]);
+        let held = spec.value.clone();
+        let view = cx.add_window(|_, _| gpui_kit::Empty);
+        cx.update_window(view.into(), |_, window, cx| {
+            let form = cx.new(|cx| SchemaForm::new(vec![spec], window, cx));
+            form.update(cx, |form, cx| {
+                form.answer("directories", encode_directories(&["/more".into()]), cx);
+                assert_ne!(form.value("directories"), held.as_deref());
+                form.revert("directories", window, cx);
+                assert_eq!(form.value("directories"), held.as_deref());
+            });
+        })
+        .unwrap();
     }
 }

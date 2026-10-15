@@ -11,31 +11,40 @@ use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, h_fl
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
-    Styled, Subscription, Window,
+    Styled, Subscription, WeakEntity, Window,
 };
 use link::Link;
 use store::{ConfigModel, Notice, Notices, Query};
 
 use crate::ui;
 
-/// Answer one integration's fields. The value is never logged.
+/// Answer one integration's fields; a refusal puts the form back. The value is never logged.
 fn write_settings(
     id: String,
     value: FieldValue,
     query: Entity<Query<Vec<IntegrationInfo>>>,
+    form: WeakEntity<SchemaForm>,
+    window: &mut Window,
     cx: &mut App,
 ) {
+    let key = value.key.clone();
     let call = Link::global(cx)
         .call(move |api| async move { api.set_integration_settings(id, vec![value]).await });
-    cx.spawn(async move |cx| match call.await {
-        Ok(_) => {
-            cx.update(|cx| query.update(cx, |query, cx| query.refresh(cx)));
-        }
-        Err(error) => {
-            cx.update(|cx| Notices::error(store::human(&error), cx));
-        }
-    })
-    .detach();
+    window
+        .spawn(cx, async move |cx| match call.await {
+            Ok(_) => {
+                cx.update(|_, cx| query.update(cx, |query, cx| query.refresh(cx)))
+                    .ok();
+            }
+            Err(error) => {
+                form.update_in(cx, |form, window, cx| {
+                    form.revert(&key, window, cx);
+                    Notices::failed(&error, cx);
+                })
+                .ok();
+            }
+        })
+        .detach();
 }
 
 struct IntegrationForm {
@@ -92,9 +101,20 @@ impl Integrations {
                 let form = cx.new(|cx| SchemaForm::new(specs.clone(), window, cx));
                 let id = integration.id.clone();
                 let query = self.query.clone();
-                let subscription = cx.subscribe(&form, move |_, _, event: &FieldChanged, cx| {
-                    write_settings(id.clone(), event.0.clone(), query.clone(), cx);
-                });
+                let subscription = cx.subscribe_in(
+                    &form,
+                    window,
+                    move |_, form, event: &FieldChanged, window, cx| {
+                        write_settings(
+                            id.clone(),
+                            event.0.clone(),
+                            query.clone(),
+                            form.downgrade(),
+                            window,
+                            cx,
+                        );
+                    },
+                );
                 IntegrationForm {
                     form,
                     _subscription: subscription,

@@ -21,7 +21,7 @@ use gpui_kit::{
     Render, SharedString, Styled, Subscription, Window, div,
 };
 use link::Link;
-use store::{ConfigModel, PlayerModel, Query};
+use store::{ConfigModel, Notices, PlayerModel, Query};
 
 const CROSSFADE_MAX_SECONDS: f32 = 12.0;
 const VOLUME_STEP_MIN_PERCENT: f32 = 1.0;
@@ -81,7 +81,7 @@ impl PlaybackSettings {
             // The auto-offset row reads the engine's measured output latency.
             cx.observe(&player, |_, _, cx| cx.notify()),
             cx.observe_in(&artwork_settings, window, Self::adopt_artwork),
-            cx.subscribe(&artwork, Self::save_artwork),
+            cx.subscribe_in(&artwork, window, Self::save_artwork),
             on_slider_change(
                 &crossfade,
                 cx,
@@ -161,14 +161,17 @@ impl PlaybackSettings {
 
     fn save_artwork(
         &mut self,
-        _: Entity<SchemaForm>,
+        form: &Entity<SchemaForm>,
         event: &FieldChanged,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let value = event.0.clone();
+        let key = value.key.clone();
+        let form = form.downgrade();
         let call = Link::global(cx)
             .call(move |api| async move { api.set_artwork_settings(vec![value]).await });
-        cx.spawn(async move |this, cx| match call.await {
+        cx.spawn_in(window, async move |this, cx| match call.await {
             Ok(_) => {
                 this.update(cx, |this, cx| {
                     this.artwork_settings
@@ -176,7 +179,15 @@ impl PlaybackSettings {
                 })
                 .ok();
             }
-            Err(error) => tracing::warn!(%error, "could not save the artwork settings"),
+            // The form is showing an answer the daemon never took; put the held one back.
+            Err(error) => {
+                tracing::warn!(%error, "could not save the artwork settings");
+                form.update_in(cx, |form, window, cx| {
+                    form.revert(&key, window, cx);
+                    Notices::failed(&error, cx);
+                })
+                .ok();
+            }
         })
         .detach();
     }

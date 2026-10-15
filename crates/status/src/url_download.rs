@@ -161,6 +161,7 @@ impl UrlDownload {
     }
 
     fn save_setting(&mut self, value: FieldValue, window: &mut Window, cx: &mut Context<Self>) {
+        let key = value.key.clone();
         let call = Link::global(cx)
             .call(move |api| async move { api.set_downloader_settings(vec![value]).await });
         cx.spawn_in(window, async move |this, cx| match call.await {
@@ -173,8 +174,12 @@ impl UrlDownload {
             }
             Err(error) => {
                 tracing::warn!(%error, "saving a downloader setting failed");
-                this.update(cx, |_, cx| Notices::error(store::human(&error), cx))
-                    .ok();
+                this.update_in(cx, |this, window, cx| {
+                    this.options
+                        .update(cx, |form, cx| form.revert(&key, window, cx));
+                    Notices::failed(&error, cx);
+                })
+                .ok();
             }
         })
         .detach();
