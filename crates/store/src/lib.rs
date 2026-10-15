@@ -99,9 +99,10 @@ fn said(
 ) -> gpui_kit::SharedString {
     match reason {
         Some(reason) => gpui_kit::SharedString::from(i18n::t(reason.message_key())),
-        // A code with no message is the daemon's bug, not something to translate around.
-        None if message.trim().is_empty() => gpui_kit::SharedString::from(format!("{code:?}")),
-        None => gpui_kit::SharedString::from(message.to_string()),
+        None => gpui_kit::SharedString::from(i18n::t_with(
+            code.message_key(),
+            &[("detail", message.to_string().into())],
+        )),
     }
 }
 

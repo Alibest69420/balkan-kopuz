@@ -3860,7 +3860,7 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 [[package]]
 name = "kopuz-api"
 version = "0.21.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=d62ba947f3e5cac478439987ef5172d1d3006f8e#d62ba947f3e5cac478439987ef5172d1d3006f8e"
+source = "git+https://github.com/Kopuz-org/kopuz?rev=a945e0616a4abd72ee6b01e304caef438e625e5f#a945e0616a4abd72ee6b01e304caef438e625e5f"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -3872,7 +3872,7 @@ dependencies = [
 [[package]]
 name = "kopuz-client"
 version = "0.21.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=d62ba947f3e5cac478439987ef5172d1d3006f8e#d62ba947f3e5cac478439987ef5172d1d3006f8e"
+source = "git+https://github.com/Kopuz-org/kopuz?rev=a945e0616a4abd72ee6b01e304caef438e625e5f#a945e0616a4abd72ee6b01e304caef438e625e5f"
 dependencies = [
  "async-trait",
  "directories",
@@ -3891,7 +3891,7 @@ dependencies = [
 [[package]]
 name = "kopuz-config"
 version = "0.21.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=d62ba947f3e5cac478439987ef5172d1d3006f8e#d62ba947f3e5cac478439987ef5172d1d3006f8e"
+source = "git+https://github.com/Kopuz-org/kopuz?rev=a945e0616a4abd72ee6b01e304caef438e625e5f#a945e0616a4abd72ee6b01e304caef438e625e5f"
 dependencies = [
  "directories",
  "garde",
@@ -3947,7 +3947,7 @@ dependencies = [
 [[package]]
 name = "kopuz-i18n"
 version = "0.21.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=d62ba947f3e5cac478439987ef5172d1d3006f8e#d62ba947f3e5cac478439987ef5172d1d3006f8e"
+source = "git+https://github.com/Kopuz-org/kopuz?rev=a945e0616a4abd72ee6b01e304caef438e625e5f#a945e0616a4abd72ee6b01e304caef438e625e5f"
 dependencies = [
  "fluent-bundle",
  "unic-langid",
@@ -3956,7 +3956,7 @@ dependencies = [
 [[package]]
 name = "kopuz-proto"
 version = "0.21.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=d62ba947f3e5cac478439987ef5172d1d3006f8e#d62ba947f3e5cac478439987ef5172d1d3006f8e"
+source = "git+https://github.com/Kopuz-org/kopuz?rev=a945e0616a4abd72ee6b01e304caef438e625e5f#a945e0616a4abd72ee6b01e304caef438e625e5f"
 dependencies = [
  "futures-util",
  "kopuz-api",
