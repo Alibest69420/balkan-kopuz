@@ -9,7 +9,10 @@ pub fn catalog_failure(error: &ApiError) -> SharedString {
     if error.code == ErrorCode::SourceAuthExpired {
         return t("source_anon_discover");
     }
-    t_with("discover_failed", &[("error", error.to_string().into())])
+    t_with(
+        "discover_failed",
+        &[("error", store::human(error).to_string().into())],
+    )
 }
 
 /// What a library read's failure says: the daemon's own sentence, not a Rust enum.

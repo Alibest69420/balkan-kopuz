@@ -230,7 +230,7 @@ impl Radio {
         let status = if directory.is_loading() || !directory.is_settled() {
             Some(Status::Loading)
         } else if let Some(error) = directory.error() {
-            Some(Status::Failed(SharedString::from(error.to_string())))
+            Some(Status::Failed(store::human(error)))
         } else if directory.value().is_none_or(|stations| stations.is_empty()) {
             Some(Status::Empty)
         } else {

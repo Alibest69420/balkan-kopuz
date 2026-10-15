@@ -119,7 +119,10 @@ impl Integrations {
             Err(error) => {
                 cx.update(|cx| {
                     Notices::error(
-                        t_with("signin_failed", &[("error", error.to_string().into())]),
+                        t_with(
+                            "signin_failed",
+                            &[("error", store::human(&error).to_string().into())],
+                        ),
                         cx,
                     );
                 });

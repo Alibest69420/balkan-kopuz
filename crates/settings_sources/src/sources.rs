@@ -275,7 +275,7 @@ impl Sources {
                         this.browser.entries.clear();
                         this.browser.error = Some(t_with(
                             "folder_browse_failed",
-                            &[("error", error.to_string().into())],
+                            &[("error", store::human(&error).to_string().into())],
                         ));
                     }
                 }

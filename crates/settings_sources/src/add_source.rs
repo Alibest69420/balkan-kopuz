@@ -221,7 +221,7 @@ impl AddSource {
         cx.spawn_in(window, async move |this, cx| {
             let problem = match checked.await {
                 Ok(check) => check.problems.first().map(|problem| text(&problem.label)),
-                Err(error) => Some(SharedString::from(error.to_string())),
+                Err(error) => Some(store::human(&error)),
             };
             if let Some(problem) = problem {
                 this.update(cx, |this, cx| {
@@ -255,7 +255,7 @@ impl AddSource {
                 }
                 Err(error) => {
                     this.update(cx, |this, cx| {
-                        this.error = Some(SharedString::from(error.to_string()));
+                        this.error = Some(store::human(&error));
                         cx.notify();
                     })
                     .ok();

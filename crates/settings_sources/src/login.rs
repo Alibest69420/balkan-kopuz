@@ -118,7 +118,7 @@ impl LoginForm {
                     this.update(cx, |this, cx| {
                         this.error = Some(t_with(
                             "login_failed",
-                            &[("error", error.to_string().into())],
+                            &[("error", store::human(&error).to_string().into())],
                         ));
                         cx.notify();
                     })

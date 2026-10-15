@@ -95,7 +95,7 @@ impl RadioRegistries {
                     Err(error) => {
                         this.error = Some(t_with(
                             "radio_registry_enable_failed",
-                            &[("error", error.to_string().into())],
+                            &[("error", store::human(&error).to_string().into())],
                         ));
                     }
                 }
@@ -292,7 +292,7 @@ impl AddRegistry {
                     this.update(cx, |this, cx| {
                         this.error = Some(t_with(
                             "radio_registry_import_failed",
-                            &[("error", error.to_string().into())],
+                            &[("error", store::human(&error).to_string().into())],
                         ));
                         cx.notify();
                     })
