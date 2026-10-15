@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::task::Poll;
 use std::time::Duration;
 
-use api::{ApiError, ApiEvent, ErrorCode, KopuzApi};
+use api::{ApiError, ApiEvent, KopuzApi};
 use futures::StreamExt as _;
 use gpui_kit::{App, AppContext as _, Context, Entity, EventEmitter, Global, Task};
 
@@ -89,10 +89,7 @@ impl<T> Future for Call<T> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
         Pin::new(&mut self.0).poll(cx).map(|joined| {
             joined.unwrap_or_else(|error| {
-                Err(ApiError {
-                    code: ErrorCode::Internal,
-                    message: format!("daemon call aborted: {error}"),
-                })
+                Err(ApiError::internal(format!("daemon call aborted: {error}")))
             })
         })
     }

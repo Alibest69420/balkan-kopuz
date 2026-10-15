@@ -83,11 +83,25 @@ pub fn human(error: &api::ApiError) -> gpui_kit::SharedString {
     match error.code {
         // The one failure the message cannot explain, because there is nobody to write it.
         api::ErrorCode::DaemonGone => gpui_kit::SharedString::from(i18n::t("daemon_unreachable")),
+        _ => said(error.code, &error.message, error.reason),
+    }
+}
+
+/// A failure the daemon reported inside a message, said the same way as [`human`].
+pub fn human_body(error: &api::ErrorBody) -> gpui_kit::SharedString {
+    said(error.code, &error.message, error.reason)
+}
+
+fn said(
+    code: api::ErrorCode,
+    message: &str,
+    reason: Option<api::ErrorReason>,
+) -> gpui_kit::SharedString {
+    match reason {
+        Some(reason) => gpui_kit::SharedString::from(i18n::t(reason.message_key())),
         // A code with no message is the daemon's bug, not something to translate around.
-        _ if error.message.trim().is_empty() => {
-            gpui_kit::SharedString::from(format!("{:?}", error.code))
-        }
-        _ => gpui_kit::SharedString::from(error.message.clone()),
+        None if message.trim().is_empty() => gpui_kit::SharedString::from(format!("{code:?}")),
+        None => gpui_kit::SharedString::from(message.to_string()),
     }
 }
 

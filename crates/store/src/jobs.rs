@@ -96,9 +96,7 @@ impl JobsModel {
                         kind: *kind,
                         ok: *ok,
                         automatic: *automatic,
-                        message: error
-                            .as_ref()
-                            .map(|failure| SharedString::from(failure.message.clone())),
+                        message: error.as_ref().map(crate::human_body),
                     },
                     cx,
                 );
@@ -108,7 +106,7 @@ impl JobsModel {
                 let notice = match (ok, error.as_ref()) {
                     (false, Some(failure)) => Some(Notice::new(
                         api::NoticeLevel::Error,
-                        failure.message.clone(),
+                        crate::human_body(failure).to_string(),
                     )),
                     (false, None) => Some(Notice::new(
                         api::NoticeLevel::Error,
