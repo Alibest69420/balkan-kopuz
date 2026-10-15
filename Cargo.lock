@@ -3857,8 +3857,8 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
 name = "kopuz-api"
-version = "0.21.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=a945e0616a4abd72ee6b01e304caef438e625e5f#a945e0616a4abd72ee6b01e304caef438e625e5f"
+version = "0.22.0"
+source = "git+https://github.com/Kopuz-org/kopuz?branch=master#1b084889e44ac4ac79cb578483f9683fab85df1c"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -3869,8 +3869,8 @@ dependencies = [
 
 [[package]]
 name = "kopuz-client"
-version = "0.21.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=a945e0616a4abd72ee6b01e304caef438e625e5f#a945e0616a4abd72ee6b01e304caef438e625e5f"
+version = "0.22.0"
+source = "git+https://github.com/Kopuz-org/kopuz?branch=master#1b084889e44ac4ac79cb578483f9683fab85df1c"
 dependencies = [
  "async-trait",
  "directories",
@@ -3888,8 +3888,8 @@ dependencies = [
 
 [[package]]
 name = "kopuz-config"
-version = "0.21.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=a945e0616a4abd72ee6b01e304caef438e625e5f#a945e0616a4abd72ee6b01e304caef438e625e5f"
+version = "0.22.0"
+source = "git+https://github.com/Kopuz-org/kopuz?branch=master#1b084889e44ac4ac79cb578483f9683fab85df1c"
 dependencies = [
  "directories",
  "garde",
@@ -3897,6 +3897,7 @@ dependencies = [
  "serde_json",
  "strum 0.25.0",
  "toml 0.8.23",
+ "toml_edit 0.20.7",
  "tracing",
  "uuid",
 ]
@@ -3944,8 +3945,8 @@ dependencies = [
 
 [[package]]
 name = "kopuz-i18n"
-version = "0.21.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=a945e0616a4abd72ee6b01e304caef438e625e5f#a945e0616a4abd72ee6b01e304caef438e625e5f"
+version = "0.22.0"
+source = "git+https://github.com/Kopuz-org/kopuz?branch=master#1b084889e44ac4ac79cb578483f9683fab85df1c"
 dependencies = [
  "fluent-bundle",
  "unic-langid",
@@ -3953,8 +3954,8 @@ dependencies = [
 
 [[package]]
 name = "kopuz-proto"
-version = "0.21.0"
-source = "git+https://github.com/Kopuz-org/kopuz?rev=a945e0616a4abd72ee6b01e304caef438e625e5f#a945e0616a4abd72ee6b01e304caef438e625e5f"
+version = "0.22.0"
+source = "git+https://github.com/Kopuz-org/kopuz?branch=master#1b084889e44ac4ac79cb578483f9683fab85df1c"
 dependencies = [
  "futures-util",
  "kopuz-api",
@@ -7978,6 +7979,19 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
+version = "0.20.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70f427fce4d84c72b5b732388bf4a9f4531b53f74e2887e3ecb2481f68f66d81"
+dependencies = [
+ "indexmap 2.14.2",
+ "serde",
+ "serde_spanned 0.6.9",
+ "toml_datetime 0.6.11",
+ "winnow 0.5.40",
+]
+
+[[package]]
+name = "toml_edit"
 version = "0.22.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "41fe8c660ae4257887cf66394862d21dbca4a6ddd26f04a3560410406a2f819a"
@@ -9609,6 +9623,15 @@ name = "windows_x86_64_msvc"
 version = "0.53.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6bbff5f0aada427a1e5a6da5f1f98158182f26556f345ac9e04d36d0ebed650"
+
+[[package]]
+name = "winnow"
+version = "0.5.40"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f593a95398737aeed53e489c785df13f3618e41dbcd6718c6addbf1395aa6876"
+dependencies = [
+ "memchr",
+]
 
 [[package]]
 name = "winnow"

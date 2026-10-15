@@ -244,27 +244,6 @@ fn write(path: &Path, bytes: &[u8]) -> Result<(), PictureError> {
 mod tests {
     use super::*;
 
-    /// Keys reported upstream but not landed yet; every one must still be absent from `en.ftl`.
-    const PENDING: &[&str] = &[
-        "copy_image",
-        "save_image",
-        "image_copied",
-        "image_saved",
-        "image_copy_failed",
-        "image_save_failed",
-    ];
-
-    #[test]
-    fn every_pending_key_is_still_missing() {
-        for key in PENDING {
-            assert_eq!(
-                i18n::t(key),
-                *key,
-                "{key} landed in en.ftl; drop it from PENDING"
-            );
-        }
-    }
-
     fn album(artist: &str, title: &str) -> Pictured {
         Pictured::Album {
             artist: artist.to_string().into(),
