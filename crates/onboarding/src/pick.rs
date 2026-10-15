@@ -53,5 +53,6 @@ impl FirstRun {
             .size(DialogSize::Wide)
             .on_submit(move |window, cx| form.update(cx, |form, cx| form.save(window, cx)))
             .open(self.add.clone(), window, cx);
+        self.add.update(cx, |form, cx| form.focus(window, cx));
     }
 }

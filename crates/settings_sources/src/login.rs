@@ -22,12 +22,13 @@ pub fn open(server_id: String, service: SharedString, window: &mut Window, cx: &
     form.update(cx, |form, cx| {
         form.reset(server_id, service, window, cx);
     });
-    let (title, submit) = (form.clone(), form.clone());
+    let (title, submit, held) = (form.clone(), form.clone(), form.clone());
     FormDialog::new(SharedString::default())
         .title_with(move |cx| title.read(cx).title())
         .size(DialogSize::Wide)
         .on_submit(move |window, cx| submit.update(cx, |form, cx| form.submit(window, cx)))
         .open(form, window, cx);
+    held.update(cx, |form, cx| form.focus(window, cx));
 }
 
 pub struct LoginForm {
@@ -67,10 +68,13 @@ impl LoginForm {
             .update(cx, |state, cx| state.set_value("", window, cx));
         self.error = None;
         self.loading = false;
-        // A dialog whose whole purpose is a text field should not need the mouse first.
+        cx.notify();
+    }
+
+    /// Opening a dialog focuses the dialog itself, so this runs once it is open.
+    fn focus(&self, window: &mut Window, cx: &mut Context<Self>) {
         self.username
             .update(cx, |state, cx| state.focus(window, cx));
-        cx.notify();
     }
 
     pub fn title(&self) -> SharedString {

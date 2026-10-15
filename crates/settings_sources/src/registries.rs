@@ -118,6 +118,7 @@ impl RadioRegistries {
             .size(DialogSize::Wide)
             .on_submit(move |window, cx| form.update(cx, |form, cx| form.save(window, cx)))
             .open(self.add.clone(), window, cx);
+        self.add.update(cx, |form, cx| form.focus(window, cx));
     }
 
     fn entry(&self, entry: &RegistryEntry, locked: bool, cx: &mut Context<Self>) -> CheckRow {
@@ -222,9 +223,12 @@ impl AddRegistry {
             .update(cx, |state, cx| state.set_value("", window, cx));
         self.error = None;
         self.saving = false;
-        // The caret belongs in the one field this dialog is for.
-        self.url.update(cx, |state, cx| state.focus(window, cx));
         cx.notify();
+    }
+
+    /// Opening a dialog focuses the dialog itself, so this runs after it is open.
+    fn focus(&self, window: &mut Window, cx: &mut Context<Self>) {
+        self.url.update(cx, |state, cx| state.focus(window, cx));
     }
 
     /// Closes the dialog itself on success and keeps it open with the reason otherwise.

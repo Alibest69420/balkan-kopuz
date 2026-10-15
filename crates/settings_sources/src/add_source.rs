@@ -97,9 +97,12 @@ impl AddSource {
         self.form = None;
         self._form_subscription = None;
         self.ensure_service(window, cx);
-        // The name is the first thing asked for, so put the caret in it.
-        self.name.update(cx, |state, cx| state.focus(window, cx));
         cx.notify();
+    }
+
+    /// The name is asked first; opening a dialog focuses the dialog, so this runs once it is open.
+    pub fn focus(&self, window: &mut Window, cx: &mut Context<Self>) {
+        self.name.update(cx, |state, cx| state.focus(window, cx));
     }
 
     fn offered(&self, cx: &App) -> Vec<ServiceInfo> {
