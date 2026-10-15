@@ -416,6 +416,7 @@ pub struct FieldFrame {
     help: Option<SharedString>,
     problem: Option<SharedString>,
     locked: bool,
+    lock_cause: Option<SharedString>,
     note: bool,
     control: Vec<AnyElement>,
 }
@@ -428,6 +429,7 @@ impl FieldFrame {
             help: None,
             problem: None,
             locked: false,
+            lock_cause: None,
             note: false,
             control: Vec::new(),
         }
@@ -446,6 +448,12 @@ impl FieldFrame {
     /// A managed setting: tagged, and its control is already disabled by the owner.
     pub fn locked(mut self, locked: bool) -> Self {
         self.locked = locked;
+        self
+    }
+
+    /// What pins the field, cited in place of the generic tag.
+    pub fn lock_cause(mut self, cause: Option<SharedString>) -> Self {
+        self.lock_cause = cause;
         self
     }
 
@@ -506,11 +514,15 @@ impl RenderOnce for FieldFrame {
                                     .child(self.label),
                             )
                             .when(self.locked, |row| {
+                                let cause = self
+                                    .lock_cause
+                                    .clone()
+                                    .unwrap_or_else(|| t("setting_managed_by_system"));
                                 row.child(
                                     div()
                                         .text_size(style::text_10())
                                         .text_color(style::white(style::TEXT_SUBTLE, cx))
-                                        .child(t("setting_managed_by_system")),
+                                        .child(cause),
                                 )
                             }),
                     )

@@ -286,9 +286,15 @@ impl SchemaForm {
         let locked = self.is_locked(spec);
         let value = self.values.get(&spec.key).cloned().unwrap_or_default();
         let control = self.control(spec, &value, locked, cx);
+        let cause = spec
+            .config_key
+            .as_deref()
+            .filter(|_| locked)
+            .and_then(|key| crate::settings::lock_cause(key, cx));
         FieldFrame::new(spec.key.clone(), text(&spec.label))
             .help(spec.help.as_ref().map(text))
             .locked(locked)
+            .lock_cause(cause)
             .note(control.is_none())
             .problem(self.problem_for(&spec.key))
             .children(control)

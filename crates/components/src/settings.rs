@@ -523,6 +523,12 @@ struct Binding(fn(&str, &App) -> (Option<SharedString>, bool));
 
 impl Global for Binding {}
 
+/// The layer pinning `key`, cited the way a settings row cites it.
+pub(crate) fn lock_cause(key: &str, cx: &App) -> Option<SharedString> {
+    cx.try_global::<Binding>()
+        .and_then(|binding| (binding.0)(key, cx).0)
+}
+
 /// Install how a row learns the state of its key; `commands::init` is the only caller.
 pub fn register_binding(resolve: fn(&str, &App) -> (Option<SharedString>, bool), cx: &mut App) {
     cx.set_global(Binding(resolve));
