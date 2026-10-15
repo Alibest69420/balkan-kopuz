@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use api::{ApiEvent, FrontendPref, PrefEntry};
+use config::{AlbumSortField, AlbumViewMode, ArtistSortField, SortCriterion, SortDirection};
 use futures::channel::oneshot;
 use gpui_kit::{App, Context, Entity, Subscription, Task};
 use link::Link;
@@ -405,6 +406,129 @@ impl Library {
     }
 }
 
+/// The ids the albums grid offers, as the daemon's album order.
+pub fn album_sort_field(id: &str) -> Option<AlbumSortField> {
+    Some(match id {
+        "title" => AlbumSortField::Title,
+        "artist" => AlbumSortField::Artist,
+        "year" => AlbumSortField::Year,
+        "genre" => AlbumSortField::Genre,
+        "added" => AlbumSortField::RecentlyAdded,
+        "tracks" => AlbumSortField::TrackCount,
+        _ => return None,
+    })
+}
+
+fn album_sort_id(field: AlbumSortField) -> &'static str {
+    match field {
+        AlbumSortField::Title => "title",
+        AlbumSortField::Artist => "artist",
+        AlbumSortField::Year => "year",
+        AlbumSortField::Genre => "genre",
+        AlbumSortField::RecentlyAdded => "added",
+        AlbumSortField::TrackCount => "tracks",
+    }
+}
+
+/// The ids the artists grid offers, as the daemon's artist order.
+pub fn artist_sort_field(id: &str) -> Option<ArtistSortField> {
+    Some(match id {
+        "title" => ArtistSortField::Name,
+        "tracks" => ArtistSortField::Tracks,
+        "albums" => ArtistSortField::Albums,
+        _ => return None,
+    })
+}
+
+fn artist_sort_id(field: ArtistSortField) -> &'static str {
+    match field {
+        ArtistSortField::Name => "title",
+        ArtistSortField::Tracks => "tracks",
+        ArtistSortField::Albums => "albums",
+    }
+}
+
+fn shared_mode(mode: AlbumViewMode) -> ViewMode {
+    match mode {
+        AlbumViewMode::Grid => ViewMode::Grid,
+        AlbumViewMode::List => ViewMode::Table,
+    }
+}
+
+fn shared_view(mode: ViewMode) -> AlbumViewMode {
+    match mode {
+        ViewMode::Grid => AlbumViewMode::Grid,
+        ViewMode::Table => AlbumViewMode::List,
+    }
+}
+
+fn shared_sort<F: Copy>(criteria: &[SortCriterion<F>], id: fn(F) -> &'static str) -> Option<Sort> {
+    criteria.first().map(|criterion| Sort {
+        field: id(criterion.field).into(),
+        descending: criterion.direction == SortDirection::Desc,
+    })
+}
+
+fn shared_criteria<F>(sort: &Sort, field: fn(&str) -> Option<F>) -> Option<Vec<SortCriterion<F>>> {
+    let direction = match sort.descending {
+        true => SortDirection::Desc,
+        false => SortDirection::Asc,
+    };
+    field(&sort.field).map(|field| vec![SortCriterion::new(field, direction)])
+}
+
+impl Layout {
+    /// How a library facet was left; albums and artists keep their order and view in the prefs every frontend shares.
+    pub fn library_facet(&self, name: &str) -> Facet {
+        let mut facet = self.library.facet(name);
+        let (mode, sort) = match name {
+            "albums" => (
+                self.ui.album_view_mode,
+                shared_sort(&self.ui.album_sort, album_sort_id),
+            ),
+            "artists" => (
+                self.ui.artists_view_mode,
+                shared_sort(&self.ui.artist_sort, artist_sort_id),
+            ),
+            _ => return facet,
+        };
+        facet.mode = shared_mode(mode);
+        if let Some(sort) = sort {
+            facet.sort = sort;
+        }
+        facet
+    }
+
+    /// Edit a library facet, writing a changed order or view back to the shared prefs it was read from.
+    pub fn edit_library_facet(&mut self, name: &str, edit: impl FnOnce(&mut Facet)) {
+        let before = self.library_facet(name);
+        let mut facet = before.clone();
+        edit(&mut facet);
+        let (mode_changed, sort_changed) = (facet.mode != before.mode, facet.sort != before.sort);
+        match name {
+            "albums" => {
+                if mode_changed {
+                    self.ui.album_view_mode = shared_view(facet.mode);
+                }
+                if sort_changed && let Some(sort) = shared_criteria(&facet.sort, album_sort_field) {
+                    self.ui.album_sort = sort;
+                }
+            }
+            "artists" => {
+                if mode_changed {
+                    self.ui.artists_view_mode = shared_view(facet.mode);
+                }
+                if sort_changed && let Some(sort) = shared_criteria(&facet.sort, artist_sort_field)
+                {
+                    self.ui.artist_sort = sort;
+                }
+            }
+            _ => {}
+        }
+        self.library.0.insert(name.to_string(), facet);
+    }
+}
+
 /// Which home shelves are drawn, and in what order.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -617,6 +741,10 @@ impl Section {
             Section::Library => {
                 layout.library = fresh.library;
                 layout.library_view = fresh.library_view;
+                layout.ui.album_view_mode = fresh.ui.album_view_mode;
+                layout.ui.album_sort = fresh.ui.album_sort;
+                layout.ui.artists_view_mode = fresh.ui.artists_view_mode;
+                layout.ui.artist_sort = fresh.ui.artist_sort;
             }
             Section::Home => layout.home = fresh.home,
             Section::Interface => {
@@ -1124,6 +1252,48 @@ mod tests {
             vec![config::SortCriterion::new(
                 config::AlbumSortField::Year,
                 config::SortDirection::Desc
+            )]
+        );
+    }
+
+    #[test]
+    fn the_albums_facet_reads_and_writes_the_seeded_prefs() {
+        let stored = Fields::from([
+            ("album_view_mode".to_string(), r#""List""#.to_string()),
+            (
+                "album_sort".to_string(),
+                r#"[{"field":"Year","direction":"Desc"},{"field":"Title","direction":"Asc"}]"#
+                    .to_string(),
+            ),
+            (
+                "artist_sort".to_string(),
+                r#"[{"field":"Albums","direction":"Desc"}]"#.to_string(),
+            ),
+        ]);
+        let mut layout = overlay(&Layout::default(), &stored);
+        let albums = layout.library_facet("albums");
+        assert_eq!(albums.mode, ViewMode::Table);
+        assert_eq!(albums.sort.field, "year");
+        assert!(albums.sort.descending);
+        assert_eq!(layout.library_facet("artists").sort.field, "albums");
+
+        let stack = layout.ui.album_sort.clone();
+        layout.edit_library_facet("albums", |facet| facet.tile = TileSize::Large);
+        assert_eq!(layout.ui.album_sort, stack);
+
+        layout.edit_library_facet("albums", |facet| {
+            facet.mode = ViewMode::Grid;
+            facet.sort = Sort {
+                field: "artist".into(),
+                descending: false,
+            };
+        });
+        assert_eq!(layout.ui.album_view_mode, AlbumViewMode::Grid);
+        assert_eq!(
+            layout.ui.album_sort,
+            vec![SortCriterion::new(
+                AlbumSortField::Artist,
+                SortDirection::Asc
             )]
         );
     }

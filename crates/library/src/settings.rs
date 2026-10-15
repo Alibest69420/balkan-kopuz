@@ -34,8 +34,8 @@ impl LibrarySettings {
 
 impl Render for LibrarySettings {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let tracks = store::layout(cx).library.facet(Facet::Tracks.name());
-        let albums = store::layout(cx).library.facet(Facet::Albums.name());
+        let tracks = store::layout(cx).library_facet(Facet::Tracks.name());
+        let albums = store::layout(cx).library_facet(Facet::Albums.name());
         v_flex().w_full().child(
             section(t("interface_library"))
                 .children(
@@ -97,7 +97,5 @@ impl Render for LibrarySettings {
 
 fn write(facet: Facet, cx: &mut App, edit: impl FnOnce(&mut store::layout::Facet)) {
     let name = facet.name().to_string();
-    LayoutModel::edit(cx, move |layout| {
-        edit(layout.library.0.entry(name).or_default())
-    });
+    LayoutModel::edit(cx, move |layout| layout.edit_library_facet(&name, edit));
 }

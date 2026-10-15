@@ -1,7 +1,8 @@
 //! What the library is showing, in a form that fits in the route: the facet and every active chip.
 
 use api::{AlbumQuery, ArtistQuery, TrackFilter, TrackSort};
-use config::{AlbumSortField, ArtistSortField, SortCriterion, SortDirection, TrackSortField};
+use config::{SortCriterion, SortDirection, TrackSortField};
+pub use store::layout::{album_sort_field, artist_sort_field};
 
 use crate::facet::Facet;
 
@@ -277,29 +278,6 @@ impl Sort {
     }
 }
 
-/// The ids the albums grid offers, as the daemon's album order.
-pub fn album_sort_field(id: &str) -> Option<AlbumSortField> {
-    Some(match id {
-        "title" => AlbumSortField::Title,
-        "artist" => AlbumSortField::Artist,
-        "year" => AlbumSortField::Year,
-        "genre" => AlbumSortField::Genre,
-        "added" => AlbumSortField::RecentlyAdded,
-        "tracks" => AlbumSortField::TrackCount,
-        _ => return None,
-    })
-}
-
-/// The ids the artists grid offers, as the daemon's artist order.
-pub fn artist_sort_field(id: &str) -> Option<ArtistSortField> {
-    Some(match id {
-        "title" => ArtistSortField::Name,
-        "tracks" => ArtistSortField::Tracks,
-        "albums" => ArtistSortField::Albums,
-        _ => return None,
-    })
-}
-
 /// The column ids the daemon can order a track listing by.
 pub fn track_sort_field(id: &str) -> Option<TrackSortField> {
     Some(match id {
@@ -374,6 +352,7 @@ fn unescape(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use config::{AlbumSortField, ArtistSortField};
 
     #[test]
     fn a_filter_set_survives_the_route() {
