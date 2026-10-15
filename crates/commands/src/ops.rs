@@ -116,7 +116,7 @@ pub fn with_album_keys(
             cx.update(|cx| then(keys, cx));
         }
         Err(error) => {
-            cx.update(|cx| Notices::error(store::human(&error), cx));
+            cx.update(|cx| Notices::failed(&error, cx));
         }
     })
     .detach();
@@ -135,7 +135,7 @@ pub fn with_artist_keys(
             cx.update(|cx| then(keys, cx));
         }
         Err(error) => {
-            cx.update(|cx| Notices::error(store::human(&error), cx));
+            cx.update(|cx| Notices::failed(&error, cx));
         }
     })
     .detach();
@@ -151,7 +151,7 @@ fn with_track(key: String, cx: &mut App, then: impl FnOnce(TrackInfo, &mut App) 
             }
         }
         Err(error) => {
-            cx.update(|cx| Notices::error(store::human(&error), cx));
+            cx.update(|cx| Notices::failed(&error, cx));
         }
     })
     .detach();

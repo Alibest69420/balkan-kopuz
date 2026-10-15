@@ -191,8 +191,7 @@ impl Sources {
                         .ok();
                 }
                 Err(error) => {
-                    cx.update(|_, cx| Notices::error(store::human(&error), cx))
-                        .ok();
+                    cx.update(|_, cx| Notices::failed(&error, cx)).ok();
                 }
             }
         })
@@ -243,7 +242,7 @@ impl Sources {
                 });
             }
             Err(error) => {
-                cx.update(|cx| Notices::error(store::human(&error), cx));
+                cx.update(|cx| Notices::failed(&error, cx));
             }
         })
         .detach();

@@ -327,7 +327,7 @@ impl DownloadsModel {
         let call = Link::global(cx).call(move |api| async move { api.download(keys).await });
         cx.spawn(async move |_, cx| {
             if let Err(error) = call.await {
-                cx.update(|cx| Notices::error(crate::human(&error), cx));
+                cx.update(|cx| Notices::failed(&error, cx));
             }
         })
         .detach();
@@ -339,7 +339,7 @@ impl DownloadsModel {
         let call = Link::global(cx).call(move |api| async move { api.remove_download(key).await });
         cx.spawn(async move |this, cx| {
             if let Err(error) = call.await {
-                cx.update(|cx| Notices::error(crate::human(&error), cx));
+                cx.update(|cx| Notices::failed(&error, cx));
             }
             this.update(cx, |this, cx| this.refetch(cx)).ok();
         })

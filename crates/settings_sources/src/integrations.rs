@@ -14,7 +14,7 @@ use gpui_kit::{
     Styled, Subscription, Window,
 };
 use link::Link;
-use store::{ConfigModel, Notices, Query};
+use store::{ConfigModel, Notice, Notices, Query};
 
 use crate::ui;
 
@@ -118,13 +118,11 @@ impl Integrations {
             }
             Err(error) => {
                 cx.update(|cx| {
-                    Notices::error(
-                        t_with(
-                            "signin_failed",
-                            &[("error", store::human(&error).to_string().into())],
-                        ),
-                        cx,
+                    let reason = t_with(
+                        "signin_failed",
+                        &[("error", store::human(&error).to_string().into())],
                     );
+                    Notices::push(Notice::failure(&error, reason), cx);
                 });
             }
         })

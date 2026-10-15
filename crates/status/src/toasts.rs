@@ -11,7 +11,7 @@ use gpui_kit::component::{Sizable as _, WindowExt as _};
 use gpui_kit::{
     App, Context, ElementId, IntoElement, Render, SharedString, Subscription, Task, Window, div,
 };
-use store::{BatchFinished, DownloadsModel, Notice, Notices, Undo};
+use store::{BatchFinished, DownloadsModel, Notice, Notices, Retracted, Undo};
 
 /// How long an undo stays offered.
 const UNDO: Duration = Duration::from_secs(6);
@@ -32,6 +32,11 @@ impl Toasts {
         let subscriptions = vec![
             cx.subscribe_in(&notices, window, |this, _, notice: &Notice, window, cx| {
                 this.show(notice, window, cx);
+            }),
+            cx.subscribe_in(&notices, window, |_, _, gone: &Retracted, window, cx| {
+                for id in &gone.0 {
+                    window.remove_notification1::<Toast>(ElementId::from(id.clone()), cx);
+                }
             }),
             cx.subscribe_in(
                 &downloads,

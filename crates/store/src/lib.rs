@@ -41,7 +41,7 @@ pub use jobs::{Finished, JobEvent, JobsModel, kind_key, kind_label};
 pub use layout::{Layout, LayoutModel};
 pub use link::{Link, api};
 pub use nav::{Navigator, Route};
-pub use notices::{Notice, Notices, Record, Undo};
+pub use notices::{DAEMON_GONE, Notice, Notices, Record, Retracted, Undo};
 pub use opener::{
     BATCH_METADATA, FOLDER_PICKER, Opener, RENAME, Rename, SHORTCUTS, TRACK_METADATA, URL_DOWNLOAD,
 };

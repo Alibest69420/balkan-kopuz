@@ -70,7 +70,7 @@ impl PlaylistsModel {
             .call(move |api| async move { api.add_playlist_tracks(id, keys).await });
         cx.spawn(async move |_, cx| {
             if let Err(error) = call.await {
-                cx.update(|cx| Notices::error(crate::human(&error), cx));
+                cx.update(|cx| Notices::failed(&error, cx));
             }
         })
         .detach();
@@ -81,7 +81,7 @@ impl PlaylistsModel {
             Link::global(cx).call(move |api| async move { api.create_playlist(name, keys).await });
         cx.spawn(async move |_, cx| {
             if let Err(error) = call.await {
-                cx.update(|cx| Notices::error(crate::human(&error), cx));
+                cx.update(|cx| Notices::failed(&error, cx));
             }
         })
         .detach();

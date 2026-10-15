@@ -18,7 +18,7 @@ use gpui_kit::{
     ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _, Styled,
     Subscription, Task, Window, div, px,
 };
-use store::{Link, Notices};
+use store::{Link, Notice, Notices};
 
 // Measured geometry: the `w-24 h-24` cover, its `rounded-lg`, the `max-h-[60vh]` body.
 const COVER_SIZE: Pixels = px(96.);
@@ -95,7 +95,7 @@ impl MetadataDialog {
                     Some(track) => this.adopt(track, window, cx),
                     None => tracing::warn!(key = %this.key, "the track has no row to show"),
                 },
-                Err(error) => Notices::error(store::human(&error), cx),
+                Err(error) => Notices::failed(&error, cx),
             })
             .ok();
         });
@@ -232,8 +232,8 @@ impl MetadataDialog {
                         Ok(bytes) => ArtworkChange::Set(bytes),
                         // Reading the picked file, not a daemon call: its own message is the one to show.
                         Err(error) => {
-                            this.update(cx, |this, cx| this.failed(error.to_string(), cx))
-                                .ok();
+                            let notice = Notice::new(api::NoticeLevel::Error, error.to_string());
+                            this.update(cx, |this, cx| this.held_open(notice, cx)).ok();
                             return;
                         }
                     }
@@ -255,19 +255,22 @@ impl MetadataDialog {
                         this.adopt(track, window, cx);
                     }
                     // Closing the editor here threw away every edit the daemon had just refused.
-                    Err(error) => this.failed(store::human(&error), cx),
+                    Err(error) => this.failed(&error, cx),
                 }
             })
             .ok();
         }));
     }
 
-    /// Keep the editor open holding what was typed, and say why it is still open.
-    fn failed(&mut self, reason: impl Into<SharedString>, cx: &mut Context<Self>) {
-        let reason = reason.into();
+    /// The daemon refused the save: keep what was typed, and say why the editor is still open.
+    fn failed(&mut self, error: &api::ApiError, cx: &mut Context<Self>) {
+        self.held_open(Notice::failure(error, store::human(error)), cx);
+    }
+
+    fn held_open(&mut self, notice: Notice, cx: &mut Context<Self>) {
         self.saving = false;
-        self.failure = Some(reason.clone());
-        Notices::error(reason, cx);
+        self.failure = Some(notice.message.clone());
+        Notices::push(notice, cx);
         cx.notify();
     }
 

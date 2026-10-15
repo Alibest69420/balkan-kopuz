@@ -134,7 +134,7 @@ impl SourcesModel {
                     ConfigModel::global(cx).update(cx, |config, cx| config.reload(cx));
                     crate::signin::start_sign_in(&source, window, cx);
                 }
-                Err(error) => Notices::error(crate::human(&error), cx),
+                Err(error) => Notices::failed(&error, cx),
             })
             .ok();
         })

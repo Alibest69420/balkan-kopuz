@@ -35,6 +35,13 @@ impl std::fmt::Debug for Undo {
     }
 }
 
+/// The kind of a notice saying the daemon could not be reached; retracted once it answers again.
+pub const DAEMON_GONE: &str = "daemon_gone";
+
+/// Notices taken back because what they said stopped being true; the chrome takes their toasts down.
+#[derive(Debug, Clone)]
+pub struct Retracted(pub Vec<SharedString>);
+
 /// A transient message for the user; the chrome turns each into a toast and a centre entry.
 #[derive(Debug, Clone)]
 pub struct Notice {
@@ -52,6 +59,15 @@ impl Notice {
             message: message.into(),
             kind: None,
             undo: None,
+        }
+    }
+
+    /// An error saying `message` about a failed call, kinded so an outage's notices can be retracted.
+    pub fn failure(error: &api::ApiError, message: impl Into<SharedString>) -> Self {
+        let notice = Self::new(NoticeLevel::Error, message);
+        match error.code {
+            api::ErrorCode::DaemonGone => notice.kind(DAEMON_GONE),
+            _ => notice,
         }
     }
 
@@ -79,6 +95,7 @@ pub struct Record {
     pub id: SharedString,
     pub level: NoticeLevel,
     pub message: SharedString,
+    pub kind: Option<SharedString>,
     /// How many times this exact message has arrived.
     pub repeats: usize,
 }
@@ -87,10 +104,12 @@ pub struct Record {
 pub struct Notices {
     history: Vec<Record>,
     unseen: usize,
-    _subscription: Subscription,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl EventEmitter<Notice> for Notices {}
+
+impl EventEmitter<Retracted> for Notices {}
 
 impl Notices {
     pub fn global(cx: &App) -> Entity<Self> {
@@ -99,6 +118,11 @@ impl Notices {
 
     pub(crate) fn new(cx: &mut Context<Self>) -> Self {
         let connection = Link::connection(cx);
+        let attached = cx.observe(&connection, |this, connection, cx| {
+            if connection.read(cx).is_connected() {
+                this.retract(DAEMON_GONE, cx);
+            }
+        });
         let subscription = cx.subscribe(&connection, |this, _, event: &ApiEvent, cx| {
             if let ApiEvent::Notice {
                 level,
@@ -113,8 +137,24 @@ impl Notices {
         Self {
             history: Vec::new(),
             unseen: 0,
-            _subscription: subscription,
+            _subscriptions: vec![attached, subscription],
         }
+    }
+
+    /// Take back every notice of `kind`: out of the centre, and its toast off the screen.
+    pub fn retract(&mut self, kind: &str, cx: &mut Context<Self>) {
+        let (gone, kept): (Vec<Record>, Vec<Record>) = std::mem::take(&mut self.history)
+            .into_iter()
+            .partition(|record| record.kind.as_deref() == Some(kind));
+        self.history = kept;
+        if gone.is_empty() {
+            return;
+        }
+        self.unseen = self.unseen.min(self.history.len());
+        crate::notify(cx);
+        cx.emit(Retracted(
+            gone.into_iter().map(|record| record.id).collect(),
+        ));
     }
 
     pub fn history(&self) -> &[Record] {
@@ -167,6 +207,7 @@ impl Notices {
                 id,
                 level: notice.level,
                 message: notice.message.clone(),
+                kind: notice.kind.clone(),
                 repeats,
             },
         );
@@ -181,6 +222,11 @@ impl Notices {
 
     pub fn error(message: impl Into<SharedString>, cx: &mut App) {
         Self::push(Notice::new(NoticeLevel::Error, message), cx);
+    }
+
+    /// Say why a daemon call failed, the way [`crate::human`] words it.
+    pub fn failed(error: &api::ApiError, cx: &mut App) {
+        Self::push(Notice::failure(error, crate::human(error)), cx);
     }
 
     /// An action that can be taken back for a few seconds, rather than confirmed beforehand.
@@ -210,5 +256,16 @@ mod tests {
         let other = Notice::new(NoticeLevel::Error, "something else");
         assert_eq!(one.id(), two.id());
         assert_ne!(one.id(), other.id());
+    }
+
+    #[test]
+    fn only_an_unreachable_daemon_is_kinded_for_retraction() {
+        let gone = api::ApiError::new(api::ErrorCode::DaemonGone, "socket closed");
+        let refused = api::ApiError::invalid_input("no");
+        assert_eq!(
+            Notice::failure(&gone, "x").kind.as_deref(),
+            Some(DAEMON_GONE)
+        );
+        assert_eq!(Notice::failure(&refused, "x").kind, None);
     }
 }

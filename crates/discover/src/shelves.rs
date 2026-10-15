@@ -13,7 +13,7 @@ use gpui_kit::{
     AnyElement, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Pixels, Render,
     ScrollHandle, SharedString, Styled, Subscription, Task, Window, px,
 };
-use store::{Link, Navigator, Notices, PlayerModel, Route, SourcesModel, Target, actions};
+use store::{Link, Navigator, Notice, Notices, PlayerModel, Route, SourcesModel, Target, actions};
 
 use crate::states::catalog_failure;
 
@@ -133,7 +133,7 @@ impl Shelves {
                     Err(error) => {
                         this.update(cx, |this, cx| {
                             if started {
-                                Notices::error(catalog_failure(&error), cx);
+                                Notices::push(Notice::failure(&error, catalog_failure(&error)), cx);
                             } else {
                                 this.now_playing = None;
                             }

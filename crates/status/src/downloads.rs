@@ -84,8 +84,7 @@ impl DownloadsList {
             }
             Err(error) => {
                 tracing::warn!(%error, "clearing the download history failed");
-                this.update(cx, |_, cx| Notices::error(store::human(&error), cx))
-                    .ok();
+                this.update(cx, |_, cx| Notices::failed(&error, cx)).ok();
             }
         })
         .detach();

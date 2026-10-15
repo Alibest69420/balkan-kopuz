@@ -178,7 +178,7 @@ pub(crate) fn dont_recommend(key: String, cx: &mut App) {
         store::Link::global(cx).call(move |api| async move { api.dont_recommend(key).await });
     cx.spawn(async move |cx| {
         if let Err(error) = call.await {
-            cx.update(|cx| store::Notices::error(store::human(&error), cx));
+            cx.update(|cx| store::Notices::failed(&error, cx));
         }
         cx.update(|cx| store::PlayerModel::global(cx).update(cx, |player, cx| player.next(cx)));
     })

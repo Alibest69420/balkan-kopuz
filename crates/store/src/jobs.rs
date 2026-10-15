@@ -229,7 +229,7 @@ impl JobsModel {
                 ..
             }) => {}
             Err(error) => {
-                cx.update(|cx| Notices::error(crate::human(&error), cx));
+                cx.update(|cx| Notices::failed(&error, cx));
             }
         })
         .detach();
@@ -253,7 +253,7 @@ impl JobsModel {
                     crate::notify(cx);
                 })
                 .ok();
-                cx.update(|cx| Notices::error(crate::human(&error), cx));
+                cx.update(|cx| Notices::failed(&error, cx));
             }
         })
         .detach();

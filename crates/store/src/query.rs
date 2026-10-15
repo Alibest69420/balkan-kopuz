@@ -125,7 +125,7 @@ impl<T: Send + 'static> Query<T> {
                             && attached
                             && let Some(error) = this.error.as_ref()
                         {
-                            crate::Notices::error(crate::human(error), cx);
+                            crate::Notices::failed(error, cx);
                         }
                     }
                 }

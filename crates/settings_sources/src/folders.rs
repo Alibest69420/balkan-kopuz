@@ -28,7 +28,7 @@ pub fn write(id: String, directories: Vec<String>, cx: &mut App) {
             });
         }
         Err(error) => {
-            cx.update(|cx| Notices::error(store::human(&error), cx));
+            cx.update(|cx| Notices::failed(&error, cx));
         }
     })
     .detach();

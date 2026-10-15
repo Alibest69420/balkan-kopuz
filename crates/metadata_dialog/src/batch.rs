@@ -11,7 +11,7 @@ use gpui_kit::{
     App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
     Styled, Task, Window, div,
 };
-use store::{Link, Notices};
+use store::{Link, Notice, Notices};
 
 pub(crate) fn open(keys: Vec<String>, window: &mut Window, cx: &mut App) {
     if keys.is_empty() {
@@ -85,7 +85,7 @@ impl BatchDialog {
                     return;
                 };
                 if let Err(error) = call.await {
-                    failure = Some(store::human(&error));
+                    failure = Some(error);
                     break;
                 }
             }
@@ -93,9 +93,10 @@ impl BatchDialog {
                 this.saving = false;
                 match failure {
                     // A write that failed partway leaves the rest untouched, so the box stays open.
-                    Some(reason) => {
+                    Some(error) => {
+                        let reason = store::human(&error);
                         this.failure = Some(reason.clone());
-                        Notices::error(reason, cx);
+                        Notices::push(Notice::failure(&error, reason), cx);
                         cx.notify();
                     }
                     None => window.close_dialog(cx),

@@ -174,7 +174,7 @@ impl Radio {
                     } else {
                         this.pinned.remove(&id);
                     }
-                    Notices::error(store::human(&error), cx);
+                    Notices::failed(&error, cx);
                     this.relist(cx);
                 }
             })

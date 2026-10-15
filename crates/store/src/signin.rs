@@ -79,7 +79,7 @@ pub fn browser(id: String, cx: &mut App) {
                     SourcesModel::global(cx).update(cx, |sources, cx| sources.refetch(cx));
                     Notices::info(i18n::t("signed_in"), cx);
                 }
-                Err(error) => Notices::error(crate::human(&error), cx),
+                Err(error) => Notices::failed(&error, cx),
             }
         });
     })

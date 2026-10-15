@@ -218,7 +218,7 @@ impl QueueModel {
             let Err(error) = call.await else { return };
             this.update(cx, |this, cx| this.roll_back(generation, before, cx))
                 .ok();
-            cx.update(|cx| crate::Notices::error(crate::human(&error), cx));
+            cx.update(|cx| crate::Notices::failed(&error, cx));
         })
         .detach();
     }

@@ -280,7 +280,7 @@ impl PlayerModel {
                 crate::notify(cx);
             })
             .ok();
-            cx.update(|cx| crate::Notices::error(crate::human(&error), cx));
+            cx.update(|cx| crate::Notices::failed(&error, cx));
         })
         .detach();
     }

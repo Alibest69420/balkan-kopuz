@@ -20,7 +20,7 @@ where
     let call = Link::global(cx).call(f);
     cx.spawn(async move |cx| {
         if let Err(error) = call.await {
-            cx.update(|cx| Notices::error(crate::human(&error), cx));
+            cx.update(|cx| Notices::failed(&error, cx));
         }
     })
     .detach();
@@ -132,7 +132,7 @@ pub fn share_track(key: String, cx: &mut App) {
                 Notices::info(i18n::t("share_copied"), cx);
             }
             Ok(None) => Notices::error(i18n::t("share_no_page"), cx),
-            Err(error) => Notices::error(crate::human(&error), cx),
+            Err(error) => Notices::failed(&error, cx),
         });
     })
     .detach();

@@ -56,7 +56,7 @@ pub fn share_album(browse_id: Option<String>, first_key: Option<String>, cx: &mu
                 Notices::info("Link copied", cx);
             }
             Ok(None) => Notices::error("No public page for this album", cx),
-            Err(error) => Notices::error(store::human(&error), cx),
+            Err(error) => Notices::failed(&error, cx),
         });
     })
     .detach();

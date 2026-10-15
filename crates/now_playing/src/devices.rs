@@ -102,7 +102,7 @@ impl NowPlaying {
             .call(move |api| async move { api.select_external_device(source, device_id).await });
         cx.spawn(async move |this, cx| {
             if let Err(error) = call.await {
-                cx.update(|cx| Notices::error(store::human(&error), cx));
+                cx.update(|cx| Notices::failed(&error, cx));
             }
             this.update(cx, |this, cx| this.refresh_devices(cx)).ok();
         })

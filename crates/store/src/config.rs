@@ -176,7 +176,7 @@ impl ConfigModel {
                     Ok(report) => this.answer(&edits, report, cx),
                     // The control is showing an edit the daemon never took; put the truth back.
                     Err(error) => {
-                        Notices::error(crate::human(&error), cx);
+                        Notices::failed(&error, cx);
                         this.reload(cx);
                     }
                 }
