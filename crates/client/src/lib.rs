@@ -1397,4 +1397,33 @@ impl api::SourceApi for GrpcApi {
             .map_err(wire_error)?;
         Ok(convert::integration_info_from_proto(info.get_ref()))
     }
+
+    async fn browser_profiles(&self) -> Result<Vec<api::BrowserProfile>, ApiError> {
+        let list = self
+            .client()
+            .get_browser_profiles(Request::new(proto::GetBrowserProfilesRequest {}))
+            .await
+            .map_err(wire_error)?;
+        Ok(list
+            .get_ref()
+            .profiles
+            .iter()
+            .map(convert::browser_profile_from_proto)
+            .collect())
+    }
+
+    async fn connect_integration_from_browser(
+        &self,
+        id: String,
+        profile: String,
+    ) -> Result<api::IntegrationInfo, ApiError> {
+        let info = self
+            .client()
+            .connect_integration_from_browser(Request::new(
+                proto::ConnectIntegrationFromBrowserRequest { id, profile },
+            ))
+            .await
+            .map_err(wire_error)?;
+        Ok(convert::integration_info_from_proto(info.get_ref()))
+    }
 }

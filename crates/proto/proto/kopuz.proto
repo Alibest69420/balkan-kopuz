@@ -126,6 +126,8 @@ service Kopuz {
   rpc SetIntegrationSettings(SetIntegrationSettingsRequest) returns (IntegrationInfo);
   rpc ClearIntegration(IntegrationId) returns (Unit);
   rpc AuthenticateIntegration(IntegrationId) returns (IntegrationInfo);
+  rpc GetBrowserProfiles(GetBrowserProfilesRequest) returns (BrowserProfileList);
+  rpc ConnectIntegrationFromBrowser(ConnectIntegrationFromBrowserRequest) returns (IntegrationInfo);
 
   rpc GetArtwork(ArtworkRequest) returns (stream ArtworkChunk);
 }
@@ -889,6 +891,8 @@ enum ConnectKind {
   // Nothing to press: filling the fields in is the whole of it.
   CONNECT_KIND_NONE = 1;
   CONNECT_KIND_WEB_SIGN_IN = 2;
+  // Pick a browser profile already signed in to the service.
+  CONNECT_KIND_BROWSER_PROFILE = 3;
 }
 
 message GetIntegrationsRequest {}
@@ -915,6 +919,24 @@ message IntegrationId {
 message SetIntegrationSettingsRequest {
   string id = 1;
   repeated FieldValue values = 2;
+}
+
+message GetBrowserProfilesRequest {}
+
+// A browser profile on the daemon's machine. The id is opaque.
+message BrowserProfile {
+  string id = 1;
+  string browser = 2;
+  string name = 3;
+}
+
+message BrowserProfileList {
+  repeated BrowserProfile profiles = 1;
+}
+
+message ConnectIntegrationFromBrowserRequest {
+  string id = 1;
+  string profile = 2;
 }
 
 // ---------------- mutations ----------------

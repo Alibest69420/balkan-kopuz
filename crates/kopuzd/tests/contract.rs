@@ -2296,6 +2296,49 @@ async fn integrations_agree_across_transports_and_carry_no_secret() {
     );
 }
 
+/// The profile list is read from the daemon's machine, and connecting takes
+/// only an id from it, never a path the daemon did not list.
+#[tokio::test]
+async fn browser_connect_agrees_across_transports() {
+    let pair = spawn_pair().await;
+
+    assert_eq!(
+        pair.local.browser_profiles().await.expect("local profiles"),
+        pair.wire.browser_profiles().await.expect("wire profiles"),
+    );
+    let listenbrainz = pair
+        .wire
+        .integrations()
+        .await
+        .expect("integrations")
+        .into_iter()
+        .find(|integration| integration.id == "listenbrainz")
+        .expect("listenbrainz is offered");
+    assert_eq!(listenbrainz.connect, api::ConnectKind::BrowserProfile);
+
+    for (id, code) in [
+        ("listenbrainz", api::ErrorCode::NotFound),
+        ("lastfm", api::ErrorCode::Unsupported),
+    ] {
+        let local = pair
+            .local
+            .connect_integration_from_browser(id.to_string(), "/not/a/profile".to_string())
+            .await
+            .err()
+            .map(|error| error.code);
+        assert_eq!(local, Some(code), "{id}");
+        assert_eq!(
+            local,
+            pair.wire
+                .connect_integration_from_browser(id.to_string(), "/not/a/profile".to_string())
+                .await
+                .err()
+                .map(|error| error.code),
+            "{id} is refused the same way on the wire",
+        );
+    }
+}
+
 /// The download overlay reads per-item state, so a client on the socket has to
 /// see the same list the in-process one does -- including the failures, which
 /// is what a batch against unreachable files produces.

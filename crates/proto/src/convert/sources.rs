@@ -239,12 +239,14 @@ pub fn connect_kind_to_proto(value: api::ConnectKind) -> ConnectKind {
     match value {
         api::ConnectKind::None => ConnectKind::None,
         api::ConnectKind::WebSignIn => ConnectKind::WebSignIn,
+        api::ConnectKind::BrowserProfile => ConnectKind::BrowserProfile,
     }
 }
 
 pub fn connect_kind_from_proto(value: i32) -> api::ConnectKind {
     match ConnectKind::try_from(value) {
         Ok(ConnectKind::WebSignIn) => api::ConnectKind::WebSignIn,
+        Ok(ConnectKind::BrowserProfile) => api::ConnectKind::BrowserProfile,
         Ok(ConnectKind::None) | Ok(ConnectKind::Unspecified) | Err(_) => api::ConnectKind::None,
     }
 }
@@ -268,6 +270,22 @@ pub fn integration_info_from_proto(value: &IntegrationInfo) -> api::IntegrationI
         configured: value.configured,
         connect: connect_kind_from_proto(value.connect),
         fields: value.fields.iter().map(field_spec_from_proto).collect(),
+    }
+}
+
+pub fn browser_profile_to_proto(value: &api::BrowserProfile) -> BrowserProfile {
+    BrowserProfile {
+        id: value.id.clone(),
+        browser: value.browser.clone(),
+        name: value.name.clone(),
+    }
+}
+
+pub fn browser_profile_from_proto(value: &BrowserProfile) -> api::BrowserProfile {
+    api::BrowserProfile {
+        id: value.id.clone(),
+        browser: value.browser.clone(),
+        name: value.name.clone(),
     }
 }
 
@@ -398,7 +416,11 @@ mod tests {
     /// carries the same field list -- and, like a source, never a credential.
     #[test]
     fn an_integration_row_round_trips_for_every_connect_kind() {
-        for connect in [api::ConnectKind::None, api::ConnectKind::WebSignIn] {
+        for connect in [
+            api::ConnectKind::None,
+            api::ConnectKind::WebSignIn,
+            api::ConnectKind::BrowserProfile,
+        ] {
             let info = api::IntegrationInfo {
                 id: "listenbrainz".into(),
                 name: api::Text::literal("ListenBrainz"),
@@ -420,6 +442,19 @@ mod tests {
                 integration_info_from_proto(&integration_info_to_proto(&info))
             );
         }
+    }
+
+    #[test]
+    fn a_browser_profile_round_trips() {
+        let profile = api::BrowserProfile {
+            id: "/home/me/.mozilla/firefox/a.default".into(),
+            browser: "Firefox".into(),
+            name: "default".into(),
+        };
+        assert_eq!(
+            profile,
+            browser_profile_from_proto(&browser_profile_to_proto(&profile))
+        );
     }
 
     /// A connect flow this build cannot name is one it cannot run: offer no

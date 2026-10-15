@@ -3,6 +3,8 @@
 //! - **Premium (cookies):** WEB_REMIX + native sig/n decipher, no PO token.
 //! - **Anonymous:** VISIONOS, plain URLs with no token; then the same client
 //!   with a content-bound PO token (`botguard`) if the plain request was refused.
+//! - **Free (cookies):** when both anonymous requests were refused, WEB_REMIX
+//!   + decipher with a content-bound PO token on the stream URL.
 //!
 //! No yt-dlp, no external binary (issue #349).
 
@@ -131,6 +133,7 @@ pub async fn resolve(video_id: &str, cookies: Option<&str>) -> Result<YtStreamIn
     // from the start — only deep seeks 403 — which beats total failure.
     let mut decipher_fallback: Option<YtStreamInfo> = None;
     let mut decipher_err: Option<String> = None;
+    let mut skipped_signed_in = false;
     if let Some(c) = cookies {
         let uid = super::derive_user_id(c);
         if let Some(u) = &uid {
@@ -140,8 +143,9 @@ pub async fn resolve(video_id: &str, cookies: Option<&str>) -> Result<YtStreamIn
         // non-Premium — but only when a pot can actually be minted (the decipher
         // stream is our fallback when it can't). Saves a /player round-trip per
         // track once the account's tier is learned.
-        let skip = uid.as_deref().is_some_and(known_non_premium) && botguard::is_available();
-        if !skip {
+        skipped_signed_in =
+            uid.as_deref().is_some_and(known_non_premium) && botguard::is_available();
+        if !skipped_signed_in {
             match signed_in_with_retry(video_id, cookies).await {
                 Ok(info) if is_premium_itag(info.itag) => {
                     if let Some(u) = &uid {
@@ -180,7 +184,13 @@ pub async fn resolve(video_id: &str, cookies: Option<&str>) -> Result<YtStreamIn
         ..Default::default()
     };
     let anonymous_err = match anonymous_attempt(video_id, extras).await {
-        Ok(info) => match recheck_gated(info, || anonymous_attempt(video_id, extras)).await {
+        Ok(info) => match recheck_gated(
+            info,
+            || anonymous_attempt(video_id, extras),
+            VISIONOS.client_name,
+        )
+        .await
+        {
             Ok(info) => return Ok(info),
             Err(error) => error,
         },
@@ -204,7 +214,13 @@ pub async fn resolve(video_id: &str, cookies: Option<&str>) -> Result<YtStreamIn
                 };
                 match anonymous_attempt(video_id, extras).await {
                     Ok(info) => {
-                        match recheck_gated(info, || anonymous_attempt(video_id, extras)).await {
+                        match recheck_gated(
+                            info,
+                            || anonymous_attempt(video_id, extras),
+                            VISIONOS.client_name,
+                        )
+                        .await
+                        {
                             Ok(info) => return Ok(info),
                             Err(error) => error,
                         }
@@ -215,6 +231,45 @@ pub async fn resolve(video_id: &str, cookies: Option<&str>) -> Result<YtStreamIn
             Err(error) => format!("PO mint: {error}"),
         }
     };
+
+    // The skip above bets that the anonymous client will play. When it did
+    // not, the account's own stream is still there to try.
+    if skipped_signed_in {
+        match signed_in_with_retry(video_id, cookies).await {
+            Ok(info) if is_premium_itag(info.itag) => {
+                if let Some(u) = cookies.and_then(super::derive_user_id) {
+                    remember_tier(&u, true);
+                }
+                return Ok(info);
+            }
+            Ok(info) => decipher_fallback = Some(info),
+            Err(e) => {
+                tracing::warn!(error = %e, "signed-in stream path failed after the anonymous ones");
+                decipher_err = Some(e);
+            }
+        }
+    }
+
+    // A free account's deciphered URL is gated like an anonymous one, and a
+    // content pot carried on the URL itself is what lifts it.
+    if let Some(info) = decipher_fallback.take_if(|_| botguard::is_available()) {
+        let again = || async {
+            let info = signed_in_with_retry(video_id, cookies).await?;
+            let pot = botguard::remint_content_pot(video_id).await?;
+            Ok(with_pot(info, &pot))
+        };
+        let minted = botguard::mint_content_pot(video_id).await;
+        match minted.map(|pot| with_pot(info.clone(), &pot)) {
+            Ok(with_pot) => match recheck_gated(with_pot, again, WEB_REMIX.client_name).await {
+                Ok(info) => return Ok(info),
+                Err(error) => decipher_err = Some(error),
+            },
+            Err(error) => {
+                tracing::warn!(%error, "no content pot for the signed-in stream");
+                decipher_fallback = Some(info);
+            }
+        }
+    }
 
     if let Some(mut info) = decipher_fallback {
         tracing::warn!(
@@ -277,7 +332,11 @@ const GATE_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 /// Some plain URLs are gated behind a PO token the response never asks for:
 /// ranges past the first megabyte get 403, at random, so a repeat request
 /// usually returns a clean URL. `again` must reuse the original extras.
-async fn recheck_gated<F, Fut>(info: YtStreamInfo, mut again: F) -> Result<YtStreamInfo, String>
+async fn recheck_gated<F, Fut>(
+    info: YtStreamInfo,
+    mut again: F,
+    client: &str,
+) -> Result<YtStreamInfo, String>
 where
     F: FnMut() -> Fut,
     Fut: std::future::Future<Output = Result<YtStreamInfo, String>>,
@@ -297,8 +356,7 @@ where
         current = again().await?;
     }
     Err(format!(
-        "{}: googlevideo refused the stream on every resolve",
-        VISIONOS.client_name
+        "{client}: googlevideo refused the stream on every resolve"
     ))
 }
 
@@ -355,6 +413,13 @@ fn all_paths_failed(decipher: Option<&str>, anonymous: &str, with_pot: &str) -> 
         "; anonymous: {anonymous}; anonymous+pot: {with_pot}"
     ));
     message
+}
+
+fn with_pot(info: YtStreamInfo, pot: &str) -> YtStreamInfo {
+    YtStreamInfo {
+        url: format!("{}&pot={pot}", info.url),
+        ..info
+    }
 }
 
 /// A Premium *subscription* yields 774-class Opus and is PO-token-exempt. Any
@@ -898,10 +963,14 @@ mod tests {
     async fn a_gated_url_is_replaced_by_a_working_one() {
         let addr = googlevideo().await;
         let calls = std::sync::atomic::AtomicUsize::new(0);
-        let info = recheck_gated(stream_at(addr, "gated"), || {
-            calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            async move { Ok(stream_at(addr, "good")) }
-        })
+        let info = recheck_gated(
+            stream_at(addr, "gated"),
+            || {
+                calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                async move { Ok(stream_at(addr, "good")) }
+            },
+            "VISIONOS",
+        )
         .await
         .unwrap();
         assert!(info.url.ends_with("/good"), "{}", info.url);
@@ -913,10 +982,14 @@ mod tests {
     async fn a_url_gated_on_every_resolve_is_refused() {
         let addr = googlevideo().await;
         let calls = std::sync::atomic::AtomicUsize::new(0);
-        let result = recheck_gated(stream_at(addr, "gated"), || {
-            calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            async move { Ok(stream_at(addr, "gated")) }
-        })
+        let result = recheck_gated(
+            stream_at(addr, "gated"),
+            || {
+                calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                async move { Ok(stream_at(addr, "gated")) }
+            },
+            "VISIONOS",
+        )
         .await;
         assert!(result.is_err());
         assert_eq!(calls.into_inner(), GATED_RETRIES);
@@ -925,9 +998,11 @@ mod tests {
     #[tokio::test]
     async fn a_failed_resolve_of_a_gated_url_reports_its_error() {
         let addr = googlevideo().await;
-        let result = recheck_gated(stream_at(addr, "gated"), || async {
-            Err("VISIONOS playability ERROR: nope".to_string())
-        })
+        let result = recheck_gated(
+            stream_at(addr, "gated"),
+            || async { Err("VISIONOS playability ERROR: nope".to_string()) },
+            "VISIONOS",
+        )
         .await;
         assert_eq!(result.unwrap_err(), "VISIONOS playability ERROR: nope");
     }
@@ -936,10 +1011,14 @@ mod tests {
     async fn a_working_url_is_not_resolved_again() {
         let addr = googlevideo().await;
         let calls = std::sync::atomic::AtomicUsize::new(0);
-        let info = recheck_gated(stream_at(addr, "good"), || {
-            calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            async move { Ok(stream_at(addr, "gated")) }
-        })
+        let info = recheck_gated(
+            stream_at(addr, "good"),
+            || {
+                calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                async move { Ok(stream_at(addr, "gated")) }
+            },
+            "VISIONOS",
+        )
         .await
         .unwrap();
         assert!(info.url.ends_with("/good"), "{}", info.url);

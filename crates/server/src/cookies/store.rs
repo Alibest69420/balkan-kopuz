@@ -7,7 +7,7 @@ use config::{Browser, BrowserEngine};
 /// every platform (the non-Windows backend maps `rookie`'s richer struct down
 /// to it; Windows produces it natively).
 #[derive(Debug, Clone)]
-pub(crate) struct Cookie {
+pub struct Cookie {
     pub name: String,
     pub value: String,
 }
@@ -19,9 +19,10 @@ pub(crate) fn host_matches_domain(host: &str, domain: &str) -> bool {
     host == domain || host.ends_with(&format!(".{domain}"))
 }
 
-/// Read every cookie scoped to `domain` out of the isolated profile. Gecko
-/// keeps its store in the clear, so only the Chromium path needs decrypting.
-pub(crate) async fn read_cookies(
+/// Read every cookie scoped to `domain` out of a profile: an isolated one, or
+/// one of the person's own from [`super::browser_profiles`]. Gecko keeps its
+/// store in the clear, so only the Chromium path needs decrypting.
+pub async fn read_cookies(
     browser: Browser,
     profile_root: &Path,
     domain: &str,

@@ -53,9 +53,9 @@ pub use schema::{
     encode_directories, spec_value, toggle_of, value_of,
 };
 pub use sources::{
-    AlbumPresentation, ArtistPresentation, ConnectKind, CredentialProvision, DraftCheck,
-    FavoritesSyncMode, IntegrationInfo, PlaylistCapability, ServiceInfo, ServiceRef, SignInKind,
-    SourceCapabilities, SourceDraft, SourceFolderEntry, SourceInfo, SourceLoginRequest,
+    AlbumPresentation, ArtistPresentation, BrowserProfile, ConnectKind, CredentialProvision,
+    DraftCheck, FavoritesSyncMode, IntegrationInfo, PlaylistCapability, ServiceInfo, ServiceRef,
+    SignInKind, SourceCapabilities, SourceDraft, SourceFolderEntry, SourceInfo, SourceLoginRequest,
 };
 
 /// The config view: the layered config with credential keys
@@ -476,6 +476,18 @@ pub trait SourceApi: Send + Sync {
 
     /// Run a service's web sign-in and keep the session key it returns.
     async fn authenticate_integration(&self, id: String) -> Result<IntegrationInfo, ApiError>;
+
+    /// The browser profiles on the daemon's machine, for an integration
+    /// connected from one.
+    async fn browser_profiles(&self) -> Result<Vec<BrowserProfile>, ApiError>;
+
+    /// Take an integration's credential from a browser profile signed in to
+    /// it, checked with the service before it is kept.
+    async fn connect_integration_from_browser(
+        &self,
+        id: String,
+        profile: String,
+    ) -> Result<IntegrationInfo, ApiError>;
 }
 
 /// The settings surface.

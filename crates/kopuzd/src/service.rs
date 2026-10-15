@@ -1474,6 +1474,33 @@ impl Kopuz for KopuzGrpc {
             .map_err(failed)?;
         Ok(Response::new(convert::integration_info_to_proto(&info)))
     }
+
+    async fn get_browser_profiles(
+        &self,
+        _: Request<proto::GetBrowserProfilesRequest>,
+    ) -> Result<Response<proto::BrowserProfileList>, Status> {
+        let profiles = self.0.api.browser_profiles().await.map_err(failed)?;
+        Ok(Response::new(proto::BrowserProfileList {
+            profiles: profiles
+                .iter()
+                .map(convert::browser_profile_to_proto)
+                .collect(),
+        }))
+    }
+
+    async fn connect_integration_from_browser(
+        &self,
+        request: Request<proto::ConnectIntegrationFromBrowserRequest>,
+    ) -> Result<Response<proto::IntegrationInfo>, Status> {
+        let request = request.into_inner();
+        let info = self
+            .0
+            .api
+            .connect_integration_from_browser(request.id, request.profile)
+            .await
+            .map_err(failed)?;
+        Ok(Response::new(convert::integration_info_to_proto(&info)))
+    }
 }
 
 /// The channel the daemon serves on: a Unix socket, or on Windows a named

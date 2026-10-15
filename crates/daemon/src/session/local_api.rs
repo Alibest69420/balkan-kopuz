@@ -831,4 +831,18 @@ impl api::SourceApi for LocalApi {
     async fn authenticate_integration(&self, id: String) -> Result<api::IntegrationInfo, ApiError> {
         self.integrations()?.authenticate(&id).await
     }
+
+    async fn browser_profiles(&self) -> Result<Vec<api::BrowserProfile>, ApiError> {
+        Ok(crate::integrations::browser_profiles())
+    }
+
+    async fn connect_integration_from_browser(
+        &self,
+        id: String,
+        profile: String,
+    ) -> Result<api::IntegrationInfo, ApiError> {
+        self.integrations()?
+            .connect_from_browser(&id, &profile)
+            .await
+    }
 }

@@ -64,6 +64,76 @@ fn IntegrationRows(integration: api::IntegrationInfo, changed: Signal<u64>) -> E
                 },
             }
         }
+        if integration.connect == api::ConnectKind::BrowserProfile {
+            BrowserConnectRow { id: integration.id.clone(), name: name.clone(), changed }
+        }
+    }
+}
+
+/// Connect from a browser profile already signed in to the service, beside
+/// the fields that take a pasted credential.
+#[component]
+fn BrowserConnectRow(id: String, name: String, changed: Signal<u64>) -> Element {
+    let profiles = hooks::integrations::use_browser_profiles();
+    let mut picked = use_signal(String::new);
+    let busy = use_signal(|| false);
+    let listed = profiles.read().clone().unwrap_or_default();
+    let selected = listed
+        .iter()
+        .find(|profile| profile.id == picked())
+        .or(listed.first())
+        .map(|profile| profile.id.clone())
+        .unwrap_or_default();
+    let options: Vec<(String, String)> = listed
+        .iter()
+        .map(|profile| {
+            (
+                profile.id.clone(),
+                i18n::t_with(
+                    "integration_browser_profile",
+                    &[
+                        ("name", profile.name.clone()),
+                        ("browser", profile.browser.clone()),
+                    ],
+                ),
+            )
+        })
+        .collect();
+    rsx! {
+        SettingItem {
+            title: i18n::t("integration_browser_title").to_string(),
+            control: rsx! {
+                if options.is_empty() {
+                    p { class: "text-sm text-white/60", "{i18n::t(\"integration_browser_none\")}" }
+                } else {
+                    div { class: "flex items-center gap-2",
+                        AppSelect {
+                            class: "settings-select",
+                            value: selected.clone(),
+                            options,
+                            on_change: move |value: String| picked.set(value),
+                        }
+                        button {
+                            class: "app-button-tonal bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-xl text-sm transition-colors disabled:opacity-50",
+                            disabled: busy(),
+                            onclick: move |_| {
+                                hooks::integrations::connect_from_browser(
+                                    id.clone(),
+                                    selected.clone(),
+                                    busy,
+                                    changed,
+                                );
+                            },
+                            if busy() {
+                                "{i18n::t(\"integration_connecting\")}"
+                            } else {
+                                "{i18n::t_with(\"integration_connect\", &[(\"name\", name.clone())])}"
+                            }
+                        }
+                    }
+                }
+            },
+        }
     }
 }
 

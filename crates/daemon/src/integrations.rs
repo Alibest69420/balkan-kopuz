@@ -554,7 +554,12 @@ fn listenbrainz(config: &config::AppConfig) -> IntegrationInfo {
         name: Text::key("listenbrainz"),
         icon: Icon::Class("fa-solid fa-compact-disc".into()),
         configured: !config.musicbrainz_token.trim().is_empty(),
-        connect: ConnectKind::None,
+        // Android has no desktop browser profile to take a session from.
+        connect: if cfg!(target_os = "android") {
+            ConnectKind::None
+        } else {
+            ConnectKind::BrowserProfile
+        },
         fields: vec![secret_field(
             TOKEN,
             Text::key("listenbrainz"),
@@ -790,6 +795,89 @@ impl IntegrationService {
             .await?;
         info_of(id, &updated)
     }
+
+    /// Take an integration's credential from one of [`browser_profiles`] and
+    /// keep it once the service accepts it. `profile` must be one of those,
+    /// so a client cannot point the daemon at any other directory.
+    pub async fn connect_from_browser(
+        &self,
+        id: &str,
+        profile: &str,
+    ) -> Result<IntegrationInfo, ApiError> {
+        let info = info_of(id, &self.config.snapshot().await)?;
+        // ListenBrainz is the only one offering it, so the token is its.
+        if id != LISTENBRAINZ || info.connect != ConnectKind::BrowserProfile {
+            return Err(ApiError::unsupported(
+                "this integration does not connect from a browser profile",
+            ));
+        }
+        self.config.ensure_unlocked(&["musicbrainz_token"])?;
+        let profile = server::cookies::browser_profiles()
+            .into_iter()
+            .find(|candidate| candidate.dir.to_string_lossy() == profile)
+            .ok_or_else(|| ApiError::not_found("that browser profile is no longer there"))?;
+        let token = listenbrainz_token_from(&profile).await?;
+        let user = scrobble::listenbrainz::validate_token(&token)
+            .await
+            .map_err(|error| ApiError::internal(format!("could not reach ListenBrainz: {error}")))?
+            .ok_or_else(|| {
+                ApiError::invalid_input(
+                    "ListenBrainz does not recognise the token from that profile. Paste your token instead.",
+                )
+            })?;
+        tracing::info!(%user, browser = profile.browser.id(), "connected to listenbrainz from a browser");
+        let updated = self
+            .config
+            .mutate_state(&[INTEGRATIONS_KEY], move |config| {
+                config.musicbrainz_token = token;
+            })
+            .await?;
+        info_of(id, &updated)
+    }
+}
+
+/// The person's own browser profiles, keyed by their directory.
+pub fn browser_profiles() -> Vec<api::BrowserProfile> {
+    server::cookies::browser_profiles()
+        .into_iter()
+        .map(|profile| api::BrowserProfile {
+            id: profile.dir.to_string_lossy().into_owned(),
+            browser: profile.browser.label().to_string(),
+            name: profile.name,
+        })
+        .collect()
+}
+
+/// The ListenBrainz user token of the session in a signed-in browser profile.
+async fn listenbrainz_token_from(
+    profile: &server::cookies::BrowserProfile,
+) -> Result<String, ApiError> {
+    let cookies = server::cookies::read_cookies(profile.browser, &profile.dir, "listenbrainz.org")
+        .await
+        .map_err(|error| {
+            ApiError::internal(format!(
+                "could not read the cookies of {} ({}): {error}",
+                profile.name,
+                profile.browser.label()
+            ))
+        })?;
+    let header = scrobble::listenbrainz::session_header(
+        cookies.iter().map(|c| (c.name.as_str(), c.value.as_str())),
+    )
+    .ok_or_else(|| {
+        ApiError::invalid_input(format!(
+            "{} ({}) is not signed in to listenbrainz.org. Sign in there, or paste your token instead.",
+            profile.name,
+            profile.browser.label()
+        ))
+    })?;
+    scrobble::listenbrainz::token_from_session(&header)
+        .await
+        .ok_or_else(|| {
+            ApiError::invalid_input(
+                "listenbrainz.org did not show a token for that profile. Paste it from listenbrainz.org/settings instead.",
+            )
+        })
 }
 
 /// What an integration write reports as changed, so the running scrobbler picks it up.

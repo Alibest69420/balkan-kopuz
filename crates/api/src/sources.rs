@@ -208,6 +208,19 @@ pub enum ConnectKind {
     None,
     /// The daemon opens a sign-in page and keeps what it returns.
     WebSignIn,
+    /// The person picks one of [`BrowserProfile`]s already signed in to the
+    /// service and the daemon takes the credential from it. The fields stay
+    /// the manual route.
+    BrowserProfile,
+}
+
+/// A profile of a browser on the daemon's machine. `id` is opaque: a client
+/// hands it back to connect from that profile.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BrowserProfile {
+    pub id: String,
+    pub browser: String,
+    pub name: String,
 }
 
 /// Something configured per account rather than per source: a scrobbler, a
