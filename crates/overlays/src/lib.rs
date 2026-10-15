@@ -63,11 +63,11 @@ impl Overlays {
 
     /// Switching source clears the error it belonged to, so what is here is about what plays now.
     fn playback_error(&self, cx: &App) -> Option<SharedString> {
-        let message = PlayerModel::global(cx).read(cx).error()?.message.clone();
+        let message = store::human_body(PlayerModel::global(cx).read(cx).error()?);
         if self.dismissed_error == Self::occurrence(cx) {
             return None;
         }
-        Some(message.into())
+        Some(message)
     }
 
     /// A dismissal is keyed on the failure and its track, so dismissing one never silences the next.
