@@ -38,6 +38,8 @@ pub struct CatalogItem {
     pub track: Option<TrackInfo>,
     /// `#rrggbb`, where the source gives the tile a colour.
     pub accent: Option<String>,
+    pub explicit: bool,
+    pub web_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -140,4 +142,12 @@ pub struct CatalogDetail {
     pub artist_key: Option<String>,
     pub header: CatalogHeader,
     pub chips: Vec<CatalogChip>,
+    /// "Album", "Single", "EP", as the source labels it.
+    pub album_type: Option<String>,
+    /// For an artist; `subtitle` carries its subscribers.
+    pub monthly_listeners: Option<String>,
+    pub owner: Option<String>,
+    /// As the source wrote it ("6.9M views").
+    pub plays: Option<String>,
+    pub web_url: Option<String>,
 }

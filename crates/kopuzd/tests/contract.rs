@@ -59,6 +59,8 @@ fn track(key: &str) -> Track {
         artists: vec![],
         replay_gain: config::ReplayGainInfo::default(),
         credits: vec![],
+        explicit: false,
+        plays: None,
     }
 }
 
@@ -1606,6 +1608,58 @@ async fn queue_snapshot_and_edits_agree_across_transports() {
             .err()
             .map(|error| error.code),
     );
+}
+
+/// Neither transport may queue nothing and answer success.
+#[tokio::test]
+async fn a_queue_from_an_unresolved_id_is_refused_identically() {
+    let pair = spawn_pair().await;
+
+    for context in [
+        QueueContext::Album {
+            id: "MPREunknown".into(),
+        },
+        QueueContext::Playlist {
+            id: "PLunsaved".into(),
+        },
+    ] {
+        let request = SetQueueRequest {
+            mode: QueueMode::Replace,
+            context: context.clone(),
+            start_index: Some(0),
+            shuffle: Some(false),
+        };
+        let local = pair.local.set_queue(request.clone()).await.err();
+        let wire = pair.wire.set_queue(request).await.err();
+        assert!(local.is_some(), "{context:?}");
+        assert_eq!(local.map(|e| e.code), wire.map(|e| e.code), "{context:?}");
+    }
+    let snapshot = pair.local.queue_snapshot().await.expect("snapshot");
+    assert!(snapshot.items.is_empty(), "nothing was queued");
+}
+
+/// A local library has no account to picture.
+#[tokio::test]
+async fn an_account_picture_is_absent_identically_without_an_account() {
+    let pair = spawn_pair().await;
+
+    let local = pair.local.sources().await.expect("local sources");
+    let wire = pair.wire.sources().await.expect("wire sources");
+    assert!(local.iter().all(|source| source.avatar.is_none()));
+    assert_eq!(
+        local.iter().map(|s| &s.avatar).collect::<Vec<_>>(),
+        wire.iter().map(|s| &s.avatar).collect::<Vec<_>>()
+    );
+
+    let active = local.iter().find(|s| s.active).expect("an active source");
+    let request = api::ArtworkRequest {
+        target: api::ArtworkTarget::Account(active.id.clone()),
+        hq: false,
+    };
+    let local = pair.local.artwork(request.clone()).await.err();
+    let wire = pair.wire.artwork(request).await.err();
+    assert_eq!(local.as_ref().map(|e| e.code), Some(ErrorCode::NotFound));
+    assert_eq!(local.map(|e| e.code), wire.map(|e| e.code));
 }
 
 /// Neither service is configured in this harness, so both transports must

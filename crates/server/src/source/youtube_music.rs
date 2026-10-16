@@ -97,6 +97,7 @@ impl MediaSource for YtSource {
             artist_view: ArtistView::Remote,
             albums: AlbumType::YtMusic,
             favorites_sync: FavoritesSync::Paginated,
+            account_avatar: true,
         }
     }
 
@@ -149,6 +150,33 @@ impl MediaSource for YtSource {
     fn album_web_url(&self, browse_id: &str) -> Option<String> {
         (!browse_id.trim().is_empty())
             .then(|| format!("https://music.youtube.com/browse/{browse_id}"))
+    }
+
+    fn artist_web_url(&self, channel_id: &str) -> Option<String> {
+        (!channel_id.trim().is_empty())
+            .then(|| format!("https://music.youtube.com/channel/{channel_id}"))
+    }
+
+    fn playlist_web_url(&self, playlist_id: &str) -> Option<String> {
+        let id = playlist_id.strip_prefix("VL").unwrap_or(playlist_id);
+        (!id.trim().is_empty()).then(|| format!("https://music.youtube.com/playlist?list={id}"))
+    }
+
+    async fn fetch_track(&self, item_id: &str) -> Result<Option<reader::Track>, SourceError> {
+        if item_id.trim().is_empty() {
+            return Ok(None);
+        }
+        self.client
+            .fetch_track(item_id)
+            .await
+            .map_err(SourceError::from)
+    }
+
+    async fn account_avatar(&self) -> Result<Option<String>, SourceError> {
+        self.client
+            .account_avatar()
+            .await
+            .map_err(SourceError::from)
     }
 
     async fn search(
@@ -381,10 +409,11 @@ impl MediaSource for YtSource {
         playlist_id: &str,
         cursor: Option<String>,
     ) -> Result<(Vec<reader::Track>, Option<String>), SourceError> {
-        self.client
+        let (tracks, next, _) = self
+            .client
             .playlist_page(playlist_id, cursor.as_deref())
-            .await
-            .map_err(SourceError::from)
+            .await?;
+        Ok((tracks, next))
     }
 
     async fn resolve_album_browse_id(
@@ -716,15 +745,20 @@ impl MediaSource for YtSource {
             return Ok(PlaylistPage {
                 tracks: self.liked_music_entries().await?,
                 next: None,
+                header: None,
             });
         }
         // True per-page InnerTube walk so a long playlist streams into the cache
         // (and the UI) instead of blocking on a full fetch every visit.
-        let (tracks, next) = self
+        let (tracks, next, header) = self
             .client
             .playlist_page(playlist_id, cursor.as_deref())
             .await?;
-        Ok(PlaylistPage { tracks, next })
+        Ok(PlaylistPage {
+            tracks,
+            next,
+            header,
+        })
     }
 
     async fn fetch_favorites_page(

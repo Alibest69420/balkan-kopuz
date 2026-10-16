@@ -182,6 +182,7 @@ share_link_copied = MusicBrainz link copied
 share = Share
 share_copied = Copied link
 share_no_page = Couldn't find a page for this track
+explicit = Explicit
 go_to_artist = Go to artist
 go_to_album = Go to album
 download_offline = Download Offline

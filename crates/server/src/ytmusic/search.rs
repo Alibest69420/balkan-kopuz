@@ -53,6 +53,8 @@ pub(super) struct ParsedRow {
     pub album_browse_id: Option<String>,
     pub duration: u64,
     pub thumbnail_url: Option<String>,
+    pub explicit: bool,
+    pub plays: Option<String>,
 }
 
 #[tracing::instrument(name = "yt.search", skip(cookies), fields(query = %query))]
@@ -441,6 +443,8 @@ fn parse_card_shelf(card: &Value) -> Option<ParsedRow> {
         album_browse_id,
         duration,
         thumbnail_url,
+        explicit: super::has_explicit_badge(card),
+        plays: None,
     })
 }
 
@@ -492,9 +496,10 @@ fn parse_playlist_track(
             artists.push(ArtistCredit::unlinked(name));
         }
     }
+    // Some playlists put the play count in the album column.
     let album = if mvt.has_album() {
         let s = pick_run(row, 2, 0);
-        if s.is_empty() { None } else { Some(s) }
+        (!s.is_empty() && !super::is_count(&s)).then_some(s)
     } else {
         None
     };
@@ -521,6 +526,8 @@ fn parse_playlist_track(
         album_browse_id,
         duration,
         thumbnail_url,
+        explicit: super::has_explicit_badge(row),
+        plays: row_plays(row),
     }
 }
 
@@ -572,6 +579,8 @@ fn parse_search_row(
         album_browse_id,
         duration,
         thumbnail_url,
+        explicit: super::has_explicit_badge(row),
+        plays: row_plays(row),
     }
 }
 
@@ -641,7 +650,29 @@ pub(super) fn parsed_to_track(p: ParsedRow) -> Track {
         artists: p.artists.iter().map(|c| c.name.clone()).collect(),
         credits: p.artists,
         replay_gain: config::ReplayGainInfo::default(),
+        explicit: p.explicit,
+        plays: p.plays,
     }
+}
+
+/// A row's play or view count, from whichever column or `•` part holds it.
+fn row_plays(row: &Value) -> Option<String> {
+    row["flexColumns"]
+        .as_array()?
+        .iter()
+        .skip(1)
+        .flat_map(|column| {
+            column["musicResponsiveListItemFlexColumnRenderer"]["text"]["runs"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|run| run["text"].as_str())
+                .collect::<String>()
+                .split(" • ")
+                .map(|part| part.trim().to_string())
+                .collect::<Vec<_>>()
+        })
+        .find(|part| super::is_count(part))
 }
 
 fn pick_run(row: &Value, col: usize, run: usize) -> String {

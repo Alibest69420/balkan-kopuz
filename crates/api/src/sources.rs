@@ -158,6 +158,7 @@ pub struct SourceInfo {
     pub permanent: bool,
     /// What the daemon's last probe found; `None` until it has probed this source.
     pub state: Option<crate::SourceState>,
+    pub avatar: Option<crate::ArtworkRef>,
 }
 
 /// A source to create or update, as the answers to a [`ServiceInfo`]'s form.

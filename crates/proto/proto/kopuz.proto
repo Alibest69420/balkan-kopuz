@@ -851,6 +851,7 @@ message SourceInfo {
   bool permanent = 19;
   // What the daemon's last probe found; absent until it has probed this source.
   optional SourceState state = 20;
+  optional ArtworkRef avatar = 21;
 }
 
 message GetSourcesRequest {}
@@ -1083,6 +1084,8 @@ message CatalogItem {
   optional TrackInfo track = 6;
   // #rrggbb
   optional string accent = 7;
+  bool explicit = 9;
+  optional string web_url = 10;
 }
 
 message CatalogShelf {
@@ -1139,6 +1142,13 @@ message CatalogDetail {
   optional string artist_key = 12;
   CatalogHeader header = 13;
   repeated CatalogChip chips = 14;
+  // For an album: "Album", "Single", "EP", as the source labels it.
+  optional string album_type = 17;
+  // For an artist; subtitle carries its subscribers.
+  optional string monthly_listeners = 18;
+  optional string owner = 19;
+  optional string plays = 20;
+  optional string web_url = 21;
 }
 
 // ---------------- radio ----------------
@@ -1287,6 +1297,9 @@ message TrackInfo {
   optional ArtworkRef artwork = 21;
   // Every credited artist in billing order, each with the key that opens it where there is one.
   repeated ArtistCredit credits = 23;
+  bool explicit = 24;
+  // How often it was played or watched, as the source wrote it ("1.2B plays").
+  optional string plays = 25;
 }
 
 // An artist key is minted by the daemon; a frontend compares and passes it back, never reads it.
@@ -1792,6 +1805,8 @@ message ArtworkTarget {
     string catalog = 5;
     string station = 6;
     string artist_key = 7;
+    // A source id: the picture of the account it is signed in as.
+    string account = 8;
   }
 }
 
@@ -1812,6 +1827,7 @@ message ArtworkRequest {
     string catalog = 6;
     string station = 7;
     string artist_key = 8;
+    string account = 9;
   }
   bool hq = 4;
 }

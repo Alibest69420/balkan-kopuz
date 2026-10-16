@@ -53,6 +53,33 @@ pub(crate) fn yt_id(video_id: impl Into<String>) -> TrackId {
     }
 }
 
+/// Rows carry the explicit badge in `badges`, cards in `subtitleBadges`.
+pub(crate) fn has_explicit_badge(r: &Value) -> bool {
+    ["badges", "subtitleBadges"]
+        .iter()
+        .filter_map(|key| r[*key].as_array())
+        .flatten()
+        .any(|badge| {
+            badge["musicInlineBadgeRenderer"]["icon"]["iconType"] == "MUSIC_EXPLICIT_BADGE"
+        })
+}
+
+/// "900M views", "1.2M subscribers"; a show called "Full Interviews" is a name.
+pub(crate) fn is_count(text: &str) -> bool {
+    text.starts_with(|c: char| c.is_ascii_digit())
+        && [
+            "views",
+            "plays",
+            "view",
+            "play",
+            "listeners",
+            "subscribers",
+            "monthly audience",
+        ]
+        .iter()
+        .any(|suffix| text.ends_with(suffix))
+}
+
 /// Surfaced by auth-only operations (like/unlike, add-to-playlist,
 /// liked-songs sync) when the YT backend is in anonymous mode.
 /// Callers should detect this and either skip the action or hint at
@@ -164,7 +191,7 @@ impl YouTubeMusicClient {
         &self,
         playlist_id: &str,
         continuation: Option<&str>,
-    ) -> Result<(Vec<Track>, Option<String>), String> {
+    ) -> Result<playlists::PlaylistPage, String> {
         playlists::playlist_page(
             playlist_id,
             self.cookies.as_deref().unwrap_or(""),
@@ -311,6 +338,24 @@ impl YouTubeMusicClient {
         self.cookies.is_some()
     }
 
+    pub async fn fetch_track(&self, video_id: &str) -> Result<Option<Track>, String> {
+        mix::watch_track(video_id, self.cookies.as_deref()).await
+    }
+
+    pub async fn account_avatar(&self) -> Result<Option<String>, String> {
+        let Some(cookies) = self.cookies.as_deref() else {
+            return Ok(None);
+        };
+        let menu = innertube::post(
+            clients::WEB_REMIX,
+            "account/account_menu",
+            serde_json::json!({}),
+            Some(cookies),
+        )
+        .await?;
+        Ok(account_photo(&menu))
+    }
+
     pub async fn start_mix(&self, seed_video_id: &str) -> Result<mix::MixPage, String> {
         mix::fetch(
             mix::MixSeed::Video(seed_video_id),
@@ -410,6 +455,18 @@ impl YouTubeMusicClient {
     }
 }
 
+fn account_photo(menu: &Value) -> Option<String> {
+    let header = &menu["actions"][0]["openPopupAction"]["popup"]["multiPageMenuRenderer"]["header"]
+        ["activeAccountHeaderRenderer"];
+    header["accountPhoto"]["thumbnails"]
+        .as_array()?
+        .iter()
+        .max_by_key(|thumb| thumb["width"].as_u64().unwrap_or(0))?["url"]
+        .as_str()
+        .filter(|url| !url.is_empty())
+        .map(str::to_string)
+}
+
 fn has_playlist_shelf(json: &Value) -> bool {
     json.pointer("/contents/twoColumnBrowseResultsRenderer/secondaryContents/sectionListRenderer/contents")
         .or_else(|| {
@@ -428,6 +485,30 @@ fn has_playlist_shelf(json: &Value) -> bool {
 impl Default for YouTubeMusicClient {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod account_tests {
+    use serde_json::json;
+
+    /// The shape `account/account_menu` answers with, trimmed to the photo.
+    #[test]
+    fn the_account_menu_names_the_largest_photo() {
+        let menu = json!({"actions": [{"openPopupAction": {"popup": {"multiPageMenuRenderer": {
+            "header": {"activeAccountHeaderRenderer": {
+                "accountName": {"runs": [{"text": "Someone"}]},
+                "accountPhoto": {"thumbnails": [
+                    {"url": "https://yt3.ggpht.com/a=s48", "width": 48, "height": 48},
+                    {"url": "https://yt3.ggpht.com/a=s88", "width": 88, "height": 88}
+                ]}
+            }}
+        }}}}]});
+        assert_eq!(
+            super::account_photo(&menu).as_deref(),
+            Some("https://yt3.ggpht.com/a=s88")
+        );
+        assert_eq!(super::account_photo(&json!({})), None);
     }
 }
 

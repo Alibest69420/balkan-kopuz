@@ -170,7 +170,7 @@ impl Byline {
             .filter(|_| self.duration_secs.is_none())
         {
             self.duration_secs = Some(secs);
-        } else if self.plays.is_none() && is_count(&text) {
+        } else if self.plays.is_none() && crate::ytmusic::is_count(&text) {
             self.plays = Some(text);
         } else if self.published.is_none() && is_date(&text) {
             self.published = Some(text);
@@ -203,22 +203,6 @@ impl Byline {
             })
             .collect()
     }
-}
-
-/// "900M views", "1.2M subscribers"; a show called "Full Interviews" is a name.
-fn is_count(text: &str) -> bool {
-    text.starts_with(|c: char| c.is_ascii_digit())
-        && [
-            "views",
-            "plays",
-            "view",
-            "play",
-            "listeners",
-            "subscribers",
-            "monthly audience",
-        ]
-        .iter()
-        .any(|suffix| text.ends_with(suffix))
 }
 
 /// "4:36", "1:02:03" in seconds.
@@ -297,7 +281,13 @@ fn kind_from_label(label: Option<&str>) -> Option<Kind> {
 
 /// A row that plays, as the track the library would build for it: the same
 /// row type and the same album id the library sync derives.
-fn track(video_id: &str, title: String, byline: &Byline, thumb: Option<String>) -> Track {
+fn track(
+    video_id: &str,
+    title: String,
+    byline: &Byline,
+    thumb: Option<String>,
+    r: &Value,
+) -> Track {
     let album = byline.album.as_ref();
     parsed_to_track(ParsedRow {
         video_id: video_id.to_string(),
@@ -310,6 +300,8 @@ fn track(video_id: &str, title: String, byline: &Byline, thumb: Option<String>) 
         }),
         duration: byline.duration_secs.unwrap_or(0),
         thumbnail_url: thumb,
+        explicit: crate::ytmusic::has_explicit_badge(r),
+        plays: byline.plays.clone(),
     })
 }
 
@@ -372,6 +364,7 @@ pub(super) fn responsive_list_item(r: &Value) -> Option<DiscoverItem> {
             title,
             subtitle,
             thumbnail: thumb,
+            explicit: crate::ytmusic::has_explicit_badge(r),
         }),
         (Some(Target::Artist(channel_id)), _) => Some(DiscoverItem::Artist {
             channel_id,
@@ -394,7 +387,7 @@ pub(super) fn responsive_list_item(r: &Value) -> Option<DiscoverItem> {
         (Some(Target::Episode(browse_id)), video_id) => {
             let video_id = video_id.or_else(|| browse_id.strip_prefix("MPED"))?;
             Some(DiscoverItem::Episode {
-                track: Box::new(track(video_id, title, &byline, thumb)),
+                track: Box::new(track(video_id, title, &byline, thumb, r)),
                 browse_id,
                 published: byline.published,
             })
@@ -403,7 +396,7 @@ pub(super) fn responsive_list_item(r: &Value) -> Option<DiscoverItem> {
             let kind = video_kind(watch)
                 .or_else(|| kind_from_label(byline.label.as_deref()))
                 .unwrap_or(Kind::Song);
-            let track = track(video_id, title, &byline, thumb);
+            let track = track(video_id, title, &byline, thumb, r);
             Some(playable(kind, track, byline.published))
         }
         (_, None) => None,
@@ -420,7 +413,7 @@ pub(super) fn two_row_item(r: &Value) -> Option<DiscoverItem> {
 
     if let Some(video_id) = endpoint["watchEndpoint"]["videoId"].as_str() {
         let kind = video_kind(&endpoint["watchEndpoint"]).unwrap_or(Kind::Video);
-        let track = track(video_id, title, &byline, thumb);
+        let track = track(video_id, title, &byline, thumb, r);
         return Some(playable(kind, track, byline.published));
     }
     if let Some(playlist_id) = endpoint["watchPlaylistEndpoint"]["playlistId"].as_str() {
@@ -437,6 +430,7 @@ pub(super) fn two_row_item(r: &Value) -> Option<DiscoverItem> {
             title,
             subtitle,
             thumbnail: thumb,
+            explicit: crate::ytmusic::has_explicit_badge(r),
         }),
         Target::Artist(channel_id) => Some(DiscoverItem::Artist {
             channel_id,
@@ -459,7 +453,7 @@ pub(super) fn two_row_item(r: &Value) -> Option<DiscoverItem> {
         Target::Episode(browse_id) => {
             let video_id = browse_id.strip_prefix("MPED")?.to_string();
             Some(DiscoverItem::Episode {
-                track: Box::new(track(&video_id, title, &byline, thumb)),
+                track: Box::new(track(&video_id, title, &byline, thumb, r)),
                 browse_id,
                 published: byline.published,
             })
@@ -490,6 +484,7 @@ fn multi_row_item(r: &Value) -> Option<DiscoverItem> {
         text(&r["title"])?,
         &byline,
         thumbnail(&r["thumbnail"]),
+        r,
     );
     Some(playable(Kind::Episode, track, byline.published))
 }

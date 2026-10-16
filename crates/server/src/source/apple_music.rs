@@ -67,6 +67,7 @@ impl MediaSource for AppleMusicSource {
             artist_view: ArtistView::Library,
             albums: AlbumType::Standard,
             favorites_sync: FavoritesSync::Instant,
+            account_avatar: false,
         }
     }
 

@@ -340,6 +340,8 @@ pub async fn album_remote(
         thumbnail: first_image(&album["images"]),
         audio_playlist_id: None,
         tracks: out,
+        album_type: None,
+        description: None,
     })
 }
 
@@ -729,6 +731,8 @@ pub fn parse_track(item: &Value) -> Option<Track> {
         artists,
         replay_gain: config::ReplayGainInfo::default(),
         credits,
+        explicit: false,
+        plays: None,
     })
 }
 

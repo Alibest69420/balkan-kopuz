@@ -95,6 +95,8 @@ fn song_to_track(
         artists: credits.iter().map(|credit| credit.name.clone()).collect(),
         credits,
         replay_gain,
+        explicit: false,
+        plays: None,
     }
 }
 
@@ -250,6 +252,8 @@ impl MediaSource for SubsonicSource {
                         artists: credits.iter().map(|credit| credit.name.clone()).collect(),
                         credits,
                         replay_gain,
+                        explicit: false,
+                        plays: None,
                     });
                 }
             }
@@ -287,6 +291,7 @@ impl MediaSource for SubsonicSource {
             artist_view: ArtistView::Library,
             albums: AlbumType::Standard,
             favorites_sync: FavoritesSync::Instant,
+            account_avatar: false,
         }
     }
 

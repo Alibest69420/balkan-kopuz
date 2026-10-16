@@ -63,6 +63,8 @@ pub fn track_info_to_proto(value: &api::TrackInfo) -> TrackInfo {
         musicbrainz_track_id: value.musicbrainz_track_id.clone(),
         artwork: value.artwork.as_ref().map(artwork_ref_to_proto),
         credits: value.credits.iter().map(artist_credit_to_proto).collect(),
+        explicit: value.explicit,
+        plays: value.plays.clone(),
     }
 }
 
@@ -88,6 +90,8 @@ pub fn track_info_from_proto(value: &TrackInfo) -> api::TrackInfo {
         musicbrainz_track_id: value.musicbrainz_track_id.clone(),
         artwork: value.artwork.as_ref().and_then(artwork_ref_from_proto),
         credits: value.credits.iter().map(artist_credit_from_proto).collect(),
+        explicit: value.explicit,
+        plays: value.plays.clone(),
     }
 }
 
@@ -180,6 +184,7 @@ pub fn artwork_request_to_proto(value: &api::ArtworkRequest) -> ArtworkRequest {
         api::ArtworkTarget::Playlist(id) => Entity::Playlist(id.clone()),
         api::ArtworkTarget::Catalog(id) => Entity::Catalog(id.clone()),
         api::ArtworkTarget::Station(id) => Entity::Station(id.clone()),
+        api::ArtworkTarget::Account(id) => Entity::Account(id.clone()),
     };
     ArtworkRequest {
         entity: Some(entity),
@@ -196,6 +201,7 @@ pub fn artwork_request_from_proto(value: &ArtworkRequest) -> Option<api::Artwork
         Entity::Playlist(id) => api::ArtworkTarget::Playlist(id.clone()),
         Entity::Catalog(id) => api::ArtworkTarget::Catalog(id.clone()),
         Entity::Station(id) => api::ArtworkTarget::Station(id.clone()),
+        Entity::Account(id) => api::ArtworkTarget::Account(id.clone()),
     };
     Some(api::ArtworkRequest {
         target,
@@ -212,6 +218,7 @@ pub fn artwork_target_to_proto(value: &api::ArtworkTarget) -> ArtworkTarget {
         api::ArtworkTarget::Playlist(id) => Entity::Playlist(id.clone()),
         api::ArtworkTarget::Catalog(id) => Entity::Catalog(id.clone()),
         api::ArtworkTarget::Station(id) => Entity::Station(id.clone()),
+        api::ArtworkTarget::Account(id) => Entity::Account(id.clone()),
     };
     ArtworkTarget {
         entity: Some(entity),
@@ -227,6 +234,7 @@ pub fn artwork_target_from_proto(value: &ArtworkTarget) -> Option<api::ArtworkTa
         Entity::Playlist(id) => api::ArtworkTarget::Playlist(id.clone()),
         Entity::Catalog(id) => api::ArtworkTarget::Catalog(id.clone()),
         Entity::Station(id) => api::ArtworkTarget::Station(id.clone()),
+        Entity::Account(id) => api::ArtworkTarget::Account(id.clone()),
     })
 }
 
@@ -511,6 +519,8 @@ mod tests {
                     key: None,
                 },
             ],
+            explicit: true,
+            plays: Some("1.2B plays".into()),
         };
         assert_eq!(track, track_info_from_proto(&track_info_to_proto(&track)));
     }
@@ -555,5 +565,17 @@ mod tests {
             albums: Vec::new(),
         };
         assert_eq!(artist_detail_from_proto(&sent), None);
+    }
+
+    #[test]
+    fn an_account_picture_is_asked_for_by_its_source() {
+        let request = api::ArtworkRequest {
+            target: api::ArtworkTarget::Account("yt".into()),
+            hq: false,
+        };
+        assert_eq!(
+            Some(request.clone()),
+            artwork_request_from_proto(&artwork_request_to_proto(&request))
+        );
     }
 }

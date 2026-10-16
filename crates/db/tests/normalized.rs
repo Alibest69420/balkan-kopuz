@@ -41,6 +41,8 @@ fn track(key: &str, credits: Vec<ArtistCredit>) -> Track {
         artists: vec!["Ada".into()],
         replay_gain: config::ReplayGainInfo::default(),
         credits,
+        explicit: false,
+        plays: None,
     }
 }
 
@@ -561,6 +563,8 @@ async fn a_queue_round_trips_through_its_rows() {
         ..ArtistCredit::linked("Ada", "UC-ada")
     }];
     listed.playlist_item_id = Some("entry-1".into());
+    listed.explicit = true;
+    listed.plays = Some("6.9M plays".into());
     let mut stream = track("station", vec![ArtistCredit::unlinked("Radio")]);
     stream.duration = u64::MAX;
     stream.artists = vec!["Radio".into()];

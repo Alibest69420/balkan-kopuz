@@ -611,6 +611,7 @@ settings_tools = Tools
 share = Share
 share_copied = Copied link
 share_no_page = Couldn't find a page for this track
+explicit = 청소년 이용 불가
 start_daemon = Start Daemon
 
 first_run_title = Welcome to Kopuz

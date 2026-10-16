@@ -303,6 +303,41 @@ fn legacy_playlist_and_its_continuation() {
 }
 
 #[test]
+fn a_play_count_in_the_album_column_is_not_an_album() {
+    const CELL: &str = "/musicResponsiveListItemRenderer/flexColumns/2/musicResponsiveListItemFlexColumnRenderer/text/runs";
+    fn row_of(v: &Value, video_id: &str, at: String) -> Option<String> {
+        let id = "/musicResponsiveListItemRenderer/playlistItemData/videoId";
+        if v.pointer(id).and_then(Value::as_str) == Some(video_id) {
+            return Some(at);
+        }
+        match v {
+            Value::Object(map) => map
+                .iter()
+                .find_map(|(key, child)| row_of(child, video_id, format!("{at}/{key}"))),
+            Value::Array(items) => items
+                .iter()
+                .enumerate()
+                .find_map(|(i, child)| row_of(child, video_id, format!("{at}/{i}"))),
+            _ => None,
+        }
+    }
+    let mut response = fixture!("playlist_large");
+    let (before, _) = super::search::walk_playlist_shelf(&response);
+    let first = before
+        .iter()
+        .find(|track| !track.album.is_empty())
+        .expect("a row with an album");
+    let row = row_of(&response, &first.id.key(), String::new()).expect("its row");
+    *response.pointer_mut(&format!("{row}{CELL}")).unwrap() =
+        serde_json::json!([{ "text": "2.5M plays" }]);
+
+    let (rows, _) = super::search::walk_playlist_shelf(&response);
+    let row = rows.iter().find(|track| track.id == first.id).unwrap();
+    assert_eq!(row.album, "");
+    assert_eq!(row.plays.as_deref(), Some("2.5M plays"));
+}
+
+#[test]
 fn a_shelf_continuation_continues_the_shelf() {
     let more = parse_continuation(&fixture!("playlist_continuation"));
     assert!(more.continuation.is_none());
@@ -669,4 +704,142 @@ fn search_tracks_and_their_album_ids() {
         let by_name = synthesize_album_id(&track.album, &track.artist);
         assert!(track.album_id == by_name || track.album_id.starts_with("ytmusic:album:MPRE"));
     }
+}
+
+fn find_track<'a>(tracks: impl IntoIterator<Item = &'a Track>, title: &str) -> &'a Track {
+    tracks
+        .into_iter()
+        .find(|track| track.title == title)
+        .unwrap_or_else(|| panic!("no track {title:?}"))
+}
+
+fn album_tile<'a>(shelves: &'a [DiscoverShelf], title: &str) -> &'a DiscoverItem {
+    shelves
+        .iter()
+        .flat_map(|shelf| &shelf.items)
+        .find(|item| matches!(item, DiscoverItem::Album { title: t, .. } if t == title))
+        .unwrap_or_else(|| panic!("no album tile {title:?}"))
+}
+
+fn is_explicit_album(item: &DiscoverItem) -> bool {
+    matches!(item, DiscoverItem::Album { explicit: true, .. })
+}
+
+#[test]
+fn explicit_badges_mark_rows_and_tiles() {
+    use super::browse::search::parse_search;
+    let songs = parse_search(None, &fixture!("search_songs"));
+    let songs: Vec<&Track> = songs.shelves.iter().flat_map(tracks).collect();
+    assert!(find_track(songs.iter().copied(), "Aerodynamic (Slum Village Remix)").explicit);
+    assert!(!find_track(songs.iter().copied(), "Veridis Quo (Edit)").explicit);
+
+    let picks = parse_continuation(&fixture!("home_continuation"));
+    assert!(find_track(all_tracks(&picks), "Solar Eclipse").explicit);
+
+    let albums = parse_search(None, &fixture!("search_albums"));
+    assert!(is_explicit_album(album_tile(
+        &albums.shelves,
+        "Lucky DAFT PUNK"
+    )));
+    assert!(!is_explicit_album(album_tile(
+        &albums.shelves,
+        "Random Access Memories"
+    )));
+
+    // The artist page's shelves come through the legacy tile parser.
+    let artist = discover::parse_artist("UCRr1xG_2WIDs18a6cIiCxeA", &fixture!("artist"));
+    assert!(is_explicit_album(album_tile(
+        &artist.sections,
+        "Alive 2007"
+    )));
+    let legacy = super::search::walk_tracks(&fixture!("search_songs"));
+    assert!(find_track(&legacy, "Aerodynamic (Slum Village Remix)").explicit);
+}
+
+#[test]
+fn play_counts_come_with_the_rows_that_show_them() {
+    let album = discover::parse_album("MPREb_K8qWMWVqXGi", &fixture!("album"));
+    assert_eq!(
+        find_track(&album.tracks, "Give Life Back to Music")
+            .plays
+            .as_deref(),
+        Some("54M plays")
+    );
+    let artist = discover::parse_artist("UCRr1xG_2WIDs18a6cIiCxeA", &fixture!("artist"));
+    let top = artist
+        .sections
+        .iter()
+        .find(|s| s.title == "Top songs")
+        .expect("top songs");
+    assert_eq!(
+        find_track(tracks(top), "Instant Crush (feat. Julian Casablancas)")
+            .plays
+            .as_deref(),
+        Some("1.2B plays")
+    );
+    let picks = parse_continuation(&fixture!("home_continuation"));
+    assert_eq!(
+        find_track(all_tracks(&picks), "Patient Zero")
+            .plays
+            .as_deref(),
+        Some("19M plays")
+    );
+    let legacy = super::search::walk_tracks(&fixture!("search_songs"));
+    assert_eq!(
+        find_track(&legacy, "Veridis Quo (Edit)").plays.as_deref(),
+        Some("109M plays")
+    );
+    let videos = super::browse::search::parse_search(None, &fixture!("search_videos"));
+    let videos: Vec<&Track> = videos.shelves.iter().flat_map(tracks).collect();
+    assert_eq!(
+        find_track(videos.iter().copied(), "Technologic - Daft Punk Lyrics")
+            .plays
+            .as_deref(),
+        Some("521K views")
+    );
+    assert!(videos.iter().any(|video| video.plays.is_none()));
+}
+
+#[test]
+fn an_album_header_names_its_kind_and_describes_it() {
+    let album = discover::parse_album("MPREb_K8qWMWVqXGi", &fixture!("album"));
+    assert_eq!(album.album_type.as_deref(), Some("Album"));
+    assert!(
+        album
+            .description
+            .as_deref()
+            .is_some_and(|d| d.starts_with("Random Access Memories is the fourth")),
+        "{:?}",
+        album.description
+    );
+    let single = discover::parse_album("MPREb_X1DQ1j0PPrX", &fixture!("single"));
+    assert_eq!(single.album_type.as_deref(), Some("Single"));
+    assert_eq!(single.description, None);
+}
+
+#[test]
+fn an_artist_header_counts_its_monthly_audience() {
+    let artist = discover::parse_artist("UCRr1xG_2WIDs18a6cIiCxeA", &fixture!("artist"));
+    assert_eq!(
+        artist.monthly_listeners.as_deref(),
+        Some("80.8M monthly audience")
+    );
+    assert_eq!(artist.subscribers.as_deref(), Some("7.19M subscribers"));
+}
+
+#[test]
+fn a_playlist_header_names_its_owner_and_views() {
+    let community = browse::page_header(&fixture!("playlist_large")).expect("a header");
+    assert_eq!(community.title, "Top 500 Classic Rock songs");
+    assert_eq!(community.owner.as_deref(), Some("1503 Recording"));
+    assert_eq!(community.plays.as_deref(), Some("6.9M views"));
+    assert!(community.thumbnail.is_some() && community.description.is_some());
+
+    let chart = browse::page_header(&fixture!("playlist")).expect("a header");
+    assert_eq!(chart.title, "Top 100 Songs United States");
+    assert_eq!(chart.owner.as_deref(), Some("YouTube Charts"));
+    assert_eq!(chart.plays, None);
+
+    let album = page(&fixture!("album"));
+    assert_eq!(album.owner.as_deref(), Some("Daft Punk"));
 }

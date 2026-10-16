@@ -26,7 +26,7 @@ pub struct LibraryService {
     cover_cache: PathBuf,
     config_rx: OnceLock<watch::Receiver<config::AppConfig>>,
     session: OnceLock<SessionHandle>,
-    catalog: OnceLock<Arc<crate::catalog::CatalogService>>,
+    catalog: OnceLock<Arc<dyn crate::catalog::CatalogQueue>>,
     transient: std::sync::Mutex<TransientTracks>,
     /// Artists a photo lookup is out for, so a grid re-asking mid-batch does not send the same lookups again.
     artwork_in_flight: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
@@ -55,6 +55,18 @@ fn normalize_album_id(id: &str) -> String {
         format!("{}:{}", parts[0], parts[1])
     } else {
         id.to_string()
+    }
+}
+
+fn no_such(what: &str) -> ApiError {
+    ApiError::not_found(format!("{what} not found"))
+}
+
+/// A source that cannot look an id up has nothing by that id.
+fn missing_as(what: &'static str) -> impl Fn(ApiError) -> ApiError {
+    move |error| match error.code {
+        api::ErrorCode::Unsupported => no_such(what),
+        _ => error,
     }
 }
 
@@ -156,7 +168,7 @@ impl LibraryService {
         self.transient.lock().ok()?.by_key.get(key).cloned()
     }
 
-    fn catalog_service(&self) -> Result<&crate::catalog::CatalogService, ApiError> {
+    fn catalog_service(&self) -> Result<&dyn crate::catalog::CatalogQueue, ApiError> {
         self.catalog
             .get()
             .map(Arc::as_ref)
@@ -164,8 +176,9 @@ impl LibraryService {
     }
 
     /// Late-bound, because the catalog service needs this one to register
-    /// what it fetches. Without it, a mix seeded by a track cannot be built.
-    pub fn attach_catalog(&self, catalog: Arc<crate::catalog::CatalogService>) {
+    /// what it fetches. Without it, a mix seeded by a track cannot be built,
+    /// nor a queue from a catalog id the library does not hold.
+    pub fn attach_catalog(&self, catalog: Arc<dyn crate::catalog::CatalogQueue>) {
         let _ = self.catalog.set(catalog);
     }
 
@@ -484,6 +497,8 @@ impl LibraryService {
             credits: Vec::new(),
             artists: vec![],
             replay_gain: config::ReplayGainInfo::default(),
+            explicit: false,
+            plays: None,
         }
     }
 
@@ -548,13 +563,44 @@ impl QueueMaterializer for LibraryService {
                 for track in Self::probe_local_files(on_disk, self.cover_cache.clone()).await {
                     by_key.insert(track.id.key().to_string(), track);
                 }
+                // Anything left was never listed this session; only the source can name it.
+                let unresolved: Vec<&String> = keys
+                    .iter()
+                    .filter(|key| !by_key.contains_key(*key))
+                    .collect();
+                let mut unknown = Vec::new();
+                for key in unresolved {
+                    let found = match self.catalog_service() {
+                        Ok(catalog) => catalog.track(key).await?,
+                        Err(_) => None,
+                    };
+                    match found {
+                        Some(track) => {
+                            by_key.insert(key.clone(), track);
+                        }
+                        None => unknown.push(key.as_str()),
+                    }
+                }
+                if !unknown.is_empty() {
+                    return Err(ApiError::not_found(format!(
+                        "no track has the key {}",
+                        unknown.join(", ")
+                    )));
+                }
                 Ok(keys.iter().filter_map(|key| by_key.remove(key)).collect())
             }
-            QueueContext::Album { id } => self
-                .db
-                .album_tracks(&self.query_source(), id)
-                .await
-                .map_err(db_error),
+            QueueContext::Album { id } => {
+                let tracks = self
+                    .db
+                    .album_tracks(&self.query_source(), id)
+                    .await
+                    .map_err(db_error)?;
+                if !tracks.is_empty() {
+                    return Ok(tracks);
+                }
+                let catalog = self.catalog_service().map_err(|_| no_such("album"))?;
+                catalog.album_tracks(id).await.map_err(missing_as("album"))
+            }
             QueueContext::Artist { artist } => {
                 let row = self.artist_row(artist).await?;
                 self.db
@@ -573,11 +619,15 @@ impl QueueMaterializer for LibraryService {
                     .load_playlists(&self.query_source())
                     .await
                     .map_err(db_error)?;
-                let playlist = store
-                    .playlists
-                    .iter()
-                    .find(|playlist| playlist.id == *id)
-                    .ok_or_else(|| ApiError::not_found("playlist not found"))?;
+                // A playlist the library does not hold is one the source lists.
+                let Some(playlist) = store.playlists.iter().find(|playlist| playlist.id == *id)
+                else {
+                    let catalog = self.catalog_service().map_err(|_| no_such("playlist"))?;
+                    return catalog
+                        .playlist_tracks(id)
+                        .await
+                        .map_err(missing_as("playlist"));
+                };
                 self.db
                     .tracks_by_keys(&self.query_source(), &playlist.tracks)
                     .await
@@ -651,6 +701,8 @@ mod tests {
             credits: Vec::new(),
             artists: vec![],
             replay_gain: config::ReplayGainInfo::default(),
+            explicit: false,
+            plays: None,
         }
     }
 
@@ -736,13 +788,19 @@ mod tests {
 
         let tracks = library
             .materialize(&QueueContext::Tracks {
-                keys: vec!["/lib/2.flac".into(), "/lib/0.flac".into(), "/nope".into()],
+                keys: vec!["/lib/2.flac".into(), "/lib/0.flac".into()],
             })
             .await
             .expect("keys context");
         assert_eq!(tracks.len(), 2);
         assert_eq!(tracks[0].title, "song 2");
         assert_eq!(tracks[1].title, "song 0");
+
+        let missing = library
+            .materialize(&QueueContext::Album { id: "ghost".into() })
+            .await
+            .expect_err("unknown album");
+        assert_eq!(missing.code, api::ErrorCode::NotFound);
 
         let missing = library
             .materialize(&QueueContext::Playlist { id: "ghost".into() })
@@ -789,18 +847,17 @@ mod tests {
             credits: Vec::new(),
             artists: vec![],
             replay_gain: config::ReplayGainInfo::default(),
+            explicit: false,
+            plays: None,
         };
 
-        assert!(
-            library
-                .materialize(&QueueContext::Tracks {
-                    keys: vec!["vid-1".into()],
-                })
-                .await
-                .expect("keys context")
-                .is_empty(),
-            "an unregistered catalog key resolves to nothing"
-        );
+        let unregistered = library
+            .materialize(&QueueContext::Tracks {
+                keys: vec!["vid-1".into()],
+            })
+            .await
+            .expect_err("nothing can name an unregistered key without a catalog");
+        assert_eq!(unregistered.code, api::ErrorCode::NotFound);
 
         library.register_transient(std::slice::from_ref(&remote));
         let tracks = library
@@ -812,5 +869,130 @@ mod tests {
         assert_eq!(tracks.len(), 2, "the catalog row joins the library one");
         assert_eq!(tracks[0].title, "from the catalog");
         assert_eq!(tracks[1].title, "song 0");
+    }
+
+    fn remote(id: &str) -> Track {
+        Track {
+            id: reader::TrackId::Server {
+                service: config::MusicService::YtMusic,
+                item_id: id.into(),
+            },
+            title: format!("remote {id}"),
+            ..track(0, "Someone")
+        }
+    }
+
+    /// Holds one album, playlist and track the library has never seen, and nothing else.
+    struct FakeCatalog;
+
+    #[async_trait::async_trait]
+    impl crate::catalog::CatalogQueue for FakeCatalog {
+        async fn album_tracks(&self, id: &str) -> Result<Vec<Track>, ApiError> {
+            match id {
+                "MPREalbum" => Ok(vec![remote("a1"), remote("a2")]),
+                _ => Err(ApiError::unsupported("album by ref")),
+            }
+        }
+
+        async fn playlist_tracks(&self, id: &str) -> Result<Vec<Track>, ApiError> {
+            match id {
+                "PLcommunity" => Ok(vec![remote("p1"), remote("p2"), remote("p3")]),
+                _ => Err(ApiError::not_found("that playlist has no tracks to play")),
+            }
+        }
+
+        async fn track(&self, key: &str) -> Result<Option<Track>, ApiError> {
+            Ok((key == "unseen").then(|| remote("unseen")))
+        }
+
+        async fn track_radio(&self, _key: &str) -> Result<RadioPage, ApiError> {
+            Err(ApiError::unsupported("radio"))
+        }
+
+        async fn playlist_radio(&self, _id: &str) -> Result<RadioPage, ApiError> {
+            Err(ApiError::unsupported("radio"))
+        }
+
+        async fn more_radio(&self, _cursor: &str) -> Result<RadioPage, ApiError> {
+            Err(ApiError::unsupported("radio"))
+        }
+    }
+
+    async fn library_with_catalog() -> (tempfile::TempDir, LibraryService) {
+        let (dir, library) = seeded_library().await;
+        library.attach_catalog(Arc::new(FakeCatalog));
+        (dir, library)
+    }
+
+    fn titles(tracks: &[Track]) -> Vec<&str> {
+        tracks.iter().map(|track| track.title.as_str()).collect()
+    }
+
+    #[tokio::test]
+    async fn a_catalog_album_plays_by_its_id() {
+        let (_dir, library) = library_with_catalog().await;
+
+        let tracks = library
+            .materialize(&QueueContext::Album {
+                id: "MPREalbum".into(),
+            })
+            .await
+            .expect("album the library does not hold");
+        assert_eq!(titles(&tracks), ["remote a1", "remote a2"]);
+
+        let held = library
+            .materialize(&QueueContext::Album {
+                id: "album-1".into(),
+            })
+            .await
+            .expect("album the library holds");
+        assert_eq!(held.len(), 2, "the library's own album is not looked up");
+
+        let missing = library
+            .materialize(&QueueContext::Album { id: "nope".into() })
+            .await
+            .expect_err("a source that cannot look it up has no such album");
+        assert_eq!(missing.code, api::ErrorCode::NotFound);
+    }
+
+    #[tokio::test]
+    async fn an_unsaved_playlist_plays_by_its_id() {
+        let (_dir, library) = library_with_catalog().await;
+
+        let tracks = library
+            .materialize(&QueueContext::Playlist {
+                id: "PLcommunity".into(),
+            })
+            .await
+            .expect("playlist the library does not hold");
+        assert_eq!(titles(&tracks), ["remote p1", "remote p2", "remote p3"]);
+
+        let missing = library
+            .materialize(&QueueContext::Playlist { id: "ghost".into() })
+            .await
+            .expect_err("unknown playlist");
+        assert_eq!(missing.code, api::ErrorCode::NotFound);
+    }
+
+    #[tokio::test]
+    async fn an_unseen_key_is_looked_up_or_refused() {
+        let (_dir, library) = library_with_catalog().await;
+
+        let tracks = library
+            .materialize(&QueueContext::Tracks {
+                keys: vec!["unseen".into(), "/lib/0.flac".into()],
+            })
+            .await
+            .expect("the source names the unseen key");
+        assert_eq!(titles(&tracks), ["remote unseen", "song 0"]);
+
+        let refused = library
+            .materialize(&QueueContext::Tracks {
+                keys: vec!["/lib/0.flac".into(), "nobody".into()],
+            })
+            .await
+            .expect_err("a key no one can name");
+        assert_eq!(refused.code, api::ErrorCode::NotFound);
+        assert!(refused.message.contains("nobody"), "{}", refused.message);
     }
 }

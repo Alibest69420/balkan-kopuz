@@ -63,6 +63,8 @@ impl ClippslySource {
             artists: vec![row.artist.clone()],
             credits: vec![reader::ArtistCredit::unlinked(row.artist)],
             replay_gain: Default::default(),
+            explicit: false,
+            plays: None,
         }
     }
 }
@@ -97,6 +99,7 @@ impl MediaSource for ClippslySource {
             artist_view: ArtistView::Library,
             albums: AlbumType::Standard,
             favorites_sync: FavoritesSync::Instant,
+            account_avatar: false,
         }
     }
 

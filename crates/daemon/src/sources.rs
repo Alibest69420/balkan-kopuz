@@ -332,6 +332,20 @@ impl SourceService {
                 info.detail = crate::services::detail(&view);
                 info.anonymous = server.yt_anonymous;
                 info.settings = crate::services::settings(&view, &current);
+                let signed_in = server
+                    .access_token
+                    .as_deref()
+                    .is_some_and(|t| !t.is_empty());
+                if info.active
+                    && signed_in
+                    && !server.yt_anonymous
+                    && source.capabilities().account_avatar
+                {
+                    info.avatar = Some(crate::artwork::account_ref(
+                        &info.id,
+                        server.user_id.as_deref().unwrap_or_default(),
+                    ));
+                }
                 if info.capabilities.browse_folders {
                     info.settings.push(crate::services::directories_field(
                         &resolved.folders_for(server_id),

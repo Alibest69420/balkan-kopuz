@@ -213,6 +213,7 @@ pub fn source_info_to_proto(value: &api::SourceInfo) -> SourceInfo {
         state: value
             .state
             .map(|state| super::enums::source_state_to_proto(state) as i32),
+        avatar: value.avatar.as_ref().map(artwork_ref_to_proto),
     }
 }
 
@@ -236,6 +237,7 @@ pub fn source_info_from_proto(value: &SourceInfo) -> api::SourceInfo {
         needs_network: value.needs_network,
         permanent: value.permanent,
         state: value.state.map(super::enums::source_state_from_proto),
+        avatar: value.avatar.as_ref().and_then(artwork_ref_from_proto),
     }
 }
 
@@ -399,6 +401,10 @@ mod tests {
             needs_network: true,
             permanent: true,
             state: Some(api::SourceState::AuthExpired),
+            avatar: Some(api::ArtworkRef::new(
+                api::ArtworkTarget::Account("yt".into()),
+                9,
+            )),
         };
         assert_eq!(info, source_info_from_proto(&source_info_to_proto(&info)));
         let unprobed = api::SourceInfo {

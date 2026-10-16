@@ -186,6 +186,11 @@ pub struct Track {
     /// player reads their tags off the file it is decoding.
     #[serde(default)]
     pub replay_gain: config::ReplayGainInfo,
+    #[serde(default)]
+    pub explicit: bool,
+    /// As the listing that served it wrote it ("1.2B plays").
+    #[serde(default)]
+    pub plays: Option<String>,
 }
 
 /// One credited artist, and the source whose listing it came from, since an id means nothing to another.
@@ -632,6 +637,8 @@ mod tests {
             artists: Vec::new(),
             replay_gain: config::ReplayGainInfo::default(),
             credits: Vec::new(),
+            explicit: false,
+            plays: None,
         }
     }
 
