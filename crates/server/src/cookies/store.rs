@@ -2,12 +2,10 @@ use std::path::Path;
 
 use config::{Browser, BrowserEngine};
 
-/// A decrypted cookie — kopuz's consumers (YT Music + SoundCloud header
-/// builders) only ever read `name`/`value`, so this stays minimal and works on
-/// every platform (the non-Windows backend maps `rookie`'s richer struct down
-/// to it; Windows produces it natively).
+/// `domain` is the host as the store spells it, leading dot included.
 #[derive(Debug, Clone)]
 pub struct Cookie {
+    pub domain: String,
     pub name: String,
     pub value: String,
 }
@@ -31,6 +29,36 @@ pub async fn read_cookies(
         BrowserEngine::Chromium => read_chromium_cookies(browser, profile_root, domain).await,
         BrowserEngine::Gecko => read_gecko_cookies(browser, profile_root, domain).await,
     }
+}
+
+/// A Chromium browser that can take the DevTools pipe hands the cookies over
+/// decrypted, so kopuz never asks the keyring. `args` are the profile's launch flags.
+pub(crate) async fn read_profile_cookies(
+    browser: Browser,
+    profile_root: &Path,
+    domain: &str,
+    args: &[String],
+) -> Result<Vec<Cookie>, String> {
+    if browser.engine() == BrowserEngine::Chromium
+        && let Some(bin) = super::browser::find_browser_bin(browser, Some(profile_root)).await
+        && super::cdp::pipe_reaches(&bin)
+    {
+        match super::cdp::read_headless(&bin, profile_root, args, domain).await {
+            Ok(cookies) => {
+                tracing::trace!(
+                    browser = browser.id(),
+                    domain,
+                    count = cookies.len(),
+                    "read cookies over DevTools"
+                );
+                return Ok(cookies);
+            }
+            Err(e) => {
+                tracing::debug!(error = %e, "headless cookie read failed; decrypting the store instead");
+            }
+        }
+    }
+    read_cookies(browser, profile_root, domain).await
 }
 
 #[cfg(not(target_os = "android"))]
@@ -100,6 +128,7 @@ async fn read_chromium_cookies(
         Ok(raw
             .into_iter()
             .map(|c| Cookie {
+                domain: c.domain,
                 name: c.name,
                 value: c.value,
             })

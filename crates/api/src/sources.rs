@@ -193,6 +193,15 @@ pub struct SourceLoginRequest {
     pub password: String,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BrowserSession {
+    pub id: String,
+    pub browser: String,
+    pub profile: String,
+    /// The account the browser itself is signed in to, where it says.
+    pub account: Option<String>,
+}
+
 /// One entry when browsing a server's folder tree.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SourceFolderEntry {

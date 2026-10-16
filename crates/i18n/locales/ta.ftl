@@ -882,3 +882,10 @@ cloud_storage_loading = Loading storage usage…
 smb_url_placeholder = smb://nas/Music
 smb_help = Connect to an SMB 2/3 share or subfolder, then sign in with your NAS account. Domain accounts can use DOMAIN\username. Files are read without mounting the share.
 invalid_smb_url = Enter smb://host/share or smb://host/share/folder, without credentials in the URL.
+
+browser_sessions_heading = ஏற்கெனவே உள்நுழைந்துள்ளீர்கள்
+browser_sessions_checking = உங்கள் உலாவிகளைச் சரிபார்க்கிறது…
+browser_session_name = { $browser } · { $profile }
+browser_session_use = பயன்படுத்து
+browser_session_importing = உள்நுழைகிறது…
+browser_session_help = நீங்கள் தேர்ந்தெடுக்கும் உலாவி சுயவிவரத்திலிருந்து Kopuz அமர்வை நகலெடுக்கிறது. உலாவி திறந்தே இருக்கலாம்.

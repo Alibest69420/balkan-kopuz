@@ -53,9 +53,10 @@ pub use schema::{
     encode_directories, spec_value, toggle_of, value_of,
 };
 pub use sources::{
-    AlbumPresentation, ArtistPresentation, BrowserProfile, ConnectKind, CredentialProvision,
-    DraftCheck, FavoritesSyncMode, IntegrationInfo, PlaylistCapability, ServiceInfo, ServiceRef,
-    SignInKind, SourceCapabilities, SourceDraft, SourceFolderEntry, SourceInfo, SourceLoginRequest,
+    AlbumPresentation, ArtistPresentation, BrowserProfile, BrowserSession, ConnectKind,
+    CredentialProvision, DraftCheck, FavoritesSyncMode, IntegrationInfo, PlaylistCapability,
+    ServiceInfo, ServiceRef, SignInKind, SourceCapabilities, SourceDraft, SourceFolderEntry,
+    SourceInfo, SourceLoginRequest,
 };
 
 /// The config view: the layered config with credential keys
@@ -444,6 +445,16 @@ pub trait SourceApi: Send + Sync {
     /// Run this source's browser sign-in and keep the result. The caller
     /// learns that the source is authenticated, never with what.
     async fn authenticate_source(&self, id: String) -> Result<SourceInfo, ApiError>;
+
+    /// Profiles on the daemon's machine already signed in to `service`.
+    async fn browser_sessions(&self, service: String) -> Result<Vec<BrowserSession>, ApiError>;
+
+    /// The browser can stay open.
+    async fn import_browser_session(
+        &self,
+        id: String,
+        session: String,
+    ) -> Result<SourceInfo, ApiError>;
 
     /// List folders on a server that has them, for a folder picker.
     async fn browse_source(
