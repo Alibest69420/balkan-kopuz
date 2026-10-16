@@ -11,6 +11,24 @@ pub enum SourceError {
     Auth,
     InvalidInput(String),
     Backend(String),
+    /// The source answered, and the answer says why it will not serve this.
+    Refused(Refusal, String),
+}
+
+/// Why a source refused to play something, as far as its answer tells.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Refusal {
+    /// The account's session is no longer accepted.
+    SessionExpired,
+    /// The service wants proof this is not a bot, from this network.
+    Challenged,
+    /// Every way of asking was refused with nothing pointing at the account,
+    /// the network or the item: an outage or a change on the service's side.
+    ServiceRefused,
+    /// No answer came back at all.
+    Network,
+    /// This item cannot be played: removed, private or region-locked.
+    Unavailable,
 }
 
 impl SourceError {
@@ -27,7 +45,9 @@ impl fmt::Display for SourceError {
             SourceError::Auth => {
                 f.write_str("this source isn't signed in - open Settings to re-sign in")
             }
-            SourceError::InvalidInput(m) | SourceError::Backend(m) => f.write_str(m),
+            SourceError::InvalidInput(m) | SourceError::Backend(m) | SourceError::Refused(_, m) => {
+                f.write_str(m)
+            }
         }
     }
 }
@@ -208,6 +228,60 @@ pub struct SourceAccount {
     pub name: String,
     pub handle: Option<String>,
     pub active: bool,
+}
+
+/// One step of a connection test. Mirrors `api::ConnectionCheck`, which this
+/// crate does not depend on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Check {
+    pub step: CheckStep,
+    pub outcome: CheckOutcome,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckStep {
+    Reach,
+    Session,
+    SignedInPlayback,
+    AnonymousPlayback,
+    PlaybackToken,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckOutcome {
+    Passed,
+    Failed,
+    Skipped,
+}
+
+impl Check {
+    pub fn of<T>(
+        step: CheckStep,
+        result: Result<T, String>,
+        detail: impl FnOnce(T) -> String,
+    ) -> Self {
+        match result {
+            Ok(value) => Check {
+                step,
+                outcome: CheckOutcome::Passed,
+                detail: detail(value),
+            },
+            Err(error) => Check {
+                step,
+                outcome: CheckOutcome::Failed,
+                detail: error,
+            },
+        }
+    }
+
+    pub fn skipped(step: CheckStep, why: &str) -> Self {
+        Check {
+            step,
+            outcome: CheckOutcome::Skipped,
+            detail: why.to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

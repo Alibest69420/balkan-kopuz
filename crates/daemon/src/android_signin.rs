@@ -81,7 +81,10 @@ pub async fn sign_in(
     };
     let user = match service {
         MusicService::YtMusic => {
-            if !server::provider::validate_ytmusic_cookies(&secret).await {
+            if !server::provider::check_ytmusic_session(&secret)
+                .await
+                .is_usable()
+            {
                 return Err(
                     "Sign-in completed but YouTube Music did not accept the session".into(),
                 );

@@ -21,6 +21,7 @@ use super::clients::{VISIONOS, WEB_REMIX, YouTubeClient};
 use super::decipher;
 use super::innertube::{self, PlayerExtras};
 use super::tracking::PlaybackTracking;
+use crate::source::{Refusal, SourceError};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AudioFormat {
@@ -120,8 +121,63 @@ async fn visitor_data(cookies: Option<&str>) -> Result<&'static str, String> {
 /// Resolve a YT video to a playable stream. Premium (cookies) → decipher;
 /// anonymous → VISIONOS, plain; then VISIONOS with a headless-minted content
 /// pot if the plain request was refused.
+///
+/// A failure that looks like YouTube's side or the network having a moment
+/// is asked once more before it is reported: those come in bursts that a
+/// few seconds outlast, and a reported one stops the queue.
 #[tracing::instrument(name = "yt.resolve", skip(cookies), fields(video_id = %video_id, anon = cookies.is_none()))]
-pub async fn resolve(video_id: &str, cookies: Option<&str>) -> Result<YtStreamInfo, String> {
+pub async fn resolve(video_id: &str, cookies: Option<&str>) -> Result<YtStreamInfo, StreamFailure> {
+    let mut attempt = resolve_once(video_id, cookies).await;
+    for delay in TRANSIENT_RETRY_DELAYS {
+        match &attempt {
+            Err(failure) if failure.is_transient() => {
+                tracing::info!(?delay, refusal = ?failure.refusal, "every stream path failed; asking again");
+                tokio::time::sleep(delay).await;
+                attempt = resolve_once(video_id, cookies).await;
+            }
+            _ => break,
+        }
+    }
+    attempt
+}
+
+const TRANSIENT_RETRY_DELAYS: [Duration; 1] = [Duration::from_secs(3)];
+
+/// A resolve that failed, with what YouTube's answers say about why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StreamFailure {
+    pub refusal: Refusal,
+    pub message: String,
+}
+
+impl StreamFailure {
+    fn is_transient(&self) -> bool {
+        matches!(self.refusal, Refusal::Network | Refusal::ServiceRefused)
+    }
+}
+
+impl std::fmt::Display for StreamFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl From<StreamFailure> for String {
+    fn from(failure: StreamFailure) -> Self {
+        failure.message
+    }
+}
+
+impl From<StreamFailure> for SourceError {
+    fn from(failure: StreamFailure) -> Self {
+        SourceError::Refused(failure.refusal, failure.message)
+    }
+}
+
+async fn resolve_once(
+    video_id: &str,
+    cookies: Option<&str>,
+) -> Result<YtStreamInfo, StreamFailure> {
     // A Premium *subscription* — not merely being signed in — is what exempts a
     // stream from a PO token. The signal is the itag: subscribers get 774-class
     // Opus; a signed-in *free* account gets the same 251 as anon and still 403s
@@ -403,7 +459,7 @@ async fn is_gated(info: &YtStreamInfo) -> bool {
 /// the expected ending for such a track -- reporting it alone said "sign in"
 /// to someone who already was, and hid the signed-in path's actual error
 /// behind a debug line nobody runs with.
-fn all_paths_failed(decipher: Option<&str>, anonymous: &str, with_pot: &str) -> String {
+fn all_paths_failed(decipher: Option<&str>, anonymous: &str, with_pot: &str) -> StreamFailure {
     let mut message = String::from("all stream paths failed");
     match decipher {
         Some(error) => message.push_str(&format!("; signed-in: {error}")),
@@ -412,7 +468,51 @@ fn all_paths_failed(decipher: Option<&str>, anonymous: &str, with_pot: &str) -> 
     message.push_str(&format!(
         "; anonymous: {anonymous}; anonymous+pot: {with_pot}"
     ));
-    message
+    StreamFailure {
+        refusal: classify(decipher, anonymous, with_pot),
+        message,
+    }
+}
+
+/// What the three answers say together. A bot check anywhere is the answer,
+/// since it is about the network and no other path can get past it. An item
+/// YouTube calls unavailable is that whichever client said so. Only then is
+/// a signed-in LOGIN_REQUIRED the session's fault: the anonymous client says
+/// LOGIN_REQUIRED for anything gated, so it proves nothing about the account.
+fn classify(decipher: Option<&str>, anonymous: &str, with_pot: &str) -> Refusal {
+    let answers = [decipher.unwrap_or_default(), anonymous, with_pot];
+    if answers
+        .iter()
+        .any(|answer| innertube::is_google_block(answer) || answer.contains("not a bot"))
+    {
+        return Refusal::Challenged;
+    }
+    if answers.iter().any(|answer| says_unavailable(answer)) {
+        return Refusal::Unavailable;
+    }
+    if decipher.is_some_and(|answer| answer.contains("playability LOGIN_REQUIRED")) {
+        return Refusal::SessionExpired;
+    }
+    if is_transport_error(anonymous) && decipher.is_none_or(is_transport_error) {
+        return Refusal::Network;
+    }
+    Refusal::ServiceRefused
+}
+
+fn says_unavailable(answer: &str) -> bool {
+    const MARKERS: [&str; 4] = [
+        "playability error",
+        "unavailable",
+        "not available",
+        "private",
+    ];
+    let answer = answer.to_ascii_lowercase();
+    answer.contains("playability") && MARKERS.iter().any(|marker| answer.contains(marker))
+}
+
+/// No answer at all: the request never got a status line back.
+fn is_transport_error(answer: &str) -> bool {
+    answer.contains("HTTP: ") || answer.contains("fetch: ")
 }
 
 fn with_pot(info: YtStreamInfo, pot: &str) -> YtStreamInfo {
@@ -870,6 +970,28 @@ pub async fn playback_tracking(video_id: &str, cookies: &str) -> Result<Playback
     PlaybackTracking::from_player(&json).ok_or_else(|| "no playbackTracking".to_string())
 }
 
+/// The signed-in path alone, once, for a connection test.
+pub(crate) async fn probe_signed_in(video_id: &str, cookies: &str) -> Result<YtStreamInfo, String> {
+    try_native_decipher(video_id, Some(cookies)).await
+}
+
+/// The anonymous path alone, once, including whether googlevideo actually
+/// serves the URL it handed out.
+pub(crate) async fn probe_anonymous(video_id: &str) -> Result<YtStreamInfo, String> {
+    let extras = PlayerExtras {
+        visitor_data: visitor_data(None).await.ok(),
+        ..Default::default()
+    };
+    let info = anonymous_attempt(video_id, extras).await?;
+    if is_gated(&info).await {
+        return Err(format!(
+            "{} handed out a stream URL that googlevideo refuses",
+            VISIONOS.client_name
+        ));
+    }
+    Ok(info)
+}
+
 pub async fn signed_in_visitor(cookies: &str) -> Option<&'static str> {
     super::derive_user_id(cookies)?;
     visitor_data(Some(cookies)).await.ok()
@@ -1016,7 +1138,8 @@ mod tests {
             Some("WEB_REMIX playability UNPLAYABLE: try again later"),
             "VISIONOS playability LOGIN_REQUIRED: Sign in to confirm you're not a bot",
             "PO mint: minter unavailable",
-        );
+        )
+        .message;
 
         assert!(
             message.contains("signed-in: WEB_REMIX playability UNPLAYABLE: try again later"),
@@ -1028,8 +1151,81 @@ mod tests {
 
     #[test]
     fn a_skipped_signed_in_path_says_so_rather_than_looking_like_a_success() {
-        let message = all_paths_failed(None, "VISIONOS: nope", "PO mint: minter unavailable");
+        let message =
+            all_paths_failed(None, "VISIONOS: nope", "PO mint: minter unavailable").message;
         assert!(message.contains("signed-in: not attempted"), "{message}");
+    }
+
+    fn refusal(decipher: Option<&str>, anonymous: &str) -> Refusal {
+        all_paths_failed(decipher, anonymous, "PO mint: minter unavailable").refusal
+    }
+
+    /// A bot check is about the network, so it wins over everything a
+    /// client said next to it, including the signed-in LOGIN_REQUIRED it
+    /// arrives as.
+    #[test]
+    fn a_bot_check_anywhere_is_reported_as_one() {
+        assert_eq!(
+            refusal(
+                Some("WEB_REMIX playability LOGIN_REQUIRED: Sign in to confirm you're not a bot"),
+                "VISIONOS playability LOGIN_REQUIRED: Sign in to confirm you're not a bot",
+            ),
+            Refusal::Challenged
+        );
+        assert_eq!(
+            refusal(None, &format!("{}: HTTP 403", innertube::GOOGLE_BLOCK)),
+            Refusal::Challenged
+        );
+    }
+
+    /// The anonymous client says LOGIN_REQUIRED for anything gated, so only
+    /// the signed-in client saying it means the session is gone.
+    #[test]
+    fn only_a_signed_in_login_required_blames_the_session() {
+        assert_eq!(
+            refusal(
+                Some("WEB_REMIX playability LOGIN_REQUIRED: Please sign in"),
+                "VISIONOS playability LOGIN_REQUIRED: Please sign in",
+            ),
+            Refusal::SessionExpired
+        );
+        assert_eq!(
+            refusal(None, "VISIONOS playability LOGIN_REQUIRED: Please sign in"),
+            Refusal::ServiceRefused
+        );
+    }
+
+    #[test]
+    fn an_item_youtube_calls_unavailable_is_reported_as_such() {
+        assert_eq!(
+            refusal(None, "VISIONOS playability ERROR: Video unavailable"),
+            Refusal::Unavailable
+        );
+        assert_eq!(
+            refusal(
+                Some("WEB_REMIX playability LOGIN_REQUIRED: This video is private"),
+                "VISIONOS playability LOGIN_REQUIRED: This video is private",
+            ),
+            Refusal::Unavailable
+        );
+    }
+
+    #[test]
+    fn no_answer_from_any_client_is_a_network_failure() {
+        assert_eq!(
+            refusal(
+                Some("watch page fetch: error sending request"),
+                "VISIONOS: player HTTP: error sending request",
+            ),
+            Refusal::Network
+        );
+        assert_eq!(
+            refusal(
+                Some("WEB_REMIX playability UNPLAYABLE: try again later"),
+                "VISIONOS: player HTTP: error sending request",
+            ),
+            Refusal::ServiceRefused
+        );
     }
 
     /// The anonymous path decides whether to mint a content token by asking

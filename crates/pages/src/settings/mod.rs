@@ -190,6 +190,15 @@ pub fn Settings(config: Signal<AppConfig>) -> Element {
         _ => show_login.set(true),
     };
 
+    // A "sign in again" from elsewhere in the app lands here.
+    use_effect(move || {
+        let mut requested = ctrl.reauth_requested;
+        if requested() {
+            requested.set(false);
+            sign_in_again();
+        }
+    });
+
     // A service with no profiles to offer goes straight to the browser.
     use_effect(move || {
         let looked = reauth_sessions.read().clone();

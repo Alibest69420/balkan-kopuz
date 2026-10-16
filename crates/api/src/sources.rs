@@ -278,6 +278,39 @@ pub struct IntegrationInfo {
     pub fields: Vec<FieldSpec>,
 }
 
+/// One step of a connection test, in the order it ran.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConnectionCheck {
+    pub step: CheckStep,
+    pub outcome: CheckOutcome,
+    /// What the source answered, for a bug report. Not localized.
+    pub detail: String,
+}
+
+/// What a connection test step looked at. A source runs the steps that apply
+/// to it, so most report only a few.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckStep {
+    /// The service answers at all.
+    Reach,
+    /// The stored sign-in is still accepted.
+    Session,
+    /// A stream for the signed-in account.
+    SignedInPlayback,
+    /// A stream with no account.
+    AnonymousPlayback,
+    /// The token the service asks for when it doubts a request.
+    PlaybackToken,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckOutcome {
+    Passed,
+    Failed,
+    /// Did not apply, such as a signed-in step with no account.
+    Skipped,
+}
+
 /// Maximum audio payload accepted by either daemon transport.
 pub const MAX_MUSIC_UPLOAD_BYTES: usize = 500 * 1024 * 1024;
 

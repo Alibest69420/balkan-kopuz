@@ -931,6 +931,13 @@ impl api::SourceApi for LocalApi {
         Ok(info)
     }
 
+    async fn test_source_connection(
+        &self,
+        id: String,
+    ) -> Result<Vec<api::ConnectionCheck>, ApiError> {
+        self.sources()?.test_connection(&id).await
+    }
+
     async fn can_open_browser(&self) -> Result<bool, ApiError> {
         Ok(self.sources()?.can_open_browser().await)
     }

@@ -162,6 +162,11 @@ pub fn use_browser_sessions(service: Memo<Option<String>>) -> Resource<Vec<api::
     })
 }
 
+/// Run a source's connection test.
+pub async fn test_connection(id: String) -> Result<Vec<api::ConnectionCheck>, api::ApiError> {
+    crate::api::consume_api().test_source_connection(id).await
+}
+
 /// Answer one of a source's own options. The daemon decides where the value
 /// lives -- the server row or the settings -- so this only carries it there.
 pub fn set_source_settings(id: String, values: Vec<api::FieldValue>) {

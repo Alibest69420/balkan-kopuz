@@ -9,6 +9,7 @@ pub mod browser_sessions;
 pub mod clients;
 pub mod cookies;
 pub mod decipher;
+pub mod diagnose;
 pub mod discover;
 pub mod innertube;
 pub mod isolated_profile;
@@ -104,7 +105,7 @@ pub fn derive_user_id(cookies: &str) -> Option<String> {
 /// Resolve a YT stream for diagnostics (the `duration_probe` example) without
 /// holding a client — a thin wrapper over the same resolve [`YouTubeMusicClient::get_stream`] uses.
 pub async fn probe_stream(video_id: &str, cookies: Option<&str>) -> Result<YtStreamInfo, String> {
-    player::resolve(video_id, cookies).await
+    Ok(player::resolve(video_id, cookies).await?)
 }
 
 pub(crate) struct YouTubeMusicClient {
@@ -404,7 +405,7 @@ impl YouTubeMusicClient {
     /// Resolves a playable stream URL via native sig/n deciphering against
     /// WEB_REMIX (see `player::resolve`). With cookies this returns Premium
     /// itags; anonymously the ~128 kbps ceiling. No PO token, no yt-dlp.
-    pub async fn get_stream(&self, video_id: &str) -> Result<YtStreamInfo, String> {
+    pub async fn get_stream(&self, video_id: &str) -> Result<YtStreamInfo, player::StreamFailure> {
         self.account(async { player::resolve(video_id, self.cookies.as_deref()).await })
             .await
     }
@@ -561,26 +562,23 @@ impl YouTubeMusicClient {
         .await
     }
 
-    /// Confirms the cookie session is actually signed in — InnerTube
-    /// `/browse?browseId=VLLM` (Liked Music) is the canonical probe: it
-    /// returns a `signInEndpoint`-bearing message renderer for anonymous
-    /// callers and real playlist content for signed-in ones.
+    /// What YouTube says about the cookie session. InnerTube
+    /// `/browse?browseId=VLLM` (Liked Music) is the probe: real playlist
+    /// content for a signed-in caller, a `signInEndpoint` prompt for one
+    /// that is not.
     #[tracing::instrument(name = "yt.validate", skip_all)]
-    pub async fn validate_cookies(&self) -> Result<(), String> {
+    pub async fn check_session(&self) -> SessionCheck {
         self.account(async {
-            // Anonymous mode has no cookies to validate — succeed silently
-            // so callers (settings probe, keepalive) treat it as healthy.
+            // Anonymous mode has no session to lose.
             let Some(cookies) = self.cookies.as_deref() else {
-                return Ok(());
+                return SessionCheck::Valid;
             };
-            let json: Value = innertube::browse("VLLM", cookies).await?;
-            if has_playlist_shelf(&json) {
-                Ok(())
-            } else {
-                Err(
-                    "YouTube returned no playlist shelf — cookies expired or browser signed out"
-                        .into(),
-                )
+            match innertube::browse("VLLM", cookies).await {
+                Ok(json) => session_in(&json),
+                Err(error) if error.contains("SAPISID missing") || error.contains("HTTP 401") => {
+                    SessionCheck::SignedOut
+                }
+                Err(error) => SessionCheck::Unknown(error),
             }
         })
         .await
@@ -597,6 +595,38 @@ fn account_photo(menu: &Value) -> Option<String> {
         .as_str()
         .filter(|url| !url.is_empty())
         .map(str::to_string)
+}
+
+/// What YouTube's answer to a signed-in request says about the session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionCheck {
+    Valid,
+    /// YouTube answered the way it answers someone signed out.
+    SignedOut,
+    /// No answer, or one in a shape this build cannot read. That says
+    /// nothing about the session, so callers keep it: dropping a working
+    /// session over a bad hour on YouTube's side is what sent people to sign
+    /// in again, and that sign-in failed the same check.
+    Unknown(String),
+}
+
+impl SessionCheck {
+    /// Everything but a definite signed-out answer.
+    pub fn is_usable(&self) -> bool {
+        !matches!(self, SessionCheck::SignedOut)
+    }
+}
+
+fn session_in(json: &Value) -> SessionCheck {
+    if has_playlist_shelf(json) {
+        SessionCheck::Valid
+    } else if json.to_string().contains("\"signInEndpoint\"") {
+        SessionCheck::SignedOut
+    } else {
+        SessionCheck::Unknown(
+            "YouTube answered Liked Music with neither a playlist nor a sign-in prompt".into(),
+        )
+    }
 }
 
 fn has_playlist_shelf(json: &Value) -> bool {
@@ -713,5 +743,34 @@ mod v8_thread_tests {
         let (first, second) = core.join().expect("core thread");
         assert_eq!(first, 599_994);
         assert_eq!(second, 599_994);
+    }
+}
+
+#[cfg(test)]
+mod session_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn a_playlist_shelf_is_a_valid_session() {
+        let page = json!({"contents": {"singleColumnBrowseResultsRenderer": {"tabs": [{"tabRenderer": {"content": {"sectionListRenderer": {"contents": [{"musicPlaylistShelfRenderer": {}}]}}}}]}}});
+        assert_eq!(session_in(&page), SessionCheck::Valid);
+    }
+
+    #[test]
+    fn a_sign_in_prompt_is_a_signed_out_session() {
+        let page = json!({"contents": {"singleColumnBrowseResultsRenderer": {"tabs": [{"tabRenderer": {"content": {"sectionListRenderer": {"contents": [{"messageRenderer": {"button": {"buttonRenderer": {"navigationEndpoint": {"signInEndpoint": {}}}}}}]}}}}]}}});
+        assert_eq!(session_in(&page), SessionCheck::SignedOut);
+    }
+
+    /// The answer YouTube gives a stale client, or gives anyone during an
+    /// outage, has neither. Calling that signed out sent people to sign in
+    /// again, and the new session failed the same check.
+    #[test]
+    fn an_answer_with_neither_keeps_the_session() {
+        let page = json!({"contents": {"singleColumnBrowseResultsRenderer": {"tabs": []}}});
+        let check = session_in(&page);
+        assert!(matches!(check, SessionCheck::Unknown(_)), "{check:?}");
+        assert!(check.is_usable());
     }
 }

@@ -26,6 +26,7 @@ use server::source::MediaSource;
 
 use crate::library::LibraryService;
 use crate::session::SessionHandle;
+use crate::sources::source_error;
 
 /// Roughly a few pages of browsing; the oldest tiles fall out.
 const MAX_REMEMBERED_TILES: usize = 4096;
@@ -41,18 +42,6 @@ pub struct CatalogService {
 struct Thumbnails {
     by_id: HashMap<String, String>,
     order: VecDeque<String>,
-}
-
-pub(crate) fn source_error(error: server::source::SourceError) -> ApiError {
-    use api::ErrorCode;
-    use server::source::SourceError;
-    match &error {
-        SourceError::Unsupported(what) => ApiError::unsupported(*what),
-        SourceError::Auth => ApiError::new(ErrorCode::SourceAuthExpired, error.to_string()),
-        SourceError::Connectivity => ApiError::new(ErrorCode::SourceUnreachable, error.to_string()),
-        SourceError::InvalidInput(message) => ApiError::invalid_input(message.clone()),
-        SourceError::Backend(message) => ApiError::internal(message.clone()),
-    }
 }
 
 impl CatalogService {

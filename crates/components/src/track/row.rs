@@ -10,13 +10,6 @@ use dioxus::prelude::*;
 use hooks::consume_api;
 use hooks::toast::toast;
 
-pub(crate) fn copy_to_clipboard(text: &str) {
-    let value = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_string());
-    let js = format!(
-        "navigator.clipboard.writeText({value}).catch((e) => console.error('clipboard writeText failed', e));"
-    );
-    let _ = dioxus::document::eval(&js);
-}
 #[component]
 pub fn ExplicitBadge() -> Element {
     let label = i18n::t("explicit").to_string();
@@ -749,7 +742,7 @@ pub fn TrackRow(
 pub use crate::radio_actions::track_radio_handler as radio_handler;
 
 pub fn copy_link(url: &str) {
-    copy_to_clipboard(url);
+    crate::common::shared::copy_to_clipboard(url);
     toast(&i18n::t("share_copied"));
 }
 
@@ -760,7 +753,7 @@ pub fn share_track(track: Track) {
     spawn(async move {
         match api.track_web_url(track.key.clone()).await {
             Ok(Some(url)) => {
-                copy_to_clipboard(&url);
+                crate::common::shared::copy_to_clipboard(&url);
                 toast("Copied link");
             }
             _ => toast("Couldn't find a page for this track"),

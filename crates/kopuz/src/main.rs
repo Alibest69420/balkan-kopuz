@@ -1482,24 +1482,15 @@ fn App() -> Element {
 
             // Switching source clears the error it belonged to, so whatever is
             // here now is about the source that is playing.
-            if let Some(msg) = ctrl.playback_error.read().clone() {
-                    div {
-                        class: "flex-shrink-0",
-                        div {
-                            class: "flex items-center justify-between gap-3 px-4 py-2 bg-rose-500/15 border-b border-rose-500/20 text-rose-200 text-sm",
-                            div {
-                                class: "flex items-center gap-2 whitespace-pre-line",
-                                i { class: "fa-solid fa-triangle-exclamation text-xs" }
-                                span { "{msg}" }
-                            }
-                            button {
-                                class: "opacity-50 hover:opacity-100 transition-opacity p-1",
-                                onclick: move |_| ctrl.playback_error.set(None),
-                                i { class: "fa-solid fa-xmark text-xs" }
-                            }
-                        }
-                    }
+            if let Some(error) = ctrl.playback_error.read().clone() {
+                components::playback::error_banner::PlaybackErrorBanner {
+                    error,
+                    on_sign_in: move |_| {
+                        ctrl.reauth_requested.set(true);
+                        current_route.set(Route::Settings);
+                    },
                 }
+            }
 
             if let Some(is_offline) = *network_banner.read() {
                 div {

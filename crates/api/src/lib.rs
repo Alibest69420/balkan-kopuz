@@ -55,10 +55,11 @@ pub use schema::{
     encode_directories, spec_value, toggle_of, value_of,
 };
 pub use sources::{
-    AlbumPresentation, ArtistPresentation, BrowserProfile, BrowserSession, ConnectKind,
-    CredentialProvision, DraftCheck, FavoritesSyncMode, IntegrationInfo, PageEntry,
-    PlaylistCapability, SearchFilter, ServiceInfo, ServiceRef, SignInKind, SourceAccount,
-    SourceCapabilities, SourceDraft, SourceFolderEntry, SourceInfo, SourceLoginRequest,
+    AlbumPresentation, ArtistPresentation, BrowserProfile, BrowserSession, CheckOutcome, CheckStep,
+    ConnectKind, ConnectionCheck, CredentialProvision, DraftCheck, FavoritesSyncMode,
+    IntegrationInfo, PageEntry, PlaylistCapability, SearchFilter, ServiceInfo, ServiceRef,
+    SignInKind, SourceAccount, SourceCapabilities, SourceDraft, SourceFolderEntry, SourceInfo,
+    SourceLoginRequest,
 };
 
 /// The config view: the layered config with credential keys
@@ -484,6 +485,10 @@ pub trait SourceApi: Send + Sync {
         id: String,
         account: Option<String>,
     ) -> Result<SourceInfo, ApiError>;
+
+    /// Walk each step of reaching a source and playing from it, and report
+    /// every one, so a failure says which part broke. Records nothing.
+    async fn test_source_connection(&self, id: String) -> Result<Vec<ConnectionCheck>, ApiError>;
 
     /// Whether this daemon can run a browser sign-in at all. A sandboxed
     /// daemon cannot spawn one, and a client asks before offering a source

@@ -1927,13 +1927,18 @@ impl Session {
         self.intent = next;
     }
 
-    fn fail_load(&mut self, token: u64, error: impl std::fmt::Display) -> bool {
+    fn fail_load(
+        &mut self,
+        token: u64,
+        code: api::ErrorCode,
+        error: impl std::fmt::Display,
+    ) -> bool {
         let intent = self.intent;
         if intent.token() != token {
             return false;
         }
         self.error = Some(api::ErrorBody {
-            code: api::ErrorCode::Internal,
+            code,
             message: format!("couldn't load this track: {error}"),
         });
         self.buffered.clear();

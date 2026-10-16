@@ -38,7 +38,9 @@ pub async fn signed_in(scratch: &Path) -> Vec<BrowserProfile> {
     let checks = candidates.into_iter().map(|profile| async move {
         let accepted = tokio::time::timeout(CHECK_TIMEOUT, async {
             match session_of(&profile, scratch).await {
-                Ok(header) => crate::provider::validate_ytmusic_cookies(&header).await,
+                Ok(header) => crate::provider::check_ytmusic_session(&header)
+                    .await
+                    .is_usable(),
                 Err(error) => {
                     tracing::debug!(browser = profile.browser.id(), %error, "could not read a browser profile's YouTube session");
                     false
@@ -119,7 +121,10 @@ mod live {
                 header.split("; ").count(),
                 header.len()
             );
-            assert!(crate::provider::validate_ytmusic_cookies(&header).await);
+            assert_eq!(
+                crate::provider::check_ytmusic_session(&header).await,
+                crate::ytmusic::SessionCheck::Valid
+            );
             eprintln!("live: YouTube Music accepted the session");
         }
         let left = std::fs::read_dir(&scratch)

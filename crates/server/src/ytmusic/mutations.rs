@@ -19,7 +19,7 @@ async fn post(endpoint: &str, mut body: Value, cookies: &str) -> Result<Value, S
         .header("Content-Type", "application/json")
         .header("X-Goog-Api-Format-Version", "1")
         .header("X-YouTube-Client-Name", client.client_id)
-        .header("X-YouTube-Client-Version", client.client_version)
+        .header("X-YouTube-Client-Version", client.version())
         .header("X-Origin", ORIGIN_YOUTUBE_MUSIC)
         .header("Referer", format!("{ORIGIN_YOUTUBE_MUSIC}/"));
     let resp = signed(req, &mut body, cookies, auth)
@@ -39,7 +39,7 @@ fn ytmusic_context() -> Value {
     json!({
         "client": {
             "clientName": WEB_REMIX.client_name,
-            "clientVersion": WEB_REMIX.client_version,
+            "clientVersion": WEB_REMIX.version(),
             "hl": "en",
             "gl": "US",
         },

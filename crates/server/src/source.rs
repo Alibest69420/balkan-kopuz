@@ -134,6 +134,20 @@ pub trait MediaSource: Send + Sync {
     /// Check stored creds against the source (local is always [`Valid`](AuthOutcome::Valid)).
     async fn validate(&self) -> AuthOutcome;
 
+    /// Each step of reaching this source and playing from it, for a
+    /// connection test. A source with nothing more to show reports its
+    /// sign-in check alone.
+    async fn diagnose(&self) -> Vec<Check> {
+        let result = match self.validate().await {
+            AuthOutcome::Valid => Ok(()),
+            AuthOutcome::Expired => Err("the sign-in is no longer accepted".to_string()),
+            AuthOutcome::Unreachable => Err("the server did not answer".to_string()),
+        };
+        vec![Check::of(CheckStep::Session, result, |()| {
+            "accepted".to_string()
+        })]
+    }
+
     async fn storage_quota(&self) -> Result<StorageQuota, SourceError> {
         Err(SourceError::unsupported("storage quota"))
     }

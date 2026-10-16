@@ -264,7 +264,7 @@ impl Session {
         let mut prepared = match result {
             Ok(prepared) => prepared,
             Err(failure) => {
-                if self.fail_load(failure.token, failure.message) {
+                if self.fail_load(failure.token, failure.code, failure.message) {
                     self.publish(state_tx, false);
                 }
                 return;
@@ -425,7 +425,7 @@ impl Session {
             }
             Some(Err(error)) => {
                 tracing::error!(error = %error, "playback failed");
-                if self.fail_load(finished.token, error) {
+                if self.fail_load(finished.token, api::ErrorCode::Internal, error) {
                     self.publish(state_tx, false);
                 }
             }
@@ -597,6 +597,7 @@ impl ClassifiedLoad {
         } else {
             let (stream_ref, _) = self.remote_ref.take().ok_or_else(|| LoadFailure {
                 token: self.token,
+                code: api::ErrorCode::Internal,
                 message: "classified load has no source".to_string(),
             })?;
             ClassifiedSource::Remote {
@@ -654,6 +655,7 @@ impl ClassifiedLoad {
                         .await
                         .map_err(|error| LoadFailure {
                             token: self.token,
+                            code: crate::sources::source_error_code(&error),
                             message: error.to_string(),
                         })?
                 } else {
@@ -715,12 +717,14 @@ impl ClassifiedLoad {
                     ResolvedStreamRef::Pending(item_id) => {
                         let source = source.ok_or_else(|| LoadFailure {
                             token: self.token,
+                            code: api::ErrorCode::Internal,
                             message: "no active source for remote track".to_string(),
                         })?;
                         let info = source.resolve_stream(item_id).await.map_err(|error| {
                             tracing::error!(error = %error, "stream URL resolve failed");
                             LoadFailure {
                                 token: self.token,
+                                code: crate::sources::source_error_code(&error),
                                 message: error.to_string(),
                             }
                         })?;
@@ -787,6 +791,7 @@ pub(super) struct PreparedLoad {
 
 pub(super) struct LoadFailure {
     token: u64,
+    code: api::ErrorCode,
     message: String,
 }
 

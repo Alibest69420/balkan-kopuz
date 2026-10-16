@@ -956,7 +956,7 @@ fn build_browse_body(browse_id: Option<&str>) -> Value {
         "context": {
             "client": {
                 "clientName": client.client_name,
-                "clientVersion": client.client_version,
+                "clientVersion": client.version(),
                 "hl": "en",
                 "gl": "US",
                 "userAgent": client.user_agent,
@@ -983,7 +983,7 @@ async fn post(url: &str, body: &Value, cookies: &str) -> Result<Value, String> {
         .header("Content-Type", "application/json")
         .header("X-Goog-Api-Format-Version", "1")
         .header("X-YouTube-Client-Name", client.client_id)
-        .header("X-YouTube-Client-Version", client.client_version)
+        .header("X-YouTube-Client-Version", client.version())
         .header("X-Origin", ORIGIN_YOUTUBE_MUSIC)
         .header("Referer", format!("{ORIGIN_YOUTUBE_MUSIC}/"));
     // Attach auth only when we have cookies that actually yield a

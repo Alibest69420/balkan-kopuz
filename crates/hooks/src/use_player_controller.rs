@@ -39,7 +39,10 @@ pub struct PlayerController {
     pub volume: Signal<f32>,
     pub muted: Signal<bool>,
     pub config: Signal<AppConfig>,
-    pub playback_error: Signal<Option<String>>,
+    pub playback_error: Signal<Option<PlaybackError>>,
+    /// Set by a "sign in again" anywhere in the app, and answered by
+    /// Settings, which owns the sign-in dialogs.
+    pub reauth_requested: Signal<bool>,
     pub browse_loading: Signal<bool>,
     pub(crate) engine_anchor: Signal<Option<(u64, std::time::Instant, bool)>>,
     pub(crate) fading_progress: Signal<Option<f64>>,
@@ -49,6 +52,24 @@ pub struct PlayerController {
     /// The device an integration is playing on, when one owns playback.
     pub external_device: Signal<Option<String>>,
     pub(crate) output_latency_ms: Signal<u64>,
+}
+
+/// What the playback banner shows. The code is the daemon's, when it was the
+/// daemon that failed, and decides what the banner tells you to do; a message
+/// a frontend wrote itself has none.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PlaybackError {
+    pub code: Option<api::ErrorCode>,
+    pub message: String,
+}
+
+impl From<String> for PlaybackError {
+    fn from(message: String) -> Self {
+        Self {
+            code: None,
+            message,
+        }
+    }
 }
 
 /// What to say while a mix is being built, and if it fails.
@@ -529,7 +550,8 @@ pub fn use_player_controller(
     let shuffle_order = use_signal(Vec::<usize>::new);
     let loop_mode = use_signal(|| LoopMode::None);
     let buffered_ranges = use_signal(Vec::<BufferedRange>::new);
-    let playback_error = use_signal(|| None::<String>);
+    let playback_error = use_signal(|| None::<PlaybackError>);
+    let reauth_requested = use_signal(|| false);
     let engine_anchor = use_signal(|| None::<(u64, std::time::Instant, bool)>);
     let fading_progress = use_signal(|| None::<f64>);
     let output_latency_ms = use_signal(|| 0u64);
@@ -561,6 +583,7 @@ pub fn use_player_controller(
         muted,
         config,
         playback_error,
+        reauth_requested,
         browse_loading,
         engine_anchor,
         fading_progress,

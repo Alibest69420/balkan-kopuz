@@ -42,6 +42,9 @@ pub struct SourceService {
     probes: AtomicU64,
     upstream: Arc<dyn Upstream>,
     recovery: Recovery,
+    /// The core's runtime. The desktop UI calls this service in-process on
+    /// its own thread, and work that blocks has to run here instead.
+    runtime: tokio::runtime::Handle,
 }
 
 #[async_trait::async_trait]
@@ -147,14 +150,38 @@ fn capabilities(source: &dyn server::source::MediaSource) -> SourceCapabilities 
     }
 }
 
-fn source_error(error: server::source::SourceError) -> ApiError {
+pub(crate) fn source_error(error: server::source::SourceError) -> ApiError {
     use server::source::SourceError;
-    match &error {
-        SourceError::Unsupported(what) => ApiError::unsupported(*what),
-        SourceError::Auth => ApiError::new(ErrorCode::SourceAuthExpired, error.to_string()),
-        SourceError::Connectivity => ApiError::new(ErrorCode::SourceUnreachable, error.to_string()),
-        SourceError::InvalidInput(message) => ApiError::invalid_input(message.clone()),
-        SourceError::Backend(message) => ApiError::internal(message.clone()),
+    match error {
+        SourceError::Unsupported(what) => ApiError::unsupported(what),
+        SourceError::InvalidInput(message) => ApiError::invalid_input(message),
+        SourceError::Backend(message) => ApiError::internal(message),
+        SourceError::Auth | SourceError::Connectivity => {
+            ApiError::new(source_error_code(&error), error.to_string())
+        }
+        SourceError::Refused(_, ref message) => {
+            ApiError::new(source_error_code(&error), message.clone())
+        }
+    }
+}
+
+/// The wire code for a source failure, for paths that carry only a code and
+/// a message, such as a failed track load.
+pub(crate) fn source_error_code(error: &server::source::SourceError) -> ErrorCode {
+    use server::source::{Refusal, SourceError};
+    match error {
+        SourceError::Unsupported(_) => ErrorCode::Unsupported,
+        SourceError::InvalidInput(_) => ErrorCode::InvalidInput,
+        SourceError::Backend(_) => ErrorCode::Internal,
+        SourceError::Auth | SourceError::Refused(Refusal::SessionExpired, _) => {
+            ErrorCode::SourceAuthExpired
+        }
+        SourceError::Connectivity | SourceError::Refused(Refusal::Network, _) => {
+            ErrorCode::SourceUnreachable
+        }
+        SourceError::Refused(Refusal::Challenged, _) => ErrorCode::SourceChallenged,
+        SourceError::Refused(Refusal::ServiceRefused, _) => ErrorCode::SourceRefused,
+        SourceError::Refused(Refusal::Unavailable, _) => ErrorCode::ItemUnavailable,
     }
 }
 
@@ -200,6 +227,7 @@ impl SourceService {
             probes: AtomicU64::new(0),
             upstream,
             recovery: Recovery::default(),
+            runtime: tokio::runtime::Handle::current(),
         })
     }
 
@@ -1171,6 +1199,38 @@ impl SourceService {
             .collect())
     }
 
+    /// Run the source's own connection test. Unlike a probe it records
+    /// nothing and recovers nothing: it reports what is there.
+    pub async fn test_connection(&self, id: &str) -> Result<Vec<api::ConnectionCheck>, ApiError> {
+        use server::source::{CheckOutcome, CheckStep};
+        let (_, source) = self.resolve(id).await?;
+        // The stream steps run YouTube's player JS in V8 synchronously, which
+        // froze the window when it ran on the caller's thread.
+        let checks = self
+            .runtime
+            .spawn(async move { source.diagnose().await })
+            .await
+            .map_err(|error| ApiError::internal(format!("connection test stopped: {error}")))?;
+        Ok(checks
+            .into_iter()
+            .map(|check| api::ConnectionCheck {
+                step: match check.step {
+                    CheckStep::Reach => api::CheckStep::Reach,
+                    CheckStep::Session => api::CheckStep::Session,
+                    CheckStep::SignedInPlayback => api::CheckStep::SignedInPlayback,
+                    CheckStep::AnonymousPlayback => api::CheckStep::AnonymousPlayback,
+                    CheckStep::PlaybackToken => api::CheckStep::PlaybackToken,
+                },
+                outcome: match check.outcome {
+                    CheckOutcome::Passed => api::CheckOutcome::Passed,
+                    CheckOutcome::Failed => api::CheckOutcome::Failed,
+                    CheckOutcome::Skipped => api::CheckOutcome::Skipped,
+                },
+                detail: check.detail,
+            })
+            .collect())
+    }
+
     /// True when the active source's account changed and its library needs a resync.
     pub async fn switch_account(
         &self,
@@ -1384,8 +1444,13 @@ impl SourceService {
             // session does not lapse between checks.
             let mut ticker = tokio::time::interval(Duration::from_secs(300));
             let mut since_spotify = 0u32;
+            let mut since_client_version = 0u32;
             loop {
                 ticker.tick().await;
+                if since_client_version == 0 {
+                    service.refresh_ytmusic_client_version().await;
+                }
+                since_client_version = (since_client_version + 1) % 12;
                 service.rotate_ytmusic().await;
                 since_spotify += 1;
                 if since_spotify >= 6 {
@@ -1394,6 +1459,18 @@ impl SourceService {
                 }
             }
         });
+    }
+
+    async fn refresh_ytmusic_client_version(&self) {
+        let config = self.current().await;
+        if config.server.as_ref().map(|server| server.service)
+            != Some(config::MusicService::YtMusic)
+        {
+            return;
+        }
+        if let Err(error) = server::ytmusic::clients::refresh_live_version().await {
+            tracing::warn!(%error, "reading the live YouTube Music client version failed; keeping the last one");
+        }
     }
 
     async fn rotate_ytmusic(&self) {
@@ -1461,18 +1538,25 @@ fn ytmusic_rotation(config: &config::AppConfig) -> Option<(String, String)> {
     Some((cookies, id))
 }
 
-/// Accept cookies that still validate, else try one keepalive rotation before
-/// giving up on them.
+/// Accept cookies YouTube does not call signed out, else try one keepalive
+/// rotation before giving up on them.
 async fn try_resume_ytmusic(seed: Option<String>) -> Option<String> {
+    use server::ytmusic::SessionCheck;
     let cookies = seed?;
-    if server::provider::validate_ytmusic_cookies(&cookies).await {
-        return Some(cookies);
+    match server::provider::check_ytmusic_session(&cookies).await {
+        SessionCheck::Valid => return Some(cookies),
+        SessionCheck::Unknown(error) => {
+            tracing::warn!(%error, "YouTube Music gave no verdict on the stored session; keeping it");
+            return Some(cookies);
+        }
+        SessionCheck::SignedOut => {}
     }
     let rotated = server::ytmusic::verify_session_keepalive::tick(&cookies)
         .await
         .ok()??;
-    server::provider::validate_ytmusic_cookies(&rotated)
+    server::provider::check_ytmusic_session(&rotated)
         .await
+        .is_usable()
         .then_some(rotated)
 }
 
@@ -1499,8 +1583,16 @@ async fn ensure_ytmusic_signed_in(
         SIGNIN_TIMEOUT,
     )
     .await?;
-    if !server::provider::validate_ytmusic_cookies(&cookies).await {
-        return Err("sign-in finished but YouTube Music still rejected the session".to_string());
+    match server::provider::check_ytmusic_session(&cookies).await {
+        server::ytmusic::SessionCheck::SignedOut => {
+            return Err(
+                "sign-in finished but YouTube Music still answers as signed out".to_string(),
+            );
+        }
+        server::ytmusic::SessionCheck::Unknown(error) => {
+            tracing::warn!(%error, "YouTube Music gave no verdict on the new session; keeping it");
+        }
+        server::ytmusic::SessionCheck::Valid => {}
     }
     Ok((cookies, true))
 }

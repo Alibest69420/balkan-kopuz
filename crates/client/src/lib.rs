@@ -1453,6 +1453,23 @@ impl api::SourceApi for GrpcApi {
         Ok(convert::source_info_from_proto(info.get_ref()))
     }
 
+    async fn test_source_connection(
+        &self,
+        id: String,
+    ) -> Result<Vec<api::ConnectionCheck>, ApiError> {
+        let report = self
+            .client()
+            .test_source_connection(Request::new(proto::SourceId { id }))
+            .await
+            .map_err(wire_error)?;
+        Ok(report
+            .get_ref()
+            .checks
+            .iter()
+            .filter_map(convert::connection_check_from_proto)
+            .collect())
+    }
+
     async fn can_open_browser(&self) -> Result<bool, ApiError> {
         let access = self
             .client()

@@ -125,6 +125,7 @@ service Kopuz {
   rpc ImportBrowserSession(ImportBrowserSessionRequest) returns (SourceInfo);
   rpc BrowseSource(BrowseSourceRequest) returns (SourceFolderList);
   rpc ValidateSource(SourceId) returns (SourceStateResponse);
+  rpc TestSourceConnection(SourceId) returns (ConnectionReport);
   rpc CanOpenBrowser(CanOpenBrowserRequest) returns (BrowserAccess);
   rpc GetSourceAccounts(SourceId) returns (SourceAccountList);
   rpc SwitchSourceAccount(SwitchSourceAccountRequest) returns (SourceInfo);
@@ -950,6 +951,32 @@ message ImportBrowserSessionRequest {
 
 message SourceStateResponse {
   SourceState state = 1;
+}
+
+message ConnectionReport {
+  repeated ConnectionCheck checks = 1;
+}
+
+message ConnectionCheck {
+  CheckStep step = 1;
+  CheckOutcome outcome = 2;
+  string detail = 3;
+}
+
+enum CheckStep {
+  CHECK_STEP_UNSPECIFIED = 0;
+  CHECK_STEP_REACH = 1;
+  CHECK_STEP_SESSION = 2;
+  CHECK_STEP_SIGNED_IN_PLAYBACK = 3;
+  CHECK_STEP_ANONYMOUS_PLAYBACK = 4;
+  CHECK_STEP_PLAYBACK_TOKEN = 5;
+}
+
+enum CheckOutcome {
+  CHECK_OUTCOME_UNSPECIFIED = 0;
+  CHECK_OUTCOME_PASSED = 1;
+  CHECK_OUTCOME_FAILED = 2;
+  CHECK_OUTCOME_SKIPPED = 3;
 }
 
 message CanOpenBrowserRequest {}
@@ -1921,6 +1948,9 @@ enum ErrorCode {
   ERROR_CODE_DAEMON_GONE = 9;
   ERROR_CODE_UNSUPPORTED = 7;
   ERROR_CODE_INTERNAL = 8;
+  ERROR_CODE_SOURCE_CHALLENGED = 10;
+  ERROR_CODE_SOURCE_REFUSED = 11;
+  ERROR_CODE_ITEM_UNAVAILABLE = 12;
 }
 
 enum Phase {

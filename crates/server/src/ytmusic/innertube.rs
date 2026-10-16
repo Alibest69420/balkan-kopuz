@@ -87,7 +87,7 @@ fn build_context(client: YouTubeClient) -> Value {
     );
     obj.insert(
         "clientVersion".into(),
-        Value::String(client.client_version.into()),
+        Value::String(client.version().into()),
     );
     obj.insert("hl".into(), Value::String("en".into()));
     obj.insert("gl".into(), Value::String("US".into()));
@@ -200,7 +200,7 @@ pub async fn player(
         .header("Content-Type", "application/json")
         .header("X-Goog-Api-Format-Version", "1")
         .header("X-YouTube-Client-Name", client.client_id)
-        .header("X-YouTube-Client-Version", client.client_version);
+        .header("X-YouTube-Client-Version", client.version());
     if client.client_name.starts_with("WEB") {
         req = req
             .header("X-Origin", ORIGIN_YOUTUBE_MUSIC)
@@ -293,7 +293,7 @@ pub async fn post_as_visitor(
         .header("Content-Type", "application/json")
         .header("X-Goog-Api-Format-Version", "1")
         .header("X-YouTube-Client-Name", client.client_id)
-        .header("X-YouTube-Client-Version", client.client_version);
+        .header("X-YouTube-Client-Version", client.version());
     if client.client_name.starts_with("WEB") {
         req = req
             .header("X-Origin", ORIGIN_YOUTUBE_MUSIC)
@@ -349,7 +349,7 @@ pub async fn browse_maybe_auth(browse_id: &str, cookies: Option<&str>) -> Result
         .header("Content-Type", "application/json")
         .header("X-Goog-Api-Format-Version", "1")
         .header("X-YouTube-Client-Name", client.client_id)
-        .header("X-YouTube-Client-Version", client.client_version)
+        .header("X-YouTube-Client-Version", client.version())
         .header("X-Origin", ORIGIN_YOUTUBE_MUSIC)
         .header("Referer", format!("{ORIGIN_YOUTUBE_MUSIC}/"));
     if let Some(c) = cookies {
@@ -404,7 +404,7 @@ pub async fn browse_continuation_maybe_auth(
         .header("Content-Type", "application/json")
         .header("X-Goog-Api-Format-Version", "1")
         .header("X-YouTube-Client-Name", client.client_id)
-        .header("X-YouTube-Client-Version", client.client_version)
+        .header("X-YouTube-Client-Version", client.version())
         .header("X-Origin", ORIGIN_YOUTUBE_MUSIC)
         .header("Referer", format!("{ORIGIN_YOUTUBE_MUSIC}/"));
     if let Some(c) = cookies {
@@ -438,7 +438,7 @@ pub async fn visitor_id(cookies: Option<&str>) -> Result<String, String> {
         .header("User-Agent", client.user_agent)
         .header("Content-Type", "application/json")
         .header("X-YouTube-Client-Name", client.client_id)
-        .header("X-YouTube-Client-Version", client.client_version)
+        .header("X-YouTube-Client-Version", client.version())
         .header("X-Origin", ORIGIN_YOUTUBE_MUSIC)
         .header("Referer", format!("{ORIGIN_YOUTUBE_MUSIC}/"));
     if let Some(c) = cookies {

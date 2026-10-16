@@ -98,7 +98,7 @@ impl VideoService {
         let stream = source
             .video_stream(item_id)
             .await
-            .map_err(crate::catalog::source_error)?;
+            .map_err(crate::sources::source_error)?;
         if let Ok(mut streams) = self.streams.lock() {
             streams.retain(|_, (_, at)| at.elapsed() < STREAM_TTL);
             if streams.len() >= MAX_STREAMS {

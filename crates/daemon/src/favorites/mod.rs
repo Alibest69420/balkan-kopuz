@@ -11,22 +11,12 @@ use tokio::sync::Notify;
 
 use crate::jobs::JobRunner;
 use crate::session::SessionHandle;
+use crate::sources::source_error;
 
 mod pull;
 
 const NUDGE_DEBOUNCE: Duration = Duration::from_secs(2);
 const BACKOFF_CAP_SECS: u64 = 30 * 60;
-
-fn source_error(error: server::source::SourceError) -> ApiError {
-    use server::source::SourceError;
-    match &error {
-        SourceError::Unsupported(what) => ApiError::unsupported(*what),
-        SourceError::Auth => ApiError::new(ErrorCode::SourceAuthExpired, error.to_string()),
-        SourceError::Connectivity => ApiError::new(ErrorCode::SourceUnreachable, error.to_string()),
-        SourceError::InvalidInput(message) => ApiError::invalid_input(message.clone()),
-        SourceError::Backend(message) => ApiError::internal(message.clone()),
-    }
-}
 
 /// An expired session says nothing here: the caller recovers it and pushes again.
 fn push_rejected_notice(error: &server::source::SourceError) -> Option<ApiEvent> {

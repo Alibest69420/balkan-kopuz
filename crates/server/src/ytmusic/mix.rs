@@ -72,7 +72,7 @@ pub(super) async fn fetch(seed: MixSeed<'_>, cookies: &str) -> Result<MixPage, S
         "context": {
             "client": {
                 "clientName": client.client_name,
-                "clientVersion": client.client_version,
+                "clientVersion": client.version(),
                 "hl": "en",
                 "gl": "US",
             },
@@ -103,7 +103,7 @@ pub(super) async fn fetch_continuation(
         "context": {
             "client": {
                 "clientName": client.client_name,
-                "clientVersion": client.client_version,
+                "clientVersion": client.version(),
                 "hl": "en",
                 "gl": "US",
             },
@@ -129,7 +129,7 @@ async fn post_next(body: &Value, cookies: &str) -> Result<Value, String> {
         .header("Content-Type", "application/json")
         .header("X-Goog-Api-Format-Version", "1")
         .header("X-YouTube-Client-Name", client.client_id)
-        .header("X-YouTube-Client-Version", client.client_version)
+        .header("X-YouTube-Client-Version", client.version())
         .header("X-Origin", ORIGIN)
         .header("Origin", ORIGIN)
         .header("Referer", format!("{ORIGIN}/"));
@@ -318,7 +318,7 @@ pub(super) async fn counterpart(
         "context": {
             "client": {
                 "clientName": client.client_name,
-                "clientVersion": client.client_version,
+                "clientVersion": client.version(),
                 "hl": "en",
                 "gl": "US",
             },
@@ -332,7 +332,7 @@ pub(super) async fn counterpart(
         .header("Content-Type", "application/json")
         .header("X-Goog-Api-Format-Version", "1")
         .header("X-YouTube-Client-Name", client.client_id)
-        .header("X-YouTube-Client-Version", client.client_version)
+        .header("X-YouTube-Client-Version", client.version())
         .header("X-Origin", ORIGIN)
         .header("Origin", ORIGIN)
         .header("Referer", format!("{ORIGIN}/"))
@@ -484,7 +484,7 @@ pub async fn artist_channel_for_video(
         "context": {
             "client": {
                 "clientName": client.client_name,
-                "clientVersion": client.client_version,
+                "clientVersion": client.version(),
                 "hl": "en",
                 "gl": "US",
             },

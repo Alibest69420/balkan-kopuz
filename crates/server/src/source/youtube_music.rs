@@ -6,10 +6,10 @@ use db::Db;
 
 use crate::server_ops::ServerConn;
 use crate::ytmusic::tracking::{self, Watch};
-use crate::ytmusic::{YouTubeMusicClient, innertube, player};
+use crate::ytmusic::{SessionCheck, YouTubeMusicClient, innertube, player};
 
 use super::{
-    AlbumType, ArtistLookup, ArtistView, AuthOutcome, Capabilities, CatalogPageEntry,
+    AlbumType, ArtistLookup, ArtistView, AuthOutcome, Capabilities, CatalogPageEntry, Check,
     FavoritesPage, FavoritesSync, MediaSource, PlaylistMeta, PlaylistOps, PlaylistPage, RadioPage,
     RadioSeeds, RemoteAlbum, SearchFilterEntry, SourceAccount, SourceError, StreamInfo,
     VideoStream, mirror_added, mirror_created,
@@ -714,13 +714,18 @@ impl MediaSource for YtSource {
     }
 
     async fn validate(&self) -> AuthOutcome {
-        match self.client.validate_cookies().await {
-            Ok(()) => AuthOutcome::Valid,
-            Err(e) if e.contains("cookies expired") || e.contains("signed out") => {
-                AuthOutcome::Expired
+        match self.client.check_session().await {
+            SessionCheck::Valid => AuthOutcome::Valid,
+            SessionCheck::SignedOut => AuthOutcome::Expired,
+            SessionCheck::Unknown(error) => {
+                tracing::warn!(%error, "YouTube Music gave no verdict on the session; keeping it");
+                AuthOutcome::Unreachable
             }
-            Err(_) => AuthOutcome::Unreachable,
         }
+    }
+
+    async fn diagnose(&self) -> Vec<Check> {
+        crate::ytmusic::diagnose::run(&self.client).await
     }
 
     async fn fetch_favorites(&self) -> Result<Vec<String>, SourceError> {

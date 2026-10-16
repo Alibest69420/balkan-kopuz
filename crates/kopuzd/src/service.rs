@@ -1516,6 +1516,24 @@ impl Kopuz for KopuzGrpc {
         }))
     }
 
+    async fn test_source_connection(
+        &self,
+        request: Request<proto::SourceId>,
+    ) -> Result<Response<proto::ConnectionReport>, Status> {
+        let checks = self
+            .0
+            .api
+            .test_source_connection(request.into_inner().id)
+            .await
+            .map_err(failed)?;
+        Ok(Response::new(proto::ConnectionReport {
+            checks: checks
+                .iter()
+                .map(convert::connection_check_to_proto)
+                .collect(),
+        }))
+    }
+
     async fn switch_source_account(
         &self,
         request: Request<proto::SwitchSourceAccountRequest>,

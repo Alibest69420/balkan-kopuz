@@ -77,7 +77,7 @@ type Api = std::sync::Arc<dyn api::KopuzApi>;
 pub fn authenticate(
     server_id: String,
     error: Signal<Option<String>>,
-    playback_error: Signal<Option<String>>,
+    playback_error: Signal<Option<hooks::PlaybackError>>,
 ) {
     let api = hooks::consume_api();
     spawn(
@@ -90,14 +90,14 @@ async fn authenticate_with(
     api: Api,
     server_id: String,
     mut error: Signal<Option<String>>,
-    mut playback_error: Signal<Option<String>>,
+    mut playback_error: Signal<Option<hooks::PlaybackError>>,
 ) {
     match api.authenticate_source(server_id).await {
         Ok(_) => error.set(None),
         Err(failure) => {
             let message = i18n::t_with("signin_failed", &[("error", failure.to_string())]);
             error.set(Some(message.clone()));
-            playback_error.set(Some(message));
+            playback_error.set(Some(message.into()));
         }
     }
 }
@@ -109,7 +109,7 @@ async fn activate(
     id: String,
     error: Signal<Option<String>>,
     mut show_login: Signal<bool>,
-    playback_error: Signal<Option<String>>,
+    playback_error: Signal<Option<hooks::PlaybackError>>,
 ) {
     let source = match api.switch_source(id).await {
         Ok(source) => source,
@@ -162,7 +162,7 @@ pub fn add_source(
     mut error: Signal<Option<String>>,
     mut show_add_source: Signal<bool>,
     show_login: Signal<bool>,
-    playback_error: Signal<Option<String>>,
+    playback_error: Signal<Option<hooks::PlaybackError>>,
 ) {
     let api = hooks::consume_api();
     spawn(
@@ -219,7 +219,7 @@ pub fn add_source_from_session(
     mut error: Signal<Option<String>>,
     mut show_add_source: Signal<bool>,
     show_login: Signal<bool>,
-    playback_error: Signal<Option<String>>,
+    playback_error: Signal<Option<hooks::PlaybackError>>,
 ) {
     if draft.name.trim().is_empty() {
         draft.name = components::settings_popups::session_label(&session);
@@ -307,7 +307,7 @@ pub fn switch_server(
     id: String,
     error: Signal<Option<String>>,
     show_login: Signal<bool>,
-    playback_error: Signal<Option<String>>,
+    playback_error: Signal<Option<hooks::PlaybackError>>,
 ) {
     let api = hooks::consume_api();
     spawn(activate(api, id, error, show_login, playback_error));

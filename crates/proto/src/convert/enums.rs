@@ -171,6 +171,46 @@ pub fn source_state_from_proto(value: i32) -> api::SourceState {
     }
 }
 
+pub fn connection_check_to_proto(value: &api::ConnectionCheck) -> ConnectionCheck {
+    ConnectionCheck {
+        step: match value.step {
+            api::CheckStep::Reach => CheckStep::Reach,
+            api::CheckStep::Session => CheckStep::Session,
+            api::CheckStep::SignedInPlayback => CheckStep::SignedInPlayback,
+            api::CheckStep::AnonymousPlayback => CheckStep::AnonymousPlayback,
+            api::CheckStep::PlaybackToken => CheckStep::PlaybackToken,
+        } as i32,
+        outcome: match value.outcome {
+            api::CheckOutcome::Passed => CheckOutcome::Passed,
+            api::CheckOutcome::Failed => CheckOutcome::Failed,
+            api::CheckOutcome::Skipped => CheckOutcome::Skipped,
+        } as i32,
+        detail: value.detail.clone(),
+    }
+}
+
+/// A step this build does not know is dropped rather than shown as another.
+pub fn connection_check_from_proto(value: &ConnectionCheck) -> Option<api::ConnectionCheck> {
+    let step = match CheckStep::try_from(value.step).ok()? {
+        CheckStep::Reach => api::CheckStep::Reach,
+        CheckStep::Session => api::CheckStep::Session,
+        CheckStep::SignedInPlayback => api::CheckStep::SignedInPlayback,
+        CheckStep::AnonymousPlayback => api::CheckStep::AnonymousPlayback,
+        CheckStep::PlaybackToken => api::CheckStep::PlaybackToken,
+        CheckStep::Unspecified => return None,
+    };
+    let outcome = match CheckOutcome::try_from(value.outcome).unwrap_or(CheckOutcome::Unspecified) {
+        CheckOutcome::Passed => api::CheckOutcome::Passed,
+        CheckOutcome::Failed => api::CheckOutcome::Failed,
+        CheckOutcome::Skipped | CheckOutcome::Unspecified => api::CheckOutcome::Skipped,
+    };
+    Some(api::ConnectionCheck {
+        step,
+        outcome,
+        detail: value.detail.clone(),
+    })
+}
+
 pub fn notice_level_to_proto(value: api::NoticeLevel) -> NoticeLevel {
     match value {
         api::NoticeLevel::Info => NoticeLevel::Info,
