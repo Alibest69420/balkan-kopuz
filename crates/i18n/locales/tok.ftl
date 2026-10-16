@@ -149,6 +149,10 @@ new_releases = kalama sin
 # Navigation Buttons
 up_next = POKA
 lyrics = SITELEN
+track_version = nasin
+track_version_song = kalama musi
+track_version_video = sitelen tawa
+music_video = sitelen tawa musi
 
 # Player/Media
 loading_lyrics = mi kama jo e sitelen...

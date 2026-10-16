@@ -182,6 +182,10 @@ new_releases = Lançamentos
 # Navigation Buttons
 up_next = A SEGUIR
 lyrics = LETRAS
+track_version = Versão
+track_version_song = Música
+track_version_video = Vídeo
+music_video = Videoclipe
 
 # Player/Media
 loading_lyrics = A carregar a letra...

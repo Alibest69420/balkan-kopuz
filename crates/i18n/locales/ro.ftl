@@ -149,6 +149,10 @@ new_releases = Lansări Noi
 # Navigation Buttons
 up_next = URMEAZĂ
 lyrics = VERSURI
+track_version = Versiune
+track_version_song = Melodie
+track_version_video = Videoclip
+music_video = Videoclip muzical
 
 # Player/Media
 loading_lyrics = Se încarcă versurile...

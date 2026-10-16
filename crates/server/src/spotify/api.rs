@@ -730,6 +730,7 @@ pub fn parse_track(item: &Value) -> Option<Track> {
         playlist_item_id: None,
         artists,
         replay_gain: config::ReplayGainInfo::default(),
+        counterpart: None,
         credits,
         explicit: false,
         plays: None,

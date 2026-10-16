@@ -149,6 +149,10 @@ new_releases = Új megjelenések
 # Navigation Buttons
 up_next = KÖVETKEZŐ
 lyrics = DALSZÖVEG
+track_version = Változat
+track_version_song = Dal
+track_version_video = Videó
+music_video = Videoklip
 
 # Player/Media
 loading_lyrics = Dalszöveg betöltése...

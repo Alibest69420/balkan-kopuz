@@ -37,12 +37,13 @@ pub use jobs::{
 pub use library::{
     AlbumInfo, AlbumPage, ArtistCredit, ArtistDetail, ArtistInfo, ArtistPage, DEFAULT_PAGE_LIMIT,
     LyricChunkView, LyricLineView, LyricsView, Page, SearchRequest, SearchResults,
-    SearchSuggestion, StatsView, TrackFilter, TrackInfo, TrackPage, TrackSort,
+    SearchSuggestion, StatsView, TrackCounterpart, TrackFilter, TrackInfo, TrackPage, TrackSort,
+    TrackVersion,
 };
 pub use mutations::{ArtworkChange, ArtworkUpload, TrackMetadataPatch};
 pub use player::{
     BufferedRange, ExternalDevice, ExternalPlayback, FadingState, Intent, LoopMode, Phase,
-    PlayerCommand, PlayerState, PositionAnchor, QueueSummary, TrackKind,
+    PlayerCommand, PlayerState, PositionAnchor, QueueSummary, TrackKind, VideoChunk, VideoRequest,
 };
 pub use playlists::{PlaylistCatalog, PlaylistFolderInfo, PlaylistInfo, PlaylistReorder};
 pub use queue::{
@@ -154,6 +155,10 @@ pub trait PlayerApi: Send + Sync {
         source_id: String,
         device_id: Option<String>,
     ) -> Result<(), ApiError>;
+
+    /// A byte range of a queued music video's picture for a muted element, which follows
+    /// [`PlayerState::position`] less `output_latency_ms` one to one.
+    async fn video(&self, request: VideoRequest) -> Result<VideoChunk, ApiError>;
 }
 
 /// Reading the library, and the per-track state that belongs to it.

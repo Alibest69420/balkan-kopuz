@@ -149,6 +149,10 @@ new_releases = 新着
 # Navigation Buttons
 up_next = 次の曲
 lyrics = 歌詞
+track_version = バージョン
+track_version_song = 曲
+track_version_video = 動画
+music_video = ミュージックビデオ
 
 # Player/Media
 loading_lyrics = 歌詞を読み込み中...

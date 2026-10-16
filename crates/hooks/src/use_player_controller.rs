@@ -443,6 +443,22 @@ impl PlayerController {
         });
     }
 
+    pub fn set_version(&self, version: api::TrackVersion) {
+        self.command(api::PlayerCommand::SetVersion { version });
+    }
+
+    /// Picture position in seconds and whether it moves: the engine's anchor less output
+    /// latency, so the frame lands with the sound. Changes per anchor, not per frame.
+    pub fn picture_anchor(&self) -> Option<(f64, bool)> {
+        let (ms, at, playing) = (*self.engine_anchor.read())?;
+        let latency = *self.output_latency_ms.read() as f64 / 1000.0;
+        let mut position = ms as f64 / 1000.0;
+        if playing {
+            position += at.elapsed().as_secs_f64();
+        }
+        Some(((position - latency).max(0.0), playing))
+    }
+
     pub fn output_latency_secs(&self) -> f64 {
         *self.output_latency_ms.peek() as f64 / 1000.0
     }

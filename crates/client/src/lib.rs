@@ -225,6 +225,13 @@ impl api::PlayerApi for GrpcApi {
                     }))
                     .await
             }
+            PlayerCommand::SetVersion { version } => {
+                self.client()
+                    .set_version(Request::new(proto::SetVersion {
+                        version: convert::track_version_to_proto(version) as i32,
+                    }))
+                    .await
+            }
         }
         .map_err(wire_error)?;
         Ok(CommandAck {
@@ -302,6 +309,25 @@ impl api::PlayerApi for GrpcApi {
             .await
             .map_err(wire_error)?;
         Ok(())
+    }
+
+    async fn video(&self, request: api::VideoRequest) -> Result<api::VideoChunk, ApiError> {
+        let chunk = self
+            .client()
+            .get_video(Request::new(proto::VideoRequest {
+                key: request.key,
+                start: request.start,
+                length: request.length,
+            }))
+            .await
+            .map_err(wire_error)?
+            .into_inner();
+        Ok(api::VideoChunk {
+            content_type: chunk.content_type,
+            start: chunk.start,
+            total: chunk.total,
+            bytes: chunk.data,
+        })
     }
 }
 

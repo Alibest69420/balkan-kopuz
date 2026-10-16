@@ -149,6 +149,10 @@ new_releases = מהדורות חדשות
 # Navigation Buttons
 up_next = הבא בתור
 lyrics = מילים
+track_version = גרסה
+track_version_song = שיר
+track_version_video = סרטון
+music_video = קליפ
 
 # Player/Media
 loading_lyrics = טוען מילים...

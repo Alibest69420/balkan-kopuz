@@ -207,6 +207,10 @@ new_releases = Phát hành mới
 # Navigation Buttons
 up_next = TIẾP THEO
 lyrics = LỜI BÀI HÁT
+track_version = Phiên bản
+track_version_song = Bài hát
+track_version_video = Video
+music_video = Video âm nhạc
 
 # Player/Media
 loading_lyrics = Đang tải lời bài hát...

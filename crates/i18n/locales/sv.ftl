@@ -207,6 +207,10 @@ new_releases = Nya släpp
 # Navigation Buttons
 up_next = Spelas härnäst
 lyrics = Låttexter
+track_version = Version
+track_version_song = Låt
+track_version_video = Video
+music_video = Musikvideo
 
 # Player/Media
 loading_lyrics = Laddar låttexter...

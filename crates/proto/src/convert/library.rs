@@ -65,6 +65,14 @@ pub fn track_info_to_proto(value: &api::TrackInfo) -> TrackInfo {
         credits: value.credits.iter().map(artist_credit_to_proto).collect(),
         explicit: value.explicit,
         plays: value.plays.clone(),
+        counterpart: value
+            .counterpart
+            .as_ref()
+            .map(|counterpart| TrackCounterpart {
+                key: counterpart.key.clone(),
+                version: track_version_to_proto(counterpart.version) as i32,
+                duration_ms: counterpart.duration_ms,
+            }),
     }
 }
 
@@ -92,6 +100,13 @@ pub fn track_info_from_proto(value: &TrackInfo) -> api::TrackInfo {
         credits: value.credits.iter().map(artist_credit_from_proto).collect(),
         explicit: value.explicit,
         plays: value.plays.clone(),
+        counterpart: value.counterpart.as_ref().and_then(|counterpart| {
+            Some(api::TrackCounterpart {
+                key: counterpart.key.clone(),
+                version: track_version_from_proto(counterpart.version)?,
+                duration_ms: counterpart.duration_ms,
+            })
+        }),
     }
 }
 
@@ -521,8 +536,24 @@ mod tests {
             ],
             explicit: true,
             plays: Some("1.2B plays".into()),
+            counterpart: Some(api::TrackCounterpart {
+                key: "dQw4w9WgXcQ".into(),
+                version: api::TrackVersion::Video,
+                duration_ms: Some(213_000),
+            }),
         };
         assert_eq!(track, track_info_from_proto(&track_info_to_proto(&track)));
+    }
+
+    #[test]
+    fn a_counterpart_of_no_version_is_dropped() {
+        let mut wire = track_info_to_proto(&api::TrackInfo::default());
+        wire.counterpart = Some(TrackCounterpart {
+            key: "x".into(),
+            version: TrackVersion::Unspecified as i32,
+            duration_ms: None,
+        });
+        assert_eq!(track_info_from_proto(&wire).counterpart, None);
     }
 
     #[test]

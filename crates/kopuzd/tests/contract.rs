@@ -40,6 +40,9 @@ impl QueueMaterializer for StubLibrary {
 }
 
 fn track(key: &str) -> Track {
+    if key.starts_with("ytm-song:") {
+        return music_video_pair(key);
+    }
     Track {
         id: reader::models::TrackId::Local(std::path::PathBuf::from(key)),
         cover: None,
@@ -58,10 +61,32 @@ fn track(key: &str) -> Track {
         playlist_item_id: None,
         artists: vec![],
         replay_gain: config::ReplayGainInfo::default(),
+        counterpart: None,
         credits: vec![],
         explicit: false,
         plays: None,
     }
+}
+
+/// A song paired with its music video, which opens on a second of intro.
+fn music_video_pair(key: &str) -> Track {
+    let mut song = track("/stand-in.wav");
+    song.id = reader::models::TrackId::Server {
+        service: config::MusicService::YtMusic,
+        item_id: key.to_string(),
+    };
+    song.title = key.to_string();
+    song.counterpart = Some(Box::new(reader::Counterpart {
+        item_id: format!("{key}-video"),
+        video: true,
+        duration_ms: Some(7_000),
+        segments: vec![reader::SharedSegment {
+            start_ms: 0,
+            counterpart_start_ms: 1_000,
+            duration_ms: 6_000,
+        }],
+    }));
+    song
 }
 
 fn wav_bytes(seconds: u64) -> Vec<u8> {
@@ -2529,4 +2554,101 @@ async fn both_transports_shake_hands_on_this_revision() {
             mismatched => panic!("{mismatched:?}"),
         }
     }
+}
+
+#[tokio::test]
+async fn version_switches_and_their_errors_map_identically() {
+    let pair = spawn_pair().await;
+    pair.wire
+        .set_queue(replace(&["ytm-song:a", "/b.wav"]))
+        .await
+        .expect("set queue");
+    wait_state(&pair.local, "committed", |state| {
+        matches!(state.intent, Intent::Committed { .. })
+    })
+    .await;
+    let local = pair.local.player_state().await.expect("local state");
+    let wire = pair.wire.player_state().await.expect("wire state");
+    let song = local.track.clone().expect("the song plays");
+    assert_eq!(song.version(), Some(api::TrackVersion::Song));
+    assert_eq!(wire.track, local.track, "the pairing crosses the wire");
+
+    pair.wire
+        .player_command(PlayerCommand::SetVersion {
+            version: api::TrackVersion::Video,
+        })
+        .await
+        .expect("switch over the wire");
+    let state = wait_state(&pair.local, "the video committed", |state| {
+        state
+            .track
+            .as_ref()
+            .is_some_and(|t| t.key == "ytm-song:a-video")
+            && matches!(state.intent, Intent::Committed { .. })
+    })
+    .await;
+    let video = state.track.expect("the video plays");
+    assert_eq!(video.version(), Some(api::TrackVersion::Video));
+    assert_eq!(
+        video.counterpart.as_ref().map(|other| other.key.as_str()),
+        Some("ytm-song:a")
+    );
+    assert_eq!(state.queue.length, 2);
+    let queue = pair
+        .wire
+        .queue_snapshot()
+        .await
+        .expect("queue over the wire");
+    assert_eq!(queue.items[0].key, "ytm-song:a-video");
+    assert_eq!(queue.items[1].key, "/b.wav");
+
+    // This pair serves no pictures, and says so the same way on both sides.
+    let request = api::VideoRequest {
+        key: "ytm-song:a-video".into(),
+        start: 0,
+        length: Some(1024),
+    };
+    let local_err = pair
+        .local
+        .video(request.clone())
+        .await
+        .expect_err("no video locally");
+    let wire_err = pair
+        .wire
+        .video(request)
+        .await
+        .expect_err("no video over the wire");
+    assert_eq!(local_err.code, ErrorCode::Unsupported);
+    assert_eq!(
+        (wire_err.code, wire_err.message),
+        (local_err.code, local_err.message)
+    );
+
+    pair.wire
+        .player_command(PlayerCommand::Next)
+        .await
+        .expect("next");
+    wait_state(&pair.local, "the plain track", |state| {
+        state.track.as_ref().is_some_and(|t| t.key == "/b.wav")
+            && matches!(state.intent, Intent::Committed { .. })
+    })
+    .await;
+    let switch = PlayerCommand::SetVersion {
+        version: api::TrackVersion::Video,
+    };
+    let local_err = pair
+        .local
+        .player_command(switch)
+        .await
+        .expect_err("no pair locally");
+    let wire_err = pair
+        .wire
+        .player_command(switch)
+        .await
+        .expect_err("no pair over the wire");
+    assert_eq!(local_err.code, ErrorCode::InvalidInput);
+    assert_eq!(
+        (wire_err.code, wire_err.message),
+        (local_err.code, local_err.message)
+    );
 }

@@ -149,6 +149,10 @@ new_releases = Neuerscheinungen
 # Navigation Buttons
 up_next = ALS NÄCHSTES
 lyrics = SONGTEXT
+track_version = Version
+track_version_song = Song
+track_version_video = Video
+music_video = Musikvideo
 
 # Player/Media
 loading_lyrics = Songtext wird geladen...

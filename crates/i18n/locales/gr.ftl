@@ -149,6 +149,10 @@ new_releases = Νέες Κυκλοφορίες
 # Navigation Buttons
 up_next = Επόμενο
 lyrics = Στίχοι
+track_version = Έκδοση
+track_version_song = Τραγούδι
+track_version_video = Βίντεο
+music_video = Μουσικό βίντεο
 
 # Player/Media
 loading_lyrics = Φόρτωση στίχων...

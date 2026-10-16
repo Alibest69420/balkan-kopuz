@@ -149,6 +149,10 @@ new_releases = 新添加
 # Navigation Buttons
 up_next = 接下来播放
 lyrics = 歌词
+track_version = 版本
+track_version_song = 歌曲
+track_version_video = 视频
+music_video = 音乐视频
 
 # Player/Media
 loading_lyrics = 正在加载歌词...

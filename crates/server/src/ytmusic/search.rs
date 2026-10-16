@@ -652,6 +652,7 @@ pub(super) fn parsed_to_track(p: ParsedRow) -> Track {
         replay_gain: config::ReplayGainInfo::default(),
         explicit: p.explicit,
         plays: p.plays,
+        counterpart: None,
     }
 }
 

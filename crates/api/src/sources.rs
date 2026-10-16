@@ -86,6 +86,8 @@ pub struct SourceCapabilities {
     pub external_devices: bool,
     /// It plays through a browser on the host, not the engine.
     pub browser_playback: bool,
+    /// Rows can have a music video cut, whose picture [`crate::PlayerApi::video`] serves.
+    pub music_videos: bool,
     pub playlists: PlaylistCapability,
     pub artists: ArtistPresentation,
     pub albums: AlbumPresentation,

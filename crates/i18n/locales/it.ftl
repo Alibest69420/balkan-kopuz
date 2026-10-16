@@ -207,6 +207,10 @@ new_releases = Nuove uscite
 # Navigation Buttons
 up_next = Successivo
 lyrics = Testo
+track_version = Versione
+track_version_song = Brano
+track_version_video = Video
+music_video = Videoclip
 
 # Player/Media
 loading_lyrics = Caricando il testo...

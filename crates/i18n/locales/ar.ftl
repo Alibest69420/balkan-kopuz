@@ -149,6 +149,10 @@ new_releases = إصدارات جديدة
 # Navigation Buttons
 up_next = التالي
 lyrics = الكلمات
+track_version = الإصدار
+track_version_song = أغنية
+track_version_video = فيديو
+music_video = فيديو موسيقي
 
 # Player/Media
 loading_lyrics = جارٍ تحميل الكلمات...

@@ -145,6 +145,10 @@ new_releases = 󱤕󱥝
 # Navigation Buttons
 up_next = 󱥒
 lyrics = 󱥠
+track_version = nasin
+track_version_song = kalama musi
+track_version_video = sitelen tawa
+music_video = sitelen tawa musi
 
 # Player/Media
 loading_lyrics = 󱤴󱤖󱤓󱤉󱥠󱦜󱦜󱦜

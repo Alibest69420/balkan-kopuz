@@ -12,7 +12,7 @@ use super::clients::{ORIGIN_YOUTUBE_MUSIC, YouTubeClient};
 /// Shared HTTP client for all InnerTube + keepalive calls. Keeps the
 /// TLS session and connection pool warm across the dozens of
 /// /youtubei/v1 hits a typical library sync makes.
-pub(super) fn http_client() -> &'static reqwest::Client {
+pub fn http_client() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT.get_or_init(reqwest::Client::new)
 }

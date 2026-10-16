@@ -61,6 +61,7 @@ impl MediaSource for AppleMusicSource {
             storage_quota: false,
             discover: false,
             dont_recommend: false,
+            music_videos: false,
             radio: RadioSeeds::ALL,
             play_queue: false,
             playlists: PlaylistOps::AddRemove,

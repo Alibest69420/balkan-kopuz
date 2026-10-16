@@ -207,6 +207,10 @@ new_releases = புதிய வெளியீடுகள்
 # Navigation Buttons
 up_next = அடுத்தது
 lyrics = வரிகள்
+track_version = பதிப்பு
+track_version_song = பாடல்
+track_version_video = வீடியோ
+music_video = இசை வீடியோ
 
 # Player/Media
 loading_lyrics = வரிகள் ஏற்றப்படுகிறது...

@@ -411,6 +411,7 @@ fn parse_track(item: &Value) -> Option<Track> {
         replay_gain: config::ReplayGainInfo::default(),
         explicit: false,
         plays: None,
+        counterpart: None,
     })
 }
 

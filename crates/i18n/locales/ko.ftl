@@ -149,6 +149,10 @@ new_releases = 새 앨범
 # Navigation Buttons
 up_next = 다음 곡
 lyrics = 가사
+track_version = 버전
+track_version_song = 노래
+track_version_video = 동영상
+music_video = 뮤직비디오
 
 # Player/Media
 loading_lyrics = 가사 불러오는 중...

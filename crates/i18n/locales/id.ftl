@@ -207,6 +207,10 @@ new_releases = Rilis Baru
 # Navigation Buttons
 up_next = BERIKUTNYA
 lyrics = LIRIK
+track_version = Versi
+track_version_song = Lagu
+track_version_video = Video
+music_video = Video musik
 
 # Player/Media
 loading_lyrics = Memuat lirik...

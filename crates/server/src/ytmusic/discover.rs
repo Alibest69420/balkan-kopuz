@@ -566,6 +566,7 @@ fn parse_artist_song_row(row: &Value) -> Option<Track> {
         playlist_item_id: None,
         artists,
         replay_gain: config::ReplayGainInfo::default(),
+        counterpart: None,
         credits,
         explicit: super::has_explicit_badge(row),
         plays,
@@ -925,6 +926,7 @@ fn parse_album_row(
         playlist_item_id: None,
         artists,
         replay_gain: config::ReplayGainInfo::default(),
+        counterpart: None,
         credits,
         explicit: super::has_explicit_badge(row),
         plays,
@@ -1187,6 +1189,7 @@ fn build_song_track(video_id: &str, title: &str, subtitle: &str, thumbnail: Opti
         replay_gain: config::ReplayGainInfo::default(),
         explicit: false,
         plays: None,
+        counterpart: None,
     }
 }
 

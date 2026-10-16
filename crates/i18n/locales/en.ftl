@@ -226,6 +226,10 @@ new_releases = New Releases
 # Navigation Buttons
 up_next = Up Next
 lyrics = Lyrics
+track_version = Version
+track_version_song = Song
+track_version_video = Video
+music_video = Music video
 
 # Player/Media
 loading_lyrics = Loading lyrics...

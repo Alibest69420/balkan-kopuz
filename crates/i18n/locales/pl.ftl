@@ -149,6 +149,10 @@ new_releases = Nowe Wydania
 # Navigation Buttons
 up_next = NASTĘPNE
 lyrics = TEKST
+track_version = Wersja
+track_version_song = Utwór
+track_version_video = Wideo
+music_video = Teledysk
 
 # Player/Media
 loading_lyrics = Ładowanie tekstu...

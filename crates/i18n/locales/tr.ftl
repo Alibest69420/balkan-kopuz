@@ -149,6 +149,10 @@ new_releases = Yeni Çıkanlar
 # Navigation Buttons
 up_next = SIRADAKI
 lyrics = SÖZLER
+track_version = Sürüm
+track_version_song = Şarkı
+track_version_video = Video
+music_video = Müzik videosu
 
 # Player/Media
 loading_lyrics = Sözler yükleniyor...

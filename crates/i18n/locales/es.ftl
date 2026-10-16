@@ -150,6 +150,10 @@ new_releases = Nuevos lanzamientos
 up_next = Siguiente
 
 lyrics = Letra
+track_version = Versión
+track_version_song = Canción
+track_version_video = Vídeo
+music_video = Videoclip
 
 # Player/Media
 loading_lyrics = Cargando letra...

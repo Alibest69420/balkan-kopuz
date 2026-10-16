@@ -149,6 +149,10 @@ new_releases = Нові релізи
 # Navigation Buttons
 up_next = НАСТУПНЕ
 lyrics = ТЕКСТ ПІСНІ
+track_version = Версія
+track_version_song = Пісня
+track_version_video = Відео
+music_video = Кліп
 
 # Player/Media
 loading_lyrics = Завантажуємо текст...

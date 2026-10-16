@@ -42,6 +42,17 @@ pub(crate) fn track_info(track: &Track, config: &config::AppConfig) -> TrackInfo
         credits: credits(track),
         explicit: track.explicit,
         plays: track.plays.clone(),
+        counterpart: track
+            .counterpart
+            .as_deref()
+            .map(|counterpart| api::TrackCounterpart {
+                key: counterpart.item_id.clone(),
+                version: match counterpart.video {
+                    true => api::TrackVersion::Video,
+                    false => api::TrackVersion::Song,
+                },
+                duration_ms: counterpart.duration_ms,
+            }),
     }
 }
 
@@ -129,6 +140,7 @@ mod tests {
             playlist_item_id: None,
             artists: vec!["Ada".into()],
             replay_gain: config::ReplayGainInfo::default(),
+            counterpart: None,
             credits,
             explicit: false,
             plays: None,

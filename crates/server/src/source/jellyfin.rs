@@ -194,6 +194,7 @@ impl MediaSource for JellyfinSource {
                         replay_gain,
                         explicit: false,
                         plays: None,
+                        counterpart: None,
                     });
                 }
                 start += count;
@@ -273,6 +274,7 @@ impl MediaSource for JellyfinSource {
             storage_quota: false,
             discover: false,
             dont_recommend: false,
+            music_videos: false,
             radio: RadioSeeds::NONE,
             play_queue: false,
             playlists: PlaylistOps::Reorder,
@@ -448,6 +450,7 @@ impl MediaSource for JellyfinSource {
                     replay_gain,
                     explicit: false,
                     plays: None,
+                    counterpart: None,
                 }
             })
             .collect())

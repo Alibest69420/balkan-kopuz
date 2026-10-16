@@ -28,6 +28,7 @@ service Kopuz {
   rpc SetVolume(SetVolume) returns (MutationResult);
   rpc SetMuted(SetMuted) returns (MutationResult);
   rpc SetMode(SetMode) returns (MutationResult);
+  rpc SetVersion(SetVersion) returns (MutationResult);
 
   rpc GetStatus(GetStatusRequest) returns (DaemonStatus);
   rpc GetPlayerState(GetPlayerStateRequest) returns (PlayerState);
@@ -133,6 +134,7 @@ service Kopuz {
   rpc ConnectIntegrationFromBrowser(ConnectIntegrationFromBrowserRequest) returns (IntegrationInfo);
 
   rpc GetArtwork(ArtworkRequest) returns (stream ArtworkChunk);
+  rpc GetVideo(VideoRequest) returns (VideoChunk);
 }
 
 // One message per RPC even when it carries nothing, so any of them can gain
@@ -185,6 +187,11 @@ message SetMuted {
 message SetMode {
   optional bool shuffle = 1;
   optional LoopMode loop = 2;
+}
+
+// Swap the playing track for its other cut, at the same place in the song.
+message SetVersion {
+  TrackVersion version = 1;
 }
 
 message MutationResult {
@@ -778,6 +785,8 @@ message SourceCapabilities {
   // The catalog pages it offers, in the order to list them.
   repeated PageEntry pages = 31;
   repeated SearchFilter search_filters = 25;
+  // Its rows can have a music video cut, whose picture GetVideo serves.
+  bool music_videos = 27;
 }
 
 message SearchFilter {
@@ -1300,6 +1309,21 @@ message TrackInfo {
   bool explicit = 24;
   // How often it was played or watched, as the source wrote it ("1.2B plays").
   optional string plays = 25;
+  optional TrackCounterpart counterpart = 26;
+}
+
+// Which cut of a recording a row is, for a source that has both.
+enum TrackVersion {
+  TRACK_VERSION_UNSPECIFIED = 0;
+  TRACK_VERSION_SONG = 1;
+  TRACK_VERSION_VIDEO = 2;
+}
+
+message TrackCounterpart {
+  string key = 1;
+  // What the counterpart is; the row carrying it is the other one.
+  TrackVersion version = 2;
+  optional uint64 duration_ms = 3;
 }
 
 // An artist key is minted by the daemon; a frontend compares and passes it back, never reads it.
@@ -1830,6 +1854,23 @@ message ArtworkRequest {
     string account = 9;
   }
   bool hq = 4;
+}
+
+// The picture follows the playing cut's position anchor one to one.
+message VideoRequest {
+  // A queued track whose version is the video.
+  string key = 1;
+  uint64 start = 2;
+  // At most this many bytes; the daemon may send fewer.
+  optional uint64 length = 3;
+}
+
+message VideoChunk {
+  string content_type = 1;
+  uint64 start = 2;
+  // The whole stream's length, when the source says.
+  optional uint64 total = 3;
+  bytes data = 4;
 }
 
 message ArtworkChunk {

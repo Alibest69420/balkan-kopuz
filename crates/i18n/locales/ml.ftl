@@ -207,6 +207,10 @@ new_releases = പുതിയ റിലീസുകൾ
 # Navigation Buttons
 up_next = അടുത്തത്
 lyrics = വരികൾ
+track_version = പതിപ്പ്
+track_version_song = പാട്ട്
+track_version_video = വീഡിയോ
+music_video = മ്യൂസിക് വീഡിയോ
 
 # Player/Media
 loading_lyrics = വരികൾ ലോഡ് ചെയ്യുന്നു...

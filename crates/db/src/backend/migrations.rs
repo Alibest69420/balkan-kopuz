@@ -1316,6 +1316,7 @@ fn legacy_to_track(l: &LegacyTrack) -> Option<Track> {
         playlist_item_id: l.playlist_item_id.clone(),
         artists: l.artists.clone(),
         replay_gain: config::ReplayGainInfo::default(),
+        counterpart: None,
         credits: Vec::new(),
         explicit: false,
         plays: None,
@@ -1826,6 +1827,7 @@ mod row_fill_tests {
             replay_gain: config::ReplayGainInfo::default(),
             explicit: false,
             plays: None,
+            counterpart: None,
         }
     }
 

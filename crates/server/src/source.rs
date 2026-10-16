@@ -166,6 +166,20 @@ pub trait MediaSource: Send + Sync {
         Err(SourceError::unsupported("playlist reorder"))
     }
 
+    /// The other cut of `track`, when the source pairs them and the track does not say.
+    /// `None` is an answer, not a failure: most tracks have no counterpart.
+    async fn counterpart(
+        &self,
+        _track: &reader::Track,
+    ) -> Result<Option<reader::Counterpart>, SourceError> {
+        Ok(None)
+    }
+
+    /// A video track's picture stream, which the daemon fetches by range for a frontend.
+    async fn video_stream(&self, _item_id: &str) -> Result<VideoStream, SourceError> {
+        Err(SourceError::unsupported("music videos"))
+    }
+
     /// Tell the source to stop recommending `item_id` — YT Music's dislike,
     /// which is a signal to its recommender rather than a library edit. Only
     /// sources whose [`Capabilities::dont_recommend`] is set override this; the

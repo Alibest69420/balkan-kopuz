@@ -207,6 +207,10 @@ new_releases = Nieuwe releases
 # Navigation Buttons
 up_next = HIERNA
 lyrics = SONGTEKST
+track_version = Versie
+track_version_song = Nummer
+track_version_video = Video
+music_video = Videoclip
 
 # Player/Media
 loading_lyrics = Songtekst laden...

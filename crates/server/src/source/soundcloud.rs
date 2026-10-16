@@ -51,6 +51,7 @@ impl MediaSource for SoundcloudSource {
             storage_quota: false,
             discover: false,
             dont_recommend: false,
+            music_videos: false,
             radio: RadioSeeds::NONE,
             play_queue: false,
             // No write side wired (api-v2 playlist mutation is DataDome-gated).

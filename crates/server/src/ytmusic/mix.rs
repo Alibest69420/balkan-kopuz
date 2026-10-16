@@ -1,4 +1,4 @@
-use reader::models::Track;
+use reader::models::{Counterpart, SharedSegment, Track};
 use serde_json::{Value, json};
 
 use super::clients::WEB_REMIX;
@@ -202,13 +202,18 @@ fn walk_panel(panel: &Value) -> MixPage {
             items
                 .iter()
                 .filter_map(|item| {
-                    item.get("playlistPanelVideoRenderer").or_else(|| {
+                    let row = item.get("playlistPanelVideoRenderer").or_else(|| {
                         item.pointer(
                             "/playlistPanelVideoWrapperRenderer/primaryRenderer/playlistPanelVideoRenderer",
                         )
-                    })
+                    })?;
+                    let mut track = parse_queue_row(row)?;
+                    track.counterpart = item
+                        .pointer("/playlistPanelVideoWrapperRenderer/counterpart/0")
+                        .and_then(parse_counterpart)
+                        .map(Box::new);
+                    Some(track)
                 })
-                .filter_map(parse_queue_row)
                 .collect()
         })
         .unwrap_or_default();
@@ -237,11 +242,116 @@ fn walk_panel(panel: &Value) -> MixPage {
     }
 }
 
+/// The other cut a wrapper row pairs with its primary one. Only signed-in
+/// sessions are sent wrapper rows.
+fn parse_counterpart(v: &Value) -> Option<Counterpart> {
+    let row = v.pointer("/counterpartRenderer/playlistPanelVideoRenderer")?;
+    let ms = |s: &Value, key: &str| s.get(key)?.as_str()?.parse::<u64>().ok();
+    let segments = v
+        .pointer("/segmentMap/segment")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|s| {
+            Some(SharedSegment {
+                start_ms: ms(s, "primaryVideoStartTimeMilliseconds")?,
+                counterpart_start_ms: ms(s, "counterpartVideoStartTimeMilliseconds")?,
+                duration_ms: ms(s, "durationMilliseconds")?,
+            })
+        })
+        .collect();
+    Some(Counterpart {
+        item_id: row.get("videoId")?.as_str()?.to_string(),
+        video: !is_song(music_video_type(row)),
+        duration_ms: row
+            .pointer("/lengthText/runs/0/text")
+            .and_then(Value::as_str)
+            .and_then(parse_mm_ss)
+            .map(|secs| secs * 1000),
+        segments,
+    })
+}
+
+fn music_video_type(row: &Value) -> Option<&str> {
+    row.pointer("/navigationEndpoint/watchEndpoint/watchEndpointMusicSupportedConfigs/watchEndpointMusicConfig/musicVideoType")
+        .and_then(Value::as_str)
+}
+
+fn is_song(music_video_type: Option<&str>) -> bool {
+    matches!(
+        music_video_type,
+        Some("MUSIC_VIDEO_TYPE_ATV" | "MUSIC_VIDEO_TYPE_OFFICIAL_SOURCE_MUSIC")
+    )
+}
+
+/// The other cut of `video_id` from either side of a watch-next row: a row whose
+/// counterpart is the asked-for id says the same thing from the other end.
+pub(super) fn counterpart_of(rows: &[Track], video_id: &str) -> Option<Counterpart> {
+    rows.iter().find_map(|row| {
+        let other = row.counterpart.as_deref()?;
+        if row.id.key() == video_id {
+            return Some(other.clone());
+        }
+        (other.item_id == video_id)
+            .then(|| row.counterpart_track())
+            .flatten()
+            .and_then(|swapped| swapped.counterpart.map(|c| *c))
+    })
+}
+
+/// The other cut of one track, as the watch-next queue YT opens for it pairs
+/// them. Anonymous sessions are never sent the pairing, so they are not asked.
+#[tracing::instrument(name = "yt.counterpart", skip(cookies), fields(video_id = %video_id))]
+pub(super) async fn counterpart(
+    video_id: &str,
+    cookies: &str,
+) -> Result<Option<Counterpart>, String> {
+    if cookies.is_empty() {
+        return Ok(None);
+    }
+    let client = WEB_REMIX;
+    let body = json!({
+        "videoId": video_id,
+        "isAudioOnly": true,
+        "enablePersistentPlaylistPanel": true,
+        "context": {
+            "client": {
+                "clientName": client.client_name,
+                "clientVersion": client.client_version,
+                "hl": "en",
+                "gl": "US",
+            },
+        },
+    });
+    let auth = sapisid_hash(cookies, ORIGIN).ok_or_else(|| "SAPISID missing".to_string())?;
+    let resp: Value = super::innertube::http_client()
+        .clone()
+        .post(format!("{ORIGIN}/youtubei/v1/next?prettyPrint=false"))
+        .header("User-Agent", client.user_agent)
+        .header("Content-Type", "application/json")
+        .header("X-Goog-Api-Format-Version", "1")
+        .header("X-YouTube-Client-Name", client.client_id)
+        .header("X-YouTube-Client-Version", client.client_version)
+        .header("X-Origin", ORIGIN)
+        .header("Origin", ORIGIN)
+        .header("Referer", format!("{ORIGIN}/"))
+        .header("Cookie", cookies)
+        .header("Authorization", auth)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("next HTTP: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("next HTTP: {e}"))?
+        .json()
+        .await
+        .map_err(|e| format!("next JSON: {e}"))?;
+    Ok(counterpart_of(&walk_queue(&resp).tracks, video_id))
+}
+
 fn parse_queue_row(row: &Value) -> Option<Track> {
     let video_id = row.get("videoId").and_then(|v| v.as_str())?.to_string();
-    let mvt = row
-        .pointer("/navigationEndpoint/watchEndpoint/watchEndpointMusicSupportedConfigs/watchEndpointMusicConfig/musicVideoType")
-        .and_then(|v| v.as_str());
+    let mvt = music_video_type(row);
     if !matches!(
         mvt,
         Some(
@@ -253,10 +363,7 @@ fn parse_queue_row(row: &Value) -> Option<Track> {
     ) {
         return None;
     }
-    let has_album = matches!(
-        mvt,
-        Some("MUSIC_VIDEO_TYPE_ATV" | "MUSIC_VIDEO_TYPE_OFFICIAL_SOURCE_MUSIC")
-    );
+    let has_album = is_song(mvt);
 
     let title = row
         .pointer("/title/runs/0/text")
@@ -331,6 +438,7 @@ fn parse_queue_row(row: &Value) -> Option<Track> {
         replay_gain: config::ReplayGainInfo::default(),
         explicit: super::has_explicit_badge(row),
         plays: None,
+        counterpart: None,
     })
 }
 

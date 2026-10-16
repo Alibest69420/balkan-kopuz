@@ -145,6 +145,10 @@ new_releases = Nouvelle Sortie
 # Navigation Buttons
 up_next = A suivre
 lyrics = Paroles
+track_version = Version
+track_version_song = Titre
+track_version_video = Vidéo
+music_video = Clip vidéo
 
 # Player/Media
 loading_lyrics = Chargement des Paroles...

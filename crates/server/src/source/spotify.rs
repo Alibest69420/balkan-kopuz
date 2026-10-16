@@ -70,6 +70,7 @@ impl MediaSource for SpotifySource {
             storage_quota: false,
             discover: true,
             dont_recommend: false,
+            music_videos: false,
             radio: RadioSeeds::NONE,
             play_queue: false,
             playlists: PlaylistOps::None,

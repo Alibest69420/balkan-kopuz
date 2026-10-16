@@ -65,6 +65,7 @@ impl ClippslySource {
             replay_gain: Default::default(),
             explicit: false,
             plays: None,
+            counterpart: None,
         }
     }
 }
@@ -93,6 +94,7 @@ impl MediaSource for ClippslySource {
             storage_quota: true,
             discover: false,
             dont_recommend: false,
+            music_videos: false,
             radio: RadioSeeds::NONE,
             play_queue: false,
             playlists: PlaylistOps::None,

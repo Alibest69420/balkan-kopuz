@@ -150,6 +150,10 @@ new_releases = Новые релизы
 # Navigation Buttons
 up_next = ДАЛЕЕ
 lyrics = ТЕКСТ
+track_version = Версия
+track_version_song = Песня
+track_version_video = Видео
+music_video = Клип
 
 # Player/Media
 loading_lyrics = Загрузка текста...

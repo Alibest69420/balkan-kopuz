@@ -207,6 +207,10 @@ new_releases = Mga Bagong Release
 # Navigation Buttons
 up_next = SUSUNOD
 lyrics = LYRICS
+track_version = Bersyon
+track_version_song = Kanta
+track_version_video = Video
+music_video = Music video
 
 # Player/Media
 loading_lyrics = Nilo-load ang lyrics...
