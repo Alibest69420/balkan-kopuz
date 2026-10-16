@@ -219,7 +219,12 @@ impl YoutubeDownloader {
     }
 
     pub async fn stream(&self, video_id: &str) -> Result<YtStreamInfo, String> {
-        crate::ytmusic::probe_stream(video_id, self.cookies.as_deref()).await
+        crate::ytmusic::probe_stream(
+            video_id,
+            self.cookies.as_deref(),
+            config::StreamQuality::High,
+        )
+        .await
     }
 }
 

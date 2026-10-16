@@ -414,6 +414,14 @@ device_change_pause = 一時停止
 sample_rate_mode = 出力サンプルレート
 sample_rate_mode_system = システムに従う
 sample_rate_mode_source = トラックに合わせる
+settings_group_streaming = ストリーミング
+stream_quality = ストリーミング品質
+stream_quality_low = 低
+stream_quality_normal = 標準
+stream_quality_high = 高
+autoplay_radio = キューが終わったらラジオを再生
+skip_explicit = 露骨な表現を含む曲をスキップ
+pause_watch_history = 再生履歴を一時停止
 
 crossfade = クロスフェード
 crossfade_off = オフ

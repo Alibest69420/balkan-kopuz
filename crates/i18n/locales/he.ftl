@@ -408,6 +408,14 @@ device_change_pause = Pause
 sample_rate_mode = קצב דגימה של הפלט
 sample_rate_mode_system = לפי המערכת
 sample_rate_mode_source = לפי השיר
+settings_group_streaming = סטרימינג
+stream_quality = איכות סטרימינג
+stream_quality_low = נמוכה
+stream_quality_normal = רגילה
+stream_quality_high = גבוהה
+autoplay_radio = הפעלת רדיו כשהתור מסתיים
+skip_explicit = דילוג על רצועות בוטות
+pause_watch_history = השהיית היסטוריית הצפייה
 
 crossfade = מעבר הדרגתי
 crossfade_off = כבוי

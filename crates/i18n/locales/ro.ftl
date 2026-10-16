@@ -408,6 +408,14 @@ device_change_pause = Pause
 sample_rate_mode = Rată de eșantionare la ieșire
 sample_rate_mode_system = Urmează sistemul
 sample_rate_mode_source = Potrivire cu piesa
+settings_group_streaming = Streaming
+stream_quality = Calitatea streamingului
+stream_quality_low = Scăzută
+stream_quality_normal = Normală
+stream_quality_high = Ridicată
+autoplay_radio = Pornește un radio când se termină coada
+skip_explicit = Omite piesele explicite
+pause_watch_history = Întrerupe istoricul vizionărilor
 
 crossfade = Întrepătrundere
 crossfade_off = Oprit

@@ -911,6 +911,36 @@ mod tests {
         assert_eq!(tracks[1].title, "song 0");
     }
 
+    /// Skip explicit filters a queue built from stored rows, not only fetched ones.
+    #[tokio::test]
+    async fn a_stored_explicit_track_is_skipped_when_queued_from_the_library() {
+        let (_dir, library) = seeded_library().await;
+        let mut explicit = track(9, "Ada");
+        explicit.explicit = true;
+        library
+            .db
+            .upsert_tracks(&config::Source::default(), std::slice::from_ref(&explicit))
+            .await
+            .expect("store the explicit track");
+
+        let tracks = library
+            .materialize(&QueueContext::Tracks {
+                keys: vec!["/lib/0.flac".into(), "/lib/9.flac".into()],
+            })
+            .await
+            .expect("keys context");
+        assert_eq!(
+            tracks.iter().map(|t| t.explicit).collect::<Vec<_>>(),
+            [false, true],
+            "the flag survives the database"
+        );
+        let (kept, _) = crate::queue_model::without_explicit(tracks, None);
+        assert_eq!(
+            kept.iter().map(|t| t.title.as_str()).collect::<Vec<_>>(),
+            ["song 0"]
+        );
+    }
+
     fn remote(id: &str) -> Track {
         Track {
             id: reader::TrackId::Server {

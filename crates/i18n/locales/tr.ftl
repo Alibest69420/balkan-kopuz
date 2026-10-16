@@ -408,6 +408,14 @@ device_change_pause = Duraklat
 sample_rate_mode = Çıkış örnekleme hızı
 sample_rate_mode_system = Sistemi izle
 sample_rate_mode_source = Parçaya uydur
+settings_group_streaming = Akış
+stream_quality = Akış kalitesi
+stream_quality_low = Düşük
+stream_quality_normal = Normal
+stream_quality_high = Yüksek
+autoplay_radio = Sıra bittiğinde bir radyo çal
+skip_explicit = Müstehcen parçaları atla
+pause_watch_history = İzleme geçmişini duraklat
 
 crossfade = Çapraz Geçiş
 crossfade_off = Kapalı

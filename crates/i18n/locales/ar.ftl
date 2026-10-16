@@ -414,6 +414,14 @@ device_change_pause = Pause
 sample_rate_mode = معدل عينات الإخراج
 sample_rate_mode_system = اتباع النظام
 sample_rate_mode_source = مطابقة المقطع
+settings_group_streaming = البث
+stream_quality = جودة البث
+stream_quality_low = منخفضة
+stream_quality_normal = عادية
+stream_quality_high = عالية
+autoplay_radio = تشغيل راديو عند انتهاء قائمة الانتظار
+skip_explicit = تخطي المقاطع الصريحة
+pause_watch_history = إيقاف سجل المشاهدة مؤقتًا
 
 crossfade = تلاشي متقاطع
 crossfade_off = إيقاف

@@ -190,8 +190,11 @@ impl Session {
         }
         // Handing a track to an integration stops the engine, so it waits for
         // the end of this one rather than cutting it short.
+        let skip = self.config.skip_explicit;
         if gapless
-            && let NextOutcome::Play(idx) = self.model.peek_next()
+            && let NextOutcome::Play(idx) = self
+                .model
+                .peek_next_where(|track| !(skip && track.explicit))
             && self
                 .model
                 .track_at(idx)
@@ -213,7 +216,11 @@ impl Session {
     }
 
     pub(super) fn arm_transition(&mut self) {
-        let NextOutcome::Play(idx) = self.model.peek_next() else {
+        let skip = self.config.skip_explicit;
+        let NextOutcome::Play(idx) = self
+            .model
+            .peek_next_where(|track| !(skip && track.explicit))
+        else {
             return;
         };
         self.start_load(idx, true);

@@ -409,6 +409,14 @@ device_change_pause = Pause
 sample_rate_mode = nasin nanpa kalama
 sample_rate_mode_system = sama ilo
 sample_rate_mode_source = sama kalama
+settings_group_streaming = kute tan linluwi
+stream_quality = pona pi kute tan linluwi
+stream_quality_low = lili
+stream_quality_normal = meso
+stream_quality_high = suli
+autoplay_radio = kulupu kalama li pini la o open e kalama sin sama
+skip_explicit = o weka e kalama ike
+pause_watch_history = o pini lili e sitelen pi kute pini
 
 crossfade = 󱥭 󱤴
 crossfade_off = 󱤄

@@ -104,8 +104,12 @@ pub fn derive_user_id(cookies: &str) -> Option<String> {
 
 /// Resolve a YT stream for diagnostics (the `duration_probe` example) without
 /// holding a client — a thin wrapper over the same resolve [`YouTubeMusicClient::get_stream`] uses.
-pub async fn probe_stream(video_id: &str, cookies: Option<&str>) -> Result<YtStreamInfo, String> {
-    Ok(player::resolve(video_id, cookies).await?)
+pub async fn probe_stream(
+    video_id: &str,
+    cookies: Option<&str>,
+    quality: config::StreamQuality,
+) -> Result<YtStreamInfo, String> {
+    Ok(player::resolve(video_id, cookies, quality).await?)
 }
 
 pub(crate) struct YouTubeMusicClient {
@@ -405,8 +409,12 @@ impl YouTubeMusicClient {
     /// Resolves a playable stream URL via native sig/n deciphering against
     /// WEB_REMIX (see `player::resolve`). With cookies this returns Premium
     /// itags; anonymously the ~128 kbps ceiling. No PO token, no yt-dlp.
-    pub async fn get_stream(&self, video_id: &str) -> Result<YtStreamInfo, player::StreamFailure> {
-        self.account(async { player::resolve(video_id, self.cookies.as_deref()).await })
+    pub async fn get_stream(
+        &self,
+        video_id: &str,
+        quality: config::StreamQuality,
+    ) -> Result<YtStreamInfo, player::StreamFailure> {
+        self.account(async { player::resolve(video_id, self.cookies.as_deref(), quality).await })
             .await
     }
 

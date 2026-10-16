@@ -203,6 +203,12 @@ pub struct Capabilities {
     pub albums: AlbumType,
     pub favorites_sync: FavoritesSync,
     pub account_avatar: bool,
+    /// It offers several formats per track, chosen by [`config::StreamQuality`].
+    pub stream_quality: bool,
+    /// Its listings mark explicit tracks, so skipping them can work.
+    pub explicit_flags: bool,
+    /// It keeps a watch history, which `pause_watch_history` stops feeding.
+    pub watch_history: bool,
 }
 
 /// `label` is a translation key, `icon` an icon class.

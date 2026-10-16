@@ -22,6 +22,7 @@ use super::decipher;
 use super::innertube::{self, PlayerExtras};
 use super::tracking::PlaybackTracking;
 use crate::source::{Refusal, SourceError};
+use config::StreamQuality;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AudioFormat {
@@ -126,14 +127,18 @@ async fn visitor_data(cookies: Option<&str>) -> Result<&'static str, String> {
 /// is asked once more before it is reported: those come in bursts that a
 /// few seconds outlast, and a reported one stops the queue.
 #[tracing::instrument(name = "yt.resolve", skip(cookies), fields(video_id = %video_id, anon = cookies.is_none()))]
-pub async fn resolve(video_id: &str, cookies: Option<&str>) -> Result<YtStreamInfo, StreamFailure> {
-    let mut attempt = resolve_once(video_id, cookies).await;
+pub async fn resolve(
+    video_id: &str,
+    cookies: Option<&str>,
+    quality: StreamQuality,
+) -> Result<YtStreamInfo, StreamFailure> {
+    let mut attempt = resolve_once(video_id, cookies, quality).await;
     for delay in TRANSIENT_RETRY_DELAYS {
         match &attempt {
             Err(failure) if failure.is_transient() => {
                 tracing::info!(?delay, refusal = ?failure.refusal, "every stream path failed; asking again");
                 tokio::time::sleep(delay).await;
-                attempt = resolve_once(video_id, cookies).await;
+                attempt = resolve_once(video_id, cookies, quality).await;
             }
             _ => break,
         }
@@ -177,6 +182,7 @@ impl From<StreamFailure> for SourceError {
 async fn resolve_once(
     video_id: &str,
     cookies: Option<&str>,
+    quality: StreamQuality,
 ) -> Result<YtStreamInfo, StreamFailure> {
     // A Premium *subscription* — not merely being signed in — is what exempts a
     // stream from a PO token. The signal is the itag: subscribers get 774-class
@@ -202,14 +208,16 @@ async fn resolve_once(
         skipped_signed_in =
             uid.as_deref().is_some_and(known_non_premium) && botguard::is_available();
         if !skipped_signed_in {
-            match signed_in_with_retry(video_id, cookies).await {
-                Ok(info) if is_premium_itag(info.itag) => {
+            match signed_in_with_retry(video_id, cookies, quality).await {
+                // Tier comes from what was offered, not picked: a free-tier itag
+                // from a Premium session is still exempt from the token.
+                Ok((info, true)) => {
                     if let Some(u) = &uid {
                         remember_tier(u, true);
                     }
                     return Ok(info);
                 }
-                Ok(info) => {
+                Ok((info, false)) => {
                     if let Some(u) = &uid {
                         remember_tier(u, false);
                     }
@@ -239,10 +247,10 @@ async fn resolve_once(
         visitor_data: visitor,
         ..Default::default()
     };
-    let anonymous_err = match anonymous_attempt(video_id, extras).await {
+    let anonymous_err = match anonymous_attempt(video_id, extras, quality).await {
         Ok(info) => match recheck_gated(
             info,
-            || anonymous_attempt(video_id, extras),
+            || anonymous_attempt(video_id, extras, quality),
             VISIONOS.client_name,
         )
         .await
@@ -268,11 +276,11 @@ async fn resolve_once(
                     visitor_data: visitor,
                     signature_timestamp: None,
                 };
-                match anonymous_attempt(video_id, extras).await {
+                match anonymous_attempt(video_id, extras, quality).await {
                     Ok(info) => {
                         match recheck_gated(
                             info,
-                            || anonymous_attempt(video_id, extras),
+                            || anonymous_attempt(video_id, extras, quality),
                             VISIONOS.client_name,
                         )
                         .await
@@ -291,14 +299,14 @@ async fn resolve_once(
     // The skip above bets that the anonymous client will play. When it did
     // not, the account's own stream is still there to try.
     if skipped_signed_in {
-        match signed_in_with_retry(video_id, cookies).await {
-            Ok(info) if is_premium_itag(info.itag) => {
+        match signed_in_with_retry(video_id, cookies, quality).await {
+            Ok((info, true)) => {
                 if let Some(u) = cookies.and_then(super::derive_user_id) {
                     remember_tier(&u, true);
                 }
                 return Ok(info);
             }
-            Ok(info) => decipher_fallback = Some(info),
+            Ok((info, false)) => decipher_fallback = Some(info),
             Err(e) => {
                 tracing::warn!(error = %e, "signed-in stream path failed after the anonymous ones");
                 decipher_err = Some(e);
@@ -310,7 +318,7 @@ async fn resolve_once(
     // content pot carried on the URL itself is what lifts it.
     if let Some(info) = decipher_fallback.take_if(|_| botguard::is_available()) {
         let again = || async {
-            let info = signed_in_with_retry(video_id, cookies).await?;
+            let (info, _) = signed_in_with_retry(video_id, cookies, quality).await?;
             let pot = botguard::remint_content_pot(video_id).await?;
             Ok(with_pot(info, &pot))
         };
@@ -363,6 +371,7 @@ fn labelled(error: String) -> String {
 async fn anonymous_attempt(
     video_id: &str,
     extras: PlayerExtras<'_>,
+    quality: StreamQuality,
 ) -> Result<YtStreamInfo, String> {
     let json = innertube::player(VISIONOS, video_id, None, extras)
         .await
@@ -376,7 +385,7 @@ async fn anonymous_attempt(
             playability_reason(&json)
         ));
     }
-    pick_plain_format(&json, VISIONOS)
+    pick_plain_format(&json, VISIONOS, quality)
         .ok_or_else(|| format!("{} returned no plain audio format", VISIONOS.client_name))
 }
 
@@ -701,36 +710,20 @@ fn playability_reason(json: &Value) -> &str {
         .unwrap_or("")
 }
 
-/// Walks `streamingData.adaptiveFormats[]` for the best audio entry whose
-/// `url` field is populated (i.e. unsigned). Returns `None` if every format
-/// uses `signatureCipher` — caller falls through to the next client.
-fn pick_plain_format(json: &Value, client: YouTubeClient) -> Option<YtStreamInfo> {
+/// Only formats with a plain `url` count. `None` when every one uses
+/// `signatureCipher`, so the caller falls through to the next client.
+fn pick_plain_format(
+    json: &Value,
+    client: YouTubeClient,
+    quality: StreamQuality,
+) -> Option<YtStreamInfo> {
     let formats = json
         .pointer("/streamingData/adaptiveFormats")
-        .and_then(|v| v.as_array())?;
-
-    let mut best_webm: Option<(&Value, u64)> = None;
-    let mut best_m4a: Option<(&Value, u64)> = None;
-    for f in formats {
-        let mime = f.get("mimeType").and_then(|v| v.as_str()).unwrap_or("");
-        if !mime.starts_with("audio/") {
-            continue;
-        }
-        if f.get("url").and_then(|v| v.as_str()).is_none() {
-            continue;
-        }
-        let bitrate = f.get("bitrate").and_then(|v| v.as_u64()).unwrap_or(0);
-        if mime.contains("webm") && best_webm.map(|(_, b)| bitrate > b).unwrap_or(true) {
-            best_webm = Some((f, bitrate));
-        }
-        if mime.contains("mp4") && best_m4a.map(|(_, b)| bitrate > b).unwrap_or(true) {
-            best_m4a = Some((f, bitrate));
-        }
-    }
-
-    // Prefer webm (symphonia + libopus path) over m4a (symphonia fMP4
-    // probe walks the whole file which kills startup latency).
-    let (fmt, bitrate) = best_webm.or(best_m4a)?;
+        .and_then(|v| v.as_array())?
+        .iter()
+        .filter(|f| f.get("url").and_then(|v| v.as_str()).is_some());
+    let fmt = choose_format(formats, quality, true)?;
+    let bitrate = fmt.get("bitrate").and_then(|v| v.as_u64()).unwrap_or(0);
     let url = fmt.get("url")?.as_str()?.to_string();
     let mime = fmt.get("mimeType")?.as_str()?;
     let format = AudioFormat::from_mime(mime)?;
@@ -785,19 +778,79 @@ fn loudness_db(json: &Value) -> Option<f32> {
         .filter(|db| db.is_finite())
 }
 
-/// Best audio format by bitrate, regardless of whether it's `signatureCipher`
-/// or plain — the native decipher path handles either.
-fn pick_best_audio(json: &Value) -> Option<&Value> {
-    json.pointer("/streamingData/adaptiveFormats")
-        .and_then(|v| v.as_array())?
-        .iter()
+/// Above this average bitrate a format is one a subscription unlocks.
+const NORMAL_CAP_BPS: u64 = 160_000;
+/// Itags 249 (Opus) and 139 (AAC) average about 50 kbps.
+const LOW_CAP_BPS: u64 = 64_000;
+
+fn itag_of(format: &Value) -> Option<u32> {
+    format
+        .get("itag")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as u32)
+}
+
+/// `averageBitrate` where YouTube sends it: `bitrate` is the peak, which for
+/// 251 can sit above the Normal cap while the stream averages ~130 kbps.
+fn average_bitrate(format: &Value) -> u64 {
+    format
+        .get("averageBitrate")
+        .or_else(|| format.get("bitrate"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0)
+}
+
+/// `prefer_webm` puts webm first because the fMP4 probe walks the whole file.
+/// Normal and Low never take a Premium itag and fall back to the smallest format.
+fn choose_format<'a>(
+    formats: impl IntoIterator<Item = &'a Value>,
+    quality: StreamQuality,
+    prefer_webm: bool,
+) -> Option<&'a Value> {
+    let audio: Vec<&Value> = formats
+        .into_iter()
         .filter(|f| {
             f.get("mimeType")
                 .and_then(|v| v.as_str())
-                .map(|m| m.starts_with("audio/"))
-                .unwrap_or(false)
+                .is_some_and(|m| m.starts_with("audio/"))
         })
-        .max_by_key(|f| f.get("bitrate").and_then(|v| v.as_u64()).unwrap_or(0))
+        .collect();
+    let is_webm = |f: &Value| {
+        f.get("mimeType")
+            .and_then(|v| v.as_str())
+            .is_some_and(|m| m.contains("webm"))
+    };
+    let peak = |f: &Value| f.get("bitrate").and_then(|v| v.as_u64()).unwrap_or(0);
+    let cap = match quality {
+        StreamQuality::High if prefer_webm => {
+            return audio
+                .iter()
+                .copied()
+                .filter(|f| is_webm(f))
+                .max_by_key(|f| peak(f))
+                .or_else(|| audio.iter().copied().max_by_key(|f| peak(f)));
+        }
+        StreamQuality::High => return audio.iter().copied().max_by_key(|f| peak(f)),
+        StreamQuality::Normal => NORMAL_CAP_BPS,
+        StreamQuality::Low => LOW_CAP_BPS,
+    };
+    let standard = || {
+        audio
+            .iter()
+            .copied()
+            .filter(|f| !is_premium_itag(itag_of(f)))
+    };
+    standard()
+        .filter(|f| average_bitrate(f) <= cap)
+        .max_by_key(|f| (is_webm(f), average_bitrate(f)))
+        .or_else(|| standard().min_by_key(|f| average_bitrate(f)))
+        .or_else(|| audio.iter().copied().min_by_key(|f| average_bitrate(f)))
+}
+
+fn offers_premium(json: &Value) -> bool {
+    json.pointer("/streamingData/adaptiveFormats")
+        .and_then(|v| v.as_array())
+        .is_some_and(|formats| formats.iter().any(|f| is_premium_itag(itag_of(f))))
 }
 
 /// Build a `YtStreamInfo` from an already-resolved (deciphered) URL plus the
@@ -862,8 +915,9 @@ const BLOCK_RETRY_DELAYS: [Duration; 2] = [Duration::from_secs(2), Duration::fro
 async fn signed_in_with_retry(
     video_id: &str,
     cookies: Option<&str>,
-) -> Result<YtStreamInfo, String> {
-    let mut attempt = try_native_decipher(video_id, cookies).await;
+    quality: StreamQuality,
+) -> Result<(YtStreamInfo, bool), String> {
+    let mut attempt = try_native_decipher(video_id, cookies, quality).await;
     for delay in BLOCK_RETRY_DELAYS {
         match &attempt {
             Err(error) if innertube::is_google_block(error) => {
@@ -872,7 +926,7 @@ async fn signed_in_with_retry(
                     "blocked by Google's abuse page; retrying the signed-in path"
                 );
                 tokio::time::sleep(delay).await;
-                attempt = try_native_decipher(video_id, cookies).await;
+                attempt = try_native_decipher(video_id, cookies, quality).await;
             }
             _ => break,
         }
@@ -880,10 +934,12 @@ async fn signed_in_with_retry(
     attempt
 }
 
+/// The deciphered stream, and whether the account was offered Premium formats.
 async fn try_native_decipher(
     video_id: &str,
     cookies: Option<&str>,
-) -> Result<YtStreamInfo, String> {
+    quality: StreamQuality,
+) -> Result<(YtStreamInfo, bool), String> {
     let player = decipher::player_js(video_id).await?;
     // The same device identity a browser would present with these cookies;
     // a signed-in request with none is the odd one out.
@@ -913,10 +969,16 @@ async fn try_native_decipher(
     if let Some(cookies) = cookies {
         remember_tracking(cookies, video_id, &json);
     }
-    let fmt = pick_best_audio(&json).ok_or("WEB_REMIX returned no audio format")?;
+    let formats = json
+        .pointer("/streamingData/adaptiveFormats")
+        .and_then(|v| v.as_array())
+        .into_iter()
+        .flatten();
+    let fmt = choose_format(formats, quality, false).ok_or("WEB_REMIX returned no audio format")?;
     let url = decipher::deciphered_url(&player.0, fmt).await?;
-    stream_info_from(&json, fmt, url, WEB_REMIX)
-        .ok_or_else(|| "deciphered format missing fields".to_string())
+    let info = stream_info_from(&json, fmt, url, WEB_REMIX)
+        .ok_or_else(|| "deciphered format missing fields".to_string())?;
+    Ok((info, offers_premium(&json)))
 }
 
 /// Tracking URLs from signed-in `player` responses, keyed by account and video.
@@ -972,7 +1034,9 @@ pub async fn playback_tracking(video_id: &str, cookies: &str) -> Result<Playback
 
 /// The signed-in path alone, once, for a connection test.
 pub(crate) async fn probe_signed_in(video_id: &str, cookies: &str) -> Result<YtStreamInfo, String> {
-    try_native_decipher(video_id, Some(cookies)).await
+    try_native_decipher(video_id, Some(cookies), StreamQuality::High)
+        .await
+        .map(|(info, _)| info)
 }
 
 /// The anonymous path alone, once, including whether googlevideo actually
@@ -982,7 +1046,7 @@ pub(crate) async fn probe_anonymous(video_id: &str) -> Result<YtStreamInfo, Stri
         visitor_data: visitor_data(None).await.ok(),
         ..Default::default()
     };
-    let info = anonymous_attempt(video_id, extras).await?;
+    let info = anonymous_attempt(video_id, extras, StreamQuality::High).await?;
     if is_gated(&info).await {
         return Err(format!(
             "{} handed out a stream URL that googlevideo refuses",
@@ -1361,7 +1425,8 @@ mod tests {
             ]},
             "videoDetails": { "lengthSeconds": "212" }
         });
-        let info = pick_plain_format(&json, WEB_REMIX).expect("should pick a plain format");
+        let info = pick_plain_format(&json, WEB_REMIX, StreamQuality::High)
+            .expect("should pick a plain format");
         assert_eq!(info.itag, Some(251));
         assert_eq!(info.bitrate, Some(136544));
         assert_eq!(info.duration_secs, Some(212));
@@ -1411,7 +1476,12 @@ mod tests {
     fn a_recorded_player_response_carries_its_loudness() {
         let json: Value =
             serde_json::from_str(include_str!("testdata/player_web_remix.json")).unwrap();
-        let fmt = pick_best_audio(&json).expect("an audio format");
+        let formats = json
+            .pointer("/streamingData/adaptiveFormats")
+            .and_then(|v| v.as_array())
+            .into_iter()
+            .flatten();
+        let fmt = choose_format(formats, StreamQuality::High, false).expect("an audio format");
         let info = stream_info_from(&json, fmt, "https://x/y".into(), WEB_REMIX)
             .expect("should build stream info");
         let loudness = info.loudness_db.expect("loudnessDb");
@@ -1444,7 +1514,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "hits live YouTube"]
     async fn resolve_reports_loudness() {
-        let info = resolve("YJVmu6yttiw", None)
+        let info = resolve("YJVmu6yttiw", None, StreamQuality::High)
             .await
             .expect("resolve should succeed");
         let loudness = info.loudness_db.expect("loudnessDb");
@@ -1458,13 +1528,74 @@ mod tests {
         assert!(gain < 1.0, "a track this loud is turned down");
     }
 
+    fn fixture() -> Value {
+        serde_json::from_str(include_str!("testdata/player_formats.json")).expect("fixture parses")
+    }
+
+    fn chosen(json: &Value, quality: StreamQuality, plain: bool) -> Option<u32> {
+        let formats = json
+            .pointer("/streamingData/adaptiveFormats")
+            .and_then(|v| v.as_array())
+            .into_iter()
+            .flatten()
+            .filter(|f| !plain || f.get("url").is_some());
+        choose_format(formats, quality, plain).and_then(itag_of)
+    }
+
+    /// Normal stays on 251: its peak bitrate is over the cap, but the cap is on
+    /// the average.
+    #[test]
+    fn the_signed_in_path_picks_by_quality() {
+        let json = fixture();
+        assert!(offers_premium(&json));
+        assert_eq!(chosen(&json, StreamQuality::High, false), Some(774));
+        assert_eq!(chosen(&json, StreamQuality::Normal, false), Some(251));
+        assert_eq!(chosen(&json, StreamQuality::Low, false), Some(249));
+    }
+
+    /// The anonymous path only sees plain URLs, so Premium never reaches it.
+    #[test]
+    fn the_anonymous_path_picks_by_quality() {
+        let json = fixture();
+        for (quality, itag) in [
+            (StreamQuality::High, 251),
+            (StreamQuality::Normal, 251),
+            (StreamQuality::Low, 249),
+        ] {
+            assert_eq!(chosen(&json, quality, true), Some(itag), "{quality:?}");
+            let info = pick_plain_format(&json, VISIONOS, quality).expect("a plain format");
+            assert_eq!(info.itag, Some(itag), "{quality:?}");
+        }
+    }
+
+    #[test]
+    fn quality_falls_back_to_aac_and_then_to_the_smallest_format() {
+        let mut json = fixture();
+        let formats = json
+            .pointer_mut("/streamingData/adaptiveFormats")
+            .and_then(|v| v.as_array_mut())
+            .expect("formats");
+        formats.retain(|f| !f["mimeType"].as_str().unwrap_or("").contains("webm"));
+        assert!(offers_premium(&json), "141 is still offered");
+        assert_eq!(chosen(&json, StreamQuality::High, false), Some(141));
+        assert_eq!(chosen(&json, StreamQuality::Normal, false), Some(140));
+        assert_eq!(chosen(&json, StreamQuality::Low, false), Some(139));
+
+        let only_large = serde_json::json!([
+            { "itag": 140, "mimeType": "audio/mp4", "averageBitrate": 129478 },
+            { "itag": 251, "mimeType": "audio/webm", "averageBitrate": 131468 },
+        ]);
+        let pick = choose_format(only_large.as_array().unwrap(), StreamQuality::Low, true);
+        assert_eq!(pick.and_then(itag_of), Some(140));
+    }
+
     /// End-to-end: resolve a public track (decipher via the SubprocessEngine)
     /// and assert the resolved stream carries a real bitrate + itag — the same
     /// `YtStreamInfo` the player controller stamps onto the bottom bar.
     #[tokio::test]
     #[ignore = "hits live YouTube + needs a system JS runtime"]
     async fn resolve_populates_bitrate_itag_duration() {
-        let info = resolve("dQw4w9WgXcQ", None)
+        let info = resolve("dQw4w9WgXcQ", None, StreamQuality::High)
             .await
             .expect("resolve should succeed");
         tracing::debug!(

@@ -408,6 +408,14 @@ device_change_pause = Pause
 sample_rate_mode = Częstotliwość próbkowania wyjścia
 sample_rate_mode_system = Zgodna z systemem
 sample_rate_mode_source = Dopasuj do ścieżki
+settings_group_streaming = Strumieniowanie
+stream_quality = Jakość strumieniowania
+stream_quality_low = Niska
+stream_quality_normal = Normalna
+stream_quality_high = Wysoka
+autoplay_radio = Odtwarzaj radio po zakończeniu kolejki
+skip_explicit = Pomijaj utwory z treściami dla dorosłych
+pause_watch_history = Wstrzymaj historię oglądania
 
 crossfade = Płynne przejście
 crossfade_off = Wył.

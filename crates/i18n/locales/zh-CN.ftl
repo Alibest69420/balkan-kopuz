@@ -408,6 +408,14 @@ device_change_pause = 暂停
 sample_rate_mode = 输出采样率
 sample_rate_mode_system = 跟随系统
 sample_rate_mode_source = 匹配曲目
+settings_group_streaming = 串流
+stream_quality = 串流音质
+stream_quality_low = 低
+stream_quality_normal = 标准
+stream_quality_high = 高
+autoplay_radio = 队列结束时播放电台
+skip_explicit = 跳过含露骨内容的曲目
+pause_watch_history = 暂停观看记录
 
 crossfade = 交叉淡入淡出
 crossfade_off = 关闭

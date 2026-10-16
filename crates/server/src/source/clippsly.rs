@@ -103,6 +103,9 @@ impl MediaSource for ClippslySource {
             albums: AlbumType::Standard,
             favorites_sync: FavoritesSync::Instant,
             account_avatar: false,
+            stream_quality: false,
+            explicit_flags: false,
+            watch_history: false,
         }
     }
 
@@ -135,7 +138,11 @@ impl MediaSource for ClippslySource {
         })
     }
 
-    async fn resolve_stream(&self, id: &str) -> Result<StreamInfo, SourceError> {
+    async fn resolve_stream(
+        &self,
+        id: &str,
+        _: config::StreamQuality,
+    ) -> Result<StreamInfo, SourceError> {
         let client = self.client()?;
         let stream = client.stream(id).await?;
         Ok(StreamInfo {

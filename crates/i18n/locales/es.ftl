@@ -409,6 +409,14 @@ device_change_pause = Pausar
 sample_rate_mode = Frecuencia de muestreo de salida
 sample_rate_mode_system = Seguir al sistema
 sample_rate_mode_source = Igualar a la pista
+settings_group_streaming = Streaming
+stream_quality = Calidad de streaming
+stream_quality_low = Baja
+stream_quality_normal = Normal
+stream_quality_high = Alta
+autoplay_radio = Reproducir una radio cuando termine la cola
+skip_explicit = Omitir pistas explícitas
+pause_watch_history = Pausar el historial de reproducciones
 
 crossfade = Fundido cruzado
 crossfade_off = Apagado

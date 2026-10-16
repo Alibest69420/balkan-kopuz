@@ -241,6 +241,7 @@ impl Session {
             local_path,
             remote_ref,
             active_source: self.active_source.clone(),
+            stream_quality: self.config.stream_quality,
             artwork,
             transition,
             start_at: restore_seek.filter(|position| !position.is_zero()),
@@ -575,6 +576,7 @@ pub(super) struct ClassifiedLoad {
     local_path: Option<PathBuf>,
     remote_ref: Option<(String, String)>,
     active_source: Option<server::source::ActiveSource>,
+    stream_quality: config::StreamQuality,
     artwork: Option<String>,
     transition: Transition,
     start_at: Option<Duration>,
@@ -684,6 +686,7 @@ impl ClassifiedLoad {
                 // The fallback resolve blocks on the runtime captured here;
                 // this closure executes on the runtime-less decode worker.
                 let rt_handle = tokio::runtime::Handle::current();
+                let quality = self.stream_quality;
                 Box::new(move || match player::decoder::open_file(&path) {
                     Ok(parts) => Ok(parts),
                     Err(error) => {
@@ -698,7 +701,7 @@ impl ClassifiedLoad {
                             return Ok(player::decoder::from_stream(stream));
                         }
                         let info = rt_handle
-                            .block_on(source.resolve_stream(&item_id))
+                            .block_on(source.resolve_stream(&item_id, quality))
                             .map_err(|error| error.to_string())?;
                         network_factory(
                             info.url,
@@ -720,14 +723,17 @@ impl ClassifiedLoad {
                             code: api::ErrorCode::Internal,
                             message: "no active source for remote track".to_string(),
                         })?;
-                        let info = source.resolve_stream(item_id).await.map_err(|error| {
-                            tracing::error!(error = %error, "stream URL resolve failed");
-                            LoadFailure {
-                                token: self.token,
-                                code: crate::sources::source_error_code(&error),
-                                message: error.to_string(),
-                            }
-                        })?;
+                        let info = source
+                            .resolve_stream(item_id, self.stream_quality)
+                            .await
+                            .map_err(|error| {
+                                tracing::error!(error = %error, "stream URL resolve failed");
+                                LoadFailure {
+                                    token: self.token,
+                                    code: crate::sources::source_error_code(&error),
+                                    message: error.to_string(),
+                                }
+                            })?;
                         duration_secs = info.duration_secs;
                         bitrate = info.bitrate;
                         loudness_db = info.loudness_db;

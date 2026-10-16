@@ -45,6 +45,9 @@ impl MediaSource for OfflineServerSource {
             albums: AlbumType::Standard,
             favorites_sync: FavoritesSync::Instant,
             account_avatar: false,
+            stream_quality: false,
+            explicit_flags: false,
+            watch_history: false,
         }
     }
 
@@ -62,7 +65,11 @@ impl MediaSource for OfflineServerSource {
     ) -> Result<(), SourceError> {
         Err(SourceError::Connectivity)
     }
-    async fn resolve_stream(&self, _: &str) -> Result<StreamInfo, SourceError> {
+    async fn resolve_stream(
+        &self,
+        _: &str,
+        _: config::StreamQuality,
+    ) -> Result<StreamInfo, SourceError> {
         Err(SourceError::Auth)
     }
     async fn validate(&self) -> AuthOutcome {

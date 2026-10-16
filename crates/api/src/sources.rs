@@ -90,6 +90,12 @@ pub struct SourceCapabilities {
     pub music_videos: bool,
     /// One sign-in holds several accounts a client can switch between.
     pub accounts: bool,
+    /// It offers several formats per track, chosen by `stream_quality`.
+    pub stream_quality: bool,
+    /// Its listings mark explicit tracks, so `skip_explicit` has something to skip.
+    pub explicit_flags: bool,
+    /// It keeps a watch history, which `pause_watch_history` stops feeding.
+    pub watch_history: bool,
     pub playlists: PlaylistCapability,
     pub artists: ArtistPresentation,
     pub albums: AlbumPresentation,

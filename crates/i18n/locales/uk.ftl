@@ -408,6 +408,14 @@ device_change_pause = Pause
 sample_rate_mode = Частота дискретизації виводу
 sample_rate_mode_system = Як у системі
 sample_rate_mode_source = Як у треку
+settings_group_streaming = Стримінг
+stream_quality = Якість стримінгу
+stream_quality_low = Низька
+stream_quality_normal = Звичайна
+stream_quality_high = Висока
+autoplay_radio = Вмикати радіо, коли черга закінчиться
+skip_explicit = Пропускати треки з відвертим вмістом
+pause_watch_history = Призупинити історію переглядів
 
 crossfade = Кросфейд
 crossfade_off = Вимкнено

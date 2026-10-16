@@ -102,6 +102,9 @@ impl MediaSource for YtSource {
             albums: AlbumType::YtMusic,
             favorites_sync: FavoritesSync::Paginated,
             account_avatar: true,
+            stream_quality: true,
+            explicit_flags: true,
+            watch_history: self.client.is_authenticated(),
         }
     }
 
@@ -584,8 +587,12 @@ impl MediaSource for YtSource {
         self.remove_playlist_entry(playlist_id, position).await
     }
 
-    async fn resolve_stream(&self, item_id: &str) -> Result<StreamInfo, SourceError> {
-        let info = self.client.get_stream(item_id).await?;
+    async fn resolve_stream(
+        &self,
+        item_id: &str,
+        quality: config::StreamQuality,
+    ) -> Result<StreamInfo, SourceError> {
+        let info = self.client.get_stream(item_id, quality).await?;
         Ok(StreamInfo {
             url: info.url,
             format: Some((info.format, info.range_safe)),

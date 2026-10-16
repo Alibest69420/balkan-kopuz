@@ -408,6 +408,14 @@ device_change_pause = Pause
 sample_rate_mode = Kimeneti mintavételi frekvencia
 sample_rate_mode_system = Rendszer követése
 sample_rate_mode_source = Igazítás a dalhoz
+settings_group_streaming = Streamelés
+stream_quality = Streamelés minősége
+stream_quality_low = Alacsony
+stream_quality_normal = Normál
+stream_quality_high = Magas
+autoplay_radio = Rádió lejátszása, ha a lejátszási sor véget ér
+skip_explicit = Explicit számok kihagyása
+pause_watch_history = Megtekintési előzmények szüneteltetése
 
 crossfade = Áttűnés
 crossfade_off = Ki

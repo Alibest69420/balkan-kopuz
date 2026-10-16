@@ -895,6 +895,40 @@ async fn config_view_and_set_agree_across_transports() {
 }
 
 #[tokio::test]
+async fn playback_settings_and_their_capabilities_agree_across_transports() {
+    let pair = spawn_pair().await;
+
+    let mut next = pair.wire.config().await.expect("wire view").config;
+    assert_eq!(next.stream_quality, config::StreamQuality::High);
+    assert!(!next.autoplay_radio && !next.skip_explicit && !next.pause_watch_history);
+    next.stream_quality = config::StreamQuality::Low;
+    next.autoplay_radio = true;
+    next.skip_explicit = true;
+    next.pause_watch_history = true;
+    let written = pair.wire.set_config(next).await.expect("set over the wire");
+    assert_eq!(written.config.stream_quality, config::StreamQuality::Low);
+    assert!(written.config.autoplay_radio && written.config.skip_explicit);
+    assert!(written.config.pause_watch_history);
+    let local = pair.local.config().await.expect("local view after set");
+    assert_eq!(local.config, written.config);
+
+    let active = |rows: Vec<api::SourceInfo>| {
+        rows.into_iter()
+            .find(|source| source.active)
+            .expect("an active source")
+            .capabilities
+    };
+    let local = active(pair.local.sources().await.expect("local sources"));
+    let wire = active(pair.wire.sources().await.expect("wire sources"));
+    assert_eq!(local, wire);
+    assert!(!wire.stream_quality && !wire.explicit_flags && !wire.watch_history);
+    assert!(
+        !wire.track_radio,
+        "a folder library has no radio to autoplay"
+    );
+}
+
+#[tokio::test]
 async fn favorites_round_trip_across_transports() {
     let pair = spawn_pair().await;
     pair.wire

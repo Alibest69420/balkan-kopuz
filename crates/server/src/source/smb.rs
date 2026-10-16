@@ -77,6 +77,9 @@ impl MediaSource for SmbSource {
             albums: AlbumType::Standard,
             favorites_sync: FavoritesSync::Instant,
             account_avatar: false,
+            stream_quality: false,
+            explicit_flags: false,
+            watch_history: false,
         }
     }
 
@@ -239,7 +242,11 @@ impl MediaSource for SmbSource {
         Ok(resolved)
     }
 
-    async fn resolve_stream(&self, _: &str) -> Result<StreamInfo, SourceError> {
+    async fn resolve_stream(
+        &self,
+        _: &str,
+        _: config::StreamQuality,
+    ) -> Result<StreamInfo, SourceError> {
         Err(SourceError::unsupported("SMB stream URLs"))
     }
 

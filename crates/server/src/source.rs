@@ -104,8 +104,12 @@ pub trait MediaSource: Send + Sync {
     ) -> Result<(), SourceError>;
 
     /// Resolve a playable stream for one item id (local = a file path, server =
-    /// the remote's URL / deciphered stream).
-    async fn resolve_stream(&self, item_id: &str) -> Result<StreamInfo, SourceError>;
+    /// the remote's URL / deciphered stream). One-format sources ignore `quality`.
+    async fn resolve_stream(
+        &self,
+        item_id: &str,
+        quality: config::StreamQuality,
+    ) -> Result<StreamInfo, SourceError>;
 
     /// A seekable protocol-native stream, or `None` to use the resolved URL.
     async fn open_stream(

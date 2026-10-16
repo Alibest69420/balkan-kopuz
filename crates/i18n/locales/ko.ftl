@@ -408,6 +408,14 @@ device_change_pause = Pause
 sample_rate_mode = 출력 샘플 레이트
 sample_rate_mode_system = 시스템 따르기
 sample_rate_mode_source = 트랙에 맞추기
+settings_group_streaming = 스트리밍
+stream_quality = 스트리밍 품질
+stream_quality_low = 낮음
+stream_quality_normal = 보통
+stream_quality_high = 높음
+autoplay_radio = 대기열이 끝나면 라디오 재생
+skip_explicit = 청소년 유해 트랙 건너뛰기
+pause_watch_history = 시청 기록 일시중지
 
 crossfade = 크로스페이드
 crossfade_off = 끄기

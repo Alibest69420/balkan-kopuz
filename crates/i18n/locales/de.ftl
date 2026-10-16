@@ -408,6 +408,14 @@ device_change_pause = Pausieren
 sample_rate_mode = Ausgabe-Abtastrate
 sample_rate_mode_system = System folgen
 sample_rate_mode_source = An Titel anpassen
+settings_group_streaming = Streaming
+stream_quality = Streaming-Qualität
+stream_quality_low = Niedrig
+stream_quality_normal = Normal
+stream_quality_high = Hoch
+autoplay_radio = Radio abspielen, wenn die Warteschlange endet
+skip_explicit = Explizite Titel überspringen
+pause_watch_history = Wiedergabeverlauf pausieren
 
 crossfade = Überblendung
 crossfade_off = Aus

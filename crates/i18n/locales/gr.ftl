@@ -408,6 +408,14 @@ device_change_pause = Pause
 sample_rate_mode = Ρυθμός δειγματοληψίας εξόδου
 sample_rate_mode_system = Ακολούθηση συστήματος
 sample_rate_mode_source = Αντιστοίχιση με το κομμάτι
+settings_group_streaming = Ροή
+stream_quality = Ποιότητα ροής
+stream_quality_low = Χαμηλή
+stream_quality_normal = Κανονική
+stream_quality_high = Υψηλή
+autoplay_radio = Αναπαραγωγή ραδιοφώνου όταν τελειώσει η ουρά
+skip_explicit = Παράλειψη ρητών κομματιών
+pause_watch_history = Παύση ιστορικού παρακολούθησης
 
 crossfade = Crossfade (Σταδιακή μίξη)
 crossfade_off = Ανενεργό

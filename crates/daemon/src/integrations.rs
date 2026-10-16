@@ -187,8 +187,9 @@ fn youtube_signed_in(config: &config::AppConfig) -> bool {
 }
 
 /// Reports plays to YouTube History while a signed-in YouTube Music source is
-/// active. The source is built from the config at the start of each play, so a
-/// sign-out stops reporting at the next state change.
+/// active and `pause_watch_history` is off. The source is built from the config
+/// at the start of each play, so a sign-out or pausing the history stops
+/// reporting at the next state change.
 pub fn spawn_youtube_reporter(
     session: &SessionHandle,
     db: db::Db,
@@ -217,7 +218,12 @@ pub fn spawn_youtube_reporter(
                         Err(broadcast::error::RecvError::Closed) => break,
                     };
                     let received = Instant::now();
-                    let live_id = (youtube_signed_in(&config.borrow())
+                    let (signed_in, history_paused) = {
+                        let config = config.borrow();
+                        (youtube_signed_in(&config), config.pause_watch_history)
+                    };
+                    let live_id = (signed_in
+                        && !history_paused
                         && matches!(state.phase, Phase::Playing | Phase::Paused))
                     .then(|| {
                         state
@@ -231,11 +237,14 @@ pub fn spawn_youtube_reporter(
                     if let Some((id, source)) =
                         current.take_if(|(id, _)| live_id.as_deref() != Some(id.as_str()))
                     {
-                        let ended_ms = last_state
-                            .as_ref()
-                            .map(|(state, received)| interpolated_ms(state, *received))
-                            .unwrap_or_default();
-                        let _ = source.report_playback_stopped(&id, ended_ms * 10_000).await;
+                        // The final pings are what write the history entry.
+                        if !history_paused {
+                            let ended_ms = last_state
+                                .as_ref()
+                                .map(|(state, received)| interpolated_ms(state, *received))
+                                .unwrap_or_default();
+                            let _ = source.report_playback_stopped(&id, ended_ms * 10_000).await;
+                        }
                     }
                     if current.is_none()
                         && state.phase == Phase::Playing
