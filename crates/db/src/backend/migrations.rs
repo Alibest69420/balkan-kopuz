@@ -994,6 +994,7 @@ fn legacy_options(yt_browser: Option<&str>, yt_anonymous: bool) -> Vec<(&'static
         yt_browser,
         yt_anonymous,
         None,
+        None,
         &defaults.apple_music_storefront,
         &defaults.apple_music_language,
     )

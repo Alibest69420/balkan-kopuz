@@ -825,7 +825,9 @@ static TRACKING: OnceLock<Mutex<HashMap<String, PlaybackTracking>>> = OnceLock::
 const TRACKING_CACHE_LIMIT: usize = 64;
 
 fn tracking_key(cookies: &str, video_id: &str) -> Option<String> {
-    super::derive_user_id(cookies).map(|user| format!("{user}/{video_id}"))
+    let user = super::derive_user_id(cookies)?;
+    let page = innertube::page_id().unwrap_or_default();
+    Some(format!("{user}/{page}/{video_id}"))
 }
 
 fn remember_tracking(cookies: &str, video_id: &str, json: &Value) {
@@ -993,6 +995,17 @@ fn video_stream_from(format: &Value, url: String, client: YouTubeClient) -> Opti
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[tokio::test]
+    async fn a_brand_account_never_takes_the_google_accounts_tracking() {
+        let cookies = "SAPISID=abc";
+        let own = tracking_key(cookies, "v").unwrap();
+        let brand = innertube::as_account(Some("42".into()), async {
+            tracking_key(cookies, "v").unwrap()
+        })
+        .await;
+        assert_ne!(own, brand);
+    }
 
     /// The anonymous client ends on LOGIN_REQUIRED for anything YouTube gates,
     /// so that line alone told a signed-in user to sign in. The reason their

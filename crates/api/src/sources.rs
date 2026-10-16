@@ -88,6 +88,8 @@ pub struct SourceCapabilities {
     pub browser_playback: bool,
     /// Rows can have a music video cut, whose picture [`crate::PlayerApi::video`] serves.
     pub music_videos: bool,
+    /// One sign-in holds several accounts a client can switch between.
+    pub accounts: bool,
     pub playlists: PlaylistCapability,
     pub artists: ArtistPresentation,
     pub albums: AlbumPresentation,
@@ -161,6 +163,16 @@ pub struct SourceInfo {
     /// What the daemon's last probe found; `None` until it has probed this source.
     pub state: Option<crate::SourceState>,
     pub avatar: Option<crate::ArtworkRef>,
+}
+
+/// One account a source's sign-in can act as, such as a YouTube brand account.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SourceAccount {
+    /// What to switch to; `None` is the signed-in account itself.
+    pub id: Option<String>,
+    pub name: String,
+    pub handle: Option<String>,
+    pub active: bool,
 }
 
 /// A source to create or update, as the answers to a [`ServiceInfo`]'s form.

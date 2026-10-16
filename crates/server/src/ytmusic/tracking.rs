@@ -11,7 +11,7 @@ use std::time::Instant;
 use serde_json::Value;
 
 use super::clients::{ORIGIN_YOUTUBE_MUSIC, WEB_REMIX};
-use super::innertube::{http_client, sapisid_hash};
+use super::innertube::{http_client, page_id, sapisid_hash};
 
 const SCHEDULED_FLUSH_MS: [u64; 3] = [10_000, 20_000, 30_000];
 const FLUSH_INTERVAL_MS: u64 = 40_000;
@@ -187,6 +187,9 @@ pub async fn ping(url: &str, cookies: &str, visitor: Option<&str>) -> Result<u16
         .header("Authorization", auth);
     if let Some(visitor) = visitor {
         req = req.header("X-Goog-Visitor-Id", visitor);
+    }
+    if let Some(page_id) = page_id() {
+        req = req.header("X-Goog-PageId", page_id);
     }
     let status = req
         .send()

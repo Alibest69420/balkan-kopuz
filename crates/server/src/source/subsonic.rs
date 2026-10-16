@@ -281,6 +281,7 @@ impl MediaSource for SubsonicSource {
             browse_folders: false,
             external_devices: false,
             browser_playback: false,
+            accounts: false,
             sync: true,
             downloads: true,
             uploads: false,
@@ -630,6 +631,7 @@ mod tests {
             device_id: "test".to_string(),
             apple_music_storefront: String::new(),
             apple_music_language: String::new(),
+            account: None,
             folders: Vec::new(),
         };
         let src = SubsonicSource::new(db, Source::Server("test".to_string()), &conn);

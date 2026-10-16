@@ -57,8 +57,8 @@ pub use schema::{
 pub use sources::{
     AlbumPresentation, ArtistPresentation, BrowserProfile, BrowserSession, ConnectKind,
     CredentialProvision, DraftCheck, FavoritesSyncMode, IntegrationInfo, PageEntry,
-    PlaylistCapability, SearchFilter, ServiceInfo, ServiceRef, SignInKind, SourceCapabilities,
-    SourceDraft, SourceFolderEntry, SourceInfo, SourceLoginRequest,
+    PlaylistCapability, SearchFilter, ServiceInfo, ServiceRef, SignInKind, SourceAccount,
+    SourceCapabilities, SourceDraft, SourceFolderEntry, SourceInfo, SourceLoginRequest,
 };
 
 /// The config view: the layered config with credential keys
@@ -474,6 +474,16 @@ pub trait SourceApi: Send + Sync {
 
     /// Probe whether a source is reachable and still signed in.
     async fn validate_source(&self, id: String) -> Result<SourceState, ApiError>;
+
+    async fn accounts(&self, id: String) -> Result<Vec<SourceAccount>, ApiError>;
+
+    /// `None` is the signed-in account itself. On the active source playback
+    /// stops and the library, playlists and favorites sync again.
+    async fn switch_account(
+        &self,
+        id: String,
+        account: Option<String>,
+    ) -> Result<SourceInfo, ApiError>;
 
     /// Whether this daemon can run a browser sign-in at all. A sandboxed
     /// daemon cannot spawn one, and a client asks before offering a source

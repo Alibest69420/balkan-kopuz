@@ -25,6 +25,33 @@ pub struct LocalApi {
 }
 
 impl LocalApi {
+    fn resync_after_account_switch(&self) {
+        let Some(runner) = self.jobs.clone() else {
+            return;
+        };
+        let (library, playlists, favorites) = (
+            self.library.clone(),
+            self.playlists.clone(),
+            self.favorites.clone(),
+        );
+        let start = move |kind: api::JobKind| {
+            let started = match kind {
+                api::JobKind::LibrarySync => library
+                    .as_ref()
+                    .map(|library| library.spawn_remote_sync(&runner)),
+                api::JobKind::PlaylistSync => playlists
+                    .as_ref()
+                    .map(|playlists| playlists.spawn_sync(&runner)),
+                api::JobKind::FavoritesSync => favorites
+                    .as_ref()
+                    .map(|favorites| favorites.spawn_sync(&runner)),
+                _ => None,
+            };
+            started.unwrap_or_else(|| Err(ApiError::unsupported("no service for this sync")))
+        };
+        start_syncs(start, self.session.subscribe());
+    }
+
     pub fn new(session: SessionHandle) -> Self {
         Self {
             session,
@@ -888,6 +915,22 @@ impl api::SourceApi for LocalApi {
         self.sources()?.validate_source(&id).await
     }
 
+    async fn accounts(&self, id: String) -> Result<Vec<api::SourceAccount>, ApiError> {
+        self.sources()?.accounts(&id).await
+    }
+
+    async fn switch_account(
+        &self,
+        id: String,
+        account: Option<String>,
+    ) -> Result<api::SourceInfo, ApiError> {
+        let (info, resync) = self.sources()?.switch_account(&id, account).await?;
+        if resync {
+            self.resync_after_account_switch();
+        }
+        Ok(info)
+    }
+
     async fn can_open_browser(&self) -> Result<bool, ApiError> {
         Ok(self.sources()?.can_open_browser().await)
     }
@@ -924,5 +967,115 @@ impl api::SourceApi for LocalApi {
         self.integrations()?
             .connect_from_browser(&id, &profile)
             .await
+    }
+}
+
+/// Start the three sync kinds. A sync already running belongs to the old
+/// account, so a kind that conflicts starts again once that run finishes.
+/// `events` must be subscribed before the call, or a finish that lands right
+/// after a conflict is missed.
+fn start_syncs(
+    mut start: impl FnMut(api::JobKind) -> Result<api::JobRef, ApiError> + Send + 'static,
+    mut events: broadcast::Receiver<ApiEvent>,
+) -> Option<tokio::task::JoinHandle<()>> {
+    let mut waiting = Vec::new();
+    let mut attempt = move |kind: api::JobKind, waiting: &mut Vec<api::JobKind>| {
+        waiting.retain(|queued| *queued != kind);
+        match start(kind) {
+            Ok(_) => {}
+            Err(error) if error.code == api::ErrorCode::Conflict => waiting.push(kind),
+            Err(error) => {
+                tracing::debug!(%error, ?kind, "sync after an account switch not started")
+            }
+        }
+    };
+    for kind in [
+        api::JobKind::LibrarySync,
+        api::JobKind::PlaylistSync,
+        api::JobKind::FavoritesSync,
+    ] {
+        attempt(kind, &mut waiting);
+    }
+    if waiting.is_empty() {
+        return None;
+    }
+    Some(tokio::spawn(async move {
+        while !waiting.is_empty() {
+            let due = match events.recv().await {
+                Ok(ApiEvent::JobFinished { kind, .. }) if waiting.contains(&kind) => vec![kind],
+                Ok(_) => continue,
+                Err(broadcast::error::RecvError::Lagged(_)) => waiting.clone(),
+                Err(broadcast::error::RecvError::Closed) => return,
+            };
+            for kind in due {
+                attempt(kind, &mut waiting);
+            }
+        }
+    }))
+}
+
+#[cfg(test)]
+mod start_syncs_tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    fn finished(kind: api::JobKind) -> ApiEvent {
+        ApiEvent::JobFinished {
+            id: "job-1".into(),
+            kind,
+            ok: true,
+            error: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_sync_already_running_starts_again_when_it_finishes() {
+        let running = Arc::new(Mutex::new(vec![api::JobKind::LibrarySync]));
+        let started = Arc::new(Mutex::new(Vec::new()));
+        let start = {
+            let (running, started) = (running.clone(), started.clone());
+            move |kind| {
+                if running.lock().unwrap().contains(&kind) {
+                    return Err(ApiError::new(api::ErrorCode::Conflict, "running"));
+                }
+                started.lock().unwrap().push(kind);
+                Ok(api::JobRef {
+                    job_id: "job-2".into(),
+                })
+            }
+        };
+        let (events, rx) = broadcast::channel(8);
+        let retry = start_syncs(start, rx).expect("library sync was busy");
+        assert_eq!(
+            *started.lock().unwrap(),
+            [api::JobKind::PlaylistSync, api::JobKind::FavoritesSync]
+        );
+
+        events.send(finished(api::JobKind::PlaylistSync)).unwrap();
+        running.lock().unwrap().clear();
+        events.send(finished(api::JobKind::LibrarySync)).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(5), retry)
+            .await
+            .expect("retry finishes once every kind started")
+            .unwrap();
+        assert_eq!(
+            *started.lock().unwrap(),
+            [
+                api::JobKind::PlaylistSync,
+                api::JobKind::FavoritesSync,
+                api::JobKind::LibrarySync
+            ]
+        );
+    }
+
+    #[test]
+    fn nothing_waits_when_every_sync_starts() {
+        let (_events, rx) = broadcast::channel(8);
+        let start = |_| {
+            Ok(api::JobRef {
+                job_id: "job-1".into(),
+            })
+        };
+        assert!(start_syncs(start, rx).is_none());
     }
 }

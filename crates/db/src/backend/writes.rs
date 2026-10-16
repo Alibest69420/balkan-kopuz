@@ -473,6 +473,15 @@ pub async fn dirty_unlikes(pool: &SqlitePool, server_id: &str) -> Result<Vec<Str
 }
 
 #[tracing::instrument(skip_all, fields(server_id = %server_id))]
+pub async fn discard_pending_favorites(pool: &SqlitePool, server_id: &str) -> Result<(), DbError> {
+    sqlx::query("DELETE FROM favorites WHERE server_id = ?1 AND dirty != 0")
+        .bind(server_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+#[tracing::instrument(skip_all, fields(server_id = %server_id))]
 pub async fn clear_favorite_dirty(
     pool: &SqlitePool,
     server_id: &str,

@@ -99,6 +99,7 @@ fn capabilities(source: &dyn server::source::MediaSource) -> SourceCapabilities 
         browse_folders: caps.browse_folders,
         external_devices: caps.external_devices,
         browser_playback: caps.browser_playback,
+        accounts: caps.accounts,
         sync: caps.sync,
         downloads: caps.downloads,
         uploads: caps.uploads,
@@ -594,21 +595,25 @@ impl SourceService {
         self.config
             .mutate_state(&["servers", "server"], move |config| {
                 match config.servers.iter_mut().find(|entry| entry.id == saved.id) {
-                    // The form does not carry the imported profile, so an edit
-                    // keeps it unless the source now speaks another service.
+                    // The form carries neither the imported profile nor the
+                    // account choice, so an edit keeps them unless the source
+                    // now speaks another service.
                     Some(existing) => {
-                        let profile = existing
-                            .yt_profile
-                            .take()
-                            .filter(|_| existing.service == saved.service);
+                        let same_service = existing.service == saved.service;
+                        let profile = existing.yt_profile.take().filter(|_| same_service);
+                        let account = existing.account.take().filter(|_| same_service);
                         *existing = saved.clone();
                         existing.yt_profile = profile;
+                        existing.account = account;
                     }
                     None => config.servers.push(saved.clone()),
                 }
                 if config.active_source.server_id() == Some(saved.id.as_str())
                     && let Some(server) = config.server.as_mut()
                 {
+                    if server.service != saved.service {
+                        server.account = None;
+                    }
                     server.name.clone_from(&saved.name);
                     server.url.clone_from(&saved.url);
                     server.service = saved.service;
@@ -790,6 +795,11 @@ impl SourceService {
             server.yt_anonymous = false;
             server.yt_profile = profile;
         }
+        // A different login owns none of the old one's brand accounts.
+        let user_changed = previous_user != server.user_id;
+        if user_changed {
+            server.account = None;
+        }
         let active = self
             .current()
             .await
@@ -798,12 +808,19 @@ impl SourceService {
             .is_some_and(|id| id == provision.server_id);
         let token = server.access_token.clone();
         let user = server.user_id.clone();
-        let saved = config::SavedServer::from_music_server(&server);
-        let live = server.clone();
+        let mut saved = config::SavedServer::from_music_server(&server);
+        let mut live = server.clone();
         self.config
             .mutate_state(&["servers", "server"], move |config| {
                 match config.servers.iter_mut().find(|entry| entry.id == saved.id) {
-                    Some(existing) => *existing = saved,
+                    Some(existing) => {
+                        // `server` was loaded before the lock, so a switch_account in between wins.
+                        if !user_changed {
+                            saved.account = existing.account.clone();
+                            live.account = existing.account.clone();
+                        }
+                        *existing = saved;
+                    }
                     None => config.servers.push(saved),
                 }
                 if active {
@@ -815,9 +832,15 @@ impl SourceService {
             .set_server_credentials(&provision.server_id, token.as_deref(), user.as_deref())
             .await
             .map_err(db_error)?;
+        if user_changed {
+            self.db
+                .discard_pending_favorites(&provision.server_id)
+                .await
+                .map_err(db_error)?;
+        }
         // A different account is a different library, so what is loaded
         // from the old one stops.
-        if active && previous_user != server.user_id {
+        if active && user_changed {
             self.session.reset_playback().await?;
         }
         self.session.invalidate(Table::Servers);
@@ -1124,6 +1147,81 @@ impl SourceService {
                 path,
             })
             .collect())
+    }
+
+    pub async fn accounts(&self, id: &str) -> Result<Vec<api::SourceAccount>, ApiError> {
+        let (_, source) = self.resolve(id).await?;
+        if !source.capabilities().accounts {
+            return Err(ApiError::unsupported(
+                "this source has no accounts to switch between",
+            ));
+        }
+        let accounts = source
+            .accounts()
+            .await
+            .map_err(|error| ApiError::internal(error.to_string()))?;
+        Ok(accounts
+            .into_iter()
+            .map(|account| api::SourceAccount {
+                id: account.id,
+                name: account.name,
+                handle: account.handle,
+                active: account.active,
+            })
+            .collect())
+    }
+
+    /// True when the active source's account changed and its library needs a resync.
+    pub async fn switch_account(
+        &self,
+        id: &str,
+        account: Option<String>,
+    ) -> Result<(SourceInfo, bool), ApiError> {
+        self.config.ensure_unlocked(&["server", "servers"])?;
+        let (_, source) = self.resolve(id).await?;
+        if !source.capabilities().accounts {
+            return Err(ApiError::unsupported(
+                "this source has no accounts to switch between",
+            ));
+        }
+        let account = account.filter(|account| !account.is_empty());
+        let current = self.current().await;
+        let previous = current
+            .servers
+            .iter()
+            .find(|server| server.id == id)
+            .ok_or_else(|| ApiError::not_found("no such server"))?
+            .account
+            .clone();
+        if previous == account {
+            return Ok((self.source_info(id).await?, false));
+        }
+        let active = current.active_source.server_id() == Some(id);
+        let target = id.to_string();
+        // Likes queued under the old account would otherwise be pushed to the new one.
+        self.db
+            .discard_pending_favorites(id)
+            .await
+            .map_err(db_error)?;
+        self.config
+            .mutate_state(&["servers", "server"], move |config| {
+                if let Some(saved) = config.servers.iter_mut().find(|s| s.id == target) {
+                    saved.account.clone_from(&account);
+                }
+                if config.active_source.server_id() == Some(target.as_str())
+                    && let Some(server) = config.server.as_mut()
+                {
+                    server.account = account;
+                }
+            })
+            .await?;
+        if active {
+            self.session.reset_playback().await?;
+            self.finish_source_change();
+        } else {
+            self.session.invalidate(Table::Servers);
+        }
+        Ok((self.source_info(id).await?, active))
     }
 
     pub async fn validate_source(&self, id: &str) -> Result<SourceState, ApiError> {

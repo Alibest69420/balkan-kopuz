@@ -2,7 +2,7 @@ use reader::models::{Counterpart, SharedSegment, Track};
 use serde_json::{Value, json};
 
 use super::clients::WEB_REMIX;
-use super::innertube::sapisid_hash;
+use super::innertube::{sapisid_hash, signed};
 use super::search::synthesize_album_id;
 
 const ORIGIN: &str = "https://music.youtube.com";
@@ -133,11 +133,12 @@ async fn post_next(body: &Value, cookies: &str) -> Result<Value, String> {
         .header("X-Origin", ORIGIN)
         .header("Origin", ORIGIN)
         .header("Referer", format!("{ORIGIN}/"));
+    let mut body = body.clone();
     if !cookies.is_empty() {
         let auth = sapisid_hash(cookies, ORIGIN).ok_or_else(|| "SAPISID missing".to_string())?;
-        req = req.header("Cookie", cookies).header("Authorization", auth);
+        req = signed(req, &mut body, cookies, auth);
     }
-    req.json(body)
+    req.json(&body)
         .send()
         .await
         .map_err(|e| format!("next HTTP: {e}"))?
