@@ -40,6 +40,29 @@ pub struct CatalogItem {
     pub accent: Option<String>,
     pub explicit: bool,
     pub web_url: Option<String>,
+    pub actions: CatalogActions,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Rating {
+    #[default]
+    None,
+    Like,
+    Dislike,
+}
+
+/// Refs are opaque and go back as they came. `None` means the source has no
+/// such action, or for a state, that the page did not say.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CatalogActions {
+    pub rate_ref: Option<String>,
+    pub rating: Option<Rating>,
+    pub save_ref: Option<String>,
+    pub saved: Option<bool>,
+    pub follow_ref: Option<String>,
+    pub followed: Option<bool>,
+    /// Only a row of the listening history has one.
+    pub history_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -150,4 +173,7 @@ pub struct CatalogDetail {
     /// As the source wrote it ("6.9M views").
     pub plays: Option<String>,
     pub web_url: Option<String>,
+    pub actions: CatalogActions,
+    /// Set for a playlist the account owns.
+    pub privacy: Option<crate::PlaylistPrivacy>,
 }

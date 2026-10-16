@@ -10,9 +10,9 @@ use crate::ytmusic::{SessionCheck, YouTubeMusicClient, innertube, player};
 
 use super::{
     AlbumType, ArtistLookup, ArtistView, AuthOutcome, Capabilities, CatalogPageEntry, Check,
-    FavoritesPage, FavoritesSync, MediaSource, PlaylistMeta, PlaylistOps, PlaylistPage, RadioPage,
-    RadioSeeds, RemoteAlbum, SearchFilterEntry, SourceAccount, SourceError, StreamInfo,
-    VideoStream, mirror_added, mirror_created,
+    FavoritesPage, FavoritesSync, LibraryActions, MediaSource, PlaylistDetails, PlaylistMeta,
+    PlaylistOps, PlaylistPage, RadioPage, RadioSeeds, RemoteAlbum, SearchFilterEntry,
+    SourceAccount, SourceError, StreamInfo, VideoStream, mirror_added, mirror_created,
 };
 use crate::ytmusic::browse::{
     self,
@@ -105,7 +105,82 @@ impl MediaSource for YtSource {
             stream_quality: true,
             explicit_flags: true,
             watch_history: self.client.is_authenticated(),
+            library_actions: if self.client.is_authenticated() {
+                LibraryActions::ALL
+            } else {
+                LibraryActions::NONE
+            },
         }
+    }
+
+    async fn rate(&self, item_ref: &str, rating: discover::Rating) -> Result<(), SourceError> {
+        if item_ref.trim().is_empty() {
+            return Err(SourceError::InvalidInput("nothing to rate".into()));
+        }
+        Ok(self.client.rate(item_ref, rating).await?)
+    }
+
+    async fn follow(&self, artist_ref: &str, follow: bool) -> Result<(), SourceError> {
+        if !artist_ref.starts_with("UC") {
+            return Err(SourceError::InvalidInput("not a channel to follow".into()));
+        }
+        Ok(self.client.subscribe(artist_ref, follow).await?)
+    }
+
+    async fn save(&self, item_ref: &str, saved: bool) -> Result<(), SourceError> {
+        if item_ref.trim().is_empty() {
+            return Err(SourceError::InvalidInput("nothing to save".into()));
+        }
+        Ok(self.client.save(item_ref, saved).await?)
+    }
+
+    async fn remove_from_history(&self, token: &str) -> Result<(), SourceError> {
+        if token.trim().is_empty() {
+            return Err(SourceError::InvalidInput("no history token".into()));
+        }
+        Ok(self.client.remove_from_history(token).await?)
+    }
+
+    async fn edit_playlist(
+        &self,
+        playlist_id: &str,
+        details: &PlaylistDetails,
+    ) -> Result<(), SourceError> {
+        if playlist_id == LIKED_MUSIC_ID {
+            return Err(SourceError::InvalidInput(
+                "Liked Music cannot be edited".into(),
+            ));
+        }
+        Ok(self
+            .client
+            .edit_playlist(
+                playlist_id,
+                details.name.as_deref(),
+                details.description.as_deref(),
+                details.privacy,
+            )
+            .await?)
+    }
+
+    /// An owned playlist is deleted; a saved one is only taken out of the library.
+    async fn delete_remote_playlist(&self, playlist_id: &str) -> Result<(), SourceError> {
+        if playlist_id == LIKED_MUSIC_ID || !self.client.is_authenticated() {
+            return Ok(());
+        }
+        let (_, _, header) = self.client.playlist_page(playlist_id, None).await?;
+        // Only an owned playlist's header carries a privacy, so no header means
+        // no telling, and guessing wrong leaves it on YouTube.
+        let header = header.ok_or_else(|| {
+            SourceError::Backend("YouTube Music sent no header for the playlist".into())
+        })?;
+        if header.privacy.is_some() {
+            self.client.delete_playlist(playlist_id).await?;
+        } else {
+            self.client
+                .save(&crate::ytmusic::actions::playlist_ref(playlist_id), false)
+                .await?;
+        }
+        Ok(())
     }
 
     async fn dont_recommend(&self, item_id: &str) -> Result<(), SourceError> {

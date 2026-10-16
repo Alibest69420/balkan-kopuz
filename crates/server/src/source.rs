@@ -210,6 +210,41 @@ pub trait MediaSource: Send + Sync {
         Err(SourceError::unsupported("accounts"))
     }
 
+    /// `item_ref` is a ref this source handed out, or a track's key.
+    async fn rate(
+        &self,
+        _item_ref: &str,
+        _rating: crate::ytmusic::discover::Rating,
+    ) -> Result<(), SourceError> {
+        Err(SourceError::unsupported("rating"))
+    }
+
+    async fn follow(&self, _artist_ref: &str, _follow: bool) -> Result<(), SourceError> {
+        Err(SourceError::unsupported("following"))
+    }
+
+    async fn save(&self, _item_ref: &str, _saved: bool) -> Result<(), SourceError> {
+        Err(SourceError::unsupported("saving to the library"))
+    }
+
+    async fn remove_from_history(&self, _token: &str) -> Result<(), SourceError> {
+        Err(SourceError::unsupported("history removal"))
+    }
+
+    async fn edit_playlist(
+        &self,
+        _playlist_id: &str,
+        _details: &PlaylistDetails,
+    ) -> Result<(), SourceError> {
+        Err(SourceError::unsupported("playlist details"))
+    }
+
+    /// Runs before the local delete. Kept apart from `delete_playlist`, which the
+    /// sync's sweep also calls for playlists the remote already dropped.
+    async fn delete_remote_playlist(&self, _playlist_id: &str) -> Result<(), SourceError> {
+        Ok(())
+    }
+
     /// Start a radio/mix seeded from a track, returning the generated queue. Only
     /// sources whose [`Capabilities::radio`] is set override this; the rest
     /// inherit the unsupported default.

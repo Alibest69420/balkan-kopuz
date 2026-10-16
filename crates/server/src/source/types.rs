@@ -156,6 +156,42 @@ pub struct PlaylistPage {
     pub header: Option<crate::ytmusic::discover::BrowsePage>,
 }
 
+/// Account actions beyond favorites, each backing an optional `MediaSource` op.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct LibraryActions {
+    pub rate: bool,
+    pub follow: bool,
+    pub save: bool,
+    pub remove_from_history: bool,
+    pub playlist_details: bool,
+}
+
+impl LibraryActions {
+    pub const NONE: Self = Self {
+        rate: false,
+        follow: false,
+        save: false,
+        remove_from_history: false,
+        playlist_details: false,
+    };
+
+    pub const ALL: Self = Self {
+        rate: true,
+        follow: true,
+        save: true,
+        remove_from_history: true,
+        playlist_details: true,
+    };
+}
+
+/// A field left `None` keeps its value.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PlaylistDetails {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub privacy: Option<crate::ytmusic::discover::Privacy>,
+}
+
 /// What looking one artist up found: a photo, and the name the source's own record gives when the lookup went by id.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct ArtistLookup {
@@ -209,6 +245,7 @@ pub struct Capabilities {
     pub explicit_flags: bool,
     /// It keeps a watch history, which `pause_watch_history` stops feeding.
     pub watch_history: bool,
+    pub library_actions: LibraryActions,
 }
 
 /// `label` is a translation key, `icon` an icon class.
@@ -335,6 +372,7 @@ pub struct RemoteAlbum {
     pub thumbnail: Option<String>,
     pub audio_playlist_id: Option<String>,
     pub tracks: Vec<reader::Track>,
+    pub actions: crate::ytmusic::discover::ItemActions,
 }
 
 impl From<crate::ytmusic::discover::YtAlbum> for RemoteAlbum {
@@ -350,6 +388,7 @@ impl From<crate::ytmusic::discover::YtAlbum> for RemoteAlbum {
             thumbnail: a.thumbnail,
             audio_playlist_id: a.audio_playlist_id,
             tracks: a.tracks,
+            actions: a.actions,
         }
     }
 }

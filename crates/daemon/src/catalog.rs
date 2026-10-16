@@ -14,12 +14,13 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
 use api::{
-    ApiError, ArtworkRef, ArtworkTarget, CatalogChip, CatalogDetail, CatalogDetailRequest,
-    CatalogHeader, CatalogItem, CatalogItemKind, CatalogPage, CatalogShelf, ShelfLayout,
+    ApiError, ArtworkRef, ArtworkTarget, CatalogActions, CatalogChip, CatalogDetail,
+    CatalogDetailRequest, CatalogHeader, CatalogItem, CatalogItemKind, CatalogPage, CatalogShelf,
+    ShelfLayout, Table,
 };
 use server::source::RadioPage;
 use server::ytmusic::discover::{
-    BrowsePage, DiscoverHome, DiscoverItem, DiscoverShelf, LinkKind, PageHeader,
+    BrowsePage, DiscoverHome, DiscoverItem, DiscoverShelf, ItemActions, LinkKind, PageHeader,
 };
 
 use server::source::MediaSource;
@@ -108,8 +109,8 @@ impl CatalogService {
             .iter_mut()
             .flat_map(|shelf| shelf.items.iter_mut())
             .filter_map(|item| match item {
-                DiscoverItem::Song(track)
-                | DiscoverItem::Video(track)
+                DiscoverItem::Song(track, _)
+                | DiscoverItem::Video(track, _)
                 | DiscoverItem::Episode { track, .. } => Some(&mut **track),
                 _ => None,
             });
@@ -118,8 +119,8 @@ impl CatalogService {
             .iter()
             .flat_map(|shelf| shelf.items.iter())
             .filter_map(|item| match item {
-                DiscoverItem::Song(track)
-                | DiscoverItem::Video(track)
+                DiscoverItem::Song(track, _)
+                | DiscoverItem::Video(track, _)
                 | DiscoverItem::Episode { track, .. } => Some((**track).clone()),
                 _ => None,
             })
@@ -160,7 +161,7 @@ impl CatalogService {
         match item {
             // A song's artwork is the track's own, so the tile and the queue
             // row cannot disagree about which picture belongs to it.
-            DiscoverItem::Song(track) => CatalogItem {
+            DiscoverItem::Song(track, item_actions) => CatalogItem {
                 kind: CatalogItemKind::Track,
                 id: track.id.key().into_owned(),
                 title: track.title.clone(),
@@ -170,12 +171,14 @@ impl CatalogService {
                 web_url: source.web_url(&track),
                 track: Some(crate::wire::track_info(&track, config)),
                 accent: None,
+                actions: actions(item_actions),
             },
             DiscoverItem::Playlist {
                 playlist_id,
                 title,
                 subtitle,
                 thumbnail,
+                actions: item_actions,
             } => CatalogItem {
                 artwork: self.remember_thumbnail(&playlist_id, thumbnail.as_deref()),
                 kind: CatalogItemKind::Playlist,
@@ -183,6 +186,9 @@ impl CatalogService {
                 id: playlist_id,
                 title,
                 subtitle: Some(subtitle),
+                track: None,
+                accent: None,
+                actions: actions(item_actions),
                 ..CatalogItem::default()
             },
             DiscoverItem::Album {
@@ -190,6 +196,7 @@ impl CatalogService {
                 title,
                 subtitle,
                 thumbnail,
+                actions: item_actions,
                 explicit,
             } => CatalogItem {
                 artwork: self.remember_thumbnail(&browse_id, thumbnail.as_deref()),
@@ -198,14 +205,17 @@ impl CatalogService {
                 id: browse_id,
                 title,
                 subtitle: Some(subtitle),
+                track: None,
+                accent: None,
+                actions: actions(item_actions),
                 explicit,
-                ..CatalogItem::default()
             },
             DiscoverItem::Artist {
                 channel_id,
                 name,
                 subtitle,
                 thumbnail,
+                actions: item_actions,
             } => CatalogItem {
                 artwork: self.remember_thumbnail(&channel_id, thumbnail.as_deref()),
                 kind: CatalogItemKind::Artist,
@@ -213,6 +223,9 @@ impl CatalogService {
                 id: channel_id,
                 title: name,
                 subtitle,
+                track: None,
+                accent: None,
+                actions: actions(item_actions),
                 ..CatalogItem::default()
             },
             DiscoverItem::Mood {
@@ -226,18 +239,23 @@ impl CatalogService {
                 id: browse_id,
                 title,
                 accent: accent.map(|argb| format!("#{:06x}", argb & 0x00ff_ffff)),
+                actions: CatalogActions::default(),
                 ..CatalogItem::default()
             },
-            DiscoverItem::Video(track) => CatalogItem {
+            DiscoverItem::Video(track, item_actions) => CatalogItem {
                 kind: CatalogItemKind::Video,
-                ..self.item(DiscoverItem::Song(track), source, config)
+                ..self.item(DiscoverItem::Song(track, item_actions), source, config)
             },
             DiscoverItem::Episode {
                 track,
                 browse_id,
                 published,
             } => {
-                let item = self.item(DiscoverItem::Song(track), source, config);
+                let item = self.item(
+                    DiscoverItem::Song(track, ItemActions::default()),
+                    source,
+                    config,
+                );
                 let subtitle: Vec<&str> = [published.as_deref(), item.subtitle.as_deref()]
                     .into_iter()
                     .flatten()
@@ -262,6 +280,9 @@ impl CatalogService {
                 id: browse_id,
                 title,
                 subtitle: Some(subtitle),
+                track: None,
+                accent: None,
+                actions: CatalogActions::default(),
                 ..CatalogItem::default()
             },
             DiscoverItem::Page { page_id, title } => CatalogItem {
@@ -313,6 +334,7 @@ impl CatalogService {
                     playback_id: album.audio_playlist_id,
                     year: album.year,
                     header: CatalogHeader::Detail,
+                    actions: actions(album.actions),
                     tracks: album
                         .tracks
                         .iter()
@@ -349,6 +371,8 @@ impl CatalogService {
                     owner: header.owner,
                     description: header.description,
                     plays: header.plays,
+                    actions: actions(header.actions),
+                    privacy: header.privacy.map(privacy),
                     artwork,
                     tracks: page
                         .tracks
@@ -405,6 +429,7 @@ impl CatalogService {
                     shelves: page.shelves,
                     continuation: page.continuation,
                     header: CatalogHeader::Artist,
+                    actions: actions(artist.actions),
                     ..Default::default()
                 })
             }
@@ -552,6 +577,8 @@ impl CatalogService {
             plays: page.plays,
             shelves: self.shelves(page.shelves, source, config),
             continuation: page.continuation,
+            actions: actions(page.actions),
+            privacy: page.privacy.map(privacy),
             id,
             ..Default::default()
         }
@@ -650,6 +677,52 @@ impl CatalogService {
             tracks,
             ..Default::default()
         })
+    }
+
+    pub async fn follow(&self, artist_ref: &str, follow: bool) -> Result<(), ApiError> {
+        if artist_ref.trim().is_empty() {
+            return Err(ApiError::invalid_input("no artist to follow"));
+        }
+        // Follow state is read fresh from the source, so no table to invalidate.
+        let source = self.source();
+        if !source.capabilities().library_actions.follow {
+            return Err(ApiError::unsupported("following"));
+        }
+        source
+            .follow(artist_ref, follow)
+            .await
+            .map_err(source_error)
+    }
+
+    pub async fn save(&self, item_ref: &str, saved: bool) -> Result<(), ApiError> {
+        if item_ref.trim().is_empty() {
+            return Err(ApiError::invalid_input("nothing to save"));
+        }
+        let source = self.source();
+        if !source.capabilities().library_actions.save {
+            return Err(ApiError::unsupported("saving to the library"));
+        }
+        source.save(item_ref, saved).await.map_err(source_error)?;
+        // A saved album or playlist joins the source's library listing.
+        self.session.invalidate(Table::Albums);
+        self.session.invalidate(Table::Playlists);
+        Ok(())
+    }
+
+    pub async fn remove_from_history(&self, token: &str) -> Result<(), ApiError> {
+        if token.trim().is_empty() {
+            return Err(ApiError::invalid_input("no history token"));
+        }
+        let source = self.source();
+        if !source.capabilities().library_actions.remove_from_history {
+            return Err(ApiError::unsupported("history removal"));
+        }
+        source
+            .remove_from_history(token)
+            .await
+            .map_err(source_error)?;
+        self.session.invalidate(Table::Recents);
+        Ok(())
     }
 
     /// A source's mix seeded by one track, with the seed pinned to the front.
@@ -759,6 +832,36 @@ fn layout(layout: server::ytmusic::discover::ShelfLayout) -> ShelfLayout {
         Source::List => ShelfLayout::List,
         Source::TrackGrid => ShelfLayout::TrackGrid,
         Source::Hero => ShelfLayout::Hero,
+    }
+}
+
+fn rating(rating: server::ytmusic::discover::Rating) -> api::Rating {
+    use server::ytmusic::discover::Rating;
+    match rating {
+        Rating::Indifferent => api::Rating::None,
+        Rating::Like => api::Rating::Like,
+        Rating::Dislike => api::Rating::Dislike,
+    }
+}
+
+fn privacy(privacy: server::ytmusic::discover::Privacy) -> api::PlaylistPrivacy {
+    use server::ytmusic::discover::Privacy;
+    match privacy {
+        Privacy::Private => api::PlaylistPrivacy::Private,
+        Privacy::Unlisted => api::PlaylistPrivacy::Unlisted,
+        Privacy::Public => api::PlaylistPrivacy::Public,
+    }
+}
+
+fn actions(actions: ItemActions) -> CatalogActions {
+    CatalogActions {
+        rate_ref: actions.rate_ref,
+        rating: actions.rating.map(rating),
+        save_ref: actions.save_ref,
+        saved: actions.saved,
+        follow_ref: actions.follow_ref,
+        followed: actions.followed,
+        history_token: actions.history_token,
     }
 }
 

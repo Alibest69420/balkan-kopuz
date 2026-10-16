@@ -2,6 +2,7 @@ use reader::models::{Track, TrackId};
 use serde_json::Value;
 
 pub mod accounts;
+pub mod actions;
 pub mod botguard;
 pub mod browse;
 #[cfg(not(target_os = "android"))]
@@ -313,6 +314,63 @@ impl YouTubeMusicClient {
         self.account(async {
             let cookies = self.cookies.as_deref().ok_or(ANON_AUTH_REQUIRED)?;
             mutations::create_playlist(title, video_ids, cookies).await
+        })
+        .await
+    }
+
+    /// `item_ref` is one [`actions`] handed out, or a video id.
+    pub async fn rate(&self, item_ref: &str, rating: discover::Rating) -> Result<(), String> {
+        self.account(async {
+            let cookies = self.cookies.as_deref().ok_or(ANON_AUTH_REQUIRED)?;
+            let target = actions::read_ref(item_ref).ok_or("nothing to rate")?;
+            mutations::rate(target, rating, cookies).await
+        })
+        .await
+    }
+
+    pub async fn save(&self, item_ref: &str, saved: bool) -> Result<(), String> {
+        self.account(async {
+            let cookies = self.cookies.as_deref().ok_or(ANON_AUTH_REQUIRED)?;
+            let target = actions::read_ref(item_ref).ok_or("nothing to save")?;
+            mutations::save(target, saved, cookies).await
+        })
+        .await
+    }
+
+    pub async fn subscribe(&self, channel_id: &str, subscribed: bool) -> Result<(), String> {
+        self.account(async {
+            let cookies = self.cookies.as_deref().ok_or(ANON_AUTH_REQUIRED)?;
+            mutations::subscribe(channel_id, subscribed, cookies).await
+        })
+        .await
+    }
+
+    pub async fn remove_from_history(&self, token: &str) -> Result<(), String> {
+        self.account(async {
+            let cookies = self.cookies.as_deref().ok_or(ANON_AUTH_REQUIRED)?;
+            mutations::remove_from_history(token, cookies).await
+        })
+        .await
+    }
+
+    pub async fn edit_playlist(
+        &self,
+        playlist_id: &str,
+        name: Option<&str>,
+        description: Option<&str>,
+        privacy: Option<discover::Privacy>,
+    ) -> Result<(), String> {
+        self.account(async {
+            let cookies = self.cookies.as_deref().ok_or(ANON_AUTH_REQUIRED)?;
+            mutations::edit_playlist(playlist_id, name, description, privacy, cookies).await
+        })
+        .await
+    }
+
+    pub async fn delete_playlist(&self, playlist_id: &str) -> Result<(), String> {
+        self.account(async {
+            let cookies = self.cookies.as_deref().ok_or(ANON_AUTH_REQUIRED)?;
+            mutations::delete_playlist(playlist_id, cookies).await
         })
         .await
     }

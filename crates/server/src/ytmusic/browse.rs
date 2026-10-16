@@ -303,6 +303,8 @@ fn headed(header: shelves::Header) -> BrowsePage {
         playback_id: header.playback_id,
         owner: header.owner,
         plays: header.plays,
+        actions: header.actions,
+        privacy: header.privacy,
         ..BrowsePage::default()
     }
 }

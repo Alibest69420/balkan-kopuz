@@ -4,7 +4,8 @@ use reader::models::{ArtistCredit, Track};
 use serde_json::Value;
 
 use super::{decode_percent, page_id, renderer, runs, text, thumbnail};
-use crate::ytmusic::discover::{DiscoverItem, LinkKind, PageLink};
+use crate::ytmusic::actions;
+use crate::ytmusic::discover::{DiscoverItem, ItemActions, LinkKind, PageLink};
 use crate::ytmusic::search::{ParsedRow, parsed_to_track};
 
 /// Any item renderer, or `None` for kinds there is no use for.
@@ -305,10 +306,15 @@ fn track(
     })
 }
 
-fn playable(kind: Kind, track: Track, published: Option<String>) -> DiscoverItem {
+fn playable(
+    kind: Kind,
+    track: Track,
+    actions: ItemActions,
+    published: Option<String>,
+) -> DiscoverItem {
     match kind {
-        Kind::Song => DiscoverItem::Song(Box::new(track)),
-        Kind::Video => DiscoverItem::Video(Box::new(track)),
+        Kind::Song => DiscoverItem::Song(Box::new(track), actions),
+        Kind::Video => DiscoverItem::Video(Box::new(track), actions),
         Kind::Episode => {
             let browse_id = format!("MPED{}", track.id.key());
             DiscoverItem::Episode {
@@ -354,12 +360,14 @@ pub(super) fn responsive_list_item(r: &Value) -> Option<DiscoverItem> {
     let video_id = r["playlistItemData"]["videoId"]
         .as_str()
         .or_else(|| watch["videoId"].as_str());
+    let menu = &r["menu"];
 
     match (
         target(&r["navigationEndpoint"]).or_else(|| target(title_endpoint)),
         video_id,
     ) {
         (Some(Target::Album(browse_id)), _) => Some(DiscoverItem::Album {
+            actions: actions::playlist(menu, actions::overlay_playlist_id(&r["overlay"])),
             browse_id,
             title,
             subtitle,
@@ -367,12 +375,14 @@ pub(super) fn responsive_list_item(r: &Value) -> Option<DiscoverItem> {
             explicit: crate::ytmusic::has_explicit_badge(r),
         }),
         (Some(Target::Artist(channel_id)), _) => Some(DiscoverItem::Artist {
+            actions: actions::artist(&channel_id),
             channel_id,
             name: title,
             subtitle: (!subtitle.is_empty()).then_some(subtitle),
             thumbnail: thumb,
         }),
         (Some(Target::Playlist(playlist_id)), _) => Some(DiscoverItem::Playlist {
+            actions: actions::playlist(menu, Some(&playlist_id)),
             playlist_id,
             title,
             subtitle,
@@ -396,8 +406,9 @@ pub(super) fn responsive_list_item(r: &Value) -> Option<DiscoverItem> {
             let kind = video_kind(watch)
                 .or_else(|| kind_from_label(byline.label.as_deref()))
                 .unwrap_or(Kind::Song);
+            let actions = actions::track(menu, video_id);
             let track = track(video_id, title, &byline, thumb, r);
-            Some(playable(kind, track, byline.published))
+            Some(playable(kind, track, actions, byline.published))
         }
         (_, None) => None,
     }
@@ -410,11 +421,13 @@ pub(super) fn two_row_item(r: &Value) -> Option<DiscoverItem> {
     let byline = Byline::from_columns([runs(&r["subtitle"])]);
     let subtitle = text(&r["subtitle"]).unwrap_or_default();
     let thumb = thumbnail(&r["thumbnailRenderer"]);
+    let menu = &r["menu"];
 
     if let Some(video_id) = endpoint["watchEndpoint"]["videoId"].as_str() {
         let kind = video_kind(&endpoint["watchEndpoint"]).unwrap_or(Kind::Video);
+        let actions = actions::track(menu, video_id);
         let track = track(video_id, title, &byline, thumb, r);
-        return Some(playable(kind, track, byline.published));
+        return Some(playable(kind, track, actions, byline.published));
     }
     if let Some(playlist_id) = endpoint["watchPlaylistEndpoint"]["playlistId"].as_str() {
         return Some(DiscoverItem::Playlist {
@@ -422,10 +435,12 @@ pub(super) fn two_row_item(r: &Value) -> Option<DiscoverItem> {
             title,
             subtitle,
             thumbnail: thumb,
+            actions: actions::playlist(menu, Some(playlist_id)),
         });
     }
     match target(endpoint)? {
         Target::Album(browse_id) => Some(DiscoverItem::Album {
+            actions: actions::playlist(menu, actions::overlay_playlist_id(&r["thumbnailOverlay"])),
             browse_id,
             title,
             subtitle,
@@ -433,12 +448,14 @@ pub(super) fn two_row_item(r: &Value) -> Option<DiscoverItem> {
             explicit: crate::ytmusic::has_explicit_badge(r),
         }),
         Target::Artist(channel_id) => Some(DiscoverItem::Artist {
+            actions: actions::artist(&channel_id),
             channel_id,
             name: title,
             subtitle: (!subtitle.is_empty()).then_some(subtitle),
             thumbnail: thumb,
         }),
         Target::Playlist(playlist_id) => Some(DiscoverItem::Playlist {
+            actions: actions::playlist(menu, Some(&playlist_id)),
             playlist_id,
             title,
             subtitle,
@@ -486,7 +503,12 @@ fn multi_row_item(r: &Value) -> Option<DiscoverItem> {
         thumbnail(&r["thumbnail"]),
         r,
     );
-    Some(playable(Kind::Episode, track, byline.published))
+    Some(playable(
+        Kind::Episode,
+        track,
+        ItemActions::default(),
+        byline.published,
+    ))
 }
 
 /// `musicNavigationButtonRenderer`: mood and genre tiles, and Explore's own

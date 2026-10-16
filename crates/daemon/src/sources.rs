@@ -90,6 +90,7 @@ fn db_error(error: db::DbError) -> ApiError {
     ApiError::internal(format!("database error: {error}"))
 }
 
+/// The in-process capability struct, as the wire describes it.
 fn capabilities(source: &dyn server::source::MediaSource) -> SourceCapabilities {
     use api::{AlbumPresentation, ArtistPresentation, FavoritesSyncMode, PlaylistCapability};
     use server::source::{AlbumType, ArtistView, FavoritesSync, PlaylistOps};
@@ -112,6 +113,11 @@ fn capabilities(source: &dyn server::source::MediaSource) -> SourceCapabilities 
         storage_quota: caps.storage_quota,
         discover: caps.discover,
         dont_recommend: caps.dont_recommend,
+        rate: caps.library_actions.rate,
+        follow: caps.library_actions.follow,
+        save: caps.library_actions.save,
+        remove_from_history: caps.library_actions.remove_from_history,
+        playlist_details: caps.library_actions.playlist_details,
         music_videos: caps.music_videos,
         track_radio: caps.radio.track,
         playlist_radio: caps.radio.playlist,

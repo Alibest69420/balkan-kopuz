@@ -5,7 +5,7 @@ use db::Db;
 use crate::server_ops::ServerConn;
 
 use super::{
-    AlbumType, ArtistView, AuthOutcome, Capabilities, FavoritesPage, FavoritesSync,
+    AlbumType, ArtistView, AuthOutcome, Capabilities, FavoritesPage, FavoritesSync, LibraryActions,
     LibrarySnapshot, MediaSource, PlaylistMeta, PlaylistOps, RadioSeeds, SourceError, StreamInfo,
 };
 
@@ -82,6 +82,7 @@ impl MediaSource for SpotifySource {
             stream_quality: false,
             explicit_flags: false,
             watch_history: false,
+            library_actions: LibraryActions::NONE,
         }
     }
 

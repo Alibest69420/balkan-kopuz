@@ -161,8 +161,8 @@ fn filtered(filter: &Filter, shelves: &mut [DiscoverShelf]) {
         return;
     }
     for item in shelves.iter_mut().flat_map(|shelf| shelf.items.iter_mut()) {
-        if let DiscoverItem::Song(track) = item {
-            *item = DiscoverItem::Video(track.clone());
+        if let DiscoverItem::Song(track, actions) = item {
+            *item = DiscoverItem::Video(track.clone(), actions.clone());
         }
     }
 }
@@ -227,8 +227,8 @@ fn by_category(found: Vec<DiscoverShelf>) -> Vec<DiscoverShelf> {
 
 fn category(item: &DiscoverItem) -> Option<&'static str> {
     Some(match item {
-        DiscoverItem::Song(_) => "songs",
-        DiscoverItem::Video(_) => "videos",
+        DiscoverItem::Song(..) => "songs",
+        DiscoverItem::Video(..) => "videos",
         DiscoverItem::Episode { .. } => "episodes",
         DiscoverItem::Album { .. } => "albums",
         // Profiles are channels too, told apart by their row's label.

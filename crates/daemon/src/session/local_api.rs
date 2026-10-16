@@ -270,6 +270,12 @@ impl api::PlaylistApi for LocalApi {
             .await
     }
 
+    async fn edit_playlist(&self, id: String, edit: api::PlaylistEdit) -> Result<(), ApiError> {
+        let (id, edit) = (&id, &edit);
+        self.recovering(|| async move { self.playlists()?.edit(id, edit.clone()).await })
+            .await
+    }
+
     async fn delete_playlist(&self, id: String) -> Result<(), ApiError> {
         let id = &id;
         self.recovering(|| async move { self.playlists()?.delete(id).await })
@@ -577,6 +583,30 @@ impl api::LibraryApi for LocalApi {
     async fn dont_recommend(&self, key: String) -> Result<(), ApiError> {
         let key = &key;
         self.recovering(|| async move { self.favorites_service()?.dont_recommend(key).await })
+            .await
+    }
+
+    async fn rate(&self, item_ref: String, rating: api::Rating) -> Result<(), ApiError> {
+        let item_ref = &item_ref;
+        self.recovering(|| async move { self.favorites_service()?.rate(item_ref, rating).await })
+            .await
+    }
+
+    async fn follow(&self, artist_ref: String, follow: bool) -> Result<(), ApiError> {
+        let artist_ref = &artist_ref;
+        self.recovering(|| async move { self.catalog()?.follow(artist_ref, follow).await })
+            .await
+    }
+
+    async fn save(&self, item_ref: String, saved: bool) -> Result<(), ApiError> {
+        let item_ref = &item_ref;
+        self.recovering(|| async move { self.catalog()?.save(item_ref, saved).await })
+            .await
+    }
+
+    async fn remove_from_history(&self, token: String) -> Result<(), ApiError> {
+        let token = &token;
+        self.recovering(|| async move { self.catalog()?.remove_from_history(token).await })
             .await
     }
 

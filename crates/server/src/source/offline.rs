@@ -3,8 +3,8 @@ use config::Source;
 use db::Db;
 
 use super::{
-    AlbumType, ArtistView, AuthOutcome, Capabilities, FavoritesSync, MediaSource, PlaylistOps,
-    RadioSeeds, SourceError, StreamInfo,
+    AlbumType, ArtistView, AuthOutcome, Capabilities, FavoritesSync, LibraryActions, MediaSource,
+    PlaylistOps, RadioSeeds, SourceError, StreamInfo,
 };
 
 pub(super) struct OfflineServerSource {
@@ -48,6 +48,7 @@ impl MediaSource for OfflineServerSource {
             stream_quality: false,
             explicit_flags: false,
             watch_history: false,
+            library_actions: LibraryActions::NONE,
         }
     }
 

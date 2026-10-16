@@ -77,6 +77,12 @@ pub struct SourceCapabilities {
     pub discover: bool,
     /// It takes a "stop recommending this" signal for a track.
     pub dont_recommend: bool,
+    pub rate: bool,
+    pub follow: bool,
+    pub save: bool,
+    pub remove_from_history: bool,
+    /// A playlist has a description and a privacy `edit_playlist` can change.
+    pub playlist_details: bool,
     pub track_radio: bool,
     pub playlist_radio: bool,
     /// Playing a search result starts a track radio from it rather than

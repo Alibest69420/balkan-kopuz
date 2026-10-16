@@ -5,8 +5,9 @@ use config::Source;
 use db::Db;
 
 use super::{
-    AlbumType, ArtistView, AuthOutcome, Capabilities, FavoritesSync, LibrarySnapshot, MediaSource,
-    PlaylistMeta, PlaylistOps, RadioPage, RadioSeeds, SourceError, StreamInfo,
+    AlbumType, ArtistView, AuthOutcome, Capabilities, FavoritesSync, LibraryActions,
+    LibrarySnapshot, MediaSource, PlaylistMeta, PlaylistOps, RadioPage, RadioSeeds, SourceError,
+    StreamInfo,
 };
 
 pub(super) struct AppleMusicSource {
@@ -73,6 +74,7 @@ impl MediaSource for AppleMusicSource {
             stream_quality: false,
             explicit_flags: false,
             watch_history: false,
+            library_actions: LibraryActions::NONE,
         }
     }
 

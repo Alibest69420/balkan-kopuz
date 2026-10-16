@@ -1089,6 +1089,86 @@ async fn an_account_choice_is_kept_with_its_source() {
     assert_eq!(stored(&pair, added.id.clone()).await, None);
 }
 
+#[tokio::test]
+async fn library_actions_are_refused_by_a_source_without_them() {
+    let pair = spawn_pair().await;
+    for side in [&pair.local as &dyn KopuzApi, &pair.wire] {
+        let refusals = [
+            side.rate("/lib/seed-0.flac".into(), api::Rating::Dislike)
+                .await
+                .expect_err("no rating"),
+            side.follow("artist".into(), true)
+                .await
+                .expect_err("no following"),
+            side.save("/lib/seed-0.flac".into(), true)
+                .await
+                .expect_err("no saving"),
+            side.remove_from_history("token".into())
+                .await
+                .expect_err("no history"),
+        ];
+        for refusal in refusals {
+            assert_eq!(refusal.code, ErrorCode::Unsupported, "{refusal:?}");
+        }
+    }
+
+    let caps = pair
+        .wire
+        .sources()
+        .await
+        .expect("sources")
+        .into_iter()
+        .find(|source| source.active)
+        .expect("an active source")
+        .capabilities;
+    assert!(!caps.rate && !caps.follow && !caps.save);
+    assert!(!caps.remove_from_history && !caps.playlist_details);
+}
+
+/// A description the source cannot keep is refused whole, not half-applied as a rename.
+#[tokio::test]
+async fn a_playlist_edit_needs_details_to_push_them() {
+    let pair = spawn_pair().await;
+    let id = pair
+        .wire
+        .create_playlist("Edited".into(), Vec::new())
+        .await
+        .expect("create");
+
+    pair.wire
+        .edit_playlist(
+            id.clone(),
+            api::PlaylistEdit {
+                name: Some("Edited over the wire".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("a name alone is a rename");
+    for side in [&pair.local as &dyn KopuzApi, &pair.wire] {
+        let refused = side
+            .edit_playlist(
+                id.clone(),
+                api::PlaylistEdit {
+                    name: Some("Never applied".into()),
+                    description: Some("notes".into()),
+                    privacy: Some(api::PlaylistPrivacy::Private),
+                },
+            )
+            .await
+            .expect_err("a local playlist has no details");
+        assert_eq!(refused.code, ErrorCode::Unsupported);
+    }
+
+    let catalog = pair.local.playlists().await.expect("catalog");
+    let playlist = catalog
+        .playlists
+        .iter()
+        .find(|playlist| playlist.id == id)
+        .expect("still there");
+    assert_eq!(playlist.name, "Edited over the wire");
+}
+
 /// Scan the library and wait for the job to finish.
 async fn run_scan(pair: &Pair) {
     let job = pair

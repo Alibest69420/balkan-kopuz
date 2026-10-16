@@ -3,8 +3,8 @@ use config::Source;
 use db::Db;
 
 use super::{
-    AlbumType, ArtistView, AuthOutcome, Capabilities, FavoritesSync, MediaSource, PlaylistOps,
-    RadioSeeds, SourceError, StreamInfo, mirror_created,
+    AlbumType, ArtistView, AuthOutcome, Capabilities, FavoritesSync, LibraryActions, MediaSource,
+    PlaylistOps, RadioSeeds, SourceError, StreamInfo, mirror_created,
 };
 
 pub(super) struct LocalSource {
@@ -48,6 +48,7 @@ impl MediaSource for LocalSource {
             stream_quality: false,
             explicit_flags: false,
             watch_history: false,
+            library_actions: LibraryActions::NONE,
         }
     }
 

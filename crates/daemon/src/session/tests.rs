@@ -3718,6 +3718,7 @@ impl server::source::MediaSource for RadioSource {
             watch_history: false,
             accounts: false,
             music_videos: false,
+            library_actions: server::source::LibraryActions::NONE,
         }
     }
     async fn add_to_playlist(

@@ -26,8 +26,8 @@ pub use sources::{MAX_MUSIC_UPLOAD_BYTES, StorageQuota, TrackUpload};
 
 pub use artwork::{ArtworkData, ArtworkRef, ArtworkRequest, ArtworkTarget};
 pub use catalog::{
-    CatalogChip, CatalogDetail, CatalogDetailRequest, CatalogHeader, CatalogItem, CatalogItemKind,
-    CatalogPage, CatalogShelf, ShelfLayout,
+    CatalogActions, CatalogChip, CatalogDetail, CatalogDetailRequest, CatalogHeader, CatalogItem,
+    CatalogItemKind, CatalogPage, CatalogShelf, Rating, ShelfLayout,
 };
 pub use error::{ApiError, ErrorBody, ErrorCode};
 pub use events::{ApiEvent, JobKind, JobProgress, NoticeLevel, SourceState, Table};
@@ -45,7 +45,10 @@ pub use player::{
     BufferedRange, ExternalDevice, ExternalPlayback, FadingState, Intent, LoopMode, Phase,
     PlayerCommand, PlayerState, PositionAnchor, QueueSummary, TrackKind, VideoChunk, VideoRequest,
 };
-pub use playlists::{PlaylistCatalog, PlaylistFolderInfo, PlaylistInfo, PlaylistReorder};
+pub use playlists::{
+    PlaylistCatalog, PlaylistEdit, PlaylistFolderInfo, PlaylistInfo, PlaylistPrivacy,
+    PlaylistReorder,
+};
 pub use queue::{
     QueueContext, QueueEdit, QueueItem, QueueMode, QueueSnapshot, QueueWindow, SetQueueRequest,
 };
@@ -270,6 +273,15 @@ pub trait LibraryApi: Send + Sync {
     /// it holds for the track, so the local favorite row is cleared with it.
     async fn dont_recommend(&self, key: String) -> Result<(), ApiError>;
 
+    /// Takes a `rate_ref` or a track's key; a like on a song also sets its favorite.
+    async fn rate(&self, item_ref: String, rating: Rating) -> Result<(), ApiError>;
+
+    async fn follow(&self, artist_ref: String, follow: bool) -> Result<(), ApiError>;
+
+    async fn save(&self, item_ref: String, saved: bool) -> Result<(), ApiError>;
+
+    async fn remove_from_history(&self, token: String) -> Result<(), ApiError>;
+
     /// Rewrite one track's tags, and its embedded cover with them. Only
     /// files have tags to edit; a server track answers `unsupported`.
     async fn update_track_metadata(&self, patch: TrackMetadataPatch)
@@ -302,6 +314,9 @@ pub trait PlaylistApi: Send + Sync {
     async fn create_playlist(&self, name: String, keys: Vec<String>) -> Result<String, ApiError>;
 
     async fn rename_playlist(&self, id: String, name: String) -> Result<(), ApiError>;
+
+    /// A description or privacy needs `playlist_details` and goes to the source with the name.
+    async fn edit_playlist(&self, id: String, edit: PlaylistEdit) -> Result<(), ApiError>;
 
     async fn delete_playlist(&self, id: String) -> Result<(), ApiError>;
 
