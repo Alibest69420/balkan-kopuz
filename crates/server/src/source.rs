@@ -242,6 +242,27 @@ pub trait MediaSource: Send + Sync {
         Ok(search::filter(&q, tracks, albums))
     }
 
+    fn search_filters(&self) -> Vec<SearchFilterEntry> {
+        Vec::new()
+    }
+
+    /// Shelves for an "all" filter, one long shelf under any other.
+    async fn search_shelves(
+        &self,
+        _query: &str,
+        _filter: &str,
+        _continuation: Option<&str>,
+    ) -> Result<crate::ytmusic::browse::search::SearchPage, SourceError> {
+        Err(SourceError::unsupported("search filters"))
+    }
+
+    async fn search_suggestions(
+        &self,
+        _query: &str,
+    ) -> Result<Vec<crate::ytmusic::browse::search::Suggestion>, SourceError> {
+        Ok(Vec::new())
+    }
+
     /// The discover/home feed. Default unsupported — gated by
     /// [`Capabilities::discover`]; only catalog remotes (YT) override.
     async fn discover_home(&self) -> Result<crate::ytmusic::discover::DiscoverHome, SourceError> {
@@ -255,6 +276,27 @@ pub trait MediaSource: Send + Sync {
         _token: &str,
     ) -> Result<crate::ytmusic::discover::DiscoverHome, SourceError> {
         Err(SourceError::unsupported("discover"))
+    }
+
+    fn catalog_pages(&self) -> Vec<CatalogPageEntry> {
+        Vec::new()
+    }
+
+    /// A page by an id that `catalog_pages`, a chip or a link handed out.
+    async fn browse_page(
+        &self,
+        _id: &str,
+        _continuation: Option<&str>,
+    ) -> Result<crate::ytmusic::discover::BrowsePage, SourceError> {
+        Err(SourceError::unsupported("catalog pages"))
+    }
+
+    /// Similar songs, artists and albums for one of its tracks.
+    async fn related(
+        &self,
+        _item_id: &str,
+    ) -> Result<crate::ytmusic::discover::BrowsePage, SourceError> {
+        Err(SourceError::unsupported("related"))
     }
 
     /// The tracks of a remote album / browse id. Standard library remotes use

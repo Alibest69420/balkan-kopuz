@@ -183,12 +183,52 @@ pub struct ArtistPage {
     pub total: u32,
 }
 
+/// With no `filter` this is the plain search, answered with `tracks` and
+/// `albums`; a filtered search is answered with `shelves`. A `continuation`
+/// is sent with the filter of the page it continues.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SearchRequest {
+    pub query: String,
+    pub filter: Option<String>,
+    pub continuation: Option<String>,
+}
+
+impl SearchRequest {
+    pub fn new(query: impl Into<String>) -> Self {
+        Self {
+            query: query.into(),
+            ..Self::default()
+        }
+    }
+
+    pub fn filtered(query: impl Into<String>, filter: impl Into<String>) -> Self {
+        Self {
+            query: query.into(),
+            filter: Some(filter.into()),
+            continuation: None,
+        }
+    }
+}
+
 /// What a search turned up. Remote sources answer over the network, so this
 /// is one call rather than a filter the caller composes.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SearchResults {
     pub tracks: Vec<TrackInfo>,
     pub albums: Vec<AlbumInfo>,
+    pub shelves: Vec<crate::CatalogShelf>,
+    pub continuation: Option<String>,
+    /// What the source searched for instead, when it corrected the query.
+    pub correction: Option<String>,
+}
+
+/// A query to run, or with `item`, a direct hit to open.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SearchSuggestion {
+    pub text: String,
+    /// A query the account searched for before.
+    pub from_history: bool,
+    pub item: Option<crate::CatalogItem>,
 }
 
 impl TrackInfo {

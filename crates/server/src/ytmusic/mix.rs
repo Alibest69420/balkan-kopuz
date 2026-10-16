@@ -148,7 +148,7 @@ async fn post_next(body: &Value, cookies: &str) -> Result<Value, String> {
         .map_err(|e| format!("next JSON: {e}"))
 }
 
-fn walk_queue(resp: &Value) -> MixPage {
+pub(super) fn walk_queue(resp: &Value) -> MixPage {
     // Iterate the watchNext tabs by tabRenderer presence rather than
     // assuming the queue lives at tabs[0]. YT A/B-tests the tab order
     // (Up next vs Lyrics vs Related) and the positional dive

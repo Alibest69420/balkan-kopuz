@@ -2,6 +2,7 @@ use reader::models::{Track, TrackId};
 use serde_json::Value;
 
 pub mod botguard;
+pub mod browse;
 #[cfg(not(target_os = "android"))]
 pub mod browser_sessions;
 pub mod clients;
@@ -18,6 +19,9 @@ pub mod playlists;
 pub mod search;
 pub mod tracking;
 pub mod verify_session_keepalive;
+
+#[cfg(test)]
+mod fixture_tests;
 
 pub use player::YtStreamInfo;
 
@@ -340,6 +344,34 @@ impl YouTubeMusicClient {
         token: &str,
     ) -> Result<discover::DiscoverHome, String> {
         discover::fetch_continuation(token, self.cookies.as_deref().unwrap_or("")).await
+    }
+
+    /// The library tabs and history come back without shelves when signed out.
+    pub async fn browse_page(&self, id: &str) -> Result<discover::BrowsePage, String> {
+        browse::fetch_page(id, self.cookies.as_deref()).await
+    }
+
+    pub async fn browse_continuation(&self, token: &str) -> Result<discover::BrowsePage, String> {
+        browse::fetch_continuation(token, self.cookies.as_deref()).await
+    }
+
+    pub async fn related(&self, video_id: &str) -> Result<discover::BrowsePage, String> {
+        browse::fetch_related(video_id, self.cookies.as_deref()).await
+    }
+
+    pub async fn search_page(
+        &self,
+        query: &str,
+        filter: Option<&'static browse::search::Filter>,
+    ) -> Result<browse::search::SearchPage, String> {
+        browse::fetch_search(query, filter, self.cookies.as_deref()).await
+    }
+
+    pub async fn search_suggestions(
+        &self,
+        query: &str,
+    ) -> Result<Vec<browse::search::Suggestion>, String> {
+        browse::fetch_suggestions(query, self.cookies.as_deref()).await
     }
 
     pub async fn fetch_album_tracks(&self, browse_id: &str) -> Result<Vec<Track>, String> {

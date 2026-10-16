@@ -26,7 +26,8 @@ pub use sources::{MAX_MUSIC_UPLOAD_BYTES, StorageQuota, TrackUpload};
 
 pub use artwork::{ArtworkData, ArtworkRef, ArtworkRequest, ArtworkTarget};
 pub use catalog::{
-    CatalogDetail, CatalogDetailRequest, CatalogItem, CatalogItemKind, CatalogPage, CatalogShelf,
+    CatalogChip, CatalogDetail, CatalogDetailRequest, CatalogHeader, CatalogItem, CatalogItemKind,
+    CatalogPage, CatalogShelf, ShelfLayout,
 };
 pub use error::{ApiError, ErrorBody, ErrorCode};
 pub use events::{ApiEvent, JobKind, JobProgress, NoticeLevel, SourceState, Table};
@@ -35,8 +36,8 @@ pub use jobs::{
 };
 pub use library::{
     AlbumInfo, AlbumPage, ArtistCredit, ArtistDetail, ArtistInfo, ArtistPage, DEFAULT_PAGE_LIMIT,
-    LyricChunkView, LyricLineView, LyricsView, Page, SearchResults, StatsView, TrackFilter,
-    TrackInfo, TrackPage, TrackSort,
+    LyricChunkView, LyricLineView, LyricsView, Page, SearchRequest, SearchResults,
+    SearchSuggestion, StatsView, TrackFilter, TrackInfo, TrackPage, TrackSort,
 };
 pub use mutations::{ArtworkChange, ArtworkUpload, TrackMetadataPatch};
 pub use player::{
@@ -54,9 +55,9 @@ pub use schema::{
 };
 pub use sources::{
     AlbumPresentation, ArtistPresentation, BrowserProfile, BrowserSession, ConnectKind,
-    CredentialProvision, DraftCheck, FavoritesSyncMode, IntegrationInfo, PlaylistCapability,
-    ServiceInfo, ServiceRef, SignInKind, SourceCapabilities, SourceDraft, SourceFolderEntry,
-    SourceInfo, SourceLoginRequest,
+    CredentialProvision, DraftCheck, FavoritesSyncMode, IntegrationInfo, PageEntry,
+    PlaylistCapability, SearchFilter, ServiceInfo, ServiceRef, SignInKind, SourceCapabilities,
+    SourceDraft, SourceFolderEntry, SourceInfo, SourceLoginRequest,
 };
 
 /// The config view: the layered config with credential keys
@@ -201,7 +202,10 @@ pub trait LibraryApi: Send + Sync {
 
     /// Search the active source. Remote sources answer over the network, so
     /// this is a daemon call and not a filter the caller composes.
-    async fn search(&self, query: String) -> Result<SearchResults, ApiError>;
+    async fn search(&self, request: SearchRequest) -> Result<SearchResults, ApiError>;
+
+    /// Completions for a half-typed query; empty for a source that offers none.
+    async fn search_suggestions(&self, query: String) -> Result<Vec<SearchSuggestion>, ApiError>;
 
     /// The source's public page for a row, for a share action. `None` when the
     /// source has no web pages, which is a client's cue to fall back to a

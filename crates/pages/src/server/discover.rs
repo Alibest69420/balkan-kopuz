@@ -8,7 +8,9 @@
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use api::{CatalogDetailRequest, CatalogItem, CatalogItemKind, CatalogShelf, TrackInfo};
+use api::{
+    CatalogDetailRequest, CatalogItem, CatalogItemKind, CatalogShelf, ShelfLayout, TrackInfo,
+};
 use components::track_row::TrackRow;
 use dioxus::prelude::*;
 use tracing::Instrument;
@@ -183,7 +185,7 @@ fn ShelfRow(
     on_select_playlist: EventHandler<(CatalogItemKind, String, String)>,
     on_open_artist: EventHandler<String>,
 ) -> Element {
-    if shelf.list {
+    if shelf.layout == ShelfLayout::List {
         return rsx! { SongListShelf {
             shelf: shelf.clone(),
             on_select_playlist: on_select_playlist,
@@ -350,10 +352,12 @@ fn DiscoverTile(
     let thumbnail = hooks::artwork::url(item.artwork.as_ref(), hooks::artwork::Size::Thumb);
     let subtitle = item.subtitle.clone().unwrap_or_default();
     match item.kind {
-        CatalogItemKind::Track => match item.track.clone() {
-            Some(track) => rsx! { SongCard { item: item.clone(), track } },
-            None => rsx! {},
-        },
+        CatalogItemKind::Track | CatalogItemKind::Video | CatalogItemKind::Episode => {
+            match item.track.clone() {
+                Some(track) => rsx! { SongCard { item: item.clone(), track } },
+                None => rsx! {},
+            }
+        }
         CatalogItemKind::Playlist | CatalogItemKind::Album => {
             let kind = item.kind;
             let id = item.id.clone();
@@ -400,7 +404,10 @@ fn DiscoverTile(
                 }
             }
         }
-        CatalogItemKind::Mood | CatalogItemKind::Unknown => rsx! {
+        CatalogItemKind::Mood
+        | CatalogItemKind::Podcast
+        | CatalogItemKind::Page
+        | CatalogItemKind::Unknown => rsx! {
             Card {
                 title: item.title.clone(),
                 subtitle: String::new(),
