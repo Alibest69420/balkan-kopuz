@@ -16,7 +16,7 @@ use store::Route;
 
 use crate::columns::{self, Layout};
 use crate::cover::Cover;
-use crate::format::duration;
+use crate::format::known_duration;
 use crate::icons;
 use crate::lead;
 use crate::link::{Link, Tone};
@@ -75,10 +75,7 @@ impl TrackRow {
             album_route: (!track.album_id.is_empty())
                 .then(|| Route::Album(track.album_id.clone().into())),
             artwork: track.artwork.clone(),
-            length: track
-                .duration_secs()
-                .map(|secs| duration(secs * 1000))
-                .unwrap_or_else(|| "--:--".into()),
+            length: known_duration(track.duration_secs().map(|secs| secs * 1000)),
             format: track.format.clone().unwrap_or_default().into(),
             plays: 0,
             columns: columns::standard(true),

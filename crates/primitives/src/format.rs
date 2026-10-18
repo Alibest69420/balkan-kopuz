@@ -31,6 +31,11 @@ pub fn duration(ms: u64) -> SharedString {
     }
 }
 
+/// A length that may be unknown, which reads blank rather than as a placeholder clock.
+pub fn known_duration(ms: Option<u64>) -> SharedString {
+    ms.map(duration).unwrap_or_default()
+}
+
 /// A listing's total length, as "1 hr 12 min" reads better than a clock there.
 pub fn total_duration(ms: u64) -> SharedString {
     let minutes = ms / 60_000;
@@ -38,5 +43,17 @@ pub fn total_duration(ms: u64) -> SharedString {
         format!("{} hr {} min", minutes / 60, minutes % 60).into()
     } else {
         format!("{minutes} min").into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_unknown_length_reads_blank() {
+        assert_eq!(known_duration(None), "");
+        assert_eq!(known_duration(Some(65_000)), "1:05");
+        assert_eq!(known_duration(Some(3_725_000)), "1:02:05");
     }
 }

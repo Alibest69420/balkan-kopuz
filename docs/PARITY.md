@@ -239,7 +239,7 @@ Mirrors PlayerController signals (§5.1)
 - [ ] Heart: `use_track_is_favorite` (reads `api.favorites()`, inv:Favorites) → toggle: `api.favorites()` then `api.set_favorite(key, !current)`; toast on refusal
 - [ ] Don't-recommend button (only `caps.dont_recommend`; disabled while favorited) → `api.dont_recommend(key)` then `PlayerCommand::Next` regardless; toast on error
 - [ ] Transport: shuffle toggle (`SetMode{shuffle}`), prev (`Previous`), play/pause (`Play`/`Pause`, optimistic), next (`Next`), repeat cycle None→Queue→Track (`SetMode{loop_mode}`, "1" badge for Track); titles shuffle_on/off, repeat_off/queue/track
-- [ ] Seek slider: time labels (`--:--` for radio), drag shows local value, commit → `Seek{position_ms}` (optimistic anchor); disabled for radio (duration u64::MAX) or loading; buffered ranges underlay (merge gaps ≤0.75 %, snap to playhead within 5 %); indeterminate scan bar while loading with no ranges
+- [ ] Seek slider: time labels (blank length for radio), drag shows local value, commit → `Seek{position_ms}` (optimistic anchor); disabled for radio (duration u64::MAX) or loading; buffered ranges underlay (merge gaps ≤0.75 %, snap to playhead within 5 %); indeterminate scan bar while loading with no ranges
 - [ ] Volume: mute toggle (remembers pre-mute level), slider (`SetVolume` live on input), wheel step = `cfg.volume_scroll_step`; persisted volume saved with config
 - [ ] Queue/lyrics panel toggle (rightbar), External devices button (§3.10), Share current (SHARE), Mini player toggle (desktop), Fullscreen button
 - [ ] `cfg.fullscreen_use_player_bar`: bar stays on top of fullscreen view (cover/title hidden in bar)

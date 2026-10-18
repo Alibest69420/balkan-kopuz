@@ -75,7 +75,7 @@ pub fn tabular() -> FontFeatures {
 /// What the right-hand clock reads: the length, or how much of it is left.
 pub fn trailing(position_ms: u64, total_ms: Option<u64>, remaining: bool) -> SharedString {
     let Some(total) = total_ms else {
-        return "--:--".into();
+        return SharedString::default();
     };
     if remaining {
         SharedString::from(format!("-{}", duration(total.saturating_sub(position_ms))))
@@ -334,9 +334,12 @@ impl RenderOnce for TrackClock {
         let reading = match self.side {
             Side::Elapsed => duration(position),
             Side::Trailing => trailing(position, total, *remaining.read(cx)),
-            Side::Summary => {
-                format!("{} {}", duration(position), trailing(position, total, true)).into()
-            }
+            Side::Summary => match total {
+                Some(_) => {
+                    format!("{} {}", duration(position), trailing(position, total, true)).into()
+                }
+                None => duration(position),
+            },
         };
         let summary = self.side == Side::Summary;
         let scale = self.scale;
@@ -410,6 +413,6 @@ mod tests {
     fn the_trailing_clock_counts_down_or_names_the_length() {
         assert_eq!(trailing(60_000, Some(180_000), true), "-2:00");
         assert_eq!(trailing(60_000, Some(180_000), false), "3:00");
-        assert_eq!(trailing(60_000, None, true), "--:--");
+        assert_eq!(trailing(60_000, None, true), "");
     }
 }
