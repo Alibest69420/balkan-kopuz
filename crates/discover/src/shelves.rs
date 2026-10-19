@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use api::{CatalogDetailRequest, CatalogItem, CatalogItemKind, CatalogShelf};
+use api::{CatalogDetailRequest, CatalogItem, CatalogItemKind, CatalogShelf, ShelfLayout};
 use components::format::t;
 use components::{
     Arrows, Carousel, PlayState, SectionHeading, Tile, TrackActions, TrackList, TrackListEvent,
@@ -63,7 +63,13 @@ impl Shelves {
 
     pub fn extend(&mut self, shelves: Vec<CatalogShelf>, cx: &mut Context<Self>) {
         for shelf in shelves {
-            let list = shelf.list.then(|| self.track_list(&shelf, cx));
+            let list = match shelf.layout {
+                ShelfLayout::List => Some(self.track_list(&shelf, cx)),
+                ShelfLayout::Carousel
+                | ShelfLayout::Grid
+                | ShelfLayout::TrackGrid
+                | ShelfLayout::Hero => None,
+            };
             self.views.push(ShelfView {
                 shelf,
                 scroll: ScrollHandle::new(),
@@ -234,19 +240,25 @@ impl Shelves {
             list,
         )
         .heading(SectionHeading::new(title.clone()));
-        if let Some(more) = view.shelf.more_ref.clone() {
+        let more = view.shelf.more_ref.clone();
+        let route = more.map(|more| match view.shelf.more_kind {
+            CatalogItemKind::Album => Some(Route::Album(more.into())),
+            CatalogItemKind::Artist => Some(Route::DiscoverArtist(more)),
+            CatalogItemKind::Mood | CatalogItemKind::Podcast | CatalogItemKind::Page => None,
+            // A song list's "show all" opens as a playlist of the same songs.
+            CatalogItemKind::Playlist
+            | CatalogItemKind::Track
+            | CatalogItemKind::Video
+            | CatalogItemKind::Episode
+            | CatalogItemKind::Unknown => Some(Route::DiscoverPlaylist {
+                id: more.into(),
+                title: title.clone(),
+            }),
+        });
+        if let Some(route) = route.flatten() {
             section = section.trailing(
-                heading_link(("show-all", index), t("discover_show_all")).on_click(
-                    move |_, _, cx| {
-                        Navigator::navigate(
-                            Route::DiscoverPlaylist {
-                                id: more.clone().into(),
-                                title: title.clone(),
-                            },
-                            cx,
-                        )
-                    },
-                ),
+                heading_link(("show-all", index), t("discover_show_all"))
+                    .on_click(move |_, _, cx| Navigator::navigate(route.clone(), cx)),
             );
         }
         section.into_any_element()
@@ -258,7 +270,9 @@ impl Shelves {
             .artwork(item.artwork.as_ref())
             .size(TILE);
         match item.kind {
-            CatalogItemKind::Track => self.song_tile(tile, item, cx),
+            CatalogItemKind::Track | CatalogItemKind::Video | CatalogItemKind::Episode => {
+                self.song_tile(tile, item, cx)
+            }
             CatalogItemKind::Album | CatalogItemKind::Playlist => {
                 self.playable_tile(tile, item, cx)
             }
@@ -273,7 +287,11 @@ impl Shelves {
                     name: item.title.clone().into(),
                 }))
                 .into_any_element(),
-            CatalogItemKind::Mood | CatalogItemKind::Unknown => tile.into_any_element(),
+            // No GPUI view opens these from a shelf yet.
+            CatalogItemKind::Mood
+            | CatalogItemKind::Podcast
+            | CatalogItemKind::Page
+            | CatalogItemKind::Unknown => tile.into_any_element(),
         }
     }
 
@@ -307,7 +325,9 @@ impl Shelves {
             return tile.into_any_element();
         };
         let key = track.key.clone();
-        let radio = SourcesModel::global(cx).read(cx).capabilities().track_radio;
+        // An episode never seeds a radio.
+        let radio = item.kind != CatalogItemKind::Episode
+            && SourcesModel::global(cx).read(cx).capabilities().track_radio;
         let start = move |this: &mut Self, cx: &mut Context<Self>| {
             if this.now_playing.as_deref() == Some(key.as_str()) {
                 PlayerModel::global(cx).update(cx, |player, cx| player.toggle(cx));

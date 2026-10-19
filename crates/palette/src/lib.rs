@@ -10,7 +10,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
-use api::{AlbumPage, ApiError, ArtistPage, KopuzApi, SearchResults, Table};
+use api::{AlbumPage, ApiError, ArtistPage, KopuzApi, SearchRequest, SearchResults, Table};
 use components::format::{t, t_with};
 use components::{Badge, CommandRow, EmptyState, KeyHint, SearchField, icons, motion, style};
 use gpui_kit::base::motion::{Easing, Presence, Transition};
@@ -128,7 +128,7 @@ fn search_fetch(query: String) -> impl Fn(Arc<dyn KopuzApi>) -> Answer + 'static
             if query.is_empty() {
                 return Ok(SearchResults::default());
             }
-            api.search(query).await
+            api.search(SearchRequest::new(query)).await
         })
     }
 }

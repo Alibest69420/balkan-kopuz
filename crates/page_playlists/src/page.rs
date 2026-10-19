@@ -76,7 +76,7 @@ impl Playlists {
         }
     }
 
-    fn header(&self, capabilities: SourceCapabilities, cx: &mut Context<Self>) -> PageHeader {
+    fn header(&self, capabilities: &SourceCapabilities, cx: &mut Context<Self>) -> PageHeader {
         let add = cx.listener(|_, _: &ClickEvent, window, cx| {
             dialogs::open_add_playlist(window, cx);
         });
@@ -141,7 +141,7 @@ impl Playlists {
             .into_any_element()
     }
 
-    fn flat_layout(&self, capabilities: SourceCapabilities, cx: &mut Context<Self>) -> AnyElement {
+    fn flat_layout(&self, capabilities: &SourceCapabilities, cx: &mut Context<Self>) -> AnyElement {
         let playlists = PlaylistsModel::global(cx).read(cx).playlists().to_vec();
         let anonymous = SourcesModel::global(cx)
             .read(cx)
@@ -174,7 +174,7 @@ impl Playlists {
             .into_any_element()
     }
 
-    fn remote_card(&self, playlist: &PlaylistInfo, capabilities: SourceCapabilities) -> Tile {
+    fn remote_card(&self, playlist: &PlaylistInfo, capabilities: &SourceCapabilities) -> Tile {
         let corner = capabilities
             .downloads
             .then(|| self.offline.get(&playlist.id))
@@ -210,13 +210,13 @@ impl Render for Playlists {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let capabilities = SourcesModel::global(cx).read(cx).capabilities();
         let loaded = PlaylistsModel::global(cx).read(cx).is_loaded();
-        let header = self.header(capabilities, cx);
+        let header = self.header(&capabilities, cx);
         let body = if !loaded {
             Loading::new().into_any_element()
         } else if capabilities.folders {
             self.folders_layout(cx)
         } else {
-            self.flat_layout(capabilities, cx)
+            self.flat_layout(&capabilities, cx)
         };
         components::page().child(header).child(
             v_flex()

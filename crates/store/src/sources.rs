@@ -119,7 +119,7 @@ impl SourcesModel {
     /// The active source's capabilities; all off until sources load.
     pub fn capabilities(&self) -> SourceCapabilities {
         self.active()
-            .map(|source| source.capabilities)
+            .map(|source| source.capabilities.clone())
             .unwrap_or_default()
     }
 

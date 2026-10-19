@@ -10,7 +10,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use api::{AlbumInfo, AlbumPage, ApiError, KopuzApi, SearchResults, Table};
+use api::{AlbumInfo, AlbumPage, ApiError, KopuzApi, SearchRequest, SearchResults, Table};
 use components::format::{t, t_with};
 use components::{
     Chip, ChipSize, EmptyState, GridMode, Heading, Loading, PageHeader, SearchTrigger,
@@ -49,7 +49,7 @@ fn search_fetch(query: String) -> impl Fn(Arc<dyn KopuzApi>) -> Answer + 'static
             if query.is_empty() {
                 return Ok(SearchResults::default());
             }
-            api.search(query).await
+            api.search(SearchRequest::new(query)).await
         })
     }
 }
