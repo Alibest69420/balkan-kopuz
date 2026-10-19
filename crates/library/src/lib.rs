@@ -964,7 +964,7 @@ impl Library {
                 })
                 .into_any_element();
             }
-            return states::empty_library(cx).into_any_element();
+            return states::empty_library(self.filters.facet, cx).into_any_element();
         }
         match self.filters.facet {
             Facet::Tracks => self.table(window, cx),

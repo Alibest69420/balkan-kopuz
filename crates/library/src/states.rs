@@ -6,6 +6,8 @@ use components::{EmptyState, icons};
 use gpui_kit::{App, ClickEvent, SharedString, Window};
 use store::{Navigator, Route, SourcesModel};
 
+use crate::facet::Facet;
+
 /// The shared icon set has no sign-in glyph, which is the one an anonymous source wants.
 pub const SIGN_IN: &str = "icons/log-in.svg";
 
@@ -17,8 +19,8 @@ pub fn failed(
     EmptyState::failed(t("library_read_failed"), retry).detail(store::human(error))
 }
 
-/// A library with nothing in it: the button is whatever would put something there for this source.
-pub fn empty_library(cx: &App) -> EmptyState {
+/// A facet with nothing in it: the button is whatever would put something there for this source.
+pub fn empty_library(facet: Facet, cx: &App) -> EmptyState {
     let sources = SourcesModel::global(cx);
     let sources = sources.read(cx);
     let capabilities = sources.capabilities();
@@ -38,6 +40,10 @@ pub fn empty_library(cx: &App) -> EmptyState {
             .action(t("library_sign_in"), move |_, window, cx| {
                 store::start_sign_in(&source, window, cx)
             });
+    }
+    // Playlists are made, not scanned or synced, so no folder or sync would fill this facet.
+    if facet == Facet::Playlists {
+        return EmptyState::new(t("no_playlists_yet")).icon(icons::LIST);
     }
     if capabilities.scan_folders {
         return EmptyState::new(t("library_empty_no_folder"))
