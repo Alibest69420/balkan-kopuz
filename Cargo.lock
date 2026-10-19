@@ -4091,6 +4091,7 @@ dependencies = [
  "link",
  "profile",
  "settings_interface",
+ "settings_sources",
  "store",
  "theme",
  "tracing",

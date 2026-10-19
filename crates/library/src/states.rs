@@ -45,6 +45,17 @@ pub fn empty_library(facet: Facet, cx: &App) -> EmptyState {
     if facet == Facet::Playlists {
         return EmptyState::new(t("no_playlists_yet")).icon(icons::LIST);
     }
+    let has_folders = source
+        .as_ref()
+        .is_some_and(|source| !settings_sources::folders::of(source).is_empty());
+    if capabilities.scan_folders && has_folders {
+        return EmptyState::new(t("no_tracks_in_library"))
+            .icon(icons::FOLDER)
+            .action(t("rescan_library"), |_, _, cx| {
+                store::JobsModel::global(cx)
+                    .update(cx, |jobs, cx| jobs.start(api::JobKind::Scan, cx));
+            });
+    }
     if capabilities.scan_folders {
         return EmptyState::new(t("library_empty_no_folder"))
             .icon(icons::FOLDER)

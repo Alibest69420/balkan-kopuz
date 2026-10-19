@@ -12,6 +12,7 @@ workspace = true
 [dependencies]
 profile = { path = "../profile" }
 settings_interface = { path = "../settings_interface" }
+settings_sources = { path = "../settings_sources" }
 api = { workspace = true }
 commands = { workspace = true }
 config = { workspace = true }
