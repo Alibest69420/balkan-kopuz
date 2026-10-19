@@ -74,8 +74,10 @@ pub fn open(keys: Vec<String>, window: &mut Window, cx: &mut App) {
         keys,
         name: cx.new(|cx| InputState::new(window, cx).placeholder(t("new_playlist_name"))),
     });
+    let create = picker.clone();
     FormDialog::new(t("add_to_playlist"))
         .closable(true)
         .footer(FormFooter::None)
+        .on_submit(move |window, cx| create.update(cx, |this, cx| this.create(window, cx)))
         .open(picker, window, cx);
 }
