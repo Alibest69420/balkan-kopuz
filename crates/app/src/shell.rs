@@ -30,6 +30,28 @@ fn place_toasts(cx: &mut gpui_kit::App) {
     theme::place_toasts(clearance, cx);
 }
 
+type AppliedTheme = (String, Option<config::CustomTheme>);
+
+/// Render what the daemon's settings say, whichever layer set them; `applied` keeps a repaint from reapplying the theme.
+fn follow_config(applied: &mut AppliedTheme, window: &mut Window, cx: &mut gpui_kit::App) {
+    let settings = ConfigModel::global(cx).read(cx).config().clone();
+    // Every transition in the app asks GPUI whether motion is reduced.
+    let reduced = settings.ui.reduce_animations;
+    if reduced != cx.reduce_motion() {
+        cx.set_reduce_motion(reduced);
+    }
+    // Re-editing a custom theme keeps its name, so the colors are the key.
+    let wanted = (
+        settings.ui.theme.clone(),
+        settings.ui.custom_themes.get(&settings.ui.theme).cloned(),
+    );
+    if wanted != *applied {
+        *applied = wanted;
+        theme::apply_config(&settings.ui, Some(window), cx);
+    }
+    place_toasts(cx);
+}
+
 actions!(
     kopuz,
     [
@@ -57,7 +79,7 @@ pub struct Shell {
     first_run: Entity<onboarding::FirstRun>,
     debug_overlay: Entity<debug_overlay::DebugOverlay>,
     // The theme these were applied for, so config edits reapply only on a change.
-    applied_theme: (String, Option<config::CustomTheme>),
+    applied_theme: AppliedTheme,
     // On its own timer: GPUI only renders on a change, and an idle app is when covers want releasing.
     _heartbeat: Task<()>,
     _subscriptions: Vec<Subscription>,
@@ -95,25 +117,8 @@ impl Shell {
             cx.observe(&connection, |_, _, cx| cx.notify()),
             cx.observe(&navigator, |_, _, cx| cx.notify()),
             cx.observe(&chrome, |_, _, cx| cx.notify()),
-            cx.observe_in(&config, window, |this, config, window, cx| {
-                let settings = config.read(cx).config();
-                // Every transition in the app asks GPUI whether motion is reduced.
-                let reduced = settings.ui.reduce_animations;
-                if reduced != cx.reduce_motion() {
-                    cx.set_reduce_motion(reduced);
-                }
-                let settings = config.read(cx).config();
-                // Re-editing a custom theme keeps its name, so the colors are the key.
-                let applied = (
-                    settings.ui.theme.clone(),
-                    settings.ui.custom_themes.get(&settings.ui.theme).cloned(),
-                );
-                if applied != this.applied_theme {
-                    this.applied_theme = applied;
-                    let settings = settings.clone();
-                    theme::apply_config(&settings.ui, Some(window), cx);
-                }
-                place_toasts(cx);
+            cx.observe_in(&config, window, |this, _, window, cx| {
+                follow_config(&mut this.applied_theme, window, cx);
                 cx.notify();
             }),
             // The skin sizes the player bar, which the toasts have to clear.
@@ -125,7 +130,9 @@ impl Shell {
             }),
         ];
 
-        place_toasts(cx);
+        // The window opens after the config has usually loaded, so the observer above may never fire for it.
+        let mut applied_theme = AppliedTheme::default();
+        follow_config(&mut applied_theme, window, cx);
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
         // Overlays owns the notices channel now, so the bar only has to hold the cluster.
@@ -146,7 +153,7 @@ impl Shell {
             overlays: cx.new(|cx| overlays::Overlays::new(window, cx)),
             first_run,
             debug_overlay: cx.new(|cx| debug_overlay::DebugOverlay::new(window, cx)),
-            applied_theme: (String::new(), None),
+            applied_theme,
             _heartbeat: Self::heartbeat(window, cx),
             _subscriptions: subscriptions,
         }
