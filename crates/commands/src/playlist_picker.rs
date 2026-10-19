@@ -9,7 +9,7 @@ use gpui_kit::component::input::InputState;
 use gpui_kit::component::v_flex;
 use gpui_kit::{
     App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
-    Window, px,
+    Window,
 };
 use store::{Notices, PlaylistsModel};
 
@@ -48,7 +48,7 @@ impl Render for PlaylistPicker {
         let (on_create, on_pick) = (cx.weak_entity(), cx.weak_entity());
         v_flex()
             .gap_4()
-            .w(px(448.))
+            .w_full()
             .child(
                 QuickCreate::new(&self.name)
                     .icon(icons::PLUS)
