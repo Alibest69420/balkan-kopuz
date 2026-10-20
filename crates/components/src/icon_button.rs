@@ -21,6 +21,8 @@ const EDGE: u64 = 4;
 const OUTLINE: (f32, f32) = (0.20, 0.40);
 /// What a disabled button fades to, since its frame paints the fill a Button would have dimmed.
 const DISABLED: f32 = 0.5;
+/// `border-1`: the ring's width, which the button inside it leaves room for.
+const RING: Pixels = px(1.);
 
 /// What a round button's colours say.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -253,12 +255,14 @@ impl RenderOnce for IconButton {
             )
         });
         let glyph = self.glyph.unwrap_or(self.size * 0.36);
+        // A host wraps the button in a div that shrinks to it, so the button carries the frame's size itself.
+        let inner = self.size - if edge.is_some() { RING * 2. } else { px(0.) };
         let stop = self.stop;
         let button = Button::new(SharedString::from(format!("{id}-button")))
             .custom(style::bare_button(ink, cx))
             .icon(icons::icon(self.icon))
             .with_size(glyph / 0.75)
-            .size_full()
+            .size(inner)
             .rounded(self.size / 2.)
             .disabled(self.disabled)
             .loading(self.loading)
@@ -284,5 +288,68 @@ impl RenderOnce for IconButton {
             .when_some(edge, |frame, edge| frame.border_1().border_color(edge))
             .when(self.disabled, |frame| frame.opacity(DISABLED))
             .when(self.shadow, |frame| frame.shadow_md())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui_kit::component::Root;
+    use gpui_kit::component::menu::DropdownMenu as _;
+    use gpui_kit::test::TestWindowExt as _;
+    use gpui_kit::{AppContext as _, Context, Render, TestAppContext, point, size};
+
+    struct Fixture {
+        tone: IconTone,
+        hosted: bool,
+    }
+
+    impl Render for Fixture {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let button = IconButton::new("dots", icons::MORE)
+                .size(px(40.))
+                .tone(self.tone);
+            let button = match self.hosted {
+                true => {
+                    button.host(|button| button.dropdown_menu(|menu, _, _| menu).into_any_element())
+                }
+                false => button,
+            };
+            div().size(px(200.)).child(button)
+        }
+    }
+
+    #[gpui_kit::test]
+    fn a_hosted_button_fills_its_circle_like_a_bare_one(cx: &mut TestAppContext) {
+        // The link talks to its tokio runtime from another thread, which the test scheduler refuses by default.
+        cx.executor().allow_parking();
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            i18n::init("en");
+            link::init(link::Address::Socket("/nonexistent/kopuz.sock".into()), cx)
+                .expect("a link that has not connected yet");
+            store::init(cx);
+            theme::apply_named("default", None, cx);
+        });
+        for (tone, inset) in [(IconTone::Quiet, 0.), (IconTone::Outline, 1.)] {
+            for hosted in [false, true] {
+                let view = cx.add_window(move |window, cx| {
+                    let fixture = cx.new(|_| Fixture { tone, hosted });
+                    Root::new(fixture, window, cx)
+                });
+                cx.update_window(view.into(), |_, window, cx| {
+                    window.render_frame(cx);
+                    let bounds = window.find("dots-button").bounds();
+                    assert_eq!(
+                        bounds.origin,
+                        point(px(inset), px(inset)),
+                        "{tone:?} {hosted}"
+                    );
+                    let side = px(40. - inset * 2.);
+                    assert_eq!(bounds.size, size(side, side), "{tone:?} {hosted}");
+                })
+                .unwrap();
+            }
+        }
     }
 }
