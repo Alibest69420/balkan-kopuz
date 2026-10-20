@@ -6,18 +6,18 @@ use components::icons;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
 pub enum Facet {
     #[default]
+    Playlists,
     Tracks,
     Albums,
     Artists,
-    Playlists,
 }
 
 impl Facet {
     pub const ALL: &'static [Facet] = &[
+        Facet::Playlists,
         Facet::Tracks,
         Facet::Albums,
         Facet::Artists,
-        Facet::Playlists,
     ];
 
     /// The key this facet's remembered layout sits under in `layout.library`.

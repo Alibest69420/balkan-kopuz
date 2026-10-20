@@ -384,7 +384,7 @@ mod tests {
     #[test]
     fn an_empty_route_is_the_default_view() {
         assert_eq!(Filters::decode(""), Filters::default());
-        assert_eq!(Filters::decode("").facet, Facet::Tracks);
+        assert_eq!(Filters::decode("").facet, Facet::Playlists);
     }
 
     #[test]
