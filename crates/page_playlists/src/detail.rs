@@ -6,7 +6,8 @@ use api::{ArtworkTarget, PlaylistCapability, PlaylistReorder, Table, TrackInfo};
 use components::format::{t, t_with};
 use components::track_list::{TrackActions, TrackList, TrackListEvent};
 use components::{
-    DetailActions, DetailHeader, EmptyState, TrackHeader, detail_header_skeleton, icons,
+    DetailActions, DetailHeader, EmptyState, Picture, TrackHeader, detail_header_skeleton, icons,
+    menus,
 };
 use gpui_kit::component::v_flex;
 use gpui_kit::{
@@ -15,7 +16,8 @@ use gpui_kit::{
 };
 use link::Link;
 use store::{
-    DownloadsModel, Navigator, Offline, PlaylistsModel, Query, Route, SourcesModel, actions,
+    DownloadsModel, Navigator, Offline, Pictured, PlaylistsModel, Query, Route, SourcesModel,
+    Target, actions,
 };
 
 /// `w-64 h-64`: the showcase cover.
@@ -250,9 +252,15 @@ impl Render for PlaylistDetail {
 
         let name = SharedString::from(playlist.name.clone());
         let (cover_id, radio_id) = (self.id.to_string(), self.id.to_string());
+        let picture = Picture::new(playlist.artwork.as_ref(), Pictured::Playlist(name.clone()));
+        let menu = menus::menu_for(Target::Playlist {
+            id: self.id.clone(),
+            name: name.clone(),
+        });
         let header = DetailHeader::new(name.clone())
             .artwork(playlist.artwork.as_ref())
             .placeholder(icons::LIST)
+            .cover_menu(menu, picture)
             .on_cover("playlist-cover", None, move |_, cx| {
                 store::pick_and_upload(ArtworkTarget::Playlist(cover_id.clone()), cx)
             })

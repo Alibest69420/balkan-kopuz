@@ -91,6 +91,7 @@ pub(crate) struct Tile {
     pub playing: bool,
     pub target: Target,
     pub route: Route,
+    pub pictured: store::Pictured,
 }
 
 /// A line of the tracks table: a group heading, or one row of the loaded listing.

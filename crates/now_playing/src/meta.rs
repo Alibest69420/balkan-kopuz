@@ -1,16 +1,17 @@
 //! The bar's track block: cover, text and marks, wired to the player; the paint is in `components`.
 
-use components::{Cover, MetaLayout, NowPlayingMeta, TrackMarks, menus, style};
+use components::{
+    Cover, MetaLayout, NowPlayingMeta, Picture, TrackMarks, WithContextMenu as _, menus, style,
+};
 use gpui_kit::base::ElementExt as _;
 use gpui_kit::component::h_flex;
-use gpui_kit::component::menu::ContextMenuExt as _;
 use gpui_kit::{
     App, Context, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, SharedString,
     StatefulInteractiveElement as _, Styled as _, Window, div, px, rems,
 };
 use store::{
-    Chrome, FavoritesModel, PlayerModel, PlaylistsModel, QueueModel, Route, SourcesModel, Target,
-    actions,
+    Chrome, FavoritesModel, Pictured, PlayerModel, PlaylistsModel, QueueModel, Route, SourcesModel,
+    Target, actions,
 };
 
 use crate::NowPlaying;
@@ -71,6 +72,7 @@ impl NowPlaying {
     ) -> impl IntoElement + use<> {
         let track = self.track(cx);
         let target = track.as_ref().map(track_target);
+        let picture = track.as_ref().and_then(track_picture);
         let scale = self.scale(cx);
         let size = cover_size(scale, cx);
         let origin = playing_from(cx);
@@ -106,7 +108,8 @@ impl NowPlaying {
                     .child(
                         Cover::new(track.as_ref().and_then(|track| track.artwork.as_ref()))
                             .size(size)
-                            .rounded(style::thumb_radius()),
+                            .rounded(style::thumb_radius())
+                            .spot(picture.as_ref().map(Picture::spot)),
                     ),
             )
             .children(track.as_ref().map(|track| {
@@ -117,12 +120,7 @@ impl NowPlaying {
             }))
             .child(marks);
 
-        match target {
-            Some(target) => block
-                .context_menu(menus::builder(target))
-                .into_any_element(),
-            None => block.into_any_element(),
-        }
+        block.with_context_menu(menus::pictured(target.map(menus::menu_for), picture))
     }
 
     /// The marks the preferences and the source allow, acting on `track`; the caller sets their size.
@@ -188,4 +186,15 @@ pub(crate) fn dont_recommend(key: String, cx: &mut App) {
 /// The one thing a `Target` is needed for here, kept out of the render so it allocates once.
 pub(crate) fn track_target(track: &api::TrackInfo) -> Target {
     Target::track(track.key.clone(), track.title.clone())
+}
+
+/// The playing track's cover as its menus offer it, named `Artist - Title` when saved.
+pub(crate) fn track_picture(track: &api::TrackInfo) -> Option<Picture> {
+    Picture::new(
+        track.artwork.as_ref(),
+        Pictured::Track {
+            artist: track.artist.clone().into(),
+            title: track.title.clone().into(),
+        },
+    )
 }

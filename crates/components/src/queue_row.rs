@@ -4,7 +4,6 @@ use std::rc::Rc;
 
 use api::ArtworkRef;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::menu::ContextMenuExt as _;
 use gpui_kit::component::{ActiveTheme as _, Disableable as _, Sizable as _, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -12,9 +11,10 @@ use gpui_kit::{
     Render, RenderOnce, SharedString, Stateful, StatefulInteractiveElement as _, Styled as _,
     Window, div, px,
 };
-use store::Target;
+use store::{Pictured, Target};
 
 use crate::format::t;
+use crate::menus::{Picture, WithContextMenu as _};
 use crate::reorder::ReorderDropZones;
 use crate::{icons, lead, menus, motion, style, track_row};
 
@@ -219,6 +219,14 @@ impl RenderOnce for QueueRow {
             None => row,
         };
 
+        let picture = Picture::new(
+            self.artwork.as_ref().filter(|_| self.covers),
+            Pictured::Track {
+                artist: self.artist.clone(),
+                title: self.title.clone(),
+            },
+        );
+        let spot = picture.as_ref().map(Picture::spot);
         let body = row
             .child(
                 div()
@@ -238,7 +246,13 @@ impl RenderOnce for QueueRow {
                     )),
             )
             .when(self.covers, |row| {
-                row.child(track_row::thumb(self.artwork.as_ref(), 0., window, cx))
+                row.child(track_row::thumb(
+                    self.artwork.as_ref(),
+                    spot,
+                    0.,
+                    window,
+                    cx,
+                ))
             })
             .child(
                 v_flex()
@@ -281,9 +295,6 @@ impl RenderOnce for QueueRow {
             )
             .children(self.zones);
 
-        match self.target {
-            Some(target) => body.context_menu(menus::builder(target)).into_any_element(),
-            None => body.into_any_element(),
-        }
+        body.with_context_menu(menus::pictured(self.target.map(menus::menu_for), picture))
     }
 }

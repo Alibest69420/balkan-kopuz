@@ -6,8 +6,8 @@ mod tests;
 
 use components::format::t;
 use components::{
-    Cover, IconButton, IconTone, MetaLayout, NowPlayingMeta, TransportMetrics, TransportOverflow,
-    icons, motion, style,
+    Cover, IconButton, IconTone, MetaLayout, NowPlayingMeta, Picture, TransportMetrics,
+    TransportOverflow, WithContextMenu as _, icons, menus, motion, style,
 };
 use gpui_kit::base::ElementExt as _;
 use gpui_kit::component::{ActiveTheme as _, FocusTrapElement as _, h_flex, v_flex};
@@ -20,7 +20,7 @@ use store::layout::{Backdrop, Side};
 use store::{Chrome, ConfigModel, actions};
 
 use crate::NowPlaying;
-use crate::meta::{cover_size, playing_from};
+use crate::meta::{cover_size, playing_from, track_picture, track_target};
 
 // The column the title, the clocks and the transport share, and the panel beside them.
 const COLUMN: f32 = 40.;
@@ -283,7 +283,12 @@ impl NowPlaying {
         cx: &mut Context<Self>,
     ) -> Option<impl IntoElement + use<>> {
         let root = self.root?;
-        let artwork = self.track(cx).and_then(|track| track.artwork);
+        let track = self.track(cx);
+        let artwork = track.as_ref().and_then(|track| track.artwork.clone());
+        let picture = track.as_ref().and_then(track_picture);
+        let menu = track
+            .as_ref()
+            .map(|track| menus::menu_for(track_target(track)));
         let bar = crate::cover_slot(cx);
         // Before the hero has been laid out there is nowhere to fly to, so it starts in the bar.
         let (origin, size) = match self.hero {
@@ -304,6 +309,7 @@ impl NowPlaying {
 
         Some(
             div()
+                .id("sheet-cover")
                 .absolute()
                 .left(left)
                 .top(top)
@@ -313,8 +319,10 @@ impl NowPlaying {
                     Cover::new(artwork.as_ref())
                         .size(side)
                         .rounded(radius)
-                        .hq(true),
-                ),
+                        .hq(true)
+                        .spot(picture.as_ref().map(Picture::spot)),
+                )
+                .with_context_menu(menus::pictured(menu, picture)),
         )
     }
 

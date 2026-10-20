@@ -7,7 +7,7 @@ use gpui_kit::{
     AnyElement, App, ClickEvent, Context, IntoElement, Pixels, SharedString, Window, px,
 };
 use store::layout::ViewMode;
-use store::{Navigator, PlaylistsModel, Route, Target};
+use store::{Navigator, Pictured, PlaylistsModel, Route, Target};
 
 use crate::facet::Facet;
 use crate::{Library, Tile};
@@ -73,6 +73,10 @@ impl Library {
                 title: album.title.clone().into(),
             },
             route: Route::Album(album.id.clone().into()),
+            pictured: Pictured::Album {
+                artist: album.artist.clone().into(),
+                title: album.title.clone().into(),
+            },
         }
     }
 
@@ -105,6 +109,7 @@ impl Library {
                 name: artist.name.clone().into(),
             },
             route: Route::Artist(artist.key.clone()),
+            pictured: Pictured::Artist(artist.name.clone().into()),
         }
     }
 
@@ -187,6 +192,7 @@ impl Library {
             .selected(self.selection.contains(&tile.id))
             .cursor(self.selection.cursor() == Some(index))
             .on_click(self.click_listener(tile.clone(), index, cx))
+            .pictured(tile.pictured.clone())
             .menu(Some(tile.target.clone()))
             .into_any_element()
     }
@@ -207,6 +213,7 @@ impl Library {
             .playing(tile.playing)
             .selected(self.selection.contains(&tile.id))
             .on_click(self.click_listener(tile.clone(), index, cx))
+            .pictured(tile.pictured.clone())
             .menu(Some(tile.target.clone()))
             .into_any_element()
     }
@@ -291,5 +298,6 @@ fn playlist_tile(playlist: &PlaylistInfo, playing: Option<&str>) -> Tile {
             name: playlist.name.clone().into(),
         },
         route: Route::Playlist(playlist.id.clone().into()),
+        pictured: Pictured::Playlist(playlist.name.clone().into()),
     }
 }

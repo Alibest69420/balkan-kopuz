@@ -3,6 +3,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use api::ArtworkRef;
+use gpui_kit::base::ElementExt as _;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, Icon};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -14,6 +15,7 @@ use gpui_kit::{
 
 use crate::icon_button::{IconButton, IconTone};
 use crate::icons;
+use crate::menus::Spot;
 use crate::motion;
 use crate::style;
 
@@ -41,6 +43,7 @@ pub struct Cover {
     zoom_factor: f32,
     fill: bool,
     scrim: Option<Scrim>,
+    spot: Option<Spot>,
 }
 
 impl Cover {
@@ -56,7 +59,19 @@ impl Cover {
             zoom_factor: motion::ZOOM_SM,
             fill: false,
             scrim: None,
+            spot: None,
         }
+    }
+
+    /// Record where the picture is drawn, so a right-click on it can offer to copy or save it.
+    pub fn spot(mut self, spot: Option<Spot>) -> Self {
+        self.spot = spot;
+        self
+    }
+
+    /// The spot, only while there is a picture to offer.
+    fn shown_spot(&self) -> Option<Spot> {
+        self.spot.clone().filter(|_| self.artwork.is_some())
     }
 
     pub fn size(mut self, size: Pixels) -> Self {
@@ -180,6 +195,8 @@ impl RenderOnce for Cover {
             ),
             None => self.size,
         };
+        let spot = self.shown_spot();
+        let fell_back = spot.clone();
         div()
             .size(self.size)
             .rounded(radius)
@@ -200,6 +217,9 @@ impl RenderOnce for Cover {
                         .object_fit(ObjectFit::Cover)
                         // A cover that will not load is otherwise a blank square, which reads as slow.
                         .with_fallback(move || {
+                            if let Some(spot) = &fell_back {
+                                spot.broken();
+                            }
                             Icon::default()
                                 .path(placeholder)
                                 .size(glyph)
@@ -213,6 +233,11 @@ impl RenderOnce for Cover {
                         .size(glyph)
                         .text_color(style::white(style::TEXT_FAINT, cx)),
                 ),
+            })
+            .when_some(spot, |frame, spot| {
+                frame
+                    .relative()
+                    .on_prepaint(move |bounds, _, _| spot.drawn(bounds))
             })
             .into_any_element()
     }
@@ -240,6 +265,7 @@ pub struct EditableCover {
     tooltip: Option<SharedString>,
     pick: Option<Act>,
     remove: Option<(SharedString, Act)>,
+    spot: Option<Spot>,
 }
 
 impl EditableCover {
@@ -254,6 +280,7 @@ impl EditableCover {
             tooltip: None,
             pick: None,
             remove: None,
+            spot: None,
         }
     }
 
@@ -286,6 +313,12 @@ impl EditableCover {
     /// What a click does; without one the cover is only a picture.
     pub fn on_pick(mut self, pick: impl Fn(&mut Window, &mut App) + 'static) -> Self {
         self.pick = Some(Rc::new(pick));
+        self
+    }
+
+    /// Where the picture is drawn, for a right-click that offers to copy or save it.
+    pub fn spot(mut self, spot: Option<Spot>) -> Self {
+        self.spot = spot;
         self
     }
 
@@ -324,6 +357,7 @@ impl RenderOnce for EditableCover {
                 .hq(true)
                 .rounded(radius)
                 .placeholder(self.placeholder)
+                .spot(self.spot)
                 .into_any_element(),
         };
         div()

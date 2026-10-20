@@ -22,6 +22,7 @@ pub(crate) fn card(tile: &Tile, cx: &App) -> AnyElement {
         .placeholder(tile.placeholder)
         // Upstream only artists and playlists take the accent; an album title stays white.
         .tint(tile.round || matches!(tile.play, Play::Playlist(_)))
+        .pictured(tile.pictured.clone())
         .menu(Some(tile.target.clone()));
     if let Some(route) = tile.route.clone() {
         card = card.route(route);

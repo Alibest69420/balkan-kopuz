@@ -3,14 +3,14 @@
 use std::rc::Rc;
 
 use gpui_kit::component::h_flex;
-use gpui_kit::component::menu::ContextMenuExt as _;
 use gpui_kit::{
     App, InteractiveElement as _, IntoElement, ParentElement as _, RenderOnce, SharedString,
     StatefulInteractiveElement as _, Styled as _, Window, px,
 };
-use store::{Navigator, Route, Target};
+use store::{Navigator, Pictured, Route, Target};
 
 use crate::format::{t, t_with};
+use crate::menus::{Picture, WithContextMenu as _};
 use crate::track_meta::{MetaLayout, NowPlayingMeta};
 use crate::transport::PlayPauseButton;
 use crate::{Cover, menus, motion, style};
@@ -86,6 +86,13 @@ impl RenderOnce for ResumeCard {
             cx,
         );
         let toggle = self.toggle;
+        let picture = Picture::new(
+            track.artwork.as_ref(),
+            Pictured::Track {
+                artist: track.artist.clone().into(),
+                title: track.title.clone().into(),
+            },
+        );
 
         h_flex()
             .id(key.clone())
@@ -112,7 +119,8 @@ impl RenderOnce for ResumeCard {
                 Cover::new(track.artwork.as_ref())
                     .size(px(STAGE_COVER))
                     .rounded(style::to_px(style::radius_lg(), window))
-                    .zoom(motion::channel(&key, COVER), over),
+                    .zoom(motion::channel(&key, COVER), over)
+                    .spot(picture.as_ref().map(Picture::spot)),
             )
             .child(
                 NowPlayingMeta::new(SharedString::from(format!("{key}-meta")), &track)
@@ -134,6 +142,6 @@ impl RenderOnce for ResumeCard {
                         }
                     }),
             )
-            .context_menu(menus::builder(target))
+            .with_context_menu(menus::pictured(Some(menus::menu_for(target)), picture))
     }
 }

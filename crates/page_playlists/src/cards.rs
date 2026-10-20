@@ -4,7 +4,7 @@ use api::{PlaylistFolderInfo, PlaylistInfo};
 use components::format::t_with;
 use components::{Frame, Tile, icons};
 use gpui_kit::{Pixels, px};
-use store::{Route, Target};
+use store::{Pictured, Route, Target};
 
 /// The `w-full h-32` picture inside a card's `p-4`.
 const COVER: Pixels = px(128.);
@@ -17,6 +17,7 @@ pub(crate) fn playlist_card(playlist: &PlaylistInfo) -> Tile {
             &[("count", playlist.track_keys.len().into())],
         ))
         .artwork(playlist.artwork.as_ref())
+        .pictured(Pictured::Playlist(playlist.name.clone().into()))
         .placeholder(icons::LIST)
         .size(COVER)
         .frame(Frame::Card)

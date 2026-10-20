@@ -6,8 +6,8 @@ use api::{AlbumInfo, AlbumPage, ArtworkTarget, SourceCapabilities, Table, TrackI
 use components::album_collection::{available_fields, compare_text};
 use components::format::{t, t_with, total_duration};
 use components::{
-    AlbumCollection, DetailActions, DetailHeader, EmptyState, GridMode, Loading, TrackActions,
-    TrackHeader, TrackList, TrackListEvent, TrackListOptions, icons,
+    AlbumCollection, DetailActions, DetailHeader, EmptyState, GridMode, Loading, Picture,
+    TrackActions, TrackHeader, TrackList, TrackListEvent, TrackListOptions, icons, menus,
 };
 use config::{AlbumSortField, AlbumViewMode, SortCriterion, SortDirection};
 use gpui_kit::component::{h_flex, v_flex};
@@ -17,8 +17,8 @@ use gpui_kit::{
     Render, SharedString, Styled as _, Subscription, Window, div, px, rems,
 };
 use store::{
-    ConfigModel, DownloadsModel, LayoutModel, Offline, PlayerModel, Query, SourcesModel, Target,
-    actions,
+    ConfigModel, DownloadsModel, LayoutModel, Offline, Pictured, PlayerModel, Query, SourcesModel,
+    Target, actions,
 };
 
 use crate::controls::{self, ViewModeKey};
@@ -322,9 +322,16 @@ impl ArtistDetail {
         let capabilities = capabilities(cx);
         let artwork = self.artwork(cx);
         let artist = self.key.clone();
-        DetailHeader::new(self.name(cx))
+        let name = self.name(cx);
+        let picture = Picture::new(artwork.as_ref(), Pictured::Artist(name.clone()));
+        let menu = menus::menu_for(Target::Artist {
+            key: self.key.clone(),
+            name: name.clone(),
+        });
+        DetailHeader::new(name)
             .artwork(artwork.as_ref())
             .placeholder(icons::MIC)
+            .cover_menu(menu, picture)
             .size(PHOTO)
             .when(capabilities.edit_tags, |header| {
                 header.on_cover("artist-photo", Some(t("change_photo")), move |_, cx| {

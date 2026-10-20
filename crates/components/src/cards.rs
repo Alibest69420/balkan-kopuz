@@ -11,14 +11,14 @@ use gpui_kit::{
     ParentElement as _, Pixels, RenderOnce, SharedString, StatefulInteractiveElement as _, Styled,
     Window, div, px,
 };
-use store::{Navigator, Route, Target};
+use store::{Navigator, Pictured, Route, Target};
 
 use crate::cover::Cover;
 use crate::cover_overlay::CoverOverlay;
 pub use crate::cover_overlay::PlayState;
 use crate::icons;
 use crate::menu_button::{MenuButton, MenuVariant};
-use crate::menus::{self, WithContextMenu as _};
+use crate::menus::{self, Picture, WithContextMenu as _};
 use crate::motion;
 use crate::style;
 use crate::transport::PlayPauseButton;
@@ -63,6 +63,7 @@ pub struct Tile {
     cursor: bool,
     tint: bool,
     zoom_speed: Duration,
+    pictured: Option<Pictured>,
 }
 
 impl Tile {
@@ -85,6 +86,7 @@ impl Tile {
             cursor: false,
             tint: false,
             zoom_speed: motion::SLOW,
+            pictured: None,
         }
     }
 
@@ -180,6 +182,12 @@ impl Tile {
         self
     }
 
+    /// What its picture is of, which lets a right-click on the cover copy or save it.
+    pub fn pictured(mut self, of: Pictured) -> Self {
+        self.pictured = Some(of);
+        self
+    }
+
     /// How long the cover's hover zoom takes.
     pub fn zoom_speed(mut self, duration: Duration) -> Self {
         self.zoom_speed = duration;
@@ -234,6 +242,10 @@ impl RenderOnce for Tile {
         let click = self.click.clone();
         let opens = self.click;
 
+        let picture = self
+            .pictured
+            .clone()
+            .and_then(|of| Picture::new(self.artwork.as_ref(), of));
         let cover = CoverOverlay::new(
             id.clone(),
             Cover::new(self.artwork.as_ref())
@@ -241,7 +253,8 @@ impl RenderOnce for Tile {
                 .rounded(radius)
                 .placeholder(self.placeholder)
                 .zoom(motion::channel(&id, COVER), hovered)
-                .zoom_speed(self.zoom_speed),
+                .zoom_speed(self.zoom_speed)
+                .spot(picture.as_ref().map(Picture::spot)),
         )
         .radius(radius)
         .wash((!framed).then_some(wash))
@@ -312,7 +325,7 @@ impl RenderOnce for Tile {
         .when(focused || self.cursor, |tile| {
             tile.child(crate::focus::ring(style::radius_xl(), cx))
         });
-        tile.with_context_menu(self.menu.map(menus::menu_for))
+        tile.with_context_menu(menus::pictured(self.menu.map(menus::menu_for), picture))
     }
 }
 
@@ -332,6 +345,7 @@ pub struct TileRow {
     playing: bool,
     selected: bool,
     thumb: bool,
+    pictured: Option<Pictured>,
 }
 
 impl TileRow {
@@ -350,6 +364,7 @@ impl TileRow {
             playing: false,
             selected: false,
             thumb: true,
+            pictured: None,
         }
     }
 
@@ -409,6 +424,12 @@ impl TileRow {
         self
     }
 
+    /// What its picture is of, which lets a right-click on the cover copy or save it.
+    pub fn pictured(mut self, of: Pictured) -> Self {
+        self.pictured = Some(of);
+        self
+    }
+
     /// Whether the row draws its cover thumbnail, which a setting turns off.
     pub fn thumb(mut self, thumb: bool) -> Self {
         self.thumb = thumb;
@@ -441,6 +462,11 @@ impl RenderOnce for TileRow {
             window,
             cx,
         );
+        let picture = self
+            .pictured
+            .clone()
+            .filter(|_| self.thumb)
+            .and_then(|of| Picture::new(self.artwork.as_ref(), of));
         let opens = self.click.clone();
         let row = crate::focus::stop(
             h_flex().id(motion::channel(&id, ROOT)),
@@ -486,7 +512,8 @@ impl RenderOnce for TileRow {
                         true => ROW_THUMB / 2.,
                         false => style::thumb_radius(),
                     })
-                    .placeholder(self.placeholder),
+                    .placeholder(self.placeholder)
+                    .spot(picture.as_ref().map(Picture::spot)),
             )
         })
         .child(
@@ -541,7 +568,7 @@ impl RenderOnce for TileRow {
         .when(focused, |row| {
             row.child(crate::focus::ring(style::radius_lg(), cx))
         });
-        row.with_context_menu(self.menu.map(menus::menu_for))
+        row.with_context_menu(menus::pictured(self.menu.map(menus::menu_for), picture))
     }
 }
 
@@ -550,6 +577,10 @@ pub fn album_tile(album: &AlbumInfo) -> Tile {
     Tile::new(album.id.clone(), album.title.clone())
         .subtitle(album.artist.clone())
         .artwork(album.artwork.as_ref())
+        .pictured(Pictured::Album {
+            artist: album.artist.clone().into(),
+            title: album.title.clone().into(),
+        })
         .placeholder(icons::DISC)
         .route(Route::Album(album.id.clone().into()))
         .menu(Some(Target::Album {
@@ -562,6 +593,7 @@ pub fn album_tile(album: &AlbumInfo) -> Tile {
 pub fn artist_tile(artist: &ArtistInfo) -> Tile {
     Tile::new(artist.key.to_string(), artist.name.clone())
         .artwork(artist.artwork.as_ref())
+        .pictured(Pictured::Artist(artist.name.clone().into()))
         .placeholder(icons::MIC)
         .round(true)
         .tint(true)
@@ -578,6 +610,10 @@ pub fn album_row(album: &AlbumInfo) -> TileRow {
     TileRow::new(album.id.clone(), album.title.clone())
         .subtitle(album.artist.clone())
         .artwork(album.artwork.as_ref())
+        .pictured(Pictured::Album {
+            artist: album.artist.clone().into(),
+            title: album.title.clone().into(),
+        })
         .placeholder(icons::DISC)
         .detail(match album.year {
             0 => SharedString::default(),
@@ -594,6 +630,7 @@ pub fn album_row(album: &AlbumInfo) -> TileRow {
 pub fn artist_row(artist: &ArtistInfo) -> TileRow {
     TileRow::new(artist.key.clone(), artist.name.clone())
         .artwork(artist.artwork.as_ref())
+        .pictured(Pictured::Artist(artist.name.clone().into()))
         .placeholder(icons::MIC)
         .round(true)
         .route(Route::Artist(artist.key.clone()))
@@ -607,6 +644,7 @@ pub fn artist_row(artist: &ArtistInfo) -> TileRow {
 pub fn playlist_tile(playlist: &PlaylistInfo) -> Tile {
     Tile::new(playlist.id.clone(), playlist.name.clone())
         .artwork(playlist.artwork.as_ref())
+        .pictured(Pictured::Playlist(playlist.name.clone().into()))
         .placeholder(icons::LIST)
         .tint(true)
         .zoom_speed(motion::SLOWEST)

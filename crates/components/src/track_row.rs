@@ -12,7 +12,7 @@ use gpui_kit::{
     InteractiveElement as _, IntoElement, Length, ParentElement as _, RenderOnce, SharedString,
     Stateful, StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
-use store::Route;
+use store::{Pictured, Route};
 
 use crate::columns::{self, Layout};
 use crate::cover::Cover;
@@ -21,7 +21,7 @@ use crate::icons;
 use crate::lead;
 use crate::link::{Link, Tone};
 use crate::menu_button::MenuButton;
-use crate::menus::WithContextMenu as _;
+use crate::menus::{self, Picture, Spot, WithContextMenu as _};
 use crate::motion;
 use crate::style;
 use crate::track_list::TrackDrag;
@@ -206,9 +206,17 @@ impl RenderOnce for TrackRow {
             window,
             cx,
         );
+        let picture = Picture::new(
+            self.artwork.as_ref().filter(|_| self.cover),
+            Pictured::Track {
+                artist: self.artist.clone(),
+                title: self.title.clone(),
+            },
+        );
+        let spot = picture.as_ref().map(Picture::spot);
         let mut cover = self
             .cover
-            .then(|| thumb(self.artwork.as_ref(), badge, window, cx).mr_4());
+            .then(|| thumb(self.artwork.as_ref(), spot, badge, window, cx).mr_4());
         let lead_ink = match self.playing {
             true => accent,
             false => style::white(style::TEXT_SECONDARY, cx),
@@ -293,19 +301,26 @@ impl RenderOnce for TrackRow {
                     )
                 }),
         );
-        row.with_context_menu(self.menu)
+        row.with_context_menu(menus::pictured(self.menu, picture))
     }
 }
 
 /// A row's cover, with the corner mark a downloaded track wears at `badge` opacity.
-pub fn thumb(artwork: Option<&ArtworkRef>, badge: f32, window: &Window, cx: &App) -> Div {
+pub fn thumb(
+    artwork: Option<&ArtworkRef>,
+    spot: Option<Spot>,
+    badge: f32,
+    window: &Window,
+    cx: &App,
+) -> Div {
     div()
         .relative()
         .flex_shrink_0()
         .child(
             Cover::new(artwork)
                 .size(style::to_px(style::row_cover(), window))
-                .rounded(style::thumb_radius()),
+                .rounded(style::thumb_radius())
+                .spot(spot),
         )
         .when(badge > 0., |thumb| {
             thumb.child(

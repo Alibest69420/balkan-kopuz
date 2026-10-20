@@ -1,13 +1,14 @@
 use std::rc::Rc;
 
 use crate::cover::{Cover, EditableCover, Scrim};
+use crate::menus::{self, Menu, Picture, WithContextMenu as _};
 use crate::{icons, style};
 use api::ArtworkRef;
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, FontWeight, Hsla, IntoElement, ParentElement as _, Pixels, RenderOnce,
-    SharedString, Styled, Window, div, px, rems,
+    AnyElement, App, FontWeight, Hsla, InteractiveElement as _, IntoElement, ParentElement as _,
+    Pixels, RenderOnce, SharedString, Styled, Window, div, px, rems,
 };
 
 /// How big a page's title is drawn.
@@ -247,6 +248,8 @@ pub struct DetailHeader {
     on_cover: Option<CoverAction>,
     // A page whose cover carries its own overlay hands the whole thing over instead.
     custom_cover: Option<AnyElement>,
+    cover_menu: Option<Menu>,
+    picture: Option<Picture>,
 }
 
 impl DetailHeader {
@@ -267,6 +270,8 @@ impl DetailHeader {
             cover_tooltip: None,
             on_cover: None,
             custom_cover: None,
+            cover_menu: None,
+            picture: None,
         }
     }
 
@@ -278,6 +283,13 @@ impl DetailHeader {
     /// Draw this instead of the plain cover, for a page whose cover is also an upload target.
     pub fn cover(mut self, cover: impl IntoElement) -> Self {
         self.custom_cover = Some(cover.into_any_element());
+        self
+    }
+
+    /// Right-click on the cover opens `menu`, ending in the picture's copy and save when there is one.
+    pub fn cover_menu(mut self, menu: Menu, picture: Option<Picture>) -> Self {
+        self.cover_menu = Some(menu);
+        self.picture = picture;
         self
     }
 
@@ -349,7 +361,8 @@ impl DetailHeader {
             true => self.size / 2.,
             false => px(12.),
         };
-        match (
+        let spot = self.picture.as_ref().map(Picture::spot);
+        let cover = match (
             self.custom_cover.take(),
             self.cover_id.take(),
             self.on_cover.take(),
@@ -359,6 +372,7 @@ impl DetailHeader {
                 .size(self.size)
                 .rounded(radius)
                 .placeholder(self.placeholder)
+                .spot(spot)
                 .when_some(self.cover_tooltip.take(), |cover, tip| cover.tooltip(tip))
                 .on_pick(move |window, cx| act(window, cx))
                 .into_any_element(),
@@ -367,7 +381,15 @@ impl DetailHeader {
                 .hq(true)
                 .rounded(radius)
                 .placeholder(self.placeholder)
+                .spot(spot)
                 .into_any_element(),
+        };
+        match menus::pictured(self.cover_menu.take(), self.picture.take()) {
+            Some(menu) => div()
+                .id("detail-cover")
+                .child(cover)
+                .with_context_menu(Some(menu)),
+            None => cover,
         }
     }
 

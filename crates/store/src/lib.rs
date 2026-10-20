@@ -17,6 +17,7 @@ mod notices;
 mod opener;
 pub mod paging;
 pub mod palette;
+mod picture;
 mod player;
 mod playing;
 mod playlists;
@@ -47,6 +48,7 @@ pub use opener::{
 };
 pub use paging::Pager;
 pub use palette::Swatches;
+pub use picture::{PictureError, Pictured, copy_picture, extension, file_name, save_picture};
 pub use player::{PlayerModel, Playhead};
 pub use playing::Playing;
 pub use playlists::PlaylistsModel;

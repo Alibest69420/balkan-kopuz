@@ -5,7 +5,7 @@ use std::rc::Rc;
 use api::{AlbumInfo, TrackInfo};
 use components::{Carousel, Heading, Tile, icons};
 use gpui_kit::{AnyElement, IntoElement, Pixels, SharedString, px};
-use store::{Playing, Route, Target};
+use store::{Pictured, Playing, Route, Target};
 
 const ALBUM_TILE: Pixels = px(128.);
 // An artist strip has no artwork to show off, so its tiles only have to be legible.
@@ -48,6 +48,10 @@ fn album_card(album: &AlbumInfo, playing: &Playing) -> AnyElement {
     )
     .subtitle(album.artist.clone())
     .artwork(album.artwork.as_ref())
+    .pictured(Pictured::Album {
+        artist: album.artist.clone().into(),
+        title: album.title.clone().into(),
+    })
     .placeholder(icons::DISC)
     .size(ALBUM_TILE)
     .playing(playing.is_album(&album.id))

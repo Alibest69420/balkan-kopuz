@@ -7,7 +7,7 @@ use api::{AlbumInfo, AlbumPage, ArtistPage, ArtworkRef, PlaylistInfo, TrackInfo,
 use components::format::t_with;
 use components::icons;
 use gpui_kit::SharedString;
-use store::{Route, Target};
+use store::{Pictured, Route, Target};
 
 /// Recently Added shows a shelf, but untitled albums drop out afterwards.
 pub(crate) const RECENTLY_ADDED_WINDOW: u32 = 64;
@@ -37,6 +37,7 @@ pub(crate) struct Tile {
     pub play: Play,
     pub round: bool,
     pub placeholder: &'static str,
+    pub pictured: Pictured,
 }
 
 /// How a shelf is drawn, which follows from what it holds rather than from where it sits.
@@ -189,6 +190,10 @@ fn album_tile(scope: &str, album: &AlbumInfo) -> Tile {
         play: Play::Album(album.id.clone()),
         round: false,
         placeholder: icons::DISC,
+        pictured: Pictured::Album {
+            artist: album.artist.clone().into(),
+            title: album.title.clone().into(),
+        },
     }
 }
 
@@ -245,6 +250,10 @@ fn track_tile(scope: &str, track: &TrackInfo) -> Tile {
         play: Play::Track(track.key.clone()),
         round: false,
         placeholder: icons::MUSIC,
+        pictured: Pictured::Track {
+            artist: track.artist.clone().into(),
+            title: track.title.clone().into(),
+        },
     }
 }
 
@@ -265,6 +274,7 @@ fn playlist_tile(playlist: &PlaylistInfo) -> Tile {
         play: Play::Playlist(playlist.id.clone()),
         round: false,
         placeholder: icons::LIST,
+        pictured: Pictured::Playlist(playlist.name.clone().into()),
     }
 }
 
@@ -334,6 +344,7 @@ fn top_artists(
         .map(|(artist, name, count)| Tile {
             key: SharedString::from(format!("artist-{artist}")),
             title: name.clone().into(),
+            pictured: Pictured::Artist(name.clone().into()),
             subtitle: t_with("home_plays", &[("count", count.into())]),
             artwork: photos.get(&artist).map(|art| (*art).clone()),
             route: Some(Route::Artist(artist.clone())),

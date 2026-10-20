@@ -20,6 +20,7 @@ fn row(tile: &crate::data::Tile, thumb: bool) -> TileRow {
         .artwork(tile.artwork.as_ref())
         .round(true)
         .placeholder(tile.placeholder)
+        .pictured(tile.pictured.clone())
         .menu(Some(tile.target.clone()));
     match tile.route.clone() {
         Some(route) => row.route(route),

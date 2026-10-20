@@ -13,7 +13,9 @@ use gpui_kit::{
     AnyElement, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Pixels, Render,
     ScrollHandle, SharedString, Styled, Subscription, Task, Window, px,
 };
-use store::{Link, Navigator, Notice, Notices, PlayerModel, Route, SourcesModel, Target, actions};
+use store::{
+    Link, Navigator, Notice, Notices, Pictured, PlayerModel, Route, SourcesModel, Target, actions,
+};
 
 use crate::states::catalog_failure;
 
@@ -282,6 +284,7 @@ impl Shelves {
                 .round(true)
                 .tint(true)
                 .route(Route::DiscoverArtist(item.id.clone()))
+                .pictured(Pictured::Artist(item.title.clone().into()))
                 .menu(Some(Target::Artist {
                     key: item.id.clone(),
                     name: item.title.clone().into(),
@@ -306,7 +309,13 @@ impl Shelves {
                 title: item.title.clone().into(),
             },
         };
-        tile.placeholder(if album { icons::DISC } else { icons::LIST })
+        // A catalog album names its artist only inside a display subtitle, so the file takes the title.
+        let of = Pictured::Album {
+            artist: SharedString::default(),
+            title: item.title.clone().into(),
+        };
+        tile.pictured(of)
+            .placeholder(if album { icons::DISC } else { icons::LIST })
             .route(route)
             // A catalog playlist is nobody's saved list, so only an album carries the album menu.
             .menu(album.then(|| Target::Album {
@@ -342,13 +351,17 @@ impl Shelves {
             cx.notify();
         };
         let press = start.clone();
-        tile.menu(Some(Target::track(track.key.clone(), track.title.clone())))
-            .on_click(cx.listener(move |this, _, _, cx| start(this, cx)))
-            .play(
-                self.play_state(&track.key, cx),
-                cx.listener(move |this, _, _, cx| press(this, cx)),
-            )
-            .into_any_element()
+        tile.pictured(Pictured::Track {
+            artist: track.artist.clone().into(),
+            title: track.title.clone().into(),
+        })
+        .menu(Some(Target::track(track.key.clone(), track.title.clone())))
+        .on_click(cx.listener(move |this, _, _, cx| start(this, cx)))
+        .play(
+            self.play_state(&track.key, cx),
+            cx.listener(move |this, _, _, cx| press(this, cx)),
+        )
+        .into_any_element()
     }
 
     fn play_state(&self, id: &str, cx: &Context<Self>) -> PlayState {

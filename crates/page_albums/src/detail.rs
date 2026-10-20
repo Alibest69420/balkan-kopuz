@@ -9,8 +9,8 @@ use api::{
 use components::format::{t, t_with};
 use components::{
     DetailActions, DetailHeader, EditableCover, EmptyState, HeaderLayout, Heading, IconButton,
-    IconTone, Link, Loading, Look, SectionHeading, Tone, TrackActions, TrackList, TrackListEvent,
-    TrackListOptions, TrackSection, icons,
+    IconTone, Link, Loading, Look, Picture, SectionHeading, Tone, TrackActions, TrackList,
+    TrackListEvent, TrackListOptions, TrackSection, icons, menus,
 };
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -19,7 +19,9 @@ use gpui_kit::{
     ParentElement as _, Pixels, Render, ScrollHandle, SharedString,
     StatefulInteractiveElement as _, Styled, Subscription, Window, div, px, rems,
 };
-use store::{DownloadsModel, Offline, PlayerModel, Query, Route, SourcesModel, Target, actions};
+use store::{
+    DownloadsModel, Offline, Pictured, PlayerModel, Query, Route, SourcesModel, Target, actions,
+};
 
 use crate::ops;
 
@@ -378,8 +380,11 @@ impl AlbumDetail {
             .tone(IconTone::Outline)
             .tooltip(t("select_all"))
             .on_click(cx.listener(|this, _, _, cx| this.select_all(cx)));
+        let picture = picture(&album);
+        let spot = picture.as_ref().map(Picture::spot);
         let mut header = DetailHeader::new(SharedString::from(album.title.clone()))
-            .cover(self.cover(&album, HERO_COVER, radius))
+            .cover(self.cover(&album, HERO_COVER, radius).spot(spot))
+            .cover_menu(cover_menu(&album), picture)
             .eyebrow(Self::artist_link(
                 &album.artist,
                 album.artist_key.clone(),
@@ -424,9 +429,12 @@ impl AlbumDetail {
         let browse_id = view.browse_id.clone();
         let first_key = self.rows.first().map(|row| row.key.clone());
         let radius = cx.theme().radius * 2.;
+        let picture = picture(&cover);
+        let spot = picture.as_ref().map(Picture::spot);
         let mut header = DetailHeader::new(view.title.clone())
             .layout(HeaderLayout::Column)
-            .cover(self.cover(&cover, REMOTE_COVER, radius))
+            .cover(self.cover(&cover, REMOTE_COVER, radius).spot(spot))
+            .cover_menu(cover_menu(&cover), picture)
             .eyebrow(Self::artist_link(
                 &view.artist,
                 view.artist_key.clone(),
@@ -613,4 +621,23 @@ fn point_remote(query: &Entity<Query<Option<CatalogDetail>>>, id: Option<String>
             cx,
         )
     });
+}
+
+/// The cover's picture, named `Artist - Album` when it is saved.
+fn picture(album: &AlbumInfo) -> Option<Picture> {
+    Picture::new(
+        album.artwork.as_ref(),
+        Pictured::Album {
+            artist: album.artist.clone().into(),
+            title: album.title.clone().into(),
+        },
+    )
+}
+
+/// What a right-click on the cover offers: the album's own menu, as on its card.
+fn cover_menu(album: &AlbumInfo) -> components::Menu {
+    menus::menu_for(Target::Album {
+        id: album.id.clone().into(),
+        title: album.title.clone().into(),
+    })
 }

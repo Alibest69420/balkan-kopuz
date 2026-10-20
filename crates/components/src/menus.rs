@@ -1,14 +1,19 @@
 //! The one menu builder, reached from below: `commands` registers it, every row and card calls it.
 
+use std::cell::Cell;
 use std::rc::Rc;
 
+use api::{ArtworkRef, ArtworkTarget};
 use gpui_kit::component::menu::{ContextMenuExt, PopupMenu, PopupMenuItem};
 use gpui_kit::component::{ActiveTheme as _, h_flex};
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Context, Global, IntoElement, ParentElement as _, SharedString,
-    Styled as _, Window,
+    AnyElement, App, Bounds, ClickEvent, Context, Global, IntoElement, ParentElement as _, Pixels,
+    SharedString, Styled as _, Window,
 };
-use store::Target;
+use store::{Pictured, Target};
+
+use crate::format::t;
+use crate::icons;
 
 type Builder = Rc<dyn Fn(Target, PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu>;
 
@@ -76,6 +81,93 @@ pub trait WithContextMenu: ContextMenuExt + IntoElement + Sized + 'static {
 }
 
 impl<T: ContextMenuExt + IntoElement + Sized + 'static> WithContextMenu for T {}
+
+/// Where a thumbnail was drawn this frame, so its menu can tell a right-click on it from one beside it.
+#[derive(Clone, Default)]
+pub struct Spot(Rc<SpotState>);
+
+#[derive(Default)]
+struct SpotState {
+    drawn: Cell<Option<Bounds<Pixels>>>,
+    broken: Cell<bool>,
+}
+
+impl Spot {
+    pub(crate) fn drawn(&self, bounds: Bounds<Pixels>) {
+        self.0.drawn.set(Some(bounds));
+    }
+
+    /// The picture would not load, so the thumbnail is a placeholder after all.
+    pub(crate) fn broken(&self) {
+        self.0.broken.set(true);
+    }
+
+    fn under(&self, window: &Window) -> bool {
+        !self.0.broken.get()
+            && self
+                .0
+                .drawn
+                .get()
+                .is_some_and(|bounds| bounds.contains(&window.mouse_position()))
+    }
+}
+
+/// A thumbnail's picture as its menu offers it: where it is drawn, what to fetch, and what it is of.
+#[derive(Clone)]
+pub struct Picture {
+    spot: Spot,
+    target: ArtworkTarget,
+    of: Pictured,
+}
+
+impl Picture {
+    /// Nothing for a placeholder: only real artwork can be copied or saved.
+    pub fn new(artwork: Option<&ArtworkRef>, of: Pictured) -> Option<Self> {
+        artwork.map(|artwork| Self {
+            spot: Spot::default(),
+            target: artwork.target.clone(),
+            of,
+        })
+    }
+
+    /// What the thumbnail records itself into; hand it to its [`crate::Cover`].
+    pub fn spot(&self) -> Spot {
+        self.spot.clone()
+    }
+}
+
+/// `menu`, ending in Copy image and Save image when the right-click landed on `picture`'s thumbnail.
+pub fn pictured(menu: Option<Menu>, picture: Option<Picture>) -> Option<Menu> {
+    let menu = menu?;
+    let Some(picture) = picture else {
+        return Some(menu);
+    };
+    Some(Rc::new(move |popup, window, cx| {
+        let popup = menu(popup, window, cx);
+        match picture.spot.under(window) {
+            true => picture_items(popup, &picture),
+            false => popup,
+        }
+    }))
+}
+
+fn picture_items(popup: PopupMenu, picture: &Picture) -> PopupMenu {
+    let (copy, save, of) = (
+        picture.target.clone(),
+        picture.target.clone(),
+        picture.of.clone(),
+    );
+    popup
+        .separator()
+        .item(
+            menu_item(t("copy_image"), Some(icons::COPY))
+                .on_click(move |_, _, cx| store::copy_picture(copy.clone(), cx)),
+        )
+        .item(
+            menu_item(t("save_image"), Some(icons::DOWNLOAD))
+                .on_click(move |_, _, cx| store::save_picture(save.clone(), of.clone(), cx)),
+        )
+}
 
 type OnPick = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 
