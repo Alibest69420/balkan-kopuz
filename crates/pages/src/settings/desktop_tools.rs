@@ -1,24 +1,24 @@
 #[cfg(not(target_os = "android"))]
 use components::settings_items::{SettingItem, SettingsSection, ToggleSetting};
-use config::AppConfig;
+use config::Settings;
 use dioxus::prelude::*;
 
 #[cfg(not(target_os = "android"))]
 use crate::theme_editor::ThemeEditorPage;
 
 #[cfg(not(target_os = "android"))]
-pub(super) fn theme_editor_section(config: Signal<AppConfig>) -> Element {
+pub(super) fn theme_editor_section(settings: Signal<Settings>) -> Element {
     rsx! {
         SettingsSection { title: i18n::t("theme_editor").to_string(),
             div { class: "py-2",
-                ThemeEditorPage { config, embedded: true }
+                ThemeEditorPage { settings, embedded: true }
             }
         }
     }
 }
 
 #[cfg(target_os = "android")]
-pub(super) fn theme_editor_section(_config: Signal<AppConfig>) -> Element {
+pub(super) fn theme_editor_section(_config: Signal<Settings>) -> Element {
     rsx! {}
 }
 
@@ -28,7 +28,7 @@ fn trigger_test_crash() {
 }
 
 #[cfg(not(target_os = "android"))]
-pub(super) fn logs_section(mut config: Signal<AppConfig>) -> Element {
+pub(super) fn logs_section(settings: Signal<Settings>) -> Element {
     rsx! {
         SettingsSection { title: i18n::t("logs").to_string(),
             div {
@@ -37,9 +37,11 @@ pub(super) fn logs_section(mut config: Signal<AppConfig>) -> Element {
                     config_key: "tracing_enabled",
                     control: rsx! {
                         ToggleSetting {
-                            enabled: config.read().tracing_enabled,
+                            enabled: settings.read().system.tracing_enabled,
                             on_change: move |v| {
-                                config.write().tracing_enabled = v;
+                                hooks::settings::edit(config::SettingsEdit::System(
+                                    config::SystemEdit::TracingEnabled(v),
+                                ));
                             },
                         }
                     },
@@ -52,7 +54,7 @@ pub(super) fn logs_section(mut config: Signal<AppConfig>) -> Element {
             div { class: "flex flex-wrap gap-3 px-5 pt-3 pb-5",
                 button {
                     r#type: "button",
-                    class: "px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm transition-colors flex items-center gap-2",
+                    class: "app-button-tonal px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm transition-colors flex items-center gap-2",
                     onclick: move |_| {
                         if let Err(e) = utils::logs::open_log_dir() {
                             tracing::warn!(error = %e, "failed to open logs folder");
@@ -63,7 +65,7 @@ pub(super) fn logs_section(mut config: Signal<AppConfig>) -> Element {
                 }
                 button {
                     r#type: "button",
-                    class: "px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm transition-colors flex items-center gap-2",
+                    class: "app-button-tonal px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm transition-colors flex items-center gap-2",
                     onclick: move |_| {
                         spawn(async move {
                             if let Some(file) = rfd::AsyncFileDialog::new()
@@ -81,7 +83,7 @@ pub(super) fn logs_section(mut config: Signal<AppConfig>) -> Element {
                 if cfg!(debug_assertions) {
                     button {
                         r#type: "button",
-                        class: "px-4 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 text-sm transition-colors flex items-center gap-2",
+                        class: "app-button-tonal app-button-danger px-4 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 text-sm transition-colors flex items-center gap-2",
                         onclick: move |_| trigger_test_crash(),
                         i { class: "fa-solid fa-bomb" }
                         "Trigger crash (debug)"
@@ -96,6 +98,6 @@ pub(super) fn logs_section(mut config: Signal<AppConfig>) -> Element {
 /// import / vacuum / info, all against the disposable debug DB with a live
 /// pool swap (no restart). English-only by design (dev tool).
 #[cfg(target_os = "android")]
-pub(super) fn logs_section(_config: Signal<AppConfig>) -> Element {
+pub(super) fn logs_section(_config: Signal<Settings>) -> Element {
     rsx! {}
 }

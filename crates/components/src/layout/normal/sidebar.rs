@@ -133,7 +133,8 @@ const BOTTOM_MENU: &[SidebarItem] = &[SidebarItem {
 
 #[component]
 pub fn SidebarNormal(props: SidebarProps) -> Element {
-    let mut config = use_context::<Signal<config::AppConfig>>();
+    let settings = use_context::<Signal<config::Settings>>();
+    let mut prefs = hooks::ui_prefs::use_ui_prefs();
     let mut width = use_signal(|| 240);
     let mut is_collapsed = use_signal(|| false);
     let mut is_resizing = use_signal(|| false);
@@ -187,9 +188,9 @@ pub fn SidebarNormal(props: SidebarProps) -> Element {
     // Discover is a capability of the active source, not a config flag —
     // hide the tab when the active source has no discover surface.
     let caps = hooks::sources::use_capabilities();
-    let has_discover = use_memo(move || caps().discover);
+    let has_discover = use_memo(move || caps().discover || !caps().pages.is_empty());
     let ordered_items: Vec<SidebarItem> = {
-        let order = config.read().sidebar_order.clone();
+        let order = prefs.read().sidebar_order.clone();
         let mut items: Vec<SidebarItem> = order
             .iter()
             .filter_map(|key| TOP_MENU.iter().find(|item| item.key == key).cloned())
@@ -205,10 +206,10 @@ pub fn SidebarNormal(props: SidebarProps) -> Element {
     };
 
     let _item_count = ordered_items.len();
-    let order_len = config.read().sidebar_order.len();
+    let order_len = prefs.read().sidebar_order.len();
 
     let root_class = if is_android {
-        "h-full bg-[#0a0a0a]/97 text-slate-400 flex flex-col flex-shrink-0 select-none relative border-r border-white/10 overflow-hidden transition-all duration-300 ease-out".to_string()
+        "h-full bg-(--surface-chrome)/97 text-slate-400 flex flex-col flex-shrink-0 select-none relative border-r border-white/10 overflow-hidden transition-all duration-300 ease-out".to_string()
     } else {
         format!(
             "h-full bg-black/40 text-slate-400 flex flex-col flex-shrink-0 select-none relative {border_side} border-white/5 {extra_padding}"
@@ -246,7 +247,7 @@ pub fn SidebarNormal(props: SidebarProps) -> Element {
         }
 
         div {
-            class: "{root_class}",
+            class: "app-sidebar {root_class}",
             style: "{root_style}",
             ontouchstart: move |evt| if is_android { drawer_swipe.start(&evt) },
             ontouchmove: move |evt| if is_android { drawer_swipe.update(&evt) },
@@ -283,20 +284,20 @@ pub fn SidebarNormal(props: SidebarProps) -> Element {
             div {
                 class: "flex-1 flex flex-col overflow-y-auto overflow-x-hidden pt-2",
 
-                if !*is_collapsed.read() && config.read().show_source_toggle {
+                if !*is_collapsed.read() && settings.read().ui.show_source_toggle {
                     crate::source_switcher::SourceSwitcher {
                         on_manage: move |_| props.on_navigate.call(Route::Settings),
                     }
                 }
 
                 nav {
-                    class: "flex-1 px-3 space-y-1",
+                    class: "app-sidebar-nav flex-1 px-3 space-y-1",
                     for (idx, item) in ordered_items.into_iter().enumerate() {
                         SidebarLink {
                             key: "{item.key}",
                             item: item.clone(),
                             collapsed: is_collapsed,
-                            active: *props.current_route.read() == item.route,
+                            active: props.current_route.read().sidebar_entry() == item.route,
                             is_rtl,
                             can_move_up: idx > 0 && idx < order_len,
                             can_move_down: idx + 1 < order_len,
@@ -305,17 +306,17 @@ pub fn SidebarNormal(props: SidebarProps) -> Element {
                                 if is_android { mobile_collapsed.set(true); }
                             },
                             on_move_up: move |_| {
-                                let mut order = config.peek().sidebar_order.clone();
+                                let mut order = prefs.peek().sidebar_order.clone();
                                 if idx > 0 {
                                     order.swap(idx, idx - 1);
-                                    config.write().sidebar_order = order;
+                                    prefs.write().sidebar_order = order;
                                 }
                             },
                             on_move_down: move |_| {
-                                let mut order = config.peek().sidebar_order.clone();
+                                let mut order = prefs.peek().sidebar_order.clone();
                                 if idx + 1 < order.len() {
                                     order.swap(idx, idx + 1);
-                                    config.write().sidebar_order = order;
+                                    prefs.write().sidebar_order = order;
                                 }
                             },
                         }
@@ -327,7 +328,7 @@ pub fn SidebarNormal(props: SidebarProps) -> Element {
                         SidebarLink {
                             item: item.clone(),
                             collapsed: is_collapsed,
-                            active: *props.current_route.read() == item.route,
+                            active: props.current_route.read().sidebar_entry() == item.route,
                             is_rtl,
                             can_move_up: false,
                             can_move_down: false,
@@ -397,28 +398,31 @@ fn SidebarLink(
 
     rsx! {
         div { class: "flex items-center group",
-            a {
-                class: "flex flex-1 items-center {alignment_class} relative p-3 rounded-lg transition-all duration-200 cursor-pointer {active_class}",
+            button {
+                r#type: "button",
+                class: "app-sidebar-link flex flex-1 items-center {alignment_class} relative p-3 rounded-lg transition-all duration-200 cursor-pointer {active_class}",
+                aria_label: i18n::t(item.key),
+                aria_current: if active { "page" } else { "false" },
                 title: if is_collapsed { i18n::t(item.key) } else { String::new() },
                 onclick: move |evt| onclick.call(evt),
 
                 div {
-                    class: "flex items-center justify-center w-6 h-6 shrink-0 transition-transform group-active:scale-95",
+                    class: "app-sidebar-icon flex items-center justify-center w-6 h-6 shrink-0 transition-transform group-active:scale-95",
                     i { class: "{item.icon} text-lg" }
                 }
 
                 if !is_collapsed {
                     span {
-                        class: "ml-4 text-sm font-medium tracking-tight {opacity_class} transition-opacity",
+                        class: "app-sidebar-label ml-4 text-sm font-medium tracking-tight {opacity_class} transition-opacity",
                         "{i18n::t(item.key)}"
                     }
                 }
 
                 div {
                     class: if active {
-                        "{indicator_base} h-6 bg-white"
+                        "app-sidebar-indicator {indicator_base} h-6 bg-white"
                     } else {
-                        "{indicator_base} h-0 bg-white/40 group-hover:h-4"
+                        "app-sidebar-indicator {indicator_base} h-0 bg-white/40 group-hover:h-4"
                     }
                 }
             }

@@ -12,15 +12,15 @@ pub struct SidebarCollapsed(pub Signal<bool>);
 
 #[component]
 pub fn Sidebar(props: SidebarProps) -> Element {
-    let config = use_context::<Signal<config::AppConfig>>();
-    match config.read().ui_style {
+    let settings = use_context::<Signal<config::Settings>>();
+    match settings.read().ui.ui_style {
         config::UiStyle::Vaxry => rsx! {
             crate::vaxry::sidebar::SidebarVaxry {
                 current_route: props.current_route,
                 on_navigate: props.on_navigate,
             }
         },
-        config::UiStyle::Normal => rsx! {
+        config::UiStyle::Normal | config::UiStyle::Material3 => rsx! {
             crate::normal::sidebar::SidebarNormal {
                 current_route: props.current_route,
                 on_navigate: props.on_navigate,

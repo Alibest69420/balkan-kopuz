@@ -5,18 +5,25 @@ use crate::queue_drag::{
     set_dragged_queue_tracks,
 };
 use api::TrackInfo as Track;
-use config::{AppConfig, UiStyle};
+use config::{Settings, UiStyle};
 use dioxus::prelude::*;
 use hooks::consume_api;
 use hooks::toast::toast;
 
-pub(crate) fn copy_to_clipboard(text: &str) {
-    let value = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_string());
-    let js = format!(
-        "navigator.clipboard.writeText({value}).catch((e) => console.error('clipboard writeText failed', e));"
-    );
-    let _ = dioxus::document::eval(&js);
+#[component]
+pub fn ExplicitBadge() -> Element {
+    let label = i18n::t("explicit").to_string();
+    rsx! {
+        span {
+            class: "shrink-0 inline-flex items-center justify-center w-3.5 h-3.5 text-[9px] font-bold rounded-[3px] leading-none",
+            style: "background: var(--color-white); color: var(--color-black); opacity: 0.55;",
+            title: "{label}",
+            aria_label: "{label}",
+            "E"
+        }
+    }
 }
+
 /// The artist the row's artist cell opens; a row crediting nobody opens nothing.
 fn billed_artist(track: &Track) -> Option<String> {
     track.primary_credit().and_then(|credit| credit.key.clone())
@@ -46,11 +53,13 @@ pub fn TrackRow(
     #[props(default = false)] is_currently_playing: bool,
     #[props(default = Vec::new())] selected_queue_tracks: Vec<Track>,
     #[props(default = None)] row_num: Option<usize>,
+    #[props(default)] catalog_actions: Option<api::CatalogActions>,
+    #[props(default)] on_catalog_actions: Option<EventHandler<api::CatalogActions>>,
 ) -> Element {
-    let config = use_context::<Signal<AppConfig>>();
+    let settings = use_context::<Signal<Settings>>();
     let nav_ctrl = use_context::<NavigationController>();
-    let is_vaxry = config.read().ui_style == UiStyle::Vaxry;
-    let show_row_images = config.read().show_row_images;
+    let is_vaxry = settings.read().ui.ui_style == UiStyle::Vaxry;
+    let show_row_images = settings.read().ui.show_row_images;
     let show_selection_highlight = is_selection_mode && is_selected;
     let selection_shadow = if show_selection_highlight {
         "inset 0 0 0 9999px rgba(255,255,255,0.07)"
@@ -96,8 +105,7 @@ pub fn TrackRow(
         }
     };
 
-    let fmt_dur = |s: u64| format!("{}:{:02}", s / 60, s % 60);
-    let duration_str = fmt_dur(track.duration_secs().unwrap_or_default());
+    let duration_str = duration_label(&track);
 
     // The container a file is in, which the daemon works out: a row
     // that came from a service names no file, so it has none.
@@ -118,7 +126,7 @@ pub fn TrackRow(
                 // Fixed height, not padding: the virtual scroller lays its spacers
                 // out in multiples of one row, so this cannot vary with whether
                 // artwork is switched on.
-                class: "flex items-center gap-3 px-2 h-14 rounded-lg active:bg-white/10 transition-colors select-none",
+                class: "track-row flex items-center gap-3 px-2 h-14 rounded-lg active:bg-white/10 transition-colors select-none",
                 style: if is_currently_playing {
                     format!("background: color-mix(in oklab, var(--color-indigo-500) 12%, transparent); box-shadow: {selection_shadow};")
                 } else {
@@ -163,18 +171,25 @@ pub fn TrackRow(
                 }
 
                 div { class: "flex-1 min-w-0 flex flex-col justify-center gap-0.5",
-                    span {
-                        class: if is_currently_playing {
-                            "text-[13px] font-semibold truncate leading-tight text-indigo-400"
-                        } else {
-                            "text-[13px] font-medium truncate leading-tight text-white/95"
-                        },
-                        "{track.title}"
+                    div { class: "flex items-center gap-1.5 min-w-0",
+                        span {
+                            class: if is_currently_playing {
+                                "text-[13px] font-semibold truncate leading-tight text-indigo-400"
+                            } else {
+                                "text-[13px] font-medium truncate leading-tight text-white/95"
+                            },
+                            "{track.title}"
+                        }
+                        if track.explicit {
+                            ExplicitBadge {}
+                        }
                     }
                     span { class: "text-[11px] text-white/45 truncate leading-tight",
                         span { dir: "auto", "{track.artist}" }
-                        " • "
-                        span { dir: "ltr", "{duration_str}" }
+                        if !duration_str.is_empty() {
+                            " • "
+                            span { dir: "ltr", "{duration_str}" }
+                        }
                     }
                 }
 
@@ -182,6 +197,8 @@ pub fn TrackRow(
                     div { class: "shrink-0",
                         crate::track_actions::TrackActionsMenu {
                             track: menu_track_android.clone(),
+                            catalog_actions: catalog_actions.clone(),
+                            on_catalog_actions,
                             is_open: Some(is_menu_open),
                             on_open: Some(EventHandler::new(move |_| {
                                 context_menu_position.set(None);
@@ -210,7 +227,7 @@ pub fn TrackRow(
     if is_vaxry {
         return rsx! {
                 div {
-                    class: "track-row-draggable grid px-2 py-1.5 rounded-lg mx-1 group cursor-grab active:cursor-grabbing transition-colors hover:bg-white/5 select-none",
+                    class: "track-row track-row-draggable grid px-2 py-1.5 rounded-lg mx-1 group cursor-grab active:cursor-grabbing transition-colors hover:bg-white/5 select-none",
                     style: if is_currently_playing {
                         format!("grid-template-columns: {columns_vaxry}; background: color-mix(in oklab, var(--color-indigo-500) 12%, transparent); box-shadow: {selection_shadow};")
                     } else {
@@ -365,6 +382,9 @@ pub fn TrackRow(
                             ondoubleclick: move |evt| evt.stop_propagation(),
                             "{track.title}"
                         }
+                        if track.explicit {
+                            ExplicitBadge {}
+                        }
                         if is_downloaded {
                             i {
                                 class: "fa-solid fa-arrow-down-to-line text-[9px] shrink-0",
@@ -438,6 +458,8 @@ pub fn TrackRow(
                         if !is_selection_mode {
                             crate::track_actions::TrackActionsMenu {
                                 track: menu_track.clone(),
+                                catalog_actions: catalog_actions.clone(),
+                                on_catalog_actions,
                                 is_open: Some(is_menu_open),
                                 position: *context_menu_position.read(),
                                 on_open: Some(EventHandler::new(move |_| {
@@ -478,7 +500,7 @@ pub fn TrackRow(
     // normal UI
     return rsx! {
         div {
-            class: "track-row-draggable grid items-center h-14 p-2 rounded-lg hover:bg-white/5 group transition-colors relative select-none cursor-grab active:cursor-grabbing",
+            class: "track-row track-row-draggable grid items-center h-14 p-2 rounded-lg hover:bg-white/5 group transition-colors relative select-none cursor-grab active:cursor-grabbing",
             style: if is_currently_playing {
                 format!("grid-template-columns: {columns_normal}; column-gap: {column_gap}; background: color-mix(in oklab, var(--color-indigo-500) 12%, transparent); box-shadow: {selection_shadow};")
             } else {
@@ -631,6 +653,14 @@ pub fn TrackRow(
                     ondoubleclick: move |evt| evt.stop_propagation(),
                     "{track.title}"
                 }
+                if track.explicit {
+                    span { class: "ml-1.5 inline-flex shrink-0", ExplicitBadge {} }
+                }
+                if is_downloaded && (is_album || !show_row_images) {
+                    div { class: "shrink-0 ml-2 w-3 h-3 bg-indigo-500 rounded flex items-center justify-center",
+                        i { class: "fa-solid fa-check text-white", style: "font-size: 6px;" }
+                    }
+                }
                 if let Some(ref ft) = file_type {
                     span {
                         class: "shrink-0 ml-2 text-[9px] font-semibold uppercase px-1 py-0.5 rounded leading-none tracking-wide",
@@ -689,6 +719,8 @@ pub fn TrackRow(
                 if !is_selection_mode {
                     crate::track_actions::TrackActionsMenu {
                         track: menu_track_normal.clone(),
+                        catalog_actions: catalog_actions.clone(),
+                        on_catalog_actions,
                         is_open: Some(is_menu_open),
                         position: *context_menu_position.read(),
                         on_open: Some(EventHandler::new(move |_| {
@@ -720,6 +752,11 @@ pub fn TrackRow(
 /// reading `track_row::radio_handler(...)`.
 pub use crate::radio_actions::track_radio_handler as radio_handler;
 
+pub fn copy_link(url: &str) {
+    crate::common::shared::copy_to_clipboard(url);
+    toast(&i18n::t("share_copied"));
+}
+
 /// Copy a shareable link for a track. Which page a row has -- the source's
 /// own, or the one its metadata names elsewhere -- is the daemon's knowledge.
 pub fn share_track(track: Track) {
@@ -727,10 +764,31 @@ pub fn share_track(track: Track) {
     spawn(async move {
         match api.track_web_url(track.key.clone()).await {
             Ok(Some(url)) => {
-                copy_to_clipboard(&url);
-                toast("Copied link");
+                crate::common::shared::copy_to_clipboard(&url);
+                toast(&i18n::t("share_copied"));
             }
-            _ => toast("Couldn't find a page for this track"),
+            _ => toast(&i18n::t("share_no_page")),
         }
     });
+}
+
+/// A row's duration as m:ss, blank when the source gave none (YouTube Music's artist Top songs).
+fn duration_label(track: &Track) -> String {
+    track
+        .duration_secs()
+        .map(|secs| format!("{}:{:02}", secs / 60, secs % 60))
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_unknown_duration_is_left_blank_not_zero() {
+        let mut track = Track::default();
+        assert_eq!(duration_label(&track), "");
+        track.duration_ms = Some(225_000);
+        assert_eq!(duration_label(&track), "3:45");
+    }
 }

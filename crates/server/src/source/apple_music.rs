@@ -5,8 +5,9 @@ use config::Source;
 use db::Db;
 
 use super::{
-    AlbumType, ArtistView, AuthOutcome, Capabilities, FavoritesSync, LibrarySnapshot, MediaSource,
-    PlaylistMeta, PlaylistOps, RadioSeeds, SourceError, StreamInfo,
+    AlbumType, ArtistView, AuthOutcome, Capabilities, FavoritesSync, LibraryActions,
+    LibrarySnapshot, MediaSource, PlaylistMeta, PlaylistOps, RadioPage, RadioSeeds, SourceError,
+    StreamInfo,
 };
 
 pub(super) struct AppleMusicSource {
@@ -18,6 +19,22 @@ pub(super) struct AppleMusicSource {
 impl AppleMusicSource {
     pub(super) fn new(db: Db, source: Source, client: crate::applemusic::AppleMusicApi) -> Self {
         Self { db, source, client }
+    }
+
+    async fn station_page(&self, station: &str, page: u32) -> Result<RadioPage, SourceError> {
+        const QUEUE_TARGET: usize = 30;
+        let songs = self
+            .client
+            .station_queue(station, QUEUE_TARGET)
+            .await
+            .map_err(SourceError::Backend)?;
+        Ok(RadioPage {
+            tracks: songs
+                .iter()
+                .map(crate::applemusic::track_from_song_data)
+                .collect(),
+            more: Some(format!("{station}{STATION_PAGE_SEPARATOR}{page}")),
+        })
     }
 }
 
@@ -39,15 +56,25 @@ impl MediaSource for AppleMusicSource {
             browse_folders: false,
             external_devices: false,
             browser_playback: false,
+            accounts: false,
             sync: true,
             downloads: true,
+            uploads: false,
+            storage_quota: false,
             discover: false,
             dont_recommend: false,
+            music_videos: false,
             radio: RadioSeeds::ALL,
+            play_queue: false,
             playlists: PlaylistOps::AddRemove,
             artist_view: ArtistView::Library,
             albums: AlbumType::Standard,
             favorites_sync: FavoritesSync::Instant,
+            account_avatar: false,
+            stream_quality: false,
+            explicit_flags: false,
+            watch_history: false,
+            library_actions: LibraryActions::NONE,
         }
     }
 
@@ -55,9 +82,7 @@ impl MediaSource for AppleMusicSource {
     /// sells: an uploaded library track has no catalog entry and therefore no
     /// station. `resolve_catalog_id` hands back the library id unchanged in
     /// that case, which is what the numeric check catches.
-    async fn start_radio(&self, seed_ref: &str) -> Result<Vec<reader::Track>, SourceError> {
-        const QUEUE_TARGET: usize = 30;
-
+    async fn start_radio(&self, seed_ref: &str) -> Result<RadioPage, SourceError> {
         if seed_ref.trim().is_empty() {
             return Err(SourceError::InvalidInput("track has no id".into()));
         }
@@ -79,25 +104,13 @@ impl MediaSource for AppleMusicSource {
             .map_err(SourceError::Backend)?
             .ok_or_else(|| SourceError::Backend("this track has no station".to_string()))?;
 
-        let songs = self
-            .client
-            .station_queue(&station, QUEUE_TARGET)
-            .await
-            .map_err(SourceError::Backend)?;
-        Ok(songs
-            .iter()
-            .map(crate::applemusic::track_from_song_data)
-            .collect())
+        self.station_page(&station, 1).await
     }
 
     /// The playlist equivalent of [`start_radio`], and what Apple's own client
     /// calls autoplay: a station built from what the playlist contains, rather
     /// than from one song.
-    async fn start_playlist_radio(
-        &self,
-        playlist_ref: &str,
-    ) -> Result<Vec<reader::Track>, SourceError> {
-        const QUEUE_TARGET: usize = 30;
+    async fn start_playlist_radio(&self, playlist_ref: &str) -> Result<RadioPage, SourceError> {
         /// Apple's own client sends ten. More than one matters: a playlist that
         /// opens with uploads would be refused on those alone, while a later
         /// catalog track still gives it something to work from.
@@ -127,15 +140,15 @@ impl MediaSource for AppleMusicSource {
             .await
             .map_err(SourceError::Backend)?;
 
-        let songs = self
-            .client
-            .station_queue(&station, QUEUE_TARGET)
-            .await
-            .map_err(SourceError::Backend)?;
-        Ok(songs
-            .iter()
-            .map(crate::applemusic::track_from_song_data)
-            .collect())
+        self.station_page(&station, 1).await
+    }
+
+    async fn more_radio(&self, cursor: &str) -> Result<RadioPage, SourceError> {
+        let (station, page) = cursor
+            .rsplit_once(STATION_PAGE_SEPARATOR)
+            .and_then(|(station, page)| Some((station, page.parse::<u32>().ok()?)))
+            .ok_or_else(|| SourceError::InvalidInput("not an Apple Music station cursor".into()))?;
+        self.station_page(station, page + 1).await
     }
 
     async fn download_track(
@@ -158,7 +171,11 @@ impl MediaSource for AppleMusicSource {
         .map_err(SourceError::Backend)
     }
 
-    async fn resolve_stream(&self, _item_id: &str) -> Result<StreamInfo, SourceError> {
+    async fn resolve_stream(
+        &self,
+        _item_id: &str,
+        _: config::StreamQuality,
+    ) -> Result<StreamInfo, SourceError> {
         let token = self.client.media_user_token().unwrap_or("");
         let encoded_token =
             base64::Engine::encode(&base64::engine::general_purpose::STANDARD, token.as_bytes());
@@ -174,6 +191,7 @@ impl MediaSource for AppleMusicSource {
             duration_secs: None,
             bitrate: Some(256_000),
             content_length: None,
+            loudness_db: None,
         })
     }
 
@@ -274,7 +292,7 @@ impl MediaSource for AppleMusicSource {
         Ok(LibrarySnapshot {
             albums,
             tracks,
-            artist_images: Vec::new(),
+            artists: Vec::new(),
         })
     }
 
@@ -374,27 +392,9 @@ impl MediaSource for AppleMusicSource {
             .map_err(SourceError::Backend)?;
         self.remove_playlist_entry(playlist_id, position).await
     }
-
-    async fn fetch_artist_images(
-        &self,
-    ) -> Result<Vec<(reader::ArtistCredit, String)>, SourceError> {
-        tracing::info!("am.fetch_artist_images: starting");
-        let artists = self
-            .client
-            .get_library_artists()
-            .await
-            .map_err(SourceError::Backend)?;
-        let mut out = Vec::new();
-        for a in &artists {
-            if let Some(artwork) = &a.attributes.artwork
-                && !artwork.url.is_empty()
-            {
-                let url = crate::applemusic::artwork_url(&artwork.url, 300);
-                // A library artist id is not the catalog id a track credits, so only the name matches.
-                out.push((reader::ArtistCredit::unlinked(&a.attributes.name), url));
-            }
-        }
-        tracing::info!("am.fetch_artist_images: {} artists with images", out.len());
-        Ok(out)
-    }
 }
+
+/// A station is a generator: asking it again plays on. The page number only
+/// keeps each cursor distinct from the one before it, since the daemon ends a
+/// radio whose source hands back a cursor it already used.
+const STATION_PAGE_SEPARATOR: char = '#';

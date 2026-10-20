@@ -11,6 +11,9 @@ language = ഭാഷ
 library = ലൈബ്രറി
 playlists = പ്ലേലിസ്റ്റുകൾ
 album = ആൽബം
+release_single = സിംഗിൾ
+release_ep = EP
+release_audiobook = Audiobook
 artist = കലാകാരൻ
 home = ഹോം
 search = തിരയുക
@@ -31,6 +34,9 @@ add = ചേർക്കുക
 add_folder = ഫോൾഡർ ചേർക്കുക
 no_music_folders = സംഗീത ഫോൾഡറുകളൊന്നും ക്രമീകരിച്ചിട്ടില്ല
 remote_music_folders = സംഗീത ഫോൾഡറുകൾ
+source_account = അക്കൗണ്ട്
+source_account_help = ഓരോ അക്കൗണ്ടിനും സ്വന്തം ലൈബ്രറിയുണ്ട്. മാറുമ്പോൾ അത് വീണ്ടും സമന്വയിപ്പിക്കും.
+source_accounts_failed = അക്കൗണ്ടുകൾ ലോഡ് ചെയ്യാൻ കഴിഞ്ഞില്ല: { $error }
 parent_folder = മുകളിലേക്ക്
 use_this_folder = ഈ ഫോൾഡർ ചേർക്കുക
 no_subfolders = ഉപഫോൾഡറുകളില്ല
@@ -74,10 +80,22 @@ device_change_pause = Pause
 sample_rate_mode = ഔട്ട്‌പുട്ട് സാമ്പിൾ റേറ്റ്
 sample_rate_mode_system = സിസ്റ്റം പിന്തുടരുക
 sample_rate_mode_source = ട്രാക്കിന് അനുസരിച്ച്
+settings_group_streaming = സ്ട്രീമിംഗ്
+stream_quality = സ്ട്രീമിംഗ് ഗുണനിലവാരം
+stream_quality_low = കുറഞ്ഞത്
+stream_quality_normal = സാധാരണം
+stream_quality_high = ഉയർന്നത്
+autoplay_radio = ക്യൂ തീരുമ്പോൾ ഒരു റേഡിയോ പ്ലേ ചെയ്യുക
+skip_explicit = എക്സ്പ്ലിസിറ്റ് ട്രാക്കുകൾ ഒഴിവാക്കുക
+pause_watch_history = കണ്ട ചരിത്രം താൽക്കാലികമായി നിർത്തുക
 discord_presence = Discord സാന്നിധ്യം
 connectivity = കണക്റ്റിവിറ്റി
 integration_connect = Connect to { $name }
 integration_connected = { $name } connected
+integration_connecting = Connecting…
+integration_browser_title = Use a signed-in browser
+integration_browser_profile = { $name } ({ $browser })
+integration_browser_none = No browser profiles found. Paste your token above instead.
 discord_presence_paused = നിർത്തിയ Discord നില കാണിക്കുക
 discord_presence_source = Discord നിലയിൽ മീഡിയ ഉറവിടം കാണിക്കുക
 reduce_animations = ആനിമേഷനുകൾ കുറയ്ക്കുക
@@ -141,6 +159,11 @@ downloader_status_waiting = കാത്തിരിക്കുന്നു…
 update_available = അപ്‌ഡേറ്റ് ലഭ്യമാണ്
 update_banner_message = Kopuz { $version } ലഭ്യമാണ്.
 view_release = റിലീസ് കാണുക
+update_install = അപ്ഡേറ്റ് ചെയ്ത് റീസ്റ്റാർട്ട് ചെയ്യുക
+update_downloading = Kopuz { $version } ഡൗൺലോഡ് ചെയ്യുന്നു…
+update_restarting = അപ്ഡേറ്റ് പൂർത്തിയാക്കാൻ റീസ്റ്റാർട്ട് ചെയ്യുന്നു…
+update_failed = Kopuz { $version } ഇൻസ്റ്റാൾ ചെയ്യാനായില്ല.
+update_retry = വീണ്ടും ശ്രമിക്കുക
 
 # UI Actions & Buttons
 add_to_favorites = പ്രിയപ്പെട്ടവയിലേക്ക് ചേർക്കുക
@@ -156,6 +179,7 @@ radio_empty = സമാനമായ പാട്ടുകളൊന്നും �
 radio_failed = റേഡിയോ ആരംഭിക്കാനായില്ല
 remove_from_queue = ക്യൂവിൽ നിന്ന് നീക്കം ചെയ്യുക
 downloading = ഡൗൺലോഡ് ചെയ്യുന്നു…
+downloading_progress = Downloading { $done } / { $total }
 more_actions_for = { $name } എന്നതിനുള്ള കൂടുതൽ പ്രവർത്തനങ്ങൾ
 share_musicbrainz = പങ്കിടുക (MusicBrainz)
 share_link_copied = MusicBrainz ലിങ്ക് പകർത്തി
@@ -171,6 +195,7 @@ add_all_to_queue = എല്ലാം ക്യൂവിലേക്ക് ച�
 add_all_to_playlist = എല്ലാം പ്ലേലിസ്റ്റിലേക്ക് ചേർക്കുക
 select_all = എല്ലാം തിരഞ്ഞെടുക്കുക
 select_all_tracks = എല്ലാ ട്രാക്കുകളും തിരഞ്ഞെടുക്കുക
+deselect_all_tracks = Deselect all tracks
 remove_from_cache = കാഷിൽ നിന്ന് നീക്കം ചെയ്യുക
 create = സൃഷ്ടിക്കുക
 save = സംരക്ഷിക്കുക
@@ -198,15 +223,46 @@ new_releases = പുതിയ റിലീസുകൾ
 # Navigation Buttons
 up_next = അടുത്തത്
 lyrics = വരികൾ
+track_version = പതിപ്പ്
+track_version_song = പാട്ട്
+track_version_video = വീഡിയോ
+music_video = മ്യൂസിക് വീഡിയോ
 
 # Player/Media
 loading_lyrics = വരികൾ ലോഡ് ചെയ്യുന്നു...
 lyrics_not_found = വരികൾ കണ്ടെത്തിയില്ല
 instrumental_break = ഇൻസ്ട്രുമെന്റൽ
 no_previous_songs = മുൻ പാട്ടുകളൊന്നുമില്ല
-playlist_track_count = { $count } ട്രാക്കുകൾ
-music_playlist_count = സംഗീതം • { $count } ട്രാക്കുകൾ
-showcase_song_count = { $count } പാട്ടുകൾ
+playlist_track_count =
+    { $count ->
+        [one] { $count } ട്രാക്ക്
+       *[other] { $count } ട്രാക്കുകൾ
+    }
+playlist_folder_count =
+    { $count ->
+        [one] { $count } playlist
+       *[other] { $count } playlists
+    }
+playlists_synced_count =
+    { $count ->
+        [one] { $count } playlist synced
+       *[other] { $count } playlists synced
+    }
+playlists_loading_tracks =
+    { $count ->
+        [one] Loading tracks — { $done } / { $count } playlist ({ $remaining } left)
+       *[other] Loading tracks — { $done } / { $count } playlists ({ $remaining } left)
+    }
+music_playlist_count =
+    { $count ->
+        [one] സംഗീതം • { $count } ട്രാക്ക്
+       *[other] സംഗീതം • { $count } ട്രാക്കുകൾ
+    }
+showcase_song_count =
+    { $count ->
+        [one] { $count } പാട്ട്
+       *[other] { $count } പാട്ടുകൾ
+    }
 
 # Modal Titles
 add_playlist = പ്ലേലിസ്റ്റ് ചേർക്കുക
@@ -263,8 +319,11 @@ title = ശീർഷകം
 time = സമയം
 genre = വിഭാഗം
 plays = പ്ലേകൾ
-track_count = { $count } ട്രാക്കുകൾ
-track_count_singular = 1 ട്രാക്ക്
+track_count =
+    { $count ->
+        [one] { $count } ട്രാക്ക്
+       *[other] { $count } ട്രാക്കുകൾ
+    }
 songs = പാട്ടുകൾ
 min = മിനിറ്റ്
 
@@ -299,14 +358,66 @@ unknown_genre = അജ്ഞാതം
 no_tracks_in_library = നിങ്ങളുടെ ലൈബ്രറിയിൽ ട്രാക്കുകളൊന്നും കണ്ടെത്തിയില്ല.
 no_songs_here = ഇവിടെ പാട്ടുകളൊന്നുമില്ല.
 syncing_with_server = സെർവറുമായി സമന്വയിപ്പിക്കുന്നു...
-yt_syncing_progress = സമന്വയിപ്പിക്കുന്നു — ഇതുവരെ { $count } ട്രാക്കുകൾ ലോഡ് ചെയ്തു
-yt_synced_total = { $count } ഇഷ്ടപ്പെട്ട ട്രാക്കുകൾ സമന്വയിപ്പിച്ചു
+yt_syncing_progress =
+    { $count ->
+        [one] സമന്വയിപ്പിക്കുന്നു — ഇതുവരെ { $count } ട്രാക്ക് ലോഡ് ചെയ്തു
+       *[other] സമന്വയിപ്പിക്കുന്നു — ഇതുവരെ { $count } ട്രാക്കുകൾ ലോഡ് ചെയ്തു
+    }
+yt_synced_total =
+    { $count ->
+        [one] { $count } ഇഷ്ടപ്പെട്ട ട്രാക്ക് സമന്വയിപ്പിച്ചു
+       *[other] { $count } ഇഷ്ടപ്പെട്ട ട്രാക്കുകൾ സമന്വയിപ്പിച്ചു
+    }
 refresh = പുതുക്കുക
 discover = കണ്ടെത്തുക
 discover_more_loading = കൂടുതൽ ലോഡ് ചെയ്യുന്നു…
 discover_failed = കണ്ടെത്തുക ലോഡ് ചെയ്യാൻ കഴിഞ്ഞില്ല: { $error }
 discover_unsupported = YouTube Music സജീവ സെർവർ ആയിരിക്കുമ്പോൾ മാത്രമേ കണ്ടെത്തുക ലഭ്യമാകൂ.
 discover_show_all = എല്ലാം കാണിക്കുക
+catalog_page_explore = പര്യവേക്ഷണം
+catalog_page_charts = ചാർട്ടുകൾ
+catalog_page_moods = മൂഡുകളും ജോണറുകളും
+catalog_page_podcasts = പോഡ്‌കാസ്റ്റുകൾ
+catalog_page_library_songs = നിങ്ങളുടെ പാട്ടുകൾ
+catalog_page_library_albums = നിങ്ങളുടെ ആൽബങ്ങൾ
+catalog_page_library_artists = നിങ്ങളുടെ കലാകാരന്മാർ
+catalog_page_subscriptions = സബ്‌സ്‌ക്രിപ്‌ഷനുകൾ
+catalog_page_library_podcasts = നിങ്ങളുടെ പോഡ്‌കാസ്റ്റുകൾ
+catalog_page_uploads = അപ്‌ലോഡുകൾ
+catalog_page_history = ചരിത്രം
+search_filter_all = എല്ലാം
+search_filter_songs = പാട്ടുകൾ
+search_filter_videos = വീഡിയോകൾ
+search_filter_community_playlists = കമ്മ്യൂണിറ്റി പ്ലേലിസ്റ്റുകൾ
+search_filter_featured_playlists = ഫീച്ചർ ചെയ്‌ത പ്ലേലിസ്റ്റുകൾ
+search_filter_episodes = എപ്പിസോഡുകൾ
+search_filter_profiles = പ്രൊഫൈലുകൾ
+discover_show_more = കൂടുതൽ കാണിക്കുക
+discover_scroll_back = പിന്നിലേക്ക് സ്ക്രോൾ ചെയ്യുക
+discover_scroll_forward = മുന്നോട്ട് സ്ക്രോൾ ചെയ്യുക
+catalog_page_empty = ഇവിടെ ഇതുവരെ ഒന്നുമില്ല
+search_prompt = പാട്ടുകൾ, ആൽബങ്ങൾ, കലാകാരന്മാർ എന്നിവ തിരയുക
+search_showing_results_for = “{ $query }” എന്നതിനുള്ള ഫലങ്ങൾ
+catalog_like = ഇഷ്ടം
+catalog_unlike = ഇഷ്ടം നീക്കുക
+catalog_dislike = ഇഷ്ടമല്ല
+catalog_undislike = ഇഷ്ടമല്ല നീക്കുക
+catalog_save = ലൈബ്രറിയിൽ സംരക്ഷിക്കുക
+catalog_unsave = ലൈബ്രറിയിൽ നിന്ന് നീക്കുക
+catalog_follow = പിന്തുടരുക
+catalog_unfollow = പിന്തുടരൽ നിർത്തുക
+catalog_following = പിന്തുടരുന്നു
+catalog_remove_history = ചരിത്രത്തിൽ നിന്ന് നീക്കുക
+playlist_edit_details = വിശദാംശങ്ങൾ എഡിറ്റ് ചെയ്യുക
+playlist_description = വിവരണം
+playlist_privacy = ആർക്ക് കാണാം
+playlist_privacy_public = പൊതു
+playlist_privacy_unlisted = ലിസ്റ്റ് ചെയ്യാത്തത്
+playlist_privacy_private = സ്വകാര്യം
+playlist_delete_title = ഈ പ്ലേലിസ്റ്റ് ഇല്ലാതാക്കണോ?
+playlist_delete_body = “{ $name }” { $service }-ൽ നിന്ന് എന്നേക്കുമായി ഇല്ലാതാകും.
+playlist_unsave_title = നിങ്ങളുടെ ലൈബ്രറിയിൽ നിന്ന് നീക്കണോ?
+playlist_unsave_body = “{ $name }” നിങ്ങളുടെ { $service } ലൈബ്രറിയിൽ നിന്ന് പോകും. പ്ലേലിസ്റ്റ് { $service }-ൽ തുടരും.
 source_anon_playlists = നിങ്ങളുടെ ലൈബ്രറി പ്ലേലിസ്റ്റുകൾ കാണാൻ YouTube Music-ൽ സൈൻ ഇൻ ചെയ്യുക.
 source_anon_favorites = നിങ്ങളുടെ ഇഷ്ടപ്പെട്ട പാട്ടുകൾ കാണാൻ YouTube Music-ൽ സൈൻ ഇൻ ചെയ്യുക.
 source_anon_discover = കണ്ടെത്തുക ബ്രൗസ് ചെയ്യാൻ YouTube Music-ൽ സൈൻ ഇൻ ചെയ്യുക.
@@ -342,6 +453,8 @@ listen_now_layout = ലേഔട്ട്
 ui_style = UI ശൈലി
 ui_normal = സാധാരണ
 ui_vaxry = Vaxry
+ui_material3 = Material 3
+system_colors = സിസ്റ്റം നിറങ്ങൾ
 player_bar_position = പ്ലെയർ ബാർ സ്ഥാനം
 position_bottom = താഴെ
 position_top = മുകളിൽ
@@ -431,6 +544,7 @@ replay_gain_mode_auto = ഓട്ടോമാറ്റിക്
 replay_gain_prevent_clipping = ക്ലിപ്പിംഗ് തടയുക
 replay_gain_preamp = പ്രീ-ആംപ്
 replay_gain_fallback = സ്ഥിരസ്ഥിതി ഗെയിൻ
+replay_gain_youtube_loudness = YouTube Music വോളിയം നോർമലൈസ് ചെയ്യുക
 move_to_folder = ഫോൾഡറിലേക്ക് നീക്കുക
 no_folders_yet = ഇതുവരെ ഫോൾഡറുകളൊന്നുമില്ല.
 folder_name = ഫോൾഡർ പേര്...
@@ -538,8 +652,13 @@ external_play_on = ഇവിടെ പ്ലേ ചെയ്യുക
 external_this_app = kopuz (ഈ ആപ്പ്)
 prefer_active_device = Playback device
 prefer_active_device_help = When another device is already playing, take it over instead of starting playback here.
-settings_managed_notice = ചില ക്രമീകരണങ്ങൾ സിസ്റ്റം കോൺഫിഗറേഷൻ (Nix/hjem) നിയന്ത്രിക്കുന്നു; അവ ഇവിടെ മാറ്റാൻ കഴിയില്ല.
+settings_managed_notice = Some settings are set by a settings file the app can't write (read-only, or managed by Nix/hjem) and can't be changed here.
 setting_managed_by_system = സിസ്റ്റം കോൺഫിഗറേഷൻ നിയന്ത്രിക്കുന്നത്
+settings_dropin_notice = Some settings are set by drop-in files and can't be changed here.
+settings_env_notice = Some settings are set by KOPUZ_CONFIG_* environment variables and can't be changed here.
+setting_locked_by_file = Set by { $path }
+setting_locked_by_dropin = Set by a drop-in, { $path }
+setting_locked_by_env = Set by { $var }
 
 settings_interface = Interface
 interface_general = General
@@ -575,6 +694,7 @@ settings_tools = Tools
 share = Share
 share_copied = Copied link
 share_no_page = Couldn't find a page for this track
+explicit = Explicit
 start_daemon = Start Daemon
 
 first_run_title = Welcome to Kopuz
@@ -624,7 +744,11 @@ waiting_for_browser = Waiting for your browser…
 signed_in = Signed in
 metadata_number_invalid = Enter a number, or leave it empty to clear the tag.
 metadata_batch_keep = Leave unchanged
-metadata_batch_count = Editing { $count } tracks
+metadata_batch_count =
+    { $count ->
+        [one] Editing { $count } track
+       *[other] Editing { $count } tracks
+    }
 interface_font = Interface font
 interface_font_description = The font family to draw the interface with.
 interface_font_placeholder = Theme default
@@ -704,6 +828,13 @@ view = View
 undo = Undo
 quit = Quit
 scanning_library = Scanning library…
+network_offline_banner = No internet connection — switched to offline mode
+network_online_banner = Back online — switched to server mode
+keep_server_mode = Keep server mode
+tray_show_hide = Show / Hide Kopuz
+tray_quit = Quit Kopuz
+tray_unavailable_title = Tray icon unavailable
+tray_unavailable_message = System tray unavailable: appindicator library not found. Install libayatana-appindicator (Debian/Ubuntu/Arch) or libappindicator-gtk3 (Fedora). Closing the window will quit the app instead of minimizing to tray.
 reconnecting_attempt = Reconnecting… (attempt { $attempt })
 downloads_summary = { $done } downloaded, { $failed } failed
 job_scan = Library scan
@@ -770,11 +901,19 @@ discover_clear_search = Clear search
 discover_results_for = Results for "{ $query }"
 discover_no_results_hint = Try fewer words, or switch source and look again.
 discover_show_less = Show less
-discover_genre_count = { $count } genres
+discover_genre_count =
+    { $count ->
+        [one] { $count } genre
+       *[other] { $count } genres
+    }
 discover_read_failed = Couldn't load your library: { $error }
 palette_all_results = All results for "{ $query }" in Discover
 
-library_count = { $count } items
+library_count =
+    { $count ->
+        [one] { $count } item
+       *[other] { $count } items
+    }
 library_filter_placeholder = Filter the library…
 library_chip_downloaded = Downloaded
 library_chip_years = Years
@@ -797,7 +936,11 @@ library_tile_medium = Medium
 library_tile_large = Large
 library_default_view = Grids open as
 library_default_view_description = Whether albums, artists and playlists start as tiles or as rows.
-library_artist_tracks = { $count } tracks
+library_artist_tracks =
+    { $count ->
+        [one] { $count } track
+       *[other] { $count } tracks
+    }
 library_selected = { $count } selected
 library_whole_selection = Everything that matches
 library_read_failed = Could not read the library
@@ -836,7 +979,11 @@ downloader_history = URL downloads
 interface_skin = Skin
 interface_skin_description = The shape of the interface: how round things are, how tall a row sits.
 
-home_plays = { $count } plays
+home_plays =
+    { $count ->
+        [one] { $count } play
+       *[other] { $count } plays
+    }
 
 interface_ambient = Ambient light
 interface_ambient_description = Let the current cover cast its colour across the window.
@@ -858,3 +1005,83 @@ settings_group_interface = ഇന്റർഫേസ്
 settings_group_output = ഔട്ട്പുട്ട്
 settings_group_loudness = ശബ്ദനില
 browse = ബ്രൗസ് ചെയ്യുക
+
+clippsly_help = Create an App Password at clippsly.app, then sign in with your Clippsly username and that App Password. Storage limits are set by your Clippsly account.
+cloud_storage_usage = Cloud storage: { $used } of { $total } used
+upload_music = Upload music
+uploading_music = Uploading { $name }…
+music_uploaded =
+    { $count ->
+        [one] Uploaded { $count } file.
+       *[other] Uploaded { $count } files.
+    }
+music_upload_too_large = Audio files must be no larger than 500 MiB.
+cloud_storage_loading = Loading storage usage…
+
+smb_url_placeholder = smb://nas/Music
+smb_help = Connect to an SMB 2/3 share or subfolder, then sign in with your NAS account. Domain accounts can use DOMAIN\username. Files are read without mounting the share.
+invalid_smb_url = Enter smb://host/share or smb://host/share/folder, without credentials in the URL.
+
+browser_sessions_heading = ഇതിനകം സൈൻ ഇൻ ചെയ്തു
+browser_sessions_checking = നിങ്ങളുടെ ബ്രൗസറുകൾ പരിശോധിക്കുന്നു…
+browser_session_name = { $browser } · { $profile }
+browser_session_use = ഉപയോഗിക്കുക
+browser_session_importing = സൈൻ ഇൻ ചെയ്യുന്നു…
+browser_session_help = നിങ്ങൾ തിരഞ്ഞെടുക്കുന്ന ബ്രൗസർ പ്രൊഫൈലിൽ നിന്ന് Kopuz സെഷൻ പകർത്തുന്നു. ബ്രൗസർ തുറന്നുതന്നെ വെക്കാം.
+
+playback_error_session_expired = { $source } ലേക്കുള്ള നിങ്ങളുടെ സൈൻ ഇൻ കാലഹരണപ്പെട്ടു. പ്ലേ ചെയ്യുന്നത് തുടരാൻ വീണ്ടും സൈൻ ഇൻ ചെയ്യുക.
+playback_error_challenged = നിങ്ങൾ ബോട്ട് അല്ലെന്ന് { $source } ഉറപ്പാക്കാൻ ആഗ്രഹിക്കുന്നു. കുറച്ച് മിനിറ്റ് കാത്തിരുന്ന് വീണ്ടും ശ്രമിക്കുക.
+playback_error_refused = ഈ ട്രാക്ക് പ്ലേ ചെയ്യാൻ { $source } വിസമ്മതിച്ചു. നിങ്ങളുടെ സൈൻ ഇൻ ശരിയാണ്: പ്രശ്നം { $source } ഭാഗത്താണ്, സാധാരണയായി അത് തനിയെ മാറും.
+playback_error_unreachable = { $source } ൽ എത്താൻ കഴിയുന്നില്ല. കണക്ഷൻ പരിശോധിച്ച് വീണ്ടും ശ്രമിക്കുക.
+playback_error_unavailable = ഈ ട്രാക്ക് പ്ലേ ചെയ്യാൻ { $source } ന് കഴിയില്ല. ഇത് നീക്കം ചെയ്തതോ സ്വകാര്യമാക്കിയതോ നിങ്ങളുടെ പ്രദേശത്ത് തടഞ്ഞതോ ആകാം.
+playback_sign_in_again = വീണ്ടും സൈൻ ഇൻ ചെയ്യുക
+playback_try_again = വീണ്ടും ശ്രമിക്കുക
+playback_skip = ട്രാക്ക് ഒഴിവാക്കുക
+playback_copy_details = വിശദാംശങ്ങൾ പകർത്തുക
+playback_details_copied = വിശദാംശങ്ങൾ പകർത്തി
+source_signed_out = ● സൈൻ ഔട്ട് ചെയ്തു
+source_not_responding = ● പ്രതികരിക്കുന്നില്ല
+connection_test = കണക്ഷൻ പരിശോധിക്കുക
+connection_testing = പരിശോധിക്കുന്നു…
+connection_test_failed = പരിശോധന പ്രവർത്തിപ്പിക്കാൻ കഴിഞ്ഞില്ല: { $error }
+connection_copy_report = റിപ്പോർട്ട് പകർത്തുക
+connection_report_copied = റിപ്പോർട്ട് പകർത്തി
+connection_step_reach = സേവനം ലഭ്യമാണ്
+connection_step_session = സൈൻ ഇൻ സ്വീകരിച്ചു
+connection_step_signed_in_playback = നിങ്ങളുടെ അക്കൗണ്ട് ഉപയോഗിച്ച് പ്ലേ ചെയ്യുന്നു
+connection_step_anonymous_playback = അക്കൗണ്ട് ഇല്ലാതെ പ്ലേ ചെയ്യുന്നു
+connection_step_playback_token = പ്ലേബാക്ക് ടോക്കൺ
+connection_step_passed = വിജയിച്ചു
+connection_step_failed = പരാജയപ്പെട്ടു
+connection_step_skipped = ഒഴിവാക്കി
+
+sync_interval = Sync and rescan every
+sync_interval_never = Never
+sync_interval_minutes = { $count } min
+sync_interval_hours = { $count } h
+sync_interval_days = { $count } d
+
+error_setting_locked = A managed settings file pins this setting, so it cannot be changed here.
+error_connect_not_offered = This integration does not connect that way.
+error_api_key_missing = Set the API key and secret first.
+error_sign_in_not_started = The service did not start the sign-in. Check the API key and your connection.
+error_browser_not_opened = Could not open a browser for the sign-in.
+error_sign_in_timed_out = The sign-in was not approved in time.
+error_browser_profile_gone = That browser profile is no longer there.
+error_browser_cookies_unreadable = Could not read the cookies of that browser profile.
+error_browser_profile_signed_out = That browser profile is not signed in to the service. Sign in there, or paste your token instead.
+error_browser_profile_no_token = The service did not show a token for that profile. Paste it instead.
+error_integration_unreachable = Could not reach the service. Check your connection.
+error_credential_rejected = The service does not accept that token. Paste your token instead.
+error_default_source_undeletable = The default folder source cannot be deleted.
+error_empty_source_folder = A source folder cannot be empty.
+error_code_invalid_input = Not accepted: { $detail }
+error_code_not_found = That is no longer there.
+error_code_conflict = Already in use or in progress: { $detail }
+error_code_source_auth_expired = The source did not accept the sign-in. Sign in again in Settings.
+error_code_source_unreachable = The source could not be reached. Check your connection.
+error_code_unsupported = Not supported here: { $detail }
+error_code_internal = Something went wrong: { $detail }
+error_code_source_challenged = The source wants to check that you're not a bot. Wait a few minutes and try again.
+error_code_source_refused = The source refused the request. This is on its side and usually clears up on its own.
+error_code_item_unavailable = The source can't play this. It may have been removed, made private or blocked in your region.

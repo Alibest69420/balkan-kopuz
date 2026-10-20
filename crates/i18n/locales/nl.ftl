@@ -11,6 +11,9 @@ language = Taal
 library = Bibliotheek
 playlists = Afspeellijsten
 album = Album
+release_single = Single
+release_ep = EP
+release_audiobook = Audiobook
 artist = Artiest
 home = Start
 search = Zoeken
@@ -31,6 +34,9 @@ add = Toevoegen
 add_folder = Map toevoegen
 no_music_folders = Geen muziekmappen geconfigureerd
 remote_music_folders = Muziekmappen
+source_account = Account
+source_account_help = Elk account heeft een eigen bibliotheek. Wisselen synchroniseert die opnieuw.
+source_accounts_failed = Kan accounts niet laden: { $error }
 parent_folder = Omhoog
 use_this_folder = Deze map toevoegen
 no_subfolders = Geen submappen
@@ -74,10 +80,22 @@ device_change_pause = Pause
 sample_rate_mode = Uitvoer-samplerate
 sample_rate_mode_system = Systeem volgen
 sample_rate_mode_source = Aanpassen aan nummer
+settings_group_streaming = Streaming
+stream_quality = Streamingkwaliteit
+stream_quality_low = Laag
+stream_quality_normal = Normaal
+stream_quality_high = Hoog
+autoplay_radio = Een radio afspelen als de wachtrij op is
+skip_explicit = Expliciete nummers overslaan
+pause_watch_history = Kijkgeschiedenis onderbreken
 discord_presence = Discord-status
 connectivity = Connectiviteit
 integration_connect = Connect to { $name }
 integration_connected = { $name } connected
+integration_connecting = Connecting…
+integration_browser_title = Use a signed-in browser
+integration_browser_profile = { $name } ({ $browser })
+integration_browser_none = No browser profiles found. Paste your token above instead.
 discord_presence_paused = Gepauzeerde Discord-status tonen
 discord_presence_source = Mediabron tonen in Discord-status
 reduce_animations = Animaties verminderen
@@ -141,6 +159,11 @@ downloader_status_waiting = Wachten…
 update_available = Update beschikbaar
 update_banner_message = Kopuz { $version } is beschikbaar.
 view_release = Release bekijken
+update_install = Bijwerken en herstarten
+update_downloading = Kopuz { $version } wordt gedownload…
+update_restarting = Herstarten om de update af te ronden…
+update_failed = Kopuz { $version } kon niet worden geïnstalleerd.
+update_retry = Opnieuw proberen
 
 # UI Actions & Buttons
 add_to_favorites = Aan favorieten toevoegen
@@ -156,6 +179,7 @@ radio_empty = Geen vergelijkbare nummers gevonden
 radio_failed = Kan radio niet starten
 remove_from_queue = Uit wachtrij verwijderen
 downloading = Bezig met downloaden…
+downloading_progress = Downloading { $done } / { $total }
 more_actions_for = Meer acties voor { $name }
 share_musicbrainz = Delen (MusicBrainz)
 share_link_copied = MusicBrainz-link gekopieerd
@@ -171,6 +195,7 @@ add_all_to_queue = Alles aan wachtrij toevoegen
 add_all_to_playlist = Alles aan afspeellijst toevoegen
 select_all = Alles selecteren
 select_all_tracks = Alle nummers selecteren
+deselect_all_tracks = Alle nummers deselecteren
 remove_from_cache = Uit cache verwijderen
 create = Aanmaken
 save = Opslaan
@@ -198,15 +223,42 @@ new_releases = Nieuwe releases
 # Navigation Buttons
 up_next = HIERNA
 lyrics = SONGTEKST
+track_version = Versie
+track_version_song = Nummer
+track_version_video = Video
+music_video = Videoclip
 
 # Player/Media
 loading_lyrics = Songtekst laden...
 lyrics_not_found = Songtekst niet gevonden
 instrumental_break = Instrumentaal
 no_previous_songs = Geen vorige nummers
-playlist_track_count = { $count } nummers
-music_playlist_count = Muziek • { $count } nummers
-showcase_song_count = { $count } nummers
+playlist_track_count =
+    { $count ->
+        [one] { $count } nummer
+       *[other] { $count } nummers
+    }
+playlist_folder_count =
+    { $count ->
+        [one] { $count } afspeellijst
+       *[other] { $count } afspeellijsten
+    }
+playlists_synced_count =
+    { $count ->
+        [one] { $count } afspeellijst gesynchroniseerd
+       *[other] { $count } afspeellijsten gesynchroniseerd
+    }
+playlists_loading_tracks = Nummers laden — afspeellijsten { $done } / { $count } (nog { $remaining })
+music_playlist_count =
+    { $count ->
+        [one] Muziek • { $count } nummer
+       *[other] Muziek • { $count } nummers
+    }
+showcase_song_count =
+    { $count ->
+        [one] { $count } nummer
+       *[other] { $count } nummers
+    }
 
 # Modal Titles
 add_playlist = Afspeellijst toevoegen
@@ -263,8 +315,11 @@ title = Titel
 time = Tijd
 genre = Genre
 plays = Afspelingen
-track_count = { $count } nummers
-track_count_singular = 1 nummer
+track_count =
+    { $count ->
+        [one] { $count } nummer
+       *[other] { $count } nummers
+    }
 songs = nummers
 min = min
 
@@ -299,14 +354,66 @@ unknown_genre = Onbekend
 no_tracks_in_library = Geen nummers gevonden in je bibliotheek.
 no_songs_here = Hier staan geen nummers.
 syncing_with_server = Synchroniseren met server...
-yt_syncing_progress = Synchroniseren — { $count } nummers geladen
-yt_synced_total = { $count } leuk gevonden nummers gesynchroniseerd
+yt_syncing_progress =
+    { $count ->
+        [one] Synchroniseren — { $count } nummer geladen
+       *[other] Synchroniseren — { $count } nummers geladen
+    }
+yt_synced_total =
+    { $count ->
+        [one] { $count } leuk gevonden nummer gesynchroniseerd
+       *[other] { $count } leuk gevonden nummers gesynchroniseerd
+    }
 refresh = Vernieuwen
 discover = Ontdekken
 discover_more_loading = Meer laden…
 discover_failed = Kan Ontdekken niet laden: { $error }
 discover_unsupported = Ontdekken is alleen beschikbaar wanneer YouTube Music de actieve server is.
 discover_show_all = Alles tonen
+catalog_page_explore = Verkennen
+catalog_page_charts = Hitlijsten
+catalog_page_moods = Stemmingen en genres
+catalog_page_podcasts = Podcasts
+catalog_page_library_songs = Jouw nummers
+catalog_page_library_albums = Jouw albums
+catalog_page_library_artists = Jouw artiesten
+catalog_page_subscriptions = Abonnementen
+catalog_page_library_podcasts = Jouw podcasts
+catalog_page_uploads = Uploads
+catalog_page_history = Geschiedenis
+search_filter_all = Alles
+search_filter_songs = Nummers
+search_filter_videos = Video's
+search_filter_community_playlists = Communityplaylists
+search_filter_featured_playlists = Uitgelichte playlists
+search_filter_episodes = Afleveringen
+search_filter_profiles = Profielen
+discover_show_more = Meer tonen
+discover_scroll_back = Terug scrollen
+discover_scroll_forward = Vooruit scrollen
+catalog_page_empty = Hier staat nog niets
+search_prompt = Zoek naar nummers, albums, artiesten en meer
+search_showing_results_for = Resultaten voor “{ $query }”
+catalog_like = Leuk
+catalog_unlike = Leuk verwijderen
+catalog_dislike = Niet leuk
+catalog_undislike = Niet leuk verwijderen
+catalog_save = Opslaan in bibliotheek
+catalog_unsave = Uit bibliotheek verwijderen
+catalog_follow = Volgen
+catalog_unfollow = Niet meer volgen
+catalog_following = Volgend
+catalog_remove_history = Uit geschiedenis verwijderen
+playlist_edit_details = Details bewerken
+playlist_description = Beschrijving
+playlist_privacy = Wie kan hem zien
+playlist_privacy_public = Openbaar
+playlist_privacy_unlisted = Verborgen
+playlist_privacy_private = Privé
+playlist_delete_title = Deze afspeellijst verwijderen?
+playlist_delete_body = “{ $name }” wordt definitief verwijderd uit { $service }.
+playlist_unsave_title = Uit je bibliotheek verwijderen?
+playlist_unsave_body = “{ $name }” verdwijnt uit je { $service }-bibliotheek. De afspeellijst zelf blijft op { $service }.
 source_anon_playlists = Log in bij YouTube Music om je bibliotheekafspeellijsten te zien.
 source_anon_favorites = Log in bij YouTube Music om je leuk gevonden nummers te zien.
 source_anon_discover = Log in bij YouTube Music om Ontdekken te bekijken.
@@ -342,6 +449,8 @@ listen_now_layout = Lay-out
 ui_style = UI-stijl
 ui_normal = Normaal
 ui_vaxry = Vaxry
+ui_material3 = Material 3
+system_colors = Systeemkleuren
 player_bar_position = Positie van spelerbalk
 position_bottom = Onder
 position_top = Boven
@@ -431,6 +540,7 @@ replay_gain_mode_auto = Automatisch
 replay_gain_prevent_clipping = Vervorming voorkomen
 replay_gain_preamp = Voorversterking
 replay_gain_fallback = Standaardversterking
+replay_gain_youtube_loudness = YouTube Music normaliseren
 move_to_folder = Naar map verplaatsen
 no_folders_yet = Nog geen mappen.
 folder_name = Mapnaam...
@@ -538,8 +648,13 @@ external_play_on = Afspelen op
 external_this_app = kopuz (deze app)
 prefer_active_device = Playback device
 prefer_active_device_help = When another device is already playing, take it over instead of starting playback here.
-settings_managed_notice = Sommige instellingen worden beheerd door je systeemconfiguratie (Nix/hjem) en kunnen hier niet worden gewijzigd.
+settings_managed_notice = Sommige instellingen komen uit een instellingenbestand dat de app niet kan schrijven (alleen-lezen of beheerd door Nix/hjem) en kunnen hier niet worden gewijzigd.
 setting_managed_by_system = Beheerd door de systeemconfiguratie
+settings_dropin_notice = Sommige instellingen worden bepaald door aanvullende bestanden en kunnen hier niet worden gewijzigd.
+settings_env_notice = Sommige instellingen worden bepaald door KOPUZ_CONFIG_*-omgevingsvariabelen en kunnen hier niet worden gewijzigd.
+setting_locked_by_file = Ingesteld door { $path }
+setting_locked_by_dropin = Ingesteld door het aanvullende bestand { $path }
+setting_locked_by_env = Ingesteld door { $var }
 
 settings_interface = Interface
 interface_general = General
@@ -575,6 +690,7 @@ settings_tools = Tools
 share = Share
 share_copied = Copied link
 share_no_page = Couldn't find a page for this track
+explicit = Expliciet
 start_daemon = Start Daemon
 
 first_run_title = Welcome to Kopuz
@@ -624,7 +740,11 @@ waiting_for_browser = Waiting for your browser…
 signed_in = Signed in
 metadata_number_invalid = Enter a number, or leave it empty to clear the tag.
 metadata_batch_keep = Leave unchanged
-metadata_batch_count = Editing { $count } tracks
+metadata_batch_count =
+    { $count ->
+        [one] Editing { $count } track
+       *[other] Editing { $count } tracks
+    }
 interface_font = Interface font
 interface_font_description = The font family to draw the interface with.
 interface_font_placeholder = Theme default
@@ -704,6 +824,13 @@ view = View
 undo = Undo
 quit = Quit
 scanning_library = Scanning library…
+network_offline_banner = Geen internetverbinding — overgeschakeld naar offlinemodus
+network_online_banner = Weer online — overgeschakeld naar servermodus
+keep_server_mode = Servermodus behouden
+tray_show_hide = Kopuz tonen / verbergen
+tray_quit = Kopuz afsluiten
+tray_unavailable_title = Systeemvakpictogram niet beschikbaar
+tray_unavailable_message = System tray unavailable: appindicator library not found. Install libayatana-appindicator (Debian/Ubuntu/Arch) or libappindicator-gtk3 (Fedora). Closing the window will quit the app instead of minimizing to tray.
 reconnecting_attempt = Reconnecting… (attempt { $attempt })
 downloads_summary = { $done } downloaded, { $failed } failed
 job_scan = Library scan
@@ -770,11 +897,19 @@ discover_clear_search = Clear search
 discover_results_for = Results for "{ $query }"
 discover_no_results_hint = Try fewer words, or switch source and look again.
 discover_show_less = Show less
-discover_genre_count = { $count } genres
+discover_genre_count =
+    { $count ->
+        [one] { $count } genre
+       *[other] { $count } genres
+    }
 discover_read_failed = Couldn't load your library: { $error }
 palette_all_results = All results for "{ $query }" in Discover
 
-library_count = { $count } items
+library_count =
+    { $count ->
+        [one] { $count } item
+       *[other] { $count } items
+    }
 library_filter_placeholder = Filter the library…
 library_chip_downloaded = Downloaded
 library_chip_years = Years
@@ -797,7 +932,11 @@ library_tile_medium = Medium
 library_tile_large = Large
 library_default_view = Grids open as
 library_default_view_description = Whether albums, artists and playlists start as tiles or as rows.
-library_artist_tracks = { $count } tracks
+library_artist_tracks =
+    { $count ->
+        [one] { $count } track
+       *[other] { $count } tracks
+    }
 library_selected = { $count } selected
 library_whole_selection = Everything that matches
 library_read_failed = Could not read the library
@@ -836,7 +975,11 @@ downloader_history = URL downloads
 interface_skin = Skin
 interface_skin_description = The shape of the interface: how round things are, how tall a row sits.
 
-home_plays = { $count } plays
+home_plays =
+    { $count ->
+        [one] { $count } play
+       *[other] { $count } plays
+    }
 
 interface_ambient = Ambient light
 interface_ambient_description = Let the current cover cast its colour across the window.
@@ -858,3 +1001,83 @@ settings_group_interface = Interface
 settings_group_output = Uitvoer
 settings_group_loudness = Luidheid
 browse = Bladeren
+
+clippsly_help = Create an App Password at clippsly.app, then sign in with your Clippsly username and that App Password. Storage limits are set by your Clippsly account.
+cloud_storage_usage = Cloud storage: { $used } of { $total } used
+upload_music = Upload music
+uploading_music = Uploading { $name }…
+music_uploaded =
+    { $count ->
+        [one] Uploaded { $count } file.
+       *[other] Uploaded { $count } files.
+    }
+music_upload_too_large = Audio files must be no larger than 500 MiB.
+cloud_storage_loading = Loading storage usage…
+
+smb_url_placeholder = smb://nas/Music
+smb_help = Connect to an SMB 2/3 share or subfolder, then sign in with your NAS account. Domain accounts can use DOMAIN\username. Files are read without mounting the share.
+invalid_smb_url = Enter smb://host/share or smb://host/share/folder, without credentials in the URL.
+
+browser_sessions_heading = Al ingelogd
+browser_sessions_checking = Je browsers controleren…
+browser_session_name = { $browser } · { $profile }
+browser_session_use = Gebruiken
+browser_session_importing = Inloggen…
+browser_session_help = Kopuz kopieert de sessie uit het browserprofiel dat je kiest. De browser kan open blijven.
+
+playback_error_session_expired = Je aanmelding bij { $source } is verlopen. Meld je opnieuw aan om verder te luisteren.
+playback_error_challenged = { $source } wil controleren of je geen bot bent. Wacht een paar minuten en probeer het opnieuw.
+playback_error_refused = { $source } weigerde dit nummer af te spelen. Je aanmelding is in orde: het probleem ligt bij { $source } en verdwijnt meestal vanzelf.
+playback_error_unreachable = { $source } is niet bereikbaar. Controleer je verbinding en probeer het opnieuw.
+playback_error_unavailable = { $source } kan dit nummer niet afspelen. Het is mogelijk verwijderd, privé gemaakt of in jouw regio geblokkeerd.
+playback_sign_in_again = Opnieuw aanmelden
+playback_try_again = Opnieuw proberen
+playback_skip = Nummer overslaan
+playback_copy_details = Details kopiëren
+playback_details_copied = Details gekopieerd
+source_signed_out = ● Afgemeld
+source_not_responding = ● Reageert niet
+connection_test = Verbinding testen
+connection_testing = Testen…
+connection_test_failed = De test kon niet worden uitgevoerd: { $error }
+connection_copy_report = Rapport kopiëren
+connection_report_copied = Rapport gekopieerd
+connection_step_reach = Dienst bereikbaar
+connection_step_session = Aanmelding geaccepteerd
+connection_step_signed_in_playback = Speelt af met je account
+connection_step_anonymous_playback = Speelt af zonder account
+connection_step_playback_token = Afspeeltoken
+connection_step_passed = Geslaagd
+connection_step_failed = Mislukt
+connection_step_skipped = Overgeslagen
+
+sync_interval = Sync and rescan every
+sync_interval_never = Never
+sync_interval_minutes = { $count } min
+sync_interval_hours = { $count } h
+sync_interval_days = { $count } d
+
+error_setting_locked = A managed settings file pins this setting, so it cannot be changed here.
+error_connect_not_offered = This integration does not connect that way.
+error_api_key_missing = Set the API key and secret first.
+error_sign_in_not_started = The service did not start the sign-in. Check the API key and your connection.
+error_browser_not_opened = Could not open a browser for the sign-in.
+error_sign_in_timed_out = The sign-in was not approved in time.
+error_browser_profile_gone = That browser profile is no longer there.
+error_browser_cookies_unreadable = Could not read the cookies of that browser profile.
+error_browser_profile_signed_out = That browser profile is not signed in to the service. Sign in there, or paste your token instead.
+error_browser_profile_no_token = The service did not show a token for that profile. Paste it instead.
+error_integration_unreachable = Could not reach the service. Check your connection.
+error_credential_rejected = The service does not accept that token. Paste your token instead.
+error_default_source_undeletable = The default folder source cannot be deleted.
+error_empty_source_folder = A source folder cannot be empty.
+error_code_invalid_input = Not accepted: { $detail }
+error_code_not_found = That is no longer there.
+error_code_conflict = Already in use or in progress: { $detail }
+error_code_source_auth_expired = The source did not accept the sign-in. Sign in again in Settings.
+error_code_source_unreachable = The source could not be reached. Check your connection.
+error_code_unsupported = Not supported here: { $detail }
+error_code_internal = Something went wrong: { $detail }
+error_code_source_challenged = The source wants to check that you're not a bot. Wait a few minutes and try again.
+error_code_source_refused = The source refused the request. This is on its side and usually clears up on its own.
+error_code_item_unavailable = The source can't play this. It may have been removed, made private or blocked in your region.

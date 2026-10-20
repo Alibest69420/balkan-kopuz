@@ -1,17 +1,18 @@
 use crate::lyrics_view::LyricsView;
 use crate::queue_list_view::QueueListView;
-use config::AppConfig;
+use config::Settings;
 use dioxus::prelude::*;
 
 #[component]
 pub(crate) fn Tabs(
-    mut config: Signal<AppConfig>,
+    settings: Signal<Settings>,
     items: Vec<api::TrackInfo>,
     current_queue_index: Signal<usize>,
     lyrics: Signal<Option<Option<utils::lyrics::Lyrics>>>,
     current_song_progress: Signal<u64>,
     active_tab: Signal<usize>,
 ) -> Element {
+    let mut prefs = hooks::ui_prefs::use_ui_prefs();
     rsx! {
         div {
             class: "flex-1 flex flex-col h-full min-w-0 bg-black/45 border-l border-white/5",
@@ -19,13 +20,14 @@ pub(crate) fn Tabs(
             div {
                 class: "flex items-center px-6 pt-4 pb-2",
                 div {
-                    class: "flex items-center gap-1 p-1 rounded-lg bg-white/10",
+                    class: "app-segmented flex items-center gap-1 p-1 rounded-lg bg-white/10",
                     button {
                         class: if *active_tab.read() == 0 {
                             "px-4 py-1.5 text-xs font-medium rounded-md bg-white/20 text-white transition-colors"
                         } else {
                             "px-4 py-1.5 text-xs font-medium rounded-md text-white/50 hover:text-white/80 transition-colors"
                         },
+                        aria_pressed: *active_tab.read() == 0,
                         onclick: move |_| active_tab.set(0),
                         "{i18n::t(\"up_next\")}"
                     }
@@ -36,16 +38,17 @@ pub(crate) fn Tabs(
                         } else {
                             "px-4 py-1.5 text-xs font-medium rounded-md text-white/50 hover:text-white/80 transition-colors"
                         },
+                        aria_pressed: *active_tab.read() == 1,
                         onclick: move |_| active_tab.set(1),
                         "{i18n::t(\"lyrics\")}"
                     }
                 }
 
                 button {
-                    class: "ml-auto w-8 h-8 flex items-center justify-center text-white/40 hover:text-white transition-colors",
+                    class: "app-icon-button ml-auto w-8 h-8 flex items-center justify-center text-white/40 hover:text-white transition-colors",
                     "aria-label": i18n::t("hide_side_panel").to_string(),
                     title: i18n::t("hide_side_panel").to_string(),
-                    onclick: move |_| config.write().fullscreen_tabs_collapsed = true,
+                    onclick: move |_| prefs.write().fullscreen_tabs_collapsed = true,
                     i { class: "fa-solid fa-chevron-right text-sm" }
                 }
             }
@@ -53,7 +56,7 @@ pub(crate) fn Tabs(
             if *active_tab.read() == 0 {
                 QueueListView {
                     items,
-                    config,
+                    settings,
                     current_queue_index,
                     layout: crate::queue_list_view::LayoutMode::Fullscreen,
                 }
@@ -61,7 +64,7 @@ pub(crate) fn Tabs(
                 LyricsView {
                     lyrics,
                     current_song_progress,
-                    config,
+                    settings,
                     layout: crate::lyrics_view::LayoutMode::Fullscreen,
                 }
             }

@@ -20,7 +20,7 @@ tracing = { workspace = true }
 directories = { workspace = true }
 nextcloud-rs = { workspace = true }
 percent-encoding = { workspace = true }
-reqwest = { workspace = true, features = ["blocking", "json"] }
+reqwest = { workspace = true, features = ["blocking", "json", "multipart"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 config = { workspace = true }
@@ -38,7 +38,7 @@ tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
 reader = { workspace = true }
 db = { workspace = true }
-utils = { workspace = true }
+utils = { workspace = true, features = ["http"] }
 async-trait = { workspace = true }
 quick-xml = { workspace = true }
 lofty = { workspace = true }
@@ -47,6 +47,7 @@ regex = "1"
 m3u8-rs = "6"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 symphonia = { workspace = true }
+smb2 = "0.27.2"
 
 [build-dependencies]
 cc = "1"
@@ -67,6 +68,10 @@ rookie = "0.5"
 deno_core = { workspace = true }
 rustypipe-botguard = { workspace = true }
 sqlx = { workspace = true, features = ["runtime-tokio", "sqlite"] }
+
+# Hands the DevTools pipe ends to a browser as fds 3 and 4.
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
 
 # Windows native cookie decryption (v10 DPAPI + planted v20 app-bound).
 [target.'cfg(windows)'.dependencies]

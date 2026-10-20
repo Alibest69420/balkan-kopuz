@@ -5,8 +5,9 @@ use db::Db;
 use crate::{jellyfin::JellyfinClient, server_ops::ServerConn};
 
 use super::{
-    AlbumType, ArtistView, AuthOutcome, Capabilities, FavoritesSync, LibrarySnapshot, MediaSource,
-    PlaylistMeta, PlaylistOps, RadioSeeds, SourceError, StreamInfo, mirror_added, mirror_created,
+    AlbumType, ArtistView, AuthOutcome, Capabilities, FavoritesSync, LibraryActions,
+    LibrarySnapshot, MediaSource, PlaylistMeta, PlaylistOps, RadioSeeds, SourceError, StreamInfo,
+    mirror_added, mirror_created,
 };
 
 pub(super) struct JellyfinSource {
@@ -52,14 +53,11 @@ impl MediaSource for JellyfinSource {
     }
 
     async fn keepalive(&self) -> Result<(), SourceError> {
-        self.client.ping().await.map_err(SourceError::from)
+        self.client.ping().await
     }
 
     async fn report_playback_start(&self, item_id: &str) -> Result<(), SourceError> {
-        self.client
-            .report_playback_start(item_id)
-            .await
-            .map_err(SourceError::from)
+        self.client.report_playback_start(item_id).await
     }
 
     async fn report_playback_stopped(
@@ -70,7 +68,6 @@ impl MediaSource for JellyfinSource {
         self.client
             .report_playback_stopped(item_id, position_ticks)
             .await
-            .map_err(SourceError::from)
     }
 
     async fn report_playback_progress(
@@ -82,14 +79,12 @@ impl MediaSource for JellyfinSource {
         self.client
             .report_playback_progress(item_id, position_ticks, is_paused)
             .await
-            .map_err(SourceError::from)
     }
 
     async fn fetch_library(&self) -> Result<LibrarySnapshot, SourceError> {
         use std::path::PathBuf;
         let mut albums = Vec::new();
         let mut tracks = Vec::new();
-        let mut artist_images = Vec::new();
 
         for lib in self.client.get_music_libraries().await? {
             let mut start = 0;
@@ -192,6 +187,9 @@ impl MediaSource for JellyfinSource {
                             .artists
                             .unwrap_or_else(|| item.album_artist.into_iter().collect()),
                         replay_gain,
+                        explicit: false,
+                        plays: None,
+                        counterpart: None,
                     });
                 }
                 start += count;
@@ -201,31 +199,14 @@ impl MediaSource for JellyfinSource {
             }
         }
 
-        if let Ok(artists) = self.client.get_artists().await {
-            for artist in artists {
-                if let Some(tags) = &artist.image_tags
-                    && let Some(tag) = tags.get("Primary")
-                {
-                    let url = crate::cover::jellyfin_item_url(
-                        self.client.base_url(),
-                        &artist.id,
-                        Some(tag.as_str()),
-                        self.client.token(),
-                        512,
-                        90,
-                    );
-                    artist_images.push((
-                        reader::ArtistCredit::linked(artist.name, artist.id.clone()),
-                        url,
-                    ));
-                }
-            }
-        }
+        let artists = <Self as MediaSource>::fetch_artists(self)
+            .await
+            .unwrap_or_default();
 
         Ok(LibrarySnapshot {
             albums,
             tracks,
-            artist_images,
+            artists,
         })
     }
 
@@ -265,15 +246,25 @@ impl MediaSource for JellyfinSource {
             browse_folders: false,
             external_devices: false,
             browser_playback: false,
+            accounts: false,
             sync: true,
             downloads: true,
+            uploads: false,
+            storage_quota: false,
             discover: false,
             dont_recommend: false,
+            music_videos: false,
             radio: RadioSeeds::NONE,
+            play_queue: false,
             playlists: PlaylistOps::Reorder,
             artist_view: ArtistView::Library,
             albums: AlbumType::Standard,
             favorites_sync: FavoritesSync::Instant,
+            account_avatar: false,
+            stream_quality: false,
+            explicit_flags: false,
+            watch_history: false,
+            library_actions: LibraryActions::NONE,
         }
     }
 
@@ -319,7 +310,11 @@ impl MediaSource for JellyfinSource {
         self.remove_playlist_entry(playlist_id, position).await
     }
 
-    async fn resolve_stream(&self, item_id: &str) -> Result<StreamInfo, SourceError> {
+    async fn resolve_stream(
+        &self,
+        item_id: &str,
+        _: config::StreamQuality,
+    ) -> Result<StreamInfo, SourceError> {
         Ok(StreamInfo {
             url: self.client.stream_url(item_id),
             format: None,
@@ -327,13 +322,14 @@ impl MediaSource for JellyfinSource {
             duration_secs: None,
             bitrate: None,
             content_length: None,
+            loudness_db: None,
         })
     }
 
     async fn validate(&self) -> AuthOutcome {
         match self.client.ping().await {
             Ok(()) => AuthOutcome::Valid,
-            Err(e) if e.contains("401") || e.contains("403") => AuthOutcome::Expired,
+            Err(SourceError::Auth) => AuthOutcome::Expired,
             Err(_) => AuthOutcome::Unreachable,
         }
     }
@@ -354,7 +350,6 @@ impl MediaSource for JellyfinSource {
         } else {
             self.client.unmark_favorite(item_id).await
         }
-        .map_err(SourceError::from)
     }
 
     async fn reorder_playlist(
@@ -439,22 +434,25 @@ impl MediaSource for JellyfinSource {
                     credits: credits_of(item.artist_items.as_deref()),
                     artists: item.artists.unwrap_or_default(),
                     replay_gain,
+                    explicit: false,
+                    plays: None,
+                    counterpart: None,
                 }
             })
             .collect())
     }
 
-    async fn fetch_artist_images(
+    async fn fetch_artists(
         &self,
-    ) -> Result<Vec<(reader::ArtistCredit, String)>, SourceError> {
+    ) -> Result<Vec<(reader::ArtistCredit, Option<String>)>, SourceError> {
         let artists = self.client.get_artists().await?;
         let mut out = Vec::new();
         for artist in artists {
-            if let Some(tags) = &artist.image_tags
-                && let Some(tag) = tags.get("Primary")
-            {
-                out.push((
-                    reader::ArtistCredit::linked(&artist.name, &artist.id),
+            let photo = artist
+                .image_tags
+                .as_ref()
+                .and_then(|tags| tags.get("Primary"))
+                .map(|tag| {
                     crate::cover::jellyfin_item_url(
                         self.client.base_url(),
                         &artist.id,
@@ -462,9 +460,12 @@ impl MediaSource for JellyfinSource {
                         self.client.token(),
                         512,
                         90,
-                    ),
-                ));
-            }
+                    )
+                });
+            out.push((
+                reader::ArtistCredit::linked(&artist.name, &artist.id),
+                photo,
+            ));
         }
         Ok(out)
     }

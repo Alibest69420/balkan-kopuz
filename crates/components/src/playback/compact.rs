@@ -1,4 +1,4 @@
-use config::{AppConfig, UiStyle};
+use config::{Settings, UiStyle};
 use dioxus::prelude::*;
 use hooks::use_player_controller::PlayerController;
 
@@ -12,7 +12,7 @@ use crate::shared::fmt_time;
 pub struct CompactMode(pub Signal<bool>);
 
 /// Style-dependent classes so the mini player visually relates to the active
-/// UI style (Normal vs Vaxry), mirroring how the bottom bar splits.
+/// UI style, mirroring how the bottom bar splits.
 struct CompactSkin {
     container: &'static str,
     title: &'static str,
@@ -26,7 +26,7 @@ struct CompactSkin {
 fn skin_for(style: UiStyle) -> CompactSkin {
     match style {
         UiStyle::Normal => CompactSkin {
-            container: "bg-[#0a0a0a]",
+            container: "bg-(--surface-chrome)",
             title: "text-[14px] font-bold text-white/95 truncate leading-tight",
             cover: "rounded-lg ring-1 ring-white/10 shadow-lg shadow-black/50",
             play_btn: "w-10 h-10 flex items-center justify-center rounded-full text-white hover:bg-white/10 transition-colors active:scale-95",
@@ -43,6 +43,15 @@ fn skin_for(style: UiStyle) -> CompactSkin {
             ctrl_btn: "w-9 h-9 flex items-center justify-center rounded-full text-slate-400 hover:text-white hover:bg-white/10 transition-colors active:scale-95",
             progress_fill: "bg-white/90",
         },
+        UiStyle::Material3 => CompactSkin {
+            container: "material3-compact",
+            title: "text-sm font-medium truncate leading-tight",
+            cover: "rounded-xl",
+            play_btn: "playback-play w-12 h-12 flex items-center justify-center rounded-2xl",
+            play_icon: "text-lg",
+            ctrl_btn: "w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/10",
+            progress_fill: "material3-progress",
+        },
     }
 }
 
@@ -58,8 +67,8 @@ pub fn CompactPlayer() -> Element {
     }
 
     let mut ctrl = use_context::<PlayerController>();
-    let config = use_context::<Signal<AppConfig>>();
-    let skin = skin_for(config.read().ui_style);
+    let settings = use_context::<Signal<Settings>>();
+    let skin = skin_for(settings.read().ui.ui_style);
 
     let mut is_dragging = use_signal(|| false);
     let mut drag_progress = use_signal(|| 0u64);
@@ -75,7 +84,13 @@ pub fn CompactPlayer() -> Element {
     } else {
         0.0
     };
-    let is_radio = duration == u64::MAX;
+    // No length is a radio stream or a track whose source gave none; only the stream is live.
+    let seekable = duration != u64::MAX;
+    let is_radio = ctrl
+        .current_track_snapshot
+        .read()
+        .as_ref()
+        .is_some_and(api::TrackInfo::is_radio);
 
     let cover = ctrl
         .current_cover_url(hooks::artwork::Size::Thumb)
@@ -101,11 +116,11 @@ pub fn CompactPlayer() -> Element {
             if !cover.is_empty() {
                 img {
                     src: "{cover}",
-                    class: "absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-40 pointer-events-none",
+                    class: "compact-backdrop absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-40 pointer-events-none",
                 }
             }
             div {
-                class: "absolute inset-0 bg-gradient-to-r from-black/90 via-black/75 to-black/90 pointer-events-none",
+                class: "compact-backdrop absolute inset-0 bg-gradient-to-r from-black/90 via-black/75 to-black/90 pointer-events-none",
             }
 
             div {
@@ -160,7 +175,7 @@ pub fn CompactPlayer() -> Element {
             }
 
             div {
-                class: format!("relative z-10 h-[3px] w-full bg-white/10 shrink-0 overflow-hidden {}", if is_radio || is_loading { "" } else { "group cursor-pointer" }),
+                class: format!("relative z-10 h-[3px] w-full bg-white/10 shrink-0 overflow-hidden {}", if !seekable || is_loading { "" } else { "group cursor-pointer" }),
                 dir: "ltr",
                 onmousedown: move |evt| evt.stop_propagation(),
                 PlaybackBufferIndicator {
@@ -177,8 +192,8 @@ pub fn CompactPlayer() -> Element {
                     min: "0",
                     max: "{duration}",
                     value: "{display_progress}",
-                    class: format!("slider-hit absolute top-0 left-0 w-full h-full opacity-0 z-10 {}", if is_radio || is_loading { "pointer-events-none" } else { "cursor-pointer" }),
-                    disabled: is_radio || is_loading,
+                    class: format!("slider-hit absolute top-0 left-0 w-full h-full opacity-0 z-10 {}", if !seekable || is_loading { "pointer-events-none" } else { "cursor-pointer" }),
+                    disabled: !seekable || is_loading,
                     onchange: move |evt| {
                         if let Ok(val) = evt.value().parse::<f64>().map(|v| v as u64) {
                             ctrl.seek(std::time::Duration::from_secs(val));

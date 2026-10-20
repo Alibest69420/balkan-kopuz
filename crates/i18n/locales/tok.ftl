@@ -11,6 +11,9 @@ language = toki
 library = poki kalama
 playlists = kulupu kalama
 album = kulupu pi kalama sama
+release_single = Single
+release_ep = EP
+release_audiobook = Audiobook
 artist = jan pali
 home = tomo
 search = o alasa
@@ -31,6 +34,9 @@ add = o namako
 add_folder = o namako e poki
 no_music_folders = poki kalama li ala
 remote_music_folders = poki kalama
+source_account = lipu jan
+source_account_help = lipu jan ale li jo e poki kalama ona. sina ante e ona la poki kalama li kama sin.
+source_accounts_failed = mi ken ala lukin e lipu jan: { $error }
 parent_folder = o tawa sewi
 use_this_folder = o namako e poki ni
 no_subfolders = poki lili li ala
@@ -63,6 +69,10 @@ discord_presence = lon pi ilo Siko
 connectivity = tawa lon ma
 integration_connect = Connect to { $name }
 integration_connected = { $name } connected
+integration_connecting = Connecting…
+integration_browser_title = Use a signed-in browser
+integration_browser_profile = { $name } ({ $browser })
+integration_browser_none = No browser profiles found. Paste your token above instead.
 discord_presence_paused = o lukin e lon pi ilo Siko lon tenpo awen
 discord_presence_source = o lukin e ilo pi kalama lon lon pi ilo Siko
 reduce_animations = o lili e tawa
@@ -108,6 +118,7 @@ radio_empty = mi lon ala e kalama sama
 radio_failed = mi ken ala open e nasin kalama
 remove_from_queue = o weka tan nasin kalama
 downloading = ilo li awen e kalama…
+downloading_progress = Downloading { $done } / { $total }
 more_actions_for = pali ante pi { $name }
 share_musicbrainz = o pana (MusicBrainz)
 share_link_copied = linja MusicBrainz li kama jo
@@ -123,6 +134,7 @@ add_all_to_queue = o pana e ale tawa nasin kalama
 add_all_to_playlist = o pana e ale tawa kulupu kalama
 select_all = o luka e ale
 select_all_tracks = o luka e kalama musi ale
+deselect_all_tracks = Deselect all tracks
 remove_from_cache = o weka tan sona lili
 create = o pali
 save = o kama jo
@@ -145,6 +157,10 @@ new_releases = kalama sin
 # Navigation Buttons
 up_next = POKA
 lyrics = SITELEN
+track_version = nasin
+track_version_song = kalama musi
+track_version_video = sitelen tawa
+music_video = sitelen tawa musi
 
 # Player/Media
 loading_lyrics = mi kama jo e sitelen...
@@ -152,6 +168,9 @@ lyrics_not_found = sitelen li lon ala
 instrumental_break = kalama musi taso
 no_previous_songs = kalama pini li lon ala
 playlist_track_count = kalama musi { $count }
+playlist_folder_count = kulupu kalama { $count }
+playlists_synced_count = kulupu kalama { $count } li sama
+playlists_loading_tracks = kalama li kama — kulupu kalama { $done } / { $count }
 music_playlist_count = kalama musi • { $count }
 showcase_song_count = kalama musi { $count }
 
@@ -211,7 +230,6 @@ time = tenpo
 genre = kule
 plays = mute kute
 track_count = kalama musi { $count }
-track_count_singular = kalama musi wan
 songs = kalama musi
 min = min
 
@@ -346,6 +364,7 @@ replay_gain_mode_auto = ona a
 replay_gain_prevent_clipping = o pini e pakala kalama
 replay_gain_preamp = wawa open
 replay_gain_fallback = wawa pi nasin open
+replay_gain_youtube_loudness = o sama e kalama pi YouTube Music
 move_to_folder = tawa poki
 no_folders_yet = poki ala li lon.
 folder_name = nimi poki...
@@ -396,6 +415,14 @@ device_change_pause = Pause
 sample_rate_mode = nasin nanpa kalama
 sample_rate_mode_system = sama ilo
 sample_rate_mode_source = sama kalama
+settings_group_streaming = kute tan linluwi
+stream_quality = pona pi kute tan linluwi
+stream_quality_low = lili
+stream_quality_normal = meso
+stream_quality_high = suli
+autoplay_radio = kulupu kalama li pini la o open e kalama sin sama
+skip_explicit = o weka e kalama ike
+pause_watch_history = o pini lili e sitelen pi kute pini
 
 crossfade = ante kalama
 crossfade_off = ala
@@ -425,6 +452,8 @@ listen_now_layout = nasin lukin
 ui_style = nasin lukin
 ui_normal = pi sama
 ui_vaxry = Vaxry
+ui_material3 = Material 3
+system_colors = kule ilo
 player_bar_position = ma pi ilo kalama
 position_bottom = anpa
 position_top = sewi
@@ -470,6 +499,11 @@ minimize_to_tray = lili tawa poki ilo
 update_available = sin namako li lon
 update_banner_message = Kopuz { $version } li lon.
 view_release = o lukin e lipu pi sin namako
+update_install = o sin e ona o open sin
+update_downloading = mi kama jo e Kopuz { $version }…
+update_restarting = mi open sin tawa pini pi sin ni…
+update_failed = mi ken ala pana e Kopuz { $version }.
+update_retry = o pali sin
 
 volume_scroll_step = nasin tawa kalama
 
@@ -492,6 +526,50 @@ discover_more_loading = mi alasa e ijo sin…
 discover_failed = pakala — mi ken ala alasa: { $error }
 discover_unsupported = sona sin li lon taso lon tenpo pi YouTube Music.
 discover_show_all = lukin e ale
+catalog_page_explore = lukin e kalama
+catalog_page_charts = kalama pona mute
+catalog_page_moods = pilin en nasin kalama
+catalog_page_podcasts = toki kalama
+catalog_page_library_songs = kalama sina
+catalog_page_library_albums = kulupu kalama sina
+catalog_page_library_artists = jan kalama sina
+catalog_page_subscriptions = jan lukin
+catalog_page_library_podcasts = toki kalama sina
+catalog_page_uploads = kalama tan sina
+catalog_page_history = tenpo pini
+search_filter_all = ale
+search_filter_songs = kalama musi
+search_filter_videos = sitelen tawa
+search_filter_community_playlists = kulupu kalama jan
+search_filter_featured_playlists = kulupu kalama pona
+search_filter_episodes = toki kalama wan
+search_filter_profiles = jan
+discover_show_more = lukin e ijo ante
+discover_scroll_back = o tawa monsi
+discover_scroll_forward = o tawa sinpin
+catalog_page_empty = ijo li lon ala
+search_prompt = o alasa e kalama e kulupu e jan
+search_showing_results_for = ni li tan alasa “{ $query }”
+catalog_like = o pona
+catalog_unlike = o weka e pona
+catalog_dislike = o ike
+catalog_undislike = o weka e ike
+catalog_save = o awen lon tomo
+catalog_unsave = o weka tan tomo
+catalog_follow = o kute
+catalog_unfollow = o kute ala
+catalog_following = sina kute
+catalog_remove_history = o weka tan sona tenpo
+playlist_edit_details = o ante e sona
+playlist_description = sona
+playlist_privacy = jan seme li ken lukin
+playlist_privacy_public = ale li ken
+playlist_privacy_unlisted = jan pi linja taso
+playlist_privacy_private = sina taso
+playlist_delete_title = sina wile ala wile weka e kulupu ni?
+playlist_delete_body = kulupu “{ $name }” li weka tan { $service } lon tenpo ale.
+playlist_unsave_title = sina wile ala wile weka e ni tan tomo sina?
+playlist_unsave_body = kulupu “{ $name }” li weka tan tomo sina lon { $service }. kulupu li awen lon { $service }.
 source_anon_playlists = o kama lon YouTube Music la sina ken lukin e kulupu kalama sina.
 source_anon_favorites = o kama lon YouTube Music la sina ken lukin e kalama pi olin sina.
 source_anon_discover = o kama lon YouTube Music la sina ken lukin sin.
@@ -544,8 +622,13 @@ external_play_on = o kalama lon
 external_this_app = kopuz (ilo ni)
 prefer_active_device = Playback device
 prefer_active_device_help = When another device is already playing, take it over instead of starting playback here.
-settings_managed_notice = nasin ilo mute li lawa tan nasin pi ilo suli (Nix/hjem) la sina ken ala ante e ona lon ni.
+settings_managed_notice = Some settings are set by a settings file the app can't write (read-only, or managed by Nix/hjem) and can't be changed here.
 setting_managed_by_system = nasin pi ilo suli li lawa e ni
+settings_dropin_notice = Some settings are set by drop-in files and can't be changed here.
+settings_env_notice = Some settings are set by KOPUZ_CONFIG_* environment variables and can't be changed here.
+setting_locked_by_file = lipu { $path } li lawa e ni
+setting_locked_by_dropin = lipu namako { $path } li lawa e ni
+setting_locked_by_env = nimi { $var } li lawa e ni
 
 settings_interface = Interface
 interface_general = General
@@ -581,6 +664,7 @@ settings_tools = Tools
 share = Share
 share_copied = Copied link
 share_no_page = Couldn't find a page for this track
+explicit = Explicit
 start_daemon = Start Daemon
 
 first_run_title = Welcome to Kopuz
@@ -630,7 +714,11 @@ waiting_for_browser = Waiting for your browser…
 signed_in = Signed in
 metadata_number_invalid = Enter a number, or leave it empty to clear the tag.
 metadata_batch_keep = Leave unchanged
-metadata_batch_count = Editing { $count } tracks
+metadata_batch_count =
+    { $count ->
+        [one] Editing { $count } track
+       *[other] Editing { $count } tracks
+    }
 interface_font = Interface font
 interface_font_description = The font family to draw the interface with.
 interface_font_placeholder = Theme default
@@ -710,6 +798,13 @@ view = View
 undo = Undo
 quit = Quit
 scanning_library = Scanning library…
+network_offline_banner = No internet connection — switched to offline mode
+network_online_banner = Back online — switched to server mode
+keep_server_mode = Keep server mode
+tray_show_hide = Show / Hide Kopuz
+tray_quit = Quit Kopuz
+tray_unavailable_title = Tray icon unavailable
+tray_unavailable_message = System tray unavailable: appindicator library not found. Install libayatana-appindicator (Debian/Ubuntu/Arch) or libappindicator-gtk3 (Fedora). Closing the window will quit the app instead of minimizing to tray.
 reconnecting_attempt = Reconnecting… (attempt { $attempt })
 downloads_summary = { $done } downloaded, { $failed } failed
 job_scan = Library scan
@@ -776,11 +871,19 @@ discover_clear_search = Clear search
 discover_results_for = Results for "{ $query }"
 discover_no_results_hint = Try fewer words, or switch source and look again.
 discover_show_less = Show less
-discover_genre_count = { $count } genres
+discover_genre_count =
+    { $count ->
+        [one] { $count } genre
+       *[other] { $count } genres
+    }
 discover_read_failed = Couldn't load your library: { $error }
 palette_all_results = All results for "{ $query }" in Discover
 
-library_count = { $count } items
+library_count =
+    { $count ->
+        [one] { $count } item
+       *[other] { $count } items
+    }
 library_filter_placeholder = Filter the library…
 library_chip_downloaded = Downloaded
 library_chip_years = Years
@@ -803,7 +906,11 @@ library_tile_medium = Medium
 library_tile_large = Large
 library_default_view = Grids open as
 library_default_view_description = Whether albums, artists and playlists start as tiles or as rows.
-library_artist_tracks = { $count } tracks
+library_artist_tracks =
+    { $count ->
+        [one] { $count } track
+       *[other] { $count } tracks
+    }
 library_selected = { $count } selected
 library_whole_selection = Everything that matches
 library_read_failed = Could not read the library
@@ -842,7 +949,11 @@ downloader_history = URL downloads
 interface_skin = Skin
 interface_skin_description = The shape of the interface: how round things are, how tall a row sits.
 
-home_plays = { $count } plays
+home_plays =
+    { $count ->
+        [one] { $count } play
+       *[other] { $count } plays
+    }
 
 interface_ambient = Ambient light
 interface_ambient_description = Let the current cover cast its colour across the window.
@@ -864,3 +975,83 @@ settings_group_interface = lukin ilo
 settings_group_output = kalama tawa
 settings_group_loudness = wawa kalama
 browse = o lukin
+
+clippsly_help = Create an App Password at clippsly.app, then sign in with your Clippsly username and that App Password. Storage limits are set by your Clippsly account.
+cloud_storage_usage = Cloud storage: { $used } of { $total } used
+upload_music = Upload music
+uploading_music = Uploading { $name }…
+music_uploaded =
+    { $count ->
+        [one] Uploaded { $count } file.
+       *[other] Uploaded { $count } files.
+    }
+music_upload_too_large = Audio files must be no larger than 500 MiB.
+cloud_storage_loading = Loading storage usage…
+
+smb_url_placeholder = smb://nas/Music
+smb_help = Connect to an SMB 2/3 share or subfolder, then sign in with your NAS account. Domain accounts can use DOMAIN\username. Files are read without mounting the share.
+invalid_smb_url = Enter smb://host/share or smb://host/share/folder, without credentials in the URL.
+
+browser_sessions_heading = sina lon kin
+browser_sessions_checking = mi lukin e ilo lukin sina…
+browser_session_name = { $browser } · { $profile }
+browser_session_use = o kepeken
+browser_session_importing = sina kama lon…
+browser_session_help = Kopuz li jo e lon sina tan ilo lukin pi wile sina. ilo lukin li ken open lon tenpo ni.
+
+playback_error_session_expired = sina ken ala kama lon { $source } sin. o kama lon sin tawa ni: sina ken kalama.
+playback_error_challenged = { $source } li wile sona e ni: sina ala jan ilo. o awen e tenpo lili. o pali sin.
+playback_error_refused = { $source } li wile ala kalama e kalama ni. kama sina li pona: pakala li lon { $source }. ona li pini sin lon tenpo lili.
+playback_error_unreachable = mi ken ala kama tawa { $source }. o lukin e linja sina. o pali sin.
+playback_error_unavailable = { $source } li ken ala kalama e kalama ni. ona li weka anu len anu pini lon ma sina.
+playback_sign_in_again = o kama lon sin
+playback_try_again = o pali sin
+playback_skip = o weka e kalama
+playback_copy_details = o jo e sona
+playback_details_copied = mi jo e sona
+source_signed_out = ● sina lon ala
+source_not_responding = ● ona li toki ala
+connection_test = o lukin e linja
+connection_testing = mi lukin…
+connection_test_failed = mi ken ala lukin: { $error }
+connection_copy_report = o jo e sona pi lukin
+connection_report_copied = mi jo e sona pi lukin
+connection_step_reach = mi ken kama tawa ona
+connection_step_session = kama sina li pona
+connection_step_signed_in_playback = kalama li pali kepeken sina
+connection_step_anonymous_playback = kalama li pali kepeken sina ala
+connection_step_playback_token = poki kalama
+connection_step_passed = pona
+connection_step_failed = pakala
+connection_step_skipped = weka
+
+sync_interval = Sync and rescan every
+sync_interval_never = Never
+sync_interval_minutes = { $count } min
+sync_interval_hours = { $count } h
+sync_interval_days = { $count } d
+
+error_setting_locked = A managed settings file pins this setting, so it cannot be changed here.
+error_connect_not_offered = This integration does not connect that way.
+error_api_key_missing = Set the API key and secret first.
+error_sign_in_not_started = The service did not start the sign-in. Check the API key and your connection.
+error_browser_not_opened = Could not open a browser for the sign-in.
+error_sign_in_timed_out = The sign-in was not approved in time.
+error_browser_profile_gone = That browser profile is no longer there.
+error_browser_cookies_unreadable = Could not read the cookies of that browser profile.
+error_browser_profile_signed_out = That browser profile is not signed in to the service. Sign in there, or paste your token instead.
+error_browser_profile_no_token = The service did not show a token for that profile. Paste it instead.
+error_integration_unreachable = Could not reach the service. Check your connection.
+error_credential_rejected = The service does not accept that token. Paste your token instead.
+error_default_source_undeletable = The default folder source cannot be deleted.
+error_empty_source_folder = A source folder cannot be empty.
+error_code_invalid_input = Not accepted: { $detail }
+error_code_not_found = That is no longer there.
+error_code_conflict = Already in use or in progress: { $detail }
+error_code_source_auth_expired = The source did not accept the sign-in. Sign in again in Settings.
+error_code_source_unreachable = The source could not be reached. Check your connection.
+error_code_unsupported = Not supported here: { $detail }
+error_code_internal = Something went wrong: { $detail }
+error_code_source_challenged = The source wants to check that you're not a bot. Wait a few minutes and try again.
+error_code_source_refused = The source refused the request. This is on its side and usually clears up on its own.
+error_code_item_unavailable = The source can't play this. It may have been removed, made private or blocked in your region.

@@ -19,6 +19,9 @@ language = Language
 library = Library
 playlists = Playlists
 album = Album
+release_single = Single
+release_ep = EP
+release_audiobook = Audiobook
 artist = Artist
 home = Home
 search = Search
@@ -41,6 +44,9 @@ add = Add
 add_folder = Add Folder
 no_music_folders = No music folders configured
 remote_music_folders = Music Folders
+source_account = Account
+source_account_help = Each account has its own library. Switching syncs it again.
+source_accounts_failed = Unable to load accounts: { $error }
 parent_folder = Up
 use_this_folder = Add This Folder
 no_subfolders = No subfolders
@@ -85,10 +91,22 @@ device_change_pause = Pause
 sample_rate_mode = Output sample rate
 sample_rate_mode_system = Follow system
 sample_rate_mode_source = Match track
+settings_group_streaming = Streaming
+stream_quality = Streaming quality
+stream_quality_low = Low
+stream_quality_normal = Normal
+stream_quality_high = High
+autoplay_radio = Play a radio when the queue ends
+skip_explicit = Skip explicit tracks
+pause_watch_history = Pause watch history
 discord_presence = Discord Presence
 connectivity = Connectivity
 integration_connect = Connect to { $name }
 integration_connected = { $name } connected
+integration_connecting = Connecting…
+integration_browser_title = Use a signed-in browser
+integration_browser_profile = { $name } ({ $browser })
+integration_browser_none = No browser profiles found. Paste your token above instead.
 discord_presence_paused = Show paused Discord status
 discord_presence_source = Show media source in Discord status
 reduce_animations = Reduce Animations
@@ -152,6 +170,11 @@ downloader_status_waiting = Waiting…
 update_available = Update available
 update_banner_message = Kopuz { $version } is available.
 view_release = View release
+update_install = Update and restart
+update_downloading = Downloading Kopuz { $version }…
+update_restarting = Restarting to finish the update…
+update_failed = Unable to install Kopuz { $version }.
+update_retry = Try again
 
 # UI Actions & Buttons
 add_to_favorites = Add to Favorites
@@ -167,12 +190,14 @@ radio_empty = No similar songs found
 radio_failed = Couldn't start radio
 remove_from_queue = Remove from Queue
 downloading = Downloading…
+downloading_progress = Downloading { $done } / { $total }
 more_actions_for = More actions for { $name }
 share_musicbrainz = Share (MusicBrainz)
 share_link_copied = MusicBrainz link copied
 share = Share
 share_copied = Copied link
 share_no_page = Couldn't find a page for this track
+explicit = Explicit
 go_to_artist = Go to artist
 go_to_album = Go to album
 download_offline = Download Offline
@@ -189,6 +214,7 @@ add_all_to_queue = Add All to Queue
 add_all_to_playlist = Add All to Playlist
 select_all = Select all
 select_all_tracks = Select all tracks
+deselect_all_tracks = Deselect all tracks
 remove_from_cache = Remove from Cache
 create = Create
 save = Save
@@ -216,15 +242,46 @@ new_releases = New Releases
 # Navigation Buttons
 up_next = Up Next
 lyrics = Lyrics
+track_version = Version
+track_version_song = Song
+track_version_video = Video
+music_video = Music video
 
 # Player/Media
 loading_lyrics = Loading lyrics...
 lyrics_not_found = Lyrics not found
 instrumental_break = Instrumental
 no_previous_songs = No previous songs
-playlist_track_count = { $count } tracks
-music_playlist_count = Music • { $count } tracks
-showcase_song_count = { $count } songs
+playlist_track_count =
+    { $count ->
+        [one] { $count } track
+       *[other] { $count } tracks
+    }
+playlist_folder_count =
+    { $count ->
+        [one] { $count } playlist
+       *[other] { $count } playlists
+    }
+playlists_synced_count =
+    { $count ->
+        [one] { $count } playlist synced
+       *[other] { $count } playlists synced
+    }
+playlists_loading_tracks =
+    { $count ->
+        [one] Loading tracks — { $done } / { $count } playlist ({ $remaining } left)
+       *[other] Loading tracks — { $done } / { $count } playlists ({ $remaining } left)
+    }
+music_playlist_count =
+    { $count ->
+        [one] Music • { $count } track
+       *[other] Music • { $count } tracks
+    }
+showcase_song_count =
+    { $count ->
+        [one] { $count } song
+       *[other] { $count } songs
+    }
 
 # Modal Titles
 add_playlist = Add playlist
@@ -283,8 +340,11 @@ title = Title
 time = Time
 genre = Genre
 plays = Plays
-track_count = { $count } tracks
-track_count_singular = 1 track
+track_count =
+    { $count ->
+        [one] { $count } track
+       *[other] { $count } tracks
+    }
 songs = songs
 min = min
 
@@ -319,14 +379,66 @@ unknown_genre = Unknown
 no_tracks_in_library = No tracks found in your library.
 no_songs_here = No songs here.
 syncing_with_server = Syncing with server...
-yt_syncing_progress = Syncing — { $count } tracks loaded so far
-yt_synced_total = { $count } liked tracks synced
+yt_syncing_progress =
+    { $count ->
+        [one] Syncing — { $count } track loaded so far
+       *[other] Syncing — { $count } tracks loaded so far
+    }
+yt_synced_total =
+    { $count ->
+        [one] { $count } liked track synced
+       *[other] { $count } liked tracks synced
+    }
 refresh = Refresh
 discover = Discover
 discover_more_loading = Loading more…
 discover_failed = Couldn't load Discover: { $error }
 discover_unsupported = Discover is only available when YouTube Music is the active server.
 discover_show_all = Show all
+catalog_page_explore = Explore
+catalog_page_charts = Charts
+catalog_page_moods = Moods & genres
+catalog_page_podcasts = Podcasts
+catalog_page_library_songs = Your songs
+catalog_page_library_albums = Your albums
+catalog_page_library_artists = Your artists
+catalog_page_subscriptions = Subscriptions
+catalog_page_library_podcasts = Your podcasts
+catalog_page_uploads = Uploads
+catalog_page_history = History
+search_filter_all = All
+search_filter_songs = Songs
+search_filter_videos = Videos
+search_filter_community_playlists = Community playlists
+search_filter_featured_playlists = Featured playlists
+search_filter_episodes = Episodes
+search_filter_profiles = Profiles
+discover_show_more = Show more
+discover_scroll_back = Scroll back
+discover_scroll_forward = Scroll forward
+catalog_page_empty = Nothing here yet
+search_prompt = Search for songs, albums, artists and more
+search_showing_results_for = Showing results for “{ $query }”
+catalog_like = Like
+catalog_unlike = Remove like
+catalog_dislike = Dislike
+catalog_undislike = Remove dislike
+catalog_save = Save to library
+catalog_unsave = Remove from library
+catalog_follow = Follow
+catalog_unfollow = Unfollow
+catalog_following = Following
+catalog_remove_history = Remove from history
+playlist_edit_details = Edit details
+playlist_description = Description
+playlist_privacy = Who can see it
+playlist_privacy_public = Public
+playlist_privacy_unlisted = Unlisted
+playlist_privacy_private = Private
+playlist_delete_title = Delete this playlist?
+playlist_delete_body = “{ $name }” will be deleted from { $service } for good.
+playlist_unsave_title = Remove from your library?
+playlist_unsave_body = “{ $name }” leaves your { $service } library. The playlist itself stays on { $service }.
 source_anon_playlists = Sign in to YouTube Music to see your library playlists.
 source_anon_favorites = Sign in to YouTube Music to see your liked songs.
 source_anon_discover = Sign in to YouTube Music to browse Discover.
@@ -362,6 +474,8 @@ listen_now_layout = Layout
 ui_style = UI style
 ui_normal = Normal
 ui_vaxry = Vaxry
+ui_material3 = Material 3
+system_colors = System colors
 player_bar_position = Player bar position
 position_bottom = Bottom
 position_top = Top
@@ -451,6 +565,7 @@ replay_gain_mode_auto = Auto
 replay_gain_prevent_clipping = Prevent clipping
 replay_gain_preamp = Pre-amp
 replay_gain_fallback = Default gain
+replay_gain_youtube_loudness = Normalize YouTube Music
 move_to_folder = Move to Folder
 no_folders_yet = No folders yet.
 folder_name = Folder name...
@@ -558,8 +673,13 @@ external_play_on = Play on
 external_this_app = kopuz (this app)
 prefer_active_device = Playback device
 prefer_active_device_help = When another device is already playing, take it over instead of starting playback here.
-settings_managed_notice = Some settings are managed by your system configuration (Nix/hjem) and can't be changed here.
+settings_managed_notice = Some settings are set by a settings file the app can't write (read-only, or managed by Nix/hjem) and can't be changed here.
 setting_managed_by_system = Managed by your system configuration
+settings_dropin_notice = Some settings are set by drop-in files and can't be changed here.
+settings_env_notice = Some settings are set by KOPUZ_CONFIG_* environment variables and can't be changed here.
+setting_locked_by_file = Set by { $path }
+setting_locked_by_dropin = Set by a drop-in, { $path }
+setting_locked_by_env = Set by { $var }
 
 settings_interface = Interface
 interface_general = General
@@ -623,7 +743,11 @@ waiting_for_browser = Waiting for your browser…
 signed_in = Signed in
 metadata_number_invalid = Enter a number, or leave it empty to clear the tag.
 metadata_batch_keep = Leave unchanged
-metadata_batch_count = Editing { $count } tracks
+metadata_batch_count =
+    { $count ->
+        [one] Editing { $count } track
+       *[other] Editing { $count } tracks
+    }
 interface_font = Interface font
 interface_font_description = The font family to draw the interface with.
 interface_font_placeholder = Theme default
@@ -703,6 +827,13 @@ view = View
 undo = Undo
 quit = Quit
 scanning_library = Scanning library…
+network_offline_banner = No internet connection — switched to offline mode
+network_online_banner = Back online — switched to server mode
+keep_server_mode = Keep server mode
+tray_show_hide = Show / Hide Kopuz
+tray_quit = Quit Kopuz
+tray_unavailable_title = Tray icon unavailable
+tray_unavailable_message = System tray unavailable: appindicator library not found. Install libayatana-appindicator (Debian/Ubuntu/Arch) or libappindicator-gtk3 (Fedora). Closing the window will quit the app instead of minimizing to tray.
 reconnecting_attempt = Reconnecting… (attempt { $attempt })
 downloads_summary = { $done } downloaded, { $failed } failed
 job_scan = Library scan
@@ -769,11 +900,19 @@ discover_clear_search = Clear search
 discover_results_for = Results for "{ $query }"
 discover_no_results_hint = Try fewer words, or switch source and look again.
 discover_show_less = Show less
-discover_genre_count = { $count } genres
+discover_genre_count =
+    { $count ->
+        [one] { $count } genre
+       *[other] { $count } genres
+    }
 discover_read_failed = Couldn't load your library: { $error }
 palette_all_results = All results for "{ $query }" in Discover
 
-library_count = { $count } items
+library_count =
+    { $count ->
+        [one] { $count } item
+       *[other] { $count } items
+    }
 library_filter_placeholder = Filter the library…
 library_chip_downloaded = Downloaded
 library_chip_years = Years
@@ -796,7 +935,11 @@ library_tile_medium = Medium
 library_tile_large = Large
 library_default_view = Grids open as
 library_default_view_description = Whether albums, artists and playlists start as tiles or as rows.
-library_artist_tracks = { $count } tracks
+library_artist_tracks =
+    { $count ->
+        [one] { $count } track
+       *[other] { $count } tracks
+    }
 library_selected = { $count } selected
 library_whole_selection = Everything that matches
 library_read_failed = Could not read the library
@@ -835,7 +978,11 @@ downloader_history = URL downloads
 interface_skin = Skin
 interface_skin_description = The shape of the interface: how round things are, how tall a row sits.
 
-home_plays = { $count } plays
+home_plays =
+    { $count ->
+        [one] { $count } play
+       *[other] { $count } plays
+    }
 
 interface_ambient = Ambient light
 interface_ambient_description = Let the current cover cast its colour across the window.
@@ -857,3 +1004,83 @@ settings_group_interface = Interface
 settings_group_output = Output
 settings_group_loudness = Loudness
 browse = Browse
+
+clippsly_help = Create an App Password at clippsly.app, then sign in with your Clippsly username and that App Password. Storage limits are set by your Clippsly account.
+cloud_storage_usage = Cloud storage: { $used } of { $total } used
+upload_music = Upload music
+uploading_music = Uploading { $name }…
+music_uploaded =
+    { $count ->
+        [one] Uploaded { $count } file.
+       *[other] Uploaded { $count } files.
+    }
+music_upload_too_large = Audio files must be no larger than 500 MiB.
+cloud_storage_loading = Loading storage usage…
+
+smb_url_placeholder = smb://nas/Music
+smb_help = Connect to an SMB 2/3 share or subfolder, then sign in with your NAS account. Domain accounts can use DOMAIN\username. Files are read without mounting the share.
+invalid_smb_url = Enter smb://host/share or smb://host/share/folder, without credentials in the URL.
+
+browser_sessions_heading = Already signed in
+browser_sessions_checking = Checking your browsers…
+browser_session_name = { $browser } · { $profile }
+browser_session_use = Use
+browser_session_importing = Signing in…
+browser_session_help = Kopuz copies the session from the browser profile you pick. The browser can stay open.
+
+playback_error_session_expired = Your { $source } sign-in has expired. Sign in again to keep playing.
+playback_error_challenged = { $source } wants to check that you're not a bot. Wait a few minutes and try again.
+playback_error_refused = { $source } refused to play this track. Your sign-in is fine: this is on { $source }'s side and usually clears up on its own.
+playback_error_unreachable = Unable to reach { $source }. Check your connection and try again.
+playback_error_unavailable = { $source } can't play this track. It may have been removed, made private or blocked in your region.
+playback_sign_in_again = Sign in again
+playback_try_again = Try again
+playback_skip = Skip track
+playback_copy_details = Copy details
+playback_details_copied = Details copied
+source_signed_out = ● Signed out
+source_not_responding = ● Not responding
+connection_test = Test connection
+connection_testing = Testing…
+connection_test_failed = Unable to run the test: { $error }
+connection_copy_report = Copy report
+connection_report_copied = Report copied
+connection_step_reach = Service reachable
+connection_step_session = Sign-in accepted
+connection_step_signed_in_playback = Plays with your account
+connection_step_anonymous_playback = Plays without an account
+connection_step_playback_token = Playback token
+connection_step_passed = Passed
+connection_step_failed = Failed
+connection_step_skipped = Skipped
+
+sync_interval = Sync and rescan every
+sync_interval_never = Never
+sync_interval_minutes = { $count } min
+sync_interval_hours = { $count } h
+sync_interval_days = { $count } d
+
+error_setting_locked = A managed settings file pins this setting, so it cannot be changed here.
+error_connect_not_offered = This integration does not connect that way.
+error_api_key_missing = Set the API key and secret first.
+error_sign_in_not_started = The service did not start the sign-in. Check the API key and your connection.
+error_browser_not_opened = Could not open a browser for the sign-in.
+error_sign_in_timed_out = The sign-in was not approved in time.
+error_browser_profile_gone = That browser profile is no longer there.
+error_browser_cookies_unreadable = Could not read the cookies of that browser profile.
+error_browser_profile_signed_out = That browser profile is not signed in to the service. Sign in there, or paste your token instead.
+error_browser_profile_no_token = The service did not show a token for that profile. Paste it instead.
+error_integration_unreachable = Could not reach the service. Check your connection.
+error_credential_rejected = The service does not accept that token. Paste your token instead.
+error_default_source_undeletable = The default folder source cannot be deleted.
+error_empty_source_folder = A source folder cannot be empty.
+error_code_invalid_input = Not accepted: { $detail }
+error_code_not_found = That is no longer there.
+error_code_conflict = Already in use or in progress: { $detail }
+error_code_source_auth_expired = The source did not accept the sign-in. Sign in again in Settings.
+error_code_source_unreachable = The source could not be reached. Check your connection.
+error_code_unsupported = Not supported here: { $detail }
+error_code_internal = Something went wrong: { $detail }
+error_code_source_challenged = The source wants to check that you're not a bot. Wait a few minutes and try again.
+error_code_source_refused = The source refused the request. This is on its side and usually clears up on its own.
+error_code_item_unavailable = The source can't play this. It may have been removed, made private or blocked in your region.

@@ -11,8 +11,8 @@ use crate::{
 };
 
 use super::{
-    AlbumType, ArtistView, AuthOutcome, Capabilities, FavoritesSync, LibrarySnapshot, MediaSource,
-    PlaylistOps, RadioSeeds, SourceError, StreamInfo,
+    AlbumType, ArtistView, AuthOutcome, Capabilities, FavoritesSync, LibraryActions,
+    LibrarySnapshot, MediaSource, PlaylistOps, RadioSeeds, SourceError, StreamInfo,
 };
 
 /// Item ids are remote paths: oc:fileid survives renames but needs a lookup to
@@ -51,15 +51,25 @@ const CAPABILITIES: Capabilities = Capabilities {
     browse_folders: true,
     external_devices: false,
     browser_playback: false,
+    accounts: false,
     sync: true,
     downloads: true,
+    uploads: false,
+    storage_quota: false,
     discover: false,
     dont_recommend: false,
+    music_videos: false,
     radio: RadioSeeds::NONE,
+    play_queue: false,
     playlists: PlaylistOps::None, // none over raw WebDAV, the Music app's are Subsonic
     artist_view: ArtistView::Library,
     albums: AlbumType::Standard,
     favorites_sync: FavoritesSync::Instant,
+    account_avatar: false,
+    stream_quality: false,
+    explicit_flags: false,
+    watch_history: false,
+    library_actions: LibraryActions::NONE,
 };
 
 /// Art fetches in flight at once, enough to hide the round trips without
@@ -150,10 +160,7 @@ impl MediaSource for NextcloudSource {
         use std::path::PathBuf;
 
         let client = self.client()?;
-        let (albums, tracks) = client
-            .scan(&self.folders)
-            .await
-            .map_err(SourceError::Backend)?;
+        let (albums, tracks) = client.scan(&self.folders).await?;
 
         // Nothing persists until the snapshot is whole, so a serial pass here stalls the sync.
         let mut jobs = Vec::with_capacity(albums.len());
@@ -227,6 +234,9 @@ impl MediaSource for NextcloudSource {
                     credits: Vec::new(),
                     artists: vec![track.artist],
                     replay_gain: config::ReplayGainInfo::default(),
+                    explicit: false,
+                    plays: None,
+                    counterpart: None,
                 }
             })
             .collect();
@@ -234,11 +244,15 @@ impl MediaSource for NextcloudSource {
         Ok(LibrarySnapshot {
             albums: out_albums,
             tracks: out_tracks,
-            artist_images: Vec::new(),
+            artists: Vec::new(),
         })
     }
 
-    async fn resolve_stream(&self, item_id: &str) -> Result<StreamInfo, SourceError> {
+    async fn resolve_stream(
+        &self,
+        item_id: &str,
+        _: config::StreamQuality,
+    ) -> Result<StreamInfo, SourceError> {
         Ok(StreamInfo {
             url: self.client()?.stream_url(item_id),
             format: None,
@@ -247,6 +261,7 @@ impl MediaSource for NextcloudSource {
             duration_secs: None,
             bitrate: None,
             content_length: None,
+            loudness_db: None,
         })
     }
 
@@ -262,17 +277,11 @@ impl MediaSource for NextcloudSource {
     }
 
     async fn fetch_favorites(&self) -> Result<Vec<String>, SourceError> {
-        self.client()?
-            .favorites(&self.folders)
-            .await
-            .map_err(SourceError::Backend)
+        self.client()?.favorites(&self.folders).await
     }
 
     async fn push_favorite(&self, item_id: &str, on: bool) -> Result<(), SourceError> {
-        self.client()?
-            .set_favorite(item_id, on)
-            .await
-            .map_err(SourceError::Backend)
+        self.client()?.set_favorite(item_id, on).await
     }
 
     async fn add_to_playlist(

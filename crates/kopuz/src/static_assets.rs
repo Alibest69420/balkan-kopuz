@@ -3,10 +3,12 @@ const FAVICON: &str = include_str!(concat!(env!("OUT_DIR"), "/favicon.uri"));
 // bare `cargo run` — see `build.rs::embed_fonts`, which bakes the font data: URIs.
 const MAIN_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/main.css"));
 const THEME_CSS: &str = include_str!("../assets/themes.css");
+const MATERIAL3_CSS: &str = include_str!("../assets/material3.css");
 const TAILWIND_CSS: &str = include_str!("../assets/tailwind.css");
 const REDUCED_ANIMATIONS_CSS: &str = include_str!("../assets/reduced-animations.css");
 const FONT_AWESOME_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/fontawesome.css"));
 const JETBRAINS_MONO_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/jetbrains-mono.css"));
+const ROBOTO_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/roboto.css"));
 
 /// Put static assets in the initial document. `document::Style` sends the CSS
 /// and embedded fonts over the WebView's JavaScript bridge after the first DOM
@@ -21,8 +23,10 @@ pub fn head() -> String {
         ("main", MAIN_CSS),
         ("themes", THEME_CSS),
         ("tailwind", TAILWIND_CSS),
+        ("material3", MATERIAL3_CSS),
         ("reduced-animations", REDUCED_ANIMATIONS_CSS),
         ("jetbrains-mono", JETBRAINS_MONO_CSS),
+        ("roboto", ROBOTO_CSS),
         ("fontawesome", FONT_AWESOME_CSS),
     ] {
         head.push_str("<style id=\"kopuz-");
@@ -31,5 +35,20 @@ pub fn head() -> String {
         head.push_str(css);
         head.push_str("</style>");
     }
+    head.push_str(&cover_fallback_script());
     head
+}
+
+// Keyed on the failing src, not a one-shot flag: a reused img (the player bar's) fails again next track.
+fn cover_fallback_script() -> String {
+    format!(
+        r#"<script>document.addEventListener('error',function(e){{
+            var t=e.target, fallback='{}';
+            var src=t.getAttribute&&t.getAttribute('src');
+            if(t.tagName==='IMG'&&src&&src!==fallback){{
+                t.src=fallback;
+            }}
+        }},true);</script>"#,
+        utils::DEFAULT_COVER_SVG.replace('\'', "%27"),
+    )
 }

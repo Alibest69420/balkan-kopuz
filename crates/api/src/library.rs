@@ -1,7 +1,6 @@
 use crate::player::TrackKind;
 
-/// Library ordering. `Default` is the daemon's own choice, so a caller that
-/// does not care says nothing.
+/// Library ordering. `Default` is the listing's natural order: disc and track for an album, artist then album otherwise.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum TrackSort {
     #[default]
@@ -47,6 +46,35 @@ pub struct TrackInfo {
     pub artwork: Option<crate::ArtworkRef>,
     /// Every credited artist in billing order; `artist` is the billing as the source shows it.
     pub credits: Vec<ArtistCredit>,
+    pub explicit: bool,
+    /// As the source wrote it ("1.2B plays"), on rows whose listing shows one.
+    pub plays: Option<String>,
+    pub counterpart: Option<TrackCounterpart>,
+}
+
+/// Which cut of a recording a row is, for a source that has both.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TrackVersion {
+    Song,
+    Video,
+}
+
+impl TrackVersion {
+    pub fn other(self) -> Self {
+        match self {
+            Self::Song => Self::Video,
+            Self::Video => Self::Song,
+        }
+    }
+}
+
+/// The other cut of a row, the target of [`crate::PlayerCommand::SetVersion`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrackCounterpart {
+    pub key: String,
+    /// What the counterpart is; the row carrying it is the other one.
+    pub version: TrackVersion,
+    pub duration_ms: Option<u64>,
 }
 
 /// One artist a row credits: what the row calls them, and the key that opens them.
@@ -58,6 +86,11 @@ pub struct ArtistCredit {
 }
 
 impl TrackInfo {
+    /// Which cut this row is, known only when it has a counterpart.
+    pub fn version(&self) -> Option<TrackVersion> {
+        self.counterpart.as_ref().map(|other| other.version.other())
+    }
+
     /// The credit `artist` names in any case, else the lead: credits come in billing order.
     pub fn primary_credit(&self) -> Option<&ArtistCredit> {
         let billed = self.artist.trim();
@@ -98,6 +131,43 @@ pub struct TrackFilter {
     pub genre: Option<String>,
     pub favorite: Option<bool>,
     pub sort: TrackSort,
+    /// Only tracks with a downloaded copy (`Some(true)`), or only those without.
+    pub downloaded: Option<bool>,
+    /// Inclusive bounds on the year of the track's album; an album with no year is in neither.
+    pub year_from: Option<u16>,
+    pub year_to: Option<u16>,
+    /// Run `sort` backwards: every term flips, so `DateAdded` becomes oldest first.
+    pub reverse: bool,
+}
+
+/// Which albums to list and in what order; `AlbumPage::total` counts the filtered set.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AlbumQuery {
+    /// Matches the title or the billed artist's text, ignoring ASCII case.
+    pub search: Option<String>,
+    pub genre: Option<String>,
+    /// Inclusive bounds; an album with no year is in neither.
+    pub year_from: Option<u16>,
+    pub year_to: Option<u16>,
+    /// Only albums billed to this artist.
+    pub artist_key: Option<String>,
+    /// Only these albums, by id; an empty list matches none.
+    pub ids: Option<Vec<String>>,
+    /// Only those with a downloaded track (`Some(true)`), or only those with none.
+    pub downloaded: Option<bool>,
+    /// The first criterion decides and the rest break ties; artist then title settle what is left.
+    pub sort: Vec<config::SortCriterion<config::AlbumSortField>>,
+}
+
+/// Which artists to list and in what order; `ArtistPage::total` counts the filtered set.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ArtistQuery {
+    /// Matches the artist's name, ignoring ASCII case.
+    pub search: Option<String>,
+    /// Only those with a downloaded track (`Some(true)`), or only those with none.
+    pub downloaded: Option<bool>,
+    /// The first criterion decides and the rest break ties; name then key settle what is left.
+    pub sort: Vec<config::SortCriterion<config::ArtistSortField>>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -167,14 +237,15 @@ pub struct ArtistInfo {
     pub key: String,
     pub name: String,
     pub track_count: u32,
+    /// The albums billed to the artist.
+    pub album_count: u32,
     pub artwork: Option<crate::ArtworkRef>,
 }
 
-/// An artist page's header and albums; its tracks page through `artist_tracks`.
+/// An artist page's header; its albums list through `albums` by artist key, its tracks page through `artist_tracks`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArtistDetail {
     pub info: ArtistInfo,
-    pub albums: Vec<AlbumInfo>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -183,21 +254,60 @@ pub struct ArtistPage {
     pub total: u32,
 }
 
+/// With no `filter` this is the plain search, answered with `tracks` and
+/// `albums`; a filtered search is answered with `shelves`. A `continuation`
+/// is sent with the filter of the page it continues.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SearchRequest {
+    pub query: String,
+    pub filter: Option<String>,
+    pub continuation: Option<String>,
+}
+
+impl SearchRequest {
+    pub fn new(query: impl Into<String>) -> Self {
+        Self {
+            query: query.into(),
+            ..Self::default()
+        }
+    }
+
+    pub fn filtered(query: impl Into<String>, filter: impl Into<String>) -> Self {
+        Self {
+            query: query.into(),
+            filter: Some(filter.into()),
+            continuation: None,
+        }
+    }
+}
+
 /// What a search turned up. Remote sources answer over the network, so this
 /// is one call rather than a filter the caller composes.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SearchResults {
     pub tracks: Vec<TrackInfo>,
     pub albums: Vec<AlbumInfo>,
+    pub shelves: Vec<crate::CatalogShelf>,
+    pub continuation: Option<String>,
+    /// What the source searched for instead, when it corrected the query.
+    pub correction: Option<String>,
+}
+
+/// A query to run, or with `item`, a direct hit to open.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SearchSuggestion {
+    pub text: String,
+    /// A query the account searched for before.
+    pub from_history: bool,
+    pub item: Option<crate::CatalogItem>,
 }
 
 impl TrackInfo {
-    /// Whole seconds, which is how a duration is shown. A radio stream has
-    /// none: it plays until it is stopped.
+    /// Whole seconds, which is how a duration is shown; `None` for a radio stream and for a track whose source gave none.
     pub fn duration_secs(&self) -> Option<u64> {
         match self.kind {
             TrackKind::Radio => None,
-            TrackKind::Normal => Some(self.duration_ms.unwrap_or_default() / 1000),
+            TrackKind::Normal => self.duration_ms.map(|ms| ms / 1000),
         }
     }
 
@@ -206,9 +316,31 @@ impl TrackInfo {
     }
 }
 
+/// The summed seconds of the tracks whose duration is known; `None` when none is.
+pub fn total_duration_secs<'a>(tracks: impl IntoIterator<Item = &'a TrackInfo>) -> Option<u64> {
+    tracks
+        .into_iter()
+        .filter_map(TrackInfo::duration_secs)
+        .reduce(u64::saturating_add)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ArtistCredit, TrackInfo};
+    use super::{ArtistCredit, TrackInfo, total_duration_secs};
+
+    #[test]
+    fn a_total_skips_unknown_durations_and_is_none_without_any() {
+        let known = |ms| TrackInfo {
+            duration_ms: Some(ms),
+            ..Default::default()
+        };
+        let unknown = TrackInfo::default();
+        assert_eq!(
+            total_duration_secs(&[known(60_000), unknown.clone(), known(30_000)]),
+            Some(90)
+        );
+        assert_eq!(total_duration_secs(&[unknown.clone(), unknown]), None);
+    }
 
     fn track(artist: &str, credits: &[(&str, &str)]) -> TrackInfo {
         TrackInfo {

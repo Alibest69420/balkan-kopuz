@@ -9,7 +9,7 @@ use dioxus::prelude::*;
 
 use crate::api::{consume_api, use_api};
 use crate::db_reactivity::{Table, use_generations};
-use crate::toast::toast_error;
+use crate::toast::toast_api_error;
 
 /// What this daemon can be connected to, and how each is configured.
 pub fn use_integrations() -> Resource<Vec<api::IntegrationInfo>> {
@@ -31,7 +31,7 @@ pub fn set_settings(id: String, values: Vec<api::FieldValue>, mut done: Signal<u
             Ok(_) => done += 1,
             Err(error) => {
                 tracing::warn!(%error, "saving an integration setting failed");
-                toast_error(&error.to_string());
+                toast_api_error(&error);
             }
         }
     });
@@ -45,8 +45,43 @@ pub fn authenticate(id: String, mut done: Signal<u64>) {
             Ok(_) => done += 1,
             Err(error) => {
                 tracing::warn!(%error, %id, "connecting an integration failed");
-                toast_error(&error.to_string());
+                toast_api_error(&error);
             }
         }
+    });
+}
+
+/// The browser profiles on the daemon's machine, for an integration that
+/// connects from one.
+pub fn use_browser_profiles() -> Resource<Vec<api::BrowserProfile>> {
+    let api = use_api();
+    use_resource(move || {
+        let api = api.clone();
+        async move { api.browser_profiles().await.unwrap_or_default() }
+    })
+}
+
+/// Have the daemon take an integration's credential from a signed-in browser
+/// profile. `busy` is true for as long as that runs.
+pub fn connect_from_browser(
+    id: String,
+    profile: String,
+    mut busy: Signal<bool>,
+    mut done: Signal<u64>,
+) {
+    let api = consume_api();
+    busy.set(true);
+    spawn(async move {
+        match api
+            .connect_integration_from_browser(id.clone(), profile)
+            .await
+        {
+            Ok(_) => done += 1,
+            Err(error) => {
+                tracing::warn!(%error, %id, "connecting an integration from a browser failed");
+                toast_api_error(&error);
+            }
+        }
+        busy.set(false);
     });
 }

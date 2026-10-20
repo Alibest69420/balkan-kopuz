@@ -11,6 +11,9 @@ language = 语言
 library = 媒体库
 playlists = 播放列表
 album = 专辑
+release_single = 单曲
+release_ep = EP
+release_audiobook = Audiobook
 artist = 艺术家
 home = 首页
 search = 搜索
@@ -31,6 +34,9 @@ add = 添加
 add_folder = 添加文件夹
 no_music_folders = 尚未配置音乐文件夹
 remote_music_folders = 音乐文件夹
+source_account = 账号
+source_account_help = 每个账号都有自己的资料库。切换后会重新同步。
+source_accounts_failed = 无法加载账号: { $error }
 parent_folder = 上一级
 use_this_folder = 添加此文件夹
 no_subfolders = 没有子文件夹
@@ -63,6 +69,10 @@ discord_presence = Discord 状态
 connectivity = 连接
 integration_connect = Connect to { $name }
 integration_connected = { $name } connected
+integration_connecting = Connecting…
+integration_browser_title = Use a signed-in browser
+integration_browser_profile = { $name } ({ $browser })
+integration_browser_none = No browser profiles found. Paste your token above instead.
 discord_presence_paused = 显示暂停时的 Discord 状态
 discord_presence_source = 在 Discord 状态中显示媒体来源
 reduce_animations = 减少动画
@@ -108,6 +118,7 @@ radio_empty = 未找到相似歌曲
 radio_failed = 无法启动电台
 remove_from_queue = 从播放队列中移除
 downloading = 正在下载…
+downloading_progress = Downloading { $done } / { $total }
 more_actions_for = { $name } 的更多操作
 share_musicbrainz = 分享 (MusicBrainz)
 share_link_copied = MusicBrainz 链接已复制
@@ -123,6 +134,7 @@ add_all_to_queue = 全部添加到播放队列
 add_all_to_playlist = 全部添加到播放列表
 select_all = 全选
 select_all_tracks = 选择所有曲目
+deselect_all_tracks = 取消选择所有曲目
 remove_from_cache = 从缓存中移除
 create = 创建
 save = 保存
@@ -145,6 +157,10 @@ new_releases = 新添加
 # Navigation Buttons
 up_next = 接下来播放
 lyrics = 歌词
+track_version = 版本
+track_version_song = 歌曲
+track_version_video = 视频
+music_video = 音乐视频
 
 # Player/Media
 loading_lyrics = 正在加载歌词...
@@ -152,6 +168,9 @@ lyrics_not_found = 未找到歌词
 instrumental_break = 间奏
 no_previous_songs = 没有上一首歌曲
 playlist_track_count = { $count } 首曲目
+playlist_folder_count = { $count } 个播放列表
+playlists_synced_count = 已同步 { $count } 个播放列表
+playlists_loading_tracks = 正在加载曲目 — 播放列表 { $done } / { $count }（剩余 { $remaining } 个）
 music_playlist_count = 音乐 • { $count } 首曲目
 showcase_song_count = { $count } 首歌曲
 
@@ -211,7 +230,6 @@ time = 时间
 genre = 流派
 plays = 播放次数
 track_count = { $count } 首曲目
-track_count_singular = 1 首曲目
 songs = 首歌曲
 min = 分钟
 
@@ -346,6 +364,7 @@ replay_gain_mode_auto = 自动
 replay_gain_prevent_clipping = 防止削波
 replay_gain_preamp = 前置增益
 replay_gain_fallback = 默认增益
+replay_gain_youtube_loudness = YouTube Music 音量标准化
 move_to_folder = 移动到文件夹
 no_folders_yet = 还没有文件夹。
 folder_name = 文件夹名称...
@@ -396,6 +415,14 @@ device_change_pause = 暂停
 sample_rate_mode = 输出采样率
 sample_rate_mode_system = 跟随系统
 sample_rate_mode_source = 匹配曲目
+settings_group_streaming = 串流
+stream_quality = 串流音质
+stream_quality_low = 低
+stream_quality_normal = 标准
+stream_quality_high = 高
+autoplay_radio = 队列结束时播放电台
+skip_explicit = 跳过含露骨内容的曲目
+pause_watch_history = 暂停观看记录
 
 crossfade = 交叉淡入淡出
 crossfade_off = 关闭
@@ -425,6 +452,8 @@ listen_now_layout = 布局
 ui_style = 界面风格
 ui_normal = 普通
 ui_vaxry = Vaxry
+ui_material3 = Material 3
+system_colors = 系统颜色
 player_bar_position = 播放栏位置
 position_bottom = 底部
 position_top = 顶部
@@ -470,6 +499,11 @@ minimize_to_tray = 最小化到系统托盘
 update_available = 有可用更新
 update_banner_message = Kopuz { $version } 现已可用。
 view_release = 查看发行版
+update_install = 更新并重启
+update_downloading = 正在下载 Kopuz { $version }…
+update_restarting = 正在重启以完成更新…
+update_failed = 无法安装 Kopuz { $version }。
+update_retry = 重试
 
 volume_scroll_step = 音量滚动步长
 
@@ -492,6 +526,50 @@ discover_more_loading = 加载更多…
 discover_failed = 无法加载发现: { $error }
 discover_unsupported = 仅当 YouTube Music 是当前服务器时才能使用发现。
 discover_show_all = 显示全部
+catalog_page_explore = 探索
+catalog_page_charts = 排行榜
+catalog_page_moods = 心情与流派
+catalog_page_podcasts = 播客
+catalog_page_library_songs = 你的歌曲
+catalog_page_library_albums = 你的专辑
+catalog_page_library_artists = 你的艺人
+catalog_page_subscriptions = 订阅
+catalog_page_library_podcasts = 你的播客
+catalog_page_uploads = 上传内容
+catalog_page_history = 历史记录
+search_filter_all = 全部
+search_filter_songs = 歌曲
+search_filter_videos = 视频
+search_filter_community_playlists = 社区播放列表
+search_filter_featured_playlists = 精选播放列表
+search_filter_episodes = 单集
+search_filter_profiles = 个人资料
+discover_show_more = 显示更多
+discover_scroll_back = 向后滚动
+discover_scroll_forward = 向前滚动
+catalog_page_empty = 这里还没有内容
+search_prompt = 搜索歌曲、专辑、艺人等
+search_showing_results_for = 正在显示“{ $query }”的结果
+catalog_like = 喜欢
+catalog_unlike = 取消喜欢
+catalog_dislike = 不喜欢
+catalog_undislike = 取消不喜欢
+catalog_save = 保存到音乐库
+catalog_unsave = 从音乐库移除
+catalog_follow = 关注
+catalog_unfollow = 取消关注
+catalog_following = 已关注
+catalog_remove_history = 从历史记录中移除
+playlist_edit_details = 编辑详细信息
+playlist_description = 说明
+playlist_privacy = 谁可以查看
+playlist_privacy_public = 公开
+playlist_privacy_unlisted = 不公开
+playlist_privacy_private = 私享
+playlist_delete_title = 要删除此播放列表吗？
+playlist_delete_body = “{ $name }”将从 { $service } 中永久删除。
+playlist_unsave_title = 要从你的音乐库中移除吗？
+playlist_unsave_body = “{ $name }”将离开你的 { $service } 音乐库。播放列表本身仍保留在 { $service } 上。
 source_anon_playlists = 登录 YouTube Music 以查看你的媒体库播放列表。
 source_anon_favorites = 登录 YouTube Music 以查看你喜欢的歌曲。
 source_anon_discover = 登录 YouTube Music 以浏览发现。
@@ -544,8 +622,13 @@ external_play_on = 播放设备
 external_this_app = kopuz（此应用）
 prefer_active_device = Playback device
 prefer_active_device_help = When another device is already playing, take it over instead of starting playback here.
-settings_managed_notice = 部分设置由系统配置（Nix/hjem）管理，无法在此更改。
+settings_managed_notice = 部分设置来自应用无法写入的设置文件（只读或由 Nix/hjem 管理），无法在此更改。
 setting_managed_by_system = 由系统配置管理
+settings_dropin_notice = 部分设置由附加配置文件指定，无法在此更改。
+settings_env_notice = 部分设置由 KOPUZ_CONFIG_* 环境变量指定，无法在此更改。
+setting_locked_by_file = 由 { $path } 设置
+setting_locked_by_dropin = 由附加配置文件 { $path } 设置
+setting_locked_by_env = 由 { $var } 设置
 
 settings_interface = Interface
 interface_general = General
@@ -581,6 +664,7 @@ settings_tools = Tools
 share = Share
 share_copied = Copied link
 share_no_page = Couldn't find a page for this track
+explicit = 露骨内容
 start_daemon = Start Daemon
 
 first_run_title = Welcome to Kopuz
@@ -630,7 +714,11 @@ waiting_for_browser = Waiting for your browser…
 signed_in = Signed in
 metadata_number_invalid = Enter a number, or leave it empty to clear the tag.
 metadata_batch_keep = Leave unchanged
-metadata_batch_count = Editing { $count } tracks
+metadata_batch_count =
+    { $count ->
+        [one] Editing { $count } track
+       *[other] Editing { $count } tracks
+    }
 interface_font = Interface font
 interface_font_description = The font family to draw the interface with.
 interface_font_placeholder = Theme default
@@ -710,6 +798,13 @@ view = View
 undo = Undo
 quit = Quit
 scanning_library = Scanning library…
+network_offline_banner = 无网络连接 — 已切换到离线模式
+network_online_banner = 已恢复联网 — 已切换到服务器模式
+keep_server_mode = 保持服务器模式
+tray_show_hide = 显示 / 隐藏 Kopuz
+tray_quit = 退出 Kopuz
+tray_unavailable_title = 托盘图标不可用
+tray_unavailable_message = System tray unavailable: appindicator library not found. Install libayatana-appindicator (Debian/Ubuntu/Arch) or libappindicator-gtk3 (Fedora). Closing the window will quit the app instead of minimizing to tray.
 reconnecting_attempt = Reconnecting… (attempt { $attempt })
 downloads_summary = { $done } downloaded, { $failed } failed
 job_scan = Library scan
@@ -776,11 +871,19 @@ discover_clear_search = Clear search
 discover_results_for = Results for "{ $query }"
 discover_no_results_hint = Try fewer words, or switch source and look again.
 discover_show_less = Show less
-discover_genre_count = { $count } genres
+discover_genre_count =
+    { $count ->
+        [one] { $count } genre
+       *[other] { $count } genres
+    }
 discover_read_failed = Couldn't load your library: { $error }
 palette_all_results = All results for "{ $query }" in Discover
 
-library_count = { $count } items
+library_count =
+    { $count ->
+        [one] { $count } item
+       *[other] { $count } items
+    }
 library_filter_placeholder = Filter the library…
 library_chip_downloaded = Downloaded
 library_chip_years = Years
@@ -803,7 +906,11 @@ library_tile_medium = Medium
 library_tile_large = Large
 library_default_view = Grids open as
 library_default_view_description = Whether albums, artists and playlists start as tiles or as rows.
-library_artist_tracks = { $count } tracks
+library_artist_tracks =
+    { $count ->
+        [one] { $count } track
+       *[other] { $count } tracks
+    }
 library_selected = { $count } selected
 library_whole_selection = Everything that matches
 library_read_failed = Could not read the library
@@ -842,7 +949,11 @@ downloader_history = URL downloads
 interface_skin = Skin
 interface_skin_description = The shape of the interface: how round things are, how tall a row sits.
 
-home_plays = { $count } plays
+home_plays =
+    { $count ->
+        [one] { $count } play
+       *[other] { $count } plays
+    }
 
 interface_ambient = Ambient light
 interface_ambient_description = Let the current cover cast its colour across the window.
@@ -864,3 +975,83 @@ settings_group_interface = 界面
 settings_group_output = 输出
 settings_group_loudness = 响度
 browse = 浏览
+
+clippsly_help = Create an App Password at clippsly.app, then sign in with your Clippsly username and that App Password. Storage limits are set by your Clippsly account.
+cloud_storage_usage = Cloud storage: { $used } of { $total } used
+upload_music = Upload music
+uploading_music = Uploading { $name }…
+music_uploaded =
+    { $count ->
+        [one] Uploaded { $count } file.
+       *[other] Uploaded { $count } files.
+    }
+music_upload_too_large = Audio files must be no larger than 500 MiB.
+cloud_storage_loading = Loading storage usage…
+
+smb_url_placeholder = smb://nas/Music
+smb_help = Connect to an SMB 2/3 share or subfolder, then sign in with your NAS account. Domain accounts can use DOMAIN\username. Files are read without mounting the share.
+invalid_smb_url = Enter smb://host/share or smb://host/share/folder, without credentials in the URL.
+
+browser_sessions_heading = 已登录
+browser_sessions_checking = 正在检查你的浏览器…
+browser_session_name = { $browser } · { $profile }
+browser_session_use = 使用
+browser_session_importing = 正在登录…
+browser_session_help = Kopuz 会从你选择的浏览器配置文件中复制会话。浏览器可以保持打开。
+
+playback_error_session_expired = 你在 { $source } 的登录已过期。请重新登录以继续播放。
+playback_error_challenged = { $source } 需要确认你不是机器人。请等几分钟后重试。
+playback_error_refused = { $source } 拒绝播放这首曲目。你的登录没有问题：这是 { $source } 一侧的问题，通常会自行恢复。
+playback_error_unreachable = 无法连接到 { $source }。请检查网络连接后重试。
+playback_error_unavailable = { $source } 无法播放这首曲目。它可能已被删除、设为私享或在你所在地区被屏蔽。
+playback_sign_in_again = 重新登录
+playback_try_again = 重试
+playback_skip = 跳过曲目
+playback_copy_details = 复制详情
+playback_details_copied = 已复制详情
+source_signed_out = ● 已登出
+source_not_responding = ● 无响应
+connection_test = 测试连接
+connection_testing = 测试中…
+connection_test_failed = 无法运行测试：{ $error }
+connection_copy_report = 复制报告
+connection_report_copied = 已复制报告
+connection_step_reach = 服务可访问
+connection_step_session = 登录已通过
+connection_step_signed_in_playback = 可使用你的账号播放
+connection_step_anonymous_playback = 可不使用账号播放
+connection_step_playback_token = 播放令牌
+connection_step_passed = 通过
+connection_step_failed = 失败
+connection_step_skipped = 已跳过
+
+sync_interval = Sync and rescan every
+sync_interval_never = Never
+sync_interval_minutes = { $count } min
+sync_interval_hours = { $count } h
+sync_interval_days = { $count } d
+
+error_setting_locked = A managed settings file pins this setting, so it cannot be changed here.
+error_connect_not_offered = This integration does not connect that way.
+error_api_key_missing = Set the API key and secret first.
+error_sign_in_not_started = The service did not start the sign-in. Check the API key and your connection.
+error_browser_not_opened = Could not open a browser for the sign-in.
+error_sign_in_timed_out = The sign-in was not approved in time.
+error_browser_profile_gone = That browser profile is no longer there.
+error_browser_cookies_unreadable = Could not read the cookies of that browser profile.
+error_browser_profile_signed_out = That browser profile is not signed in to the service. Sign in there, or paste your token instead.
+error_browser_profile_no_token = The service did not show a token for that profile. Paste it instead.
+error_integration_unreachable = Could not reach the service. Check your connection.
+error_credential_rejected = The service does not accept that token. Paste your token instead.
+error_default_source_undeletable = The default folder source cannot be deleted.
+error_empty_source_folder = A source folder cannot be empty.
+error_code_invalid_input = Not accepted: { $detail }
+error_code_not_found = That is no longer there.
+error_code_conflict = Already in use or in progress: { $detail }
+error_code_source_auth_expired = The source did not accept the sign-in. Sign in again in Settings.
+error_code_source_unreachable = The source could not be reached. Check your connection.
+error_code_unsupported = Not supported here: { $detail }
+error_code_internal = Something went wrong: { $detail }
+error_code_source_challenged = The source wants to check that you're not a bot. Wait a few minutes and try again.
+error_code_source_refused = The source refused the request. This is on its side and usually clears up on its own.
+error_code_item_unavailable = The source can't play this. It may have been removed, made private or blocked in your region.

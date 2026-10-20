@@ -7,6 +7,8 @@ knowledge_base:
       - CONTRIBUTING.md
 
 reviews:
+  # The PR template is the description; a generated summary would add a heading it does not have.
+  high_level_summary: false
   pre_merge_checks:
     custom_checks:
       - name: Template headings

@@ -6,6 +6,7 @@
 //! the album page, which has the state for it.
 
 use crate::NavigationController;
+use crate::catalog_actions::{self, CatalogAction};
 use crate::dots_menu::{DotsMenu, MenuAction};
 use dioxus::prelude::*;
 use hooks::PlayerController;
@@ -17,6 +18,7 @@ enum Action {
     AddToQueue,
     AddToPlaylist,
     GoToArtist,
+    Catalog(CatalogAction),
     Download,
     Delete,
 }
@@ -54,6 +56,11 @@ pub struct AlbumActionsMenuProps {
     /// the label that goes with it.
     #[props(default)]
     pub on_delete: Option<EventHandler<()>>,
+    /// Set by catalog surfaces; `None` for library rows.
+    #[props(default)]
+    pub catalog_actions: Option<api::CatalogActions>,
+    #[props(default)]
+    pub on_catalog_actions: Option<EventHandler<api::CatalogActions>>,
     #[props(default)]
     pub delete_label: Option<String>,
     #[props(default)]
@@ -72,7 +79,7 @@ pub fn AlbumActionsMenu(props: AlbumActionsMenuProps) -> Element {
     let mut local_open = use_signal(|| false);
     let mut show_playlist_modal = use_signal(|| false);
 
-    let capabilities = *caps.read();
+    let capabilities = caps.read().clone();
     let is_open = props.is_open.unwrap_or_else(|| *local_open.read());
 
     let on_open = props.on_open;
@@ -110,6 +117,14 @@ pub fn AlbumActionsMenu(props: AlbumActionsMenuProps) -> Element {
         ));
     }
 
+    if let Some(state) = props.catalog_actions.as_ref() {
+        for (action, entry) in catalog_actions::menu_entries(state, &capabilities) {
+            entries.push((Action::Catalog(action), entry));
+        }
+    }
+    let catalog_state = props.catalog_actions.clone();
+    let on_catalog_actions = props.on_catalog_actions;
+
     if on_download.is_some() {
         let action = if props.is_downloading {
             MenuAction::new(i18n::t("downloading"), "fa-solid fa-spinner fa-spin")
@@ -144,7 +159,7 @@ pub fn AlbumActionsMenu(props: AlbumActionsMenuProps) -> Element {
         DotsMenu {
             actions,
             is_open,
-            aria_label: i18n::t_with("more_actions_for", &[("name", props.album_title.clone())]),
+            aria_label: i18n::t_with("more_actions_for", &[("name", props.album_title.clone().into())]),
             button_class: props.button_class.clone(),
             anchor: props.anchor.clone(),
             placement: props.placement.clone(),
@@ -178,6 +193,11 @@ pub fn AlbumActionsMenu(props: AlbumActionsMenuProps) -> Element {
                     Action::GoToArtist => {
                         if let Some(artist) = dispatch_artist.clone() {
                             nav_ctrl.open_artist(artist);
+                        }
+                    }
+                    Action::Catalog(catalog) => {
+                        if let Some(state) = catalog_state.as_ref() {
+                            catalog_actions::run(catalog, state, on_catalog_actions);
                         }
                     }
                     Action::Download => {

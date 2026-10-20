@@ -1,4 +1,4 @@
-use config::{AppConfig, UiStyle};
+use config::{Settings, UiStyle};
 use dioxus::prelude::*;
 
 use crate::home_body::HomeBody;
@@ -10,8 +10,9 @@ pub fn Home(
     on_select_playlist: EventHandler<String>,
     on_open_artist: EventHandler<String>,
 ) -> Element {
-    let mut config = use_context::<Signal<AppConfig>>();
-    let is_vaxry = config.read().ui_style == UiStyle::Vaxry;
+    let settings = use_context::<Signal<Settings>>();
+    let mut prefs = hooks::ui_prefs::use_ui_prefs();
+    let is_vaxry = settings.read().ui.ui_style == UiStyle::Vaxry;
     let mut edit_mode = use_signal(|| false);
 
     rsx! {
@@ -33,22 +34,22 @@ pub fn Home(
                 div { class: "flex items-center gap-2",
                     if *edit_mode.read() {
                         button {
-                            class: "px-3 h-8 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 hover:text-white text-xs font-semibold transition-colors",
+                            class: "app-button-outlined px-3 h-8 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 hover:text-white text-xs font-semibold transition-colors",
                             onclick: move |_| {
-                                config.write().home_sections = config::default_home_sections();
+                                prefs.write().home_sections = config::default_home_sections();
                             },
                             i { class: "fa-solid fa-rotate-left mr-1 text-[10px]" }
                             "{i18n::t(\"reset_home\")}"
                         }
                         button {
-                            class: "px-4 h-8 rounded-full bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-bold transition-colors",
+                            class: "app-button-filled px-4 h-8 rounded-full bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-bold transition-colors",
                             onclick: move |_| edit_mode.set(false),
                             i { class: "fa-solid fa-check mr-1 text-[10px]" }
                             "{i18n::t(\"done_editing\")}"
                         }
                     } else {
                         button {
-                            class: "px-3 h-8 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 hover:text-white text-xs font-semibold transition-colors flex items-center gap-2",
+                            class: "app-button-outlined px-3 h-8 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 hover:text-white text-xs font-semibold transition-colors flex items-center gap-2",
                             onclick: move |_| edit_mode.set(true),
                             i { class: "fa-solid fa-sliders text-[10px]" }
                             "{i18n::t(\"customize_home\")}"

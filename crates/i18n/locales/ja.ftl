@@ -11,6 +11,9 @@ language = 言語
 library = ライブラリ
 playlists = プレイリスト
 album = アルバム
+release_single = シングル
+release_ep = EP
+release_audiobook = Audiobook
 artist = アーティスト
 home = ホーム
 search = 検索
@@ -31,6 +34,9 @@ add = 追加
 add_folder = フォルダを追加
 no_music_folders = 音楽フォルダが設定されていません
 remote_music_folders = 音楽フォルダ
+source_account = アカウント
+source_account_help = アカウントごとにライブラリがあります。切り替えると再同期します。
+source_accounts_failed = アカウントを読み込めません: { $error }
 parent_folder = 上へ
 use_this_folder = このフォルダを追加
 no_subfolders = サブフォルダがありません
@@ -63,6 +69,10 @@ discord_presence = Discordプレゼンス
 connectivity = 接続
 integration_connect = Connect to { $name }
 integration_connected = { $name } connected
+integration_connecting = Connecting…
+integration_browser_title = Use a signed-in browser
+integration_browser_profile = { $name } ({ $browser })
+integration_browser_none = No browser profiles found. Paste your token above instead.
 discord_presence_paused = 一時停止中のDiscordステータスを表示
 discord_presence_source = Discordステータスにメディアソースを表示
 reduce_animations = アニメーションを減らす
@@ -108,6 +118,7 @@ radio_empty = 類似する曲が見つかりません
 radio_failed = ラジオを開始できませんでした
 remove_from_queue = キューから削除
 downloading = ダウンロード中…
+downloading_progress = Downloading { $done } / { $total }
 more_actions_for = { $name } のその他の操作
 share_musicbrainz = 共有 (MusicBrainz)
 share_link_copied = MusicBrainzのリンクをコピーしました
@@ -123,6 +134,7 @@ add_all_to_queue = すべてをキューに追加
 add_all_to_playlist = すべてをプレイリストに追加
 select_all = すべて選択
 select_all_tracks = すべてのトラックを選択
+deselect_all_tracks = すべてのトラックの選択を解除
 remove_from_cache = キャッシュから削除
 create = 作成
 save = 保存
@@ -145,6 +157,10 @@ new_releases = 新着
 # Navigation Buttons
 up_next = 次の曲
 lyrics = 歌詞
+track_version = バージョン
+track_version_song = 曲
+track_version_video = 動画
+music_video = ミュージックビデオ
 
 # Player/Media
 loading_lyrics = 歌詞を読み込み中...
@@ -152,6 +168,9 @@ lyrics_not_found = 歌詞が見つかりません
 instrumental_break = 間奏
 no_previous_songs = 以前の曲はありません
 playlist_track_count = { $count } トラック
+playlist_folder_count = { $count } 件のプレイリスト
+playlists_synced_count = { $count } 件のプレイリストを同期済み
+playlists_loading_tracks = トラックを読み込み中 — プレイリスト { $done } / { $count }（残り { $remaining }）
 music_playlist_count = 音楽 • { $count } トラック
 showcase_song_count = { $count } 曲
 
@@ -211,7 +230,6 @@ time = 時間
 genre = ジャンル
 plays = 再生回数
 track_count = { $count } トラック
-track_count_singular = 1トラック
 songs = 曲
 min = 分
 
@@ -352,6 +370,7 @@ replay_gain_mode_auto = 自動
 replay_gain_prevent_clipping = クリッピングを防ぐ
 replay_gain_preamp = プリアンプ
 replay_gain_fallback = 既定のゲイン
+replay_gain_youtube_loudness = YouTube Music の音量を正規化
 move_to_folder = フォルダーに移動
 no_folders_yet = フォルダーがまだありません。
 folder_name = フォルダー名...
@@ -402,6 +421,14 @@ device_change_pause = 一時停止
 sample_rate_mode = 出力サンプルレート
 sample_rate_mode_system = システムに従う
 sample_rate_mode_source = トラックに合わせる
+settings_group_streaming = ストリーミング
+stream_quality = ストリーミング品質
+stream_quality_low = 低
+stream_quality_normal = 標準
+stream_quality_high = 高
+autoplay_radio = キューが終わったらラジオを再生
+skip_explicit = 露骨な表現を含む曲をスキップ
+pause_watch_history = 再生履歴を一時停止
 
 crossfade = クロスフェード
 crossfade_off = オフ
@@ -431,6 +458,8 @@ listen_now_layout = レイアウト
 ui_style = UIスタイル
 ui_normal = 通常
 ui_vaxry = Vaxry
+ui_material3 = Material 3
+system_colors = システムカラー
 player_bar_position = プレーヤーバーの位置
 position_bottom = 下
 position_top = 上
@@ -476,6 +505,11 @@ minimize_to_tray = システムトレイに最小化
 update_available = アップデートがあります
 update_banner_message = Kopuz { $version } が利用可能です。
 view_release = リリースを見る
+update_install = 更新して再起動
+update_downloading = Kopuz { $version } をダウンロード中…
+update_restarting = 更新を完了するために再起動しています…
+update_failed = Kopuz { $version } をインストールできませんでした。
+update_retry = 再試行
 
 volume_scroll_step = 音量スクロールステップ
 
@@ -498,6 +532,50 @@ discover_more_loading = さらに読み込み中…
 discover_failed = 発見を読み込めません: { $error }
 discover_unsupported = 発見は YouTube Music がアクティブなサーバーの場合にのみ利用できます。
 discover_show_all = すべて表示
+catalog_page_explore = 探す
+catalog_page_charts = チャート
+catalog_page_moods = ムードとジャンル
+catalog_page_podcasts = ポッドキャスト
+catalog_page_library_songs = 保存した曲
+catalog_page_library_albums = 保存したアルバム
+catalog_page_library_artists = 保存したアーティスト
+catalog_page_subscriptions = 登録チャンネル
+catalog_page_library_podcasts = 保存したポッドキャスト
+catalog_page_uploads = アップロード
+catalog_page_history = 履歴
+search_filter_all = すべて
+search_filter_songs = 曲
+search_filter_videos = 動画
+search_filter_community_playlists = コミュニティのプレイリスト
+search_filter_featured_playlists = おすすめのプレイリスト
+search_filter_episodes = エピソード
+search_filter_profiles = プロフィール
+discover_show_more = さらに表示
+discover_scroll_back = 前へスクロール
+discover_scroll_forward = 次へスクロール
+catalog_page_empty = まだ何もありません
+search_prompt = 曲、アルバム、アーティストなどを検索
+search_showing_results_for = 「{ $query }」の検索結果を表示しています
+catalog_like = 高評価
+catalog_unlike = 高評価を取り消す
+catalog_dislike = 低評価
+catalog_undislike = 低評価を取り消す
+catalog_save = ライブラリに保存
+catalog_unsave = ライブラリから削除
+catalog_follow = フォロー
+catalog_unfollow = フォローを解除
+catalog_following = フォロー中
+catalog_remove_history = 履歴から削除
+playlist_edit_details = 詳細を編集
+playlist_description = 説明
+playlist_privacy = 公開範囲
+playlist_privacy_public = 公開
+playlist_privacy_unlisted = 限定公開
+playlist_privacy_private = 非公開
+playlist_delete_title = このプレイリストを削除しますか？
+playlist_delete_body = 「{ $name }」は { $service } から完全に削除されます。
+playlist_unsave_title = ライブラリから削除しますか？
+playlist_unsave_body = 「{ $name }」は { $service } のライブラリから外れます。プレイリスト自体は { $service } に残ります。
 source_anon_playlists = ライブラリのプレイリストを表示するには YouTube Music にログインしてください。
 source_anon_favorites = 高評価した曲を表示するには YouTube Music にログインしてください。
 source_anon_discover = 見つけるを表示するには YouTube Music にログインしてください。
@@ -550,8 +628,13 @@ external_play_on = 再生デバイス
 external_this_app = kopuz（このアプリ）
 prefer_active_device = Playback device
 prefer_active_device_help = When another device is already playing, take it over instead of starting playback here.
-settings_managed_notice = 一部の設定はシステム構成（Nix/hjem）で管理されており、ここでは変更できません。
+settings_managed_notice = 一部の設定は、アプリが書き込めない設定ファイル（読み取り専用、または Nix/hjem で管理）で指定されているため、ここでは変更できません。
 setting_managed_by_system = システム構成で管理されています
+settings_dropin_notice = 一部の設定は追加設定ファイルで指定されており、ここでは変更できません。
+settings_env_notice = 一部の設定は環境変数 KOPUZ_CONFIG_* で指定されており、ここでは変更できません。
+setting_locked_by_file = { $path } で設定されています
+setting_locked_by_dropin = 追加設定ファイル { $path } で設定されています
+setting_locked_by_env = { $var } で設定されています
 
 settings_interface = Interface
 interface_general = General
@@ -587,6 +670,7 @@ settings_tools = Tools
 share = Share
 share_copied = Copied link
 share_no_page = Couldn't find a page for this track
+explicit = 露骨な表現
 start_daemon = Start Daemon
 
 first_run_title = Welcome to Kopuz
@@ -636,7 +720,11 @@ waiting_for_browser = Waiting for your browser…
 signed_in = Signed in
 metadata_number_invalid = Enter a number, or leave it empty to clear the tag.
 metadata_batch_keep = Leave unchanged
-metadata_batch_count = Editing { $count } tracks
+metadata_batch_count =
+    { $count ->
+        [one] Editing { $count } track
+       *[other] Editing { $count } tracks
+    }
 interface_font = Interface font
 interface_font_description = The font family to draw the interface with.
 interface_font_placeholder = Theme default
@@ -716,6 +804,13 @@ view = View
 undo = Undo
 quit = Quit
 scanning_library = Scanning library…
+network_offline_banner = インターネットに接続されていません — オフラインモードに切り替えました
+network_online_banner = オンラインに戻りました — サーバーモードに切り替えました
+keep_server_mode = サーバーモードを維持
+tray_show_hide = Kopuz を表示 / 非表示
+tray_quit = Kopuz を終了
+tray_unavailable_title = トレイアイコンを利用できません
+tray_unavailable_message = System tray unavailable: appindicator library not found. Install libayatana-appindicator (Debian/Ubuntu/Arch) or libappindicator-gtk3 (Fedora). Closing the window will quit the app instead of minimizing to tray.
 reconnecting_attempt = Reconnecting… (attempt { $attempt })
 downloads_summary = { $done } downloaded, { $failed } failed
 job_scan = Library scan
@@ -782,11 +877,19 @@ discover_clear_search = Clear search
 discover_results_for = Results for "{ $query }"
 discover_no_results_hint = Try fewer words, or switch source and look again.
 discover_show_less = Show less
-discover_genre_count = { $count } genres
+discover_genre_count =
+    { $count ->
+        [one] { $count } genre
+       *[other] { $count } genres
+    }
 discover_read_failed = Couldn't load your library: { $error }
 palette_all_results = All results for "{ $query }" in Discover
 
-library_count = { $count } items
+library_count =
+    { $count ->
+        [one] { $count } item
+       *[other] { $count } items
+    }
 library_filter_placeholder = Filter the library…
 library_chip_downloaded = Downloaded
 library_chip_years = Years
@@ -809,7 +912,11 @@ library_tile_medium = Medium
 library_tile_large = Large
 library_default_view = Grids open as
 library_default_view_description = Whether albums, artists and playlists start as tiles or as rows.
-library_artist_tracks = { $count } tracks
+library_artist_tracks =
+    { $count ->
+        [one] { $count } track
+       *[other] { $count } tracks
+    }
 library_selected = { $count } selected
 library_whole_selection = Everything that matches
 library_read_failed = Could not read the library
@@ -848,7 +955,11 @@ downloader_history = URL downloads
 interface_skin = Skin
 interface_skin_description = The shape of the interface: how round things are, how tall a row sits.
 
-home_plays = { $count } plays
+home_plays =
+    { $count ->
+        [one] { $count } play
+       *[other] { $count } plays
+    }
 
 interface_ambient = Ambient light
 interface_ambient_description = Let the current cover cast its colour across the window.
@@ -870,3 +981,83 @@ settings_group_interface = インターフェース
 settings_group_output = 出力
 settings_group_loudness = ラウドネス
 browse = ブラウズ
+
+clippsly_help = Create an App Password at clippsly.app, then sign in with your Clippsly username and that App Password. Storage limits are set by your Clippsly account.
+cloud_storage_usage = Cloud storage: { $used } of { $total } used
+upload_music = Upload music
+uploading_music = Uploading { $name }…
+music_uploaded =
+    { $count ->
+        [one] Uploaded { $count } file.
+       *[other] Uploaded { $count } files.
+    }
+music_upload_too_large = Audio files must be no larger than 500 MiB.
+cloud_storage_loading = Loading storage usage…
+
+smb_url_placeholder = smb://nas/Music
+smb_help = Connect to an SMB 2/3 share or subfolder, then sign in with your NAS account. Domain accounts can use DOMAIN\username. Files are read without mounting the share.
+invalid_smb_url = Enter smb://host/share or smb://host/share/folder, without credentials in the URL.
+
+browser_sessions_heading = サインイン済み
+browser_sessions_checking = ブラウザーを確認しています…
+browser_session_name = { $browser } · { $profile }
+browser_session_use = 使用
+browser_session_importing = サインイン中…
+browser_session_help = 選んだブラウザープロファイルのセッションを Kopuz がコピーします。ブラウザーは開いたままで構いません。
+
+playback_error_session_expired = { $source } のサインインの有効期限が切れました。再生を続けるにはもう一度サインインしてください。
+playback_error_challenged = { $source } がボットでないことを確認しようとしています。数分待ってからもう一度お試しください。
+playback_error_refused = { $source } がこのトラックの再生を拒否しました。サインインには問題ありません。{ $source } 側の問題で、たいてい自然に解消します。
+playback_error_unreachable = { $source } に接続できません。接続を確認してもう一度お試しください。
+playback_error_unavailable = { $source } でこのトラックを再生できません。削除された、非公開になった、またはお住まいの地域でブロックされた可能性があります。
+playback_sign_in_again = もう一度サインイン
+playback_try_again = 再試行
+playback_skip = トラックをスキップ
+playback_copy_details = 詳細をコピー
+playback_details_copied = 詳細をコピーしました
+source_signed_out = ● サインアウト済み
+source_not_responding = ● 応答なし
+connection_test = 接続をテスト
+connection_testing = テスト中…
+connection_test_failed = テストを実行できません: { $error }
+connection_copy_report = レポートをコピー
+connection_report_copied = レポートをコピーしました
+connection_step_reach = サービスに接続可能
+connection_step_session = サインインを承認
+connection_step_signed_in_playback = アカウントで再生可能
+connection_step_anonymous_playback = アカウントなしで再生可能
+connection_step_playback_token = 再生トークン
+connection_step_passed = 成功
+connection_step_failed = 失敗
+connection_step_skipped = スキップ
+
+sync_interval = Sync and rescan every
+sync_interval_never = Never
+sync_interval_minutes = { $count } min
+sync_interval_hours = { $count } h
+sync_interval_days = { $count } d
+
+error_setting_locked = A managed settings file pins this setting, so it cannot be changed here.
+error_connect_not_offered = This integration does not connect that way.
+error_api_key_missing = Set the API key and secret first.
+error_sign_in_not_started = The service did not start the sign-in. Check the API key and your connection.
+error_browser_not_opened = Could not open a browser for the sign-in.
+error_sign_in_timed_out = The sign-in was not approved in time.
+error_browser_profile_gone = That browser profile is no longer there.
+error_browser_cookies_unreadable = Could not read the cookies of that browser profile.
+error_browser_profile_signed_out = That browser profile is not signed in to the service. Sign in there, or paste your token instead.
+error_browser_profile_no_token = The service did not show a token for that profile. Paste it instead.
+error_integration_unreachable = Could not reach the service. Check your connection.
+error_credential_rejected = The service does not accept that token. Paste your token instead.
+error_default_source_undeletable = The default folder source cannot be deleted.
+error_empty_source_folder = A source folder cannot be empty.
+error_code_invalid_input = Not accepted: { $detail }
+error_code_not_found = That is no longer there.
+error_code_conflict = Already in use or in progress: { $detail }
+error_code_source_auth_expired = The source did not accept the sign-in. Sign in again in Settings.
+error_code_source_unreachable = The source could not be reached. Check your connection.
+error_code_unsupported = Not supported here: { $detail }
+error_code_internal = Something went wrong: { $detail }
+error_code_source_challenged = The source wants to check that you're not a bot. Wait a few minutes and try again.
+error_code_source_refused = The source refused the request. This is on its side and usually clears up on its own.
+error_code_item_unavailable = The source can't play this. It may have been removed, made private or blocked in your region.

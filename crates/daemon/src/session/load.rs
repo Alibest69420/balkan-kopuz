@@ -25,10 +25,19 @@ impl Session {
         }
         let track_key = track.id.uid();
         let (restore_seek, clear_pending_resume) = self.pending_resume_seek(&track);
-        let use_crossfade = allow_crossfade
-            && self.should_crossfade()
-            && restore_seek.is_none_or(|position| position.is_zero());
-        let crossfade_duration = Duration::from_secs(self.config.crossfade_seconds as u64);
+        let transition =
+            if !allow_crossfade || restore_seek.is_some_and(|position| !position.is_zero()) {
+                Transition::Immediate
+            } else if self.should_crossfade() {
+                Transition::Crossfade(Duration::from_secs(
+                    self.settings.playback.crossfade_seconds as u64,
+                ))
+            } else if self.should_play_gapless() {
+                Transition::Gapless
+            } else {
+                Transition::Immediate
+            };
+        let deferred = transition != Transition::Immediate;
         let item_ref = PlaybackItemRef::parse(&track_key);
         let is_radio = item_ref.is_radio();
         let is_server = item_ref.is_server();
@@ -41,28 +50,16 @@ impl Session {
             .and_then(|provider| provider(&track));
 
         let offline_path = if factory_override.is_none() && is_server {
-            let raw = self
-                .config
-                .offline_tracks
-                .get(&item_id)
+            // Imported paths are untrusted: one with a placeholder extension streams instead.
+            self.offline
+                .present(&item_id)
                 .map(PathBuf::from)
-                .filter(|path| path.exists());
-            if let Some(path) = raw.as_ref() {
-                let bad_ext = matches!(
-                    path.extension().and_then(|extension| extension.to_str()),
-                    Some("audio") | Some("bin")
-                );
-                if bad_ext {
-                    // Imported config paths are untrusted. Remove only the
-                    // stale mapping; deleting the path could remove user data.
-                    self.config.offline_tracks.remove(&item_id);
-                    None
-                } else {
-                    raw
-                }
-            } else {
-                raw
-            }
+                .filter(|path| {
+                    !matches!(
+                        path.extension().and_then(|extension| extension.to_str()),
+                        Some("audio") | Some("bin")
+                    )
+                })
         } else {
             None
         };
@@ -71,7 +68,7 @@ impl Session {
         let remote_ref = if factory_override.is_some() || offline_path.is_some() {
             None
         } else if is_radio {
-            let station = self.station_registry.get(&item_id);
+            let station = self.station(&item_id);
             use_icy = station.is_some_and(|station| !station.has_live_metadata());
             let cover = station
                 .and_then(|station| match &station.metadata {
@@ -84,10 +81,9 @@ impl Session {
             station
                 .and_then(|station| station.streams.iter().find(|stream| stream.id == stream_id))
                 .map(|stream| (stream.url.clone(), cover))
-        } else if is_server && self.config.server.is_some() && self.active_source.is_some() {
-            let cover = server::cover::track(&self.config, &track, 800)
-                .map(|cover| cover.as_ref().to_string())
-                .unwrap_or_default();
+        } else if is_server && self.sources.server.is_some() && self.active_source.is_some() {
+            let cover =
+                now_playing_artwork(self.sources.server.as_ref(), &track).unwrap_or_default();
             Some((ResolvedStreamRef::pending_marker(&item_id), cover))
         } else {
             None
@@ -139,14 +135,18 @@ impl Session {
             self.error = Some(api::ErrorBody {
                 code: api::ErrorCode::SourceUnreachable,
                 message: message.to_string(),
+                reason: None,
             });
             return false;
         }
 
         self.error = None;
+        if is_server {
+            self.ask_counterpart(&track);
+        }
         self.cancel_load_task();
         self.cancel_radio_task();
-        if !use_crossfade {
+        if !deferred {
             self.pending_transition = None;
         }
         let from_token = self.intent.token();
@@ -154,15 +154,14 @@ impl Session {
         self.set_intent(PlaybackIntent::Loading {
             token,
             idx,
-            crossfade: use_crossfade,
+            deferred,
             from_token,
         });
         self.buffered.clear();
 
         if is_radio
             && let Some(station) = self
-                .station_registry
-                .get(&item_id)
+                .station(&item_id)
                 .filter(|station| station.has_live_metadata())
                 .cloned()
         {
@@ -182,19 +181,19 @@ impl Session {
             self.radio_task = Some(handle);
         }
 
-        if use_crossfade {
+        if deferred {
             self.pending_transition = Some(PendingTransition {
                 to_position: idx,
+                to_key: track_key.clone(),
                 to_token: token,
                 from_token,
                 stage: TransitionStage::Loading,
+                gapless: transition == Transition::Gapless,
             });
         }
 
         let cover_url = if offline_path.is_some() {
-            server::cover::track(&self.config, &track, 800)
-                .map(|cover| cover.as_ref().to_string())
-                .unwrap_or_default()
+            now_playing_artwork(self.sources.server.as_ref(), &track).unwrap_or_default()
         } else {
             remote_ref
                 .as_ref()
@@ -202,12 +201,12 @@ impl Session {
                 .unwrap_or_default()
         };
         let artwork = if is_server || is_radio {
-            Some(cover_url)
+            Some(cover_url).filter(|cover| !cover.is_empty())
         } else {
             track.cover.clone()
         };
 
-        if !use_crossfade {
+        if !deferred {
             if is_server || is_radio {
                 // Remote resolution deliberately silences the old session;
                 // local files switch seamlessly inside the engine.
@@ -233,12 +232,9 @@ impl Session {
             local_path,
             remote_ref,
             active_source: self.active_source.clone(),
+            stream_quality: self.settings.playback.stream_quality,
             artwork,
-            transition: if use_crossfade {
-                Transition::Crossfade(crossfade_duration)
-            } else {
-                Transition::Immediate
-            },
+            transition,
             start_at: restore_seek.filter(|position| !position.is_zero()),
             clear_pending_resume,
             cmd_tx: self.cmd_tx.clone(),
@@ -257,10 +253,10 @@ impl Session {
         result: Result<PreparedLoad, LoadFailure>,
         state_tx: &watch::Sender<PlayerState>,
     ) {
-        let prepared = match result {
+        let mut prepared = match result {
             Ok(prepared) => prepared,
             Err(failure) => {
-                if self.fail_load(failure.token, failure.message) {
+                if self.fail_load(failure.token, failure.code, failure.message) {
                     self.publish(state_tx, false);
                 }
                 return;
@@ -268,6 +264,14 @@ impl Session {
         };
         if self.intent.token() != prepared.token {
             return;
+        }
+        if let Some(artwork) = self
+            .model
+            .track_at(prepared.idx)
+            .filter(|track| track.id == prepared.track.id)
+            .and_then(|track| now_playing_artwork(self.sources.server.as_ref(), track))
+        {
+            prepared.artwork = Some(artwork);
         }
         self.load_task = None;
         self.stamp_probed_stream_info(
@@ -288,6 +292,7 @@ impl Session {
             .map(|url| {
                 (
                     url.to_string(),
+                    temp_cover_key(&prepared.track, url),
                     NowPlayingMeta {
                         title: prepared.track.title.clone(),
                         artist: prepared.track.artist.clone(),
@@ -317,10 +322,10 @@ impl Session {
         });
         let token = prepared.token;
         #[cfg(target_os = "macos")]
-        if let Some((url, mut meta)) = artwork_fetch {
+        if let Some((url, key, mut meta)) = artwork_fetch {
             let artwork_tx = self.cmd_tx.clone();
             tokio::spawn(async move {
-                let Some(path) = fetch_cover_to_temp(&url).await else {
+                let Some(path) = fetch_cover_to_temp(&url, &key).await else {
                     return;
                 };
                 meta.artwork = Some(path);
@@ -360,8 +365,8 @@ impl Session {
                 if finished.clear_pending_resume {
                     self.pending_resume = None;
                 }
-                self.maybe_record_recent();
-                if let Some(scrobbler) = self.scrobbler.clone() {
+                // A queued gapless track is not heard yet; it scrobbles from the switch.
+                if !outcome.gapless {
                     let committed_track = self
                         .pending_transition
                         .as_ref()
@@ -370,25 +375,38 @@ impl Session {
                         .and_then(|position| self.model.track_at(position).cloned())
                         .or_else(|| self.model.current_track().cloned());
                     if let Some(track) = committed_track {
-                        scrobbler.track_committed(track, finished.token);
+                        self.scrobble_committed(track, finished.token);
                     }
                 }
                 let matching_transition = self
                     .pending_transition
                     .as_ref()
                     .is_some_and(|pending| pending.to_token == finished.token);
+                let mut fading_from = None;
                 if matching_transition {
-                    if outcome.crossfaded {
+                    if outcome.crossfaded || outcome.gapless {
                         if let Some(pending) = self.pending_transition.as_mut() {
                             // Keep the visible queue/track outgoing until the
                             // authoritative TrackSwitched event.
-                            pending.stage = TransitionStage::Fading;
+                            pending.stage = if outcome.crossfaded {
+                                fading_from = Some(pending.from_token);
+                                TransitionStage::Fading
+                            } else {
+                                TransitionStage::Queued
+                            };
                         }
                     } else {
-                        self.commit_transition_model(finished.token);
+                        self.commit_transition(finished.token);
                     }
+                } else if !outcome.crossfaded && !outcome.gapless {
+                    self.player.commit_now_playing(finished.token);
                 }
+                self.maybe_record_recent();
                 self.publish(state_tx, false);
+                // The outgoing track stays on screen through the fade, so clients get a live anchor for it to keep counting.
+                if let Some(from_token) = fading_from {
+                    self.publish_position_anchor(state_tx, Some(from_token), None, true);
+                }
                 if self.pending_transition.is_none()
                     && self.phase != ApiPhase::Idle
                     && self.position_token != Some(finished.token)
@@ -400,10 +418,13 @@ impl Session {
                         self.phase == ApiPhase::Playing,
                     );
                 }
+                if self.arm_gapless_now() {
+                    self.publish(state_tx, false);
+                }
             }
             Some(Err(error)) => {
                 tracing::error!(error = %error, "playback failed");
-                if self.fail_load(finished.token, error) {
+                if self.fail_load(finished.token, engine_failure_code(error.kind), error) {
                     self.publish(state_tx, false);
                 }
             }
@@ -435,8 +456,8 @@ impl Session {
         if self.external.is_none() {
             self.attach_external_now(sink.clone());
         }
-        let artwork =
-            server::cover::track(&self.config, &track, 800).map(|cover| cover.as_ref().to_string());
+        let artwork = server::cover::track(self.sources.server.as_ref(), &track, 800)
+            .map(|cover| cover.as_ref().to_string());
         tokio::spawn(async move {
             if let Err(error) = sink.load(&track, artwork).await {
                 tracing::warn!(%error, "external playback could not start");
@@ -444,15 +465,79 @@ impl Session {
         });
         true
     }
+
+    pub(super) fn apply_album_covers(
+        &mut self,
+        source: config::Source,
+        covers: std::collections::HashMap<String, String>,
+        state_tx: &watch::Sender<PlayerState>,
+    ) {
+        if source != self.sources.active {
+            return;
+        }
+        let loaded_position = self
+            .pending_transition
+            .as_ref()
+            .map_or(self.model.current_position(), |transition| {
+                transition.to_position
+            });
+        let mut changed = false;
+        let mut loaded_changed = false;
+        for position in 0..self.model.len() {
+            let Some(track) = self.model.track_at_mut(position) else {
+                continue;
+            };
+            if let Some(cover) = covers.get(&track.album_id)
+                && track.cover.as_ref() != Some(cover)
+            {
+                track.cover = Some(cover.clone());
+                changed = true;
+                loaded_changed |= position == loaded_position;
+            }
+        }
+        if loaded_changed && self.external.is_none() {
+            let artwork = self
+                .model
+                .track_at(loaded_position)
+                .and_then(|track| now_playing_artwork(self.sources.server.as_ref(), track));
+            if self.player.set_artwork(self.intent.token(), artwork)
+                && self.pending_transition.is_none()
+            {
+                self.player.commit_now_playing(self.intent.token());
+            }
+        }
+        if changed {
+            self.publish(state_tx, true);
+        }
+    }
 }
 
-/// Download a cover to a temp file named by its URL hash, so repeated plays
+pub(super) fn now_playing_artwork(
+    server: Option<&config::MusicServer>,
+    track: &Track,
+) -> Option<String> {
+    match server::cover::locate(server, reader::CoverRef::for_track(track), 800)? {
+        server::cover::Located::File(path) => Some(path.to_string_lossy().into_owned()),
+        server::cover::Located::Url(url) => Some(url),
+    }
+}
+
+/// What a temp cover file is named by: a Subsonic cover's id, whose URL is signed afresh on every play, else its URL.
+#[cfg(target_os = "macos")]
+pub(super) fn temp_cover_key(track: &Track, url: &str) -> String {
+    match reader::CoverRef::for_track(track) {
+        reader::CoverRef::SubsonicItem { item_id } => format!("subsonic|{item_id}"),
+        _ => url.to_string(),
+    }
+}
+
+/// Download a cover to a temp file named by a hash of `key`, so repeated plays
 /// of the same album reuse the file instead of growing the temp dir. MPRIS
 /// `mpris:artUrl` wants a file too, not just macOS Now Playing.
-pub(super) async fn fetch_cover_to_temp(url: &str) -> Option<String> {
+pub(super) async fn fetch_cover_to_temp(url: &str, key: &str) -> Option<String> {
     use sha2::{Digest as _, Sha256};
     let mut hasher = Sha256::new();
-    hasher.update(url.as_bytes());
+    hasher.update(key.as_bytes());
     let digest = hasher.finalize();
     let mut name = String::from("kopuz_cover_");
     for byte in &digest[..12] {
@@ -465,7 +550,13 @@ pub(super) async fn fetch_cover_to_temp(url: &str) -> Option<String> {
         return Some(path.to_string_lossy().to_string());
     }
     let fetch = async {
-        let response = reqwest::get(url).await.ok()?.error_for_status().ok()?;
+        let response = utils::http::client()
+            .get(url)
+            .send()
+            .await
+            .ok()?
+            .error_for_status()
+            .ok()?;
         response.bytes().await.ok()
     };
     let bytes = tokio::time::timeout(Duration::from_secs(30), fetch)
@@ -501,6 +592,7 @@ pub(super) struct ClassifiedLoad {
     local_path: Option<PathBuf>,
     remote_ref: Option<(String, String)>,
     active_source: Option<server::source::ActiveSource>,
+    stream_quality: config::StreamQuality,
     artwork: Option<String>,
     transition: Transition,
     start_at: Option<Duration>,
@@ -523,6 +615,7 @@ impl ClassifiedLoad {
         } else {
             let (stream_ref, _) = self.remote_ref.take().ok_or_else(|| LoadFailure {
                 token: self.token,
+                code: api::ErrorCode::Internal,
                 message: "classified load has no source".to_string(),
             })?;
             ClassifiedSource::Remote {
@@ -569,11 +662,32 @@ impl ClassifiedLoad {
 
         let mut duration_secs = None;
         let mut bitrate = None;
+        let native_stream = match &source {
+            ClassifiedSource::Remote {
+                stream_ref,
+                source: Some(source),
+            } => {
+                if let ResolvedStreamRef::Pending(item_id) = ResolvedStreamRef::parse(stream_ref) {
+                    source
+                        .open_stream(item_id, buffer_progress.clone())
+                        .await
+                        .map_err(|error| LoadFailure::from_source(self.token, &error))?
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        let source = match native_stream {
+            Some(stream) => ClassifiedSource::Factory(Box::new(move || {
+                Ok(player::decoder::from_stream(stream))
+            })),
+            None => source,
+        };
+        let mut loudness_db = None;
         let factory: SourceFactory = match source {
             ClassifiedSource::Factory(factory) => factory,
-            ClassifiedSource::Local(path) => Box::new(move || {
-                player::decoder::open_file(&path).map_err(|error| error.to_string())
-            }),
+            ClassifiedSource::Local(path) => Box::new(move || player::decoder::open_file(&path)),
             ClassifiedSource::Cached {
                 path,
                 source,
@@ -582,16 +696,23 @@ impl ClassifiedLoad {
                 // The fallback resolve blocks on the runtime captured here;
                 // this closure executes on the runtime-less decode worker.
                 let rt_handle = tokio::runtime::Handle::current();
+                let quality = self.stream_quality;
                 Box::new(move || match player::decoder::open_file(&path) {
                     Ok(parts) => Ok(parts),
                     Err(error) => {
                         tracing::warn!(error = %error, "cached file failed to open; falling back to the server stream");
-                        let source = source
-                            .as_ref()
-                            .ok_or_else(|| "no active source for cache fallback".to_string())?;
+                        let source = source.as_ref().ok_or_else(|| {
+                            std::io::Error::other("no active source for cache fallback")
+                        })?;
+                        if let Some(stream) = rt_handle
+                            .block_on(source.open_stream(&item_id, buffer_progress.clone()))
+                            .map_err(source_io_error)?
+                        {
+                            return Ok(player::decoder::from_stream(stream));
+                        }
                         let info = rt_handle
-                            .block_on(source.resolve_stream(&item_id))
-                            .map_err(|error| error.to_string())?;
+                            .block_on(source.resolve_stream(&item_id, quality))
+                            .map_err(source_io_error)?;
                         network_factory(
                             info.url,
                             info.format,
@@ -609,17 +730,19 @@ impl ClassifiedLoad {
                     ResolvedStreamRef::Pending(item_id) => {
                         let source = source.ok_or_else(|| LoadFailure {
                             token: self.token,
+                            code: api::ErrorCode::Internal,
                             message: "no active source for remote track".to_string(),
                         })?;
-                        let info = source.resolve_stream(item_id).await.map_err(|error| {
-                            tracing::error!(error = %error, "stream URL resolve failed");
-                            LoadFailure {
-                                token: self.token,
-                                message: error.to_string(),
-                            }
-                        })?;
+                        let info = source
+                            .resolve_stream(item_id, self.stream_quality)
+                            .await
+                            .map_err(|error| {
+                                tracing::error!(error = %error, "stream URL resolve failed");
+                                LoadFailure::from_source(self.token, &error)
+                            })?;
                         duration_secs = info.duration_secs;
                         bitrate = info.bitrate;
+                        loudness_db = info.loudness_db;
                         (info.url, info.format, info.user_agent)
                     }
                     ResolvedStreamRef::SoundCloudHls(_)
@@ -648,6 +771,7 @@ impl ClassifiedLoad {
         if let Some(bits_per_second) = bitrate {
             self.track.bitrate = (bits_per_second / 1000) as u16;
         }
+        self.track.replay_gain.loudness_db = loudness_db;
 
         Ok(PreparedLoad {
             token: self.token,
@@ -679,11 +803,42 @@ pub(super) struct PreparedLoad {
 
 pub(super) struct LoadFailure {
     token: u64,
+    code: api::ErrorCode,
     message: String,
+}
+
+impl LoadFailure {
+    fn from_source(token: u64, error: &server::source::SourceError) -> Self {
+        Self {
+            token,
+            code: crate::sources::source_error_code(error),
+            message: error.to_string(),
+        }
+    }
+}
+
+/// A source's failure inside a stream factory, as the I/O error the engine tells an unreachable host by.
+fn source_io_error(error: server::source::SourceError) -> std::io::Error {
+    use server::source::{Refusal, SourceError};
+    match error {
+        SourceError::Connectivity | SourceError::Refused(Refusal::Network, _) => {
+            std::io::Error::new(std::io::ErrorKind::NotConnected, error.to_string())
+        }
+        other => std::io::Error::other(other.to_string()),
+    }
+}
+
+/// The error code a failure from the engine is shown under.
+pub(super) fn engine_failure_code(kind: player::engine::FailureKind) -> api::ErrorCode {
+    match kind {
+        player::engine::FailureKind::Unreachable => api::ErrorCode::SourceUnreachable,
+        player::engine::FailureKind::NotFound => api::ErrorCode::NotFound,
+        player::engine::FailureKind::Other => api::ErrorCode::Internal,
+    }
 }
 
 pub(super) struct LoadFinished {
     token: u64,
-    result: Option<Result<player::engine::LoadOutcome, String>>,
+    result: Option<Result<player::engine::LoadOutcome, player::engine::Failure>>,
     clear_pending_resume: bool,
 }

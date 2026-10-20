@@ -8,7 +8,6 @@ use crate::reorder_buttons::ReorderButtons;
 use crate::showcase::{self, ShowcaseProps};
 use crate::track_row::TrackRow;
 use api::TrackInfo as Track;
-use config::AppConfig;
 use dioxus::prelude::*;
 use hooks::use_player_controller::PlayerController;
 
@@ -25,15 +24,12 @@ struct ShowcaseDerived {
 #[component]
 pub fn ShowcaseNormal(props: ShowcaseProps) -> Element {
     let mut ctrl = use_context::<PlayerController>();
-    let config = use_context::<Signal<AppConfig>>();
     let _nav_ctrl = use_context::<NavigationController>();
-    let total_seconds: u64 = props.tracks.iter().filter_map(|t| t.duration_secs()).sum();
-    let duration_min = total_seconds / 60;
+    let duration_min = api::total_duration_secs(&props.tracks).map(|secs| secs / 60);
 
     // Per-track cover resolver (source dispatch + album lookup live in the
     // source layer; no partition decision here).
 
-    let offline_tracks = config.read().offline_tracks.clone();
     let sort_state = use_signal(|| None);
 
     // The body re-renders on every scroll tick (it reads `scroll_stat`), but
@@ -82,6 +78,7 @@ pub fn ShowcaseNormal(props: ShowcaseProps) -> Element {
     let current_song_album = ctrl.current_song_album.read().clone();
     let current_song_duration = *ctrl.current_song_duration.read();
     let play_all_queue = Arc::clone(&derived.queue);
+    let play_all_album = props.album_id.clone();
     let selected_queue_tracks: Vec<_> = derived
         .queue
         .iter()
@@ -90,16 +87,7 @@ pub fn ShowcaseNormal(props: ShowcaseProps) -> Element {
         .collect();
     let selected_queue_tracks_arc = Arc::new(selected_queue_tracks);
 
-    let all_downloaded = !props.tracks.is_empty()
-        && props.tracks.iter().all(|t| {
-            let p = t.uid.clone();
-            let id = p.split(':').nth(1).unwrap_or(&p);
-            if let Some(path_str) = offline_tracks.get(id) {
-                std::path::Path::new(path_str).exists()
-            } else {
-                false
-            }
-        });
+    let all_downloaded = !props.tracks.is_empty() && props.tracks.iter().all(|t| t.offline);
 
     let columns = if props.is_album {
         COLUMNS_NORMAL_ALBUM
@@ -138,8 +126,8 @@ pub fn ShowcaseNormal(props: ShowcaseProps) -> Element {
          div {
              class: "select-none flex-1 min-h-0 flex flex-col w-full",
              div {
-                 class: if cfg!(target_os = "android") { "flex flex-col items-center text-center gap-4 mb-6 shrink-0" } else { "flex flex-col md:flex-row md:flex-wrap items-end gap-8 mb-12 shrink-0" },
-                 div { class: if cfg!(target_os = "android") { "w-44 h-44 rounded-xl bg-stone-800 overflow-hidden relative flex-shrink-0" } else { "w-64 h-64 rounded-xl bg-stone-800 overflow-hidden relative flex-shrink-0" },
+                 class: if cfg!(target_os = "android") { "showcase-hero flex flex-col items-center text-center gap-4 mb-6 shrink-0" } else { "showcase-hero flex flex-col md:flex-row md:flex-wrap items-end gap-8 mb-12 shrink-0" },
+                 div { class: if cfg!(target_os = "android") { "showcase-cover w-44 h-44 rounded-xl bg-stone-800 overflow-hidden relative flex-shrink-0" } else { "showcase-cover w-64 h-64 rounded-xl bg-stone-800 overflow-hidden relative flex-shrink-0" },
                      if let Some(url) = &props.cover_url {
                          img { src: "{url.as_ref()}", class: "w-full h-full object-cover" }
                      } else {
@@ -171,17 +159,19 @@ pub fn ShowcaseNormal(props: ShowcaseProps) -> Element {
                              h5 { class: "text-sm font-bold text-white/60 mb-2", "{props.description}" }
                          }
                      }
-                     h1 { class: if cfg!(target_os = "android") { "text-3xl font-semibold tracking-tight text-white mb-3 break-words line-clamp-3" } else { "text-5xl md:text-7xl font-semibold tracking-tight text-white mb-6 break-words line-clamp-3" }, "{props.name}" }
+                     h1 { class: if cfg!(target_os = "android") { "showcase-title text-3xl font-semibold tracking-tight text-white mb-3 break-words line-clamp-3" } else { "showcase-title text-5xl md:text-7xl font-semibold tracking-tight text-white mb-6 break-words line-clamp-3" }, "{props.name}" }
                      div { class: if cfg!(target_os = "android") { "flex items-center justify-center gap-4 text-slate-400" } else { "flex items-center gap-6 text-slate-400" },
                          {
                             let count = props.tracks.len();
-                            let song_text = i18n::t_with("showcase_song_count", &[("count", count.to_string())]);
+                            let song_text = i18n::t_with("showcase_song_count", &[("count", count.into())]);
                             rsx! {
                                 p { "{song_text}" }
                             }
                          }
-                         span { "•" }
-                         p { "{duration_min} {i18n::t(\"min\")}" }
+                         if let Some(minutes) = duration_min {
+                             span { "•" }
+                             p { "{minutes} {i18n::t(\"min\")}" }
+                         }
                          if let Some(year) = props.release_year {
                              span { "•" }
                              p { "{year}" }
@@ -214,10 +204,12 @@ pub fn ShowcaseNormal(props: ShowcaseProps) -> Element {
                             }
                         }
                         button {
-                             class: "w-14 h-14 rounded-full bg-indigo-500 hover:bg-indigo-400 text-black flex items-center justify-center transition-transform hover:scale-105",
+                             class: "playback-play w-14 h-14 rounded-full bg-indigo-500 hover:bg-indigo-400 text-black flex items-center justify-center transition-transform hover:scale-105",
                              onclick: move |_| {
                                 let is_shuffle = *ctrl.shuffle.peek();
-                                if is_shuffle {
+                                if let Some(id) = play_all_album.clone().filter(|_| sort_state.peek().is_none()) {
+                                    ctrl.play_album(id, play_all_queue.len(), is_shuffle);
+                                } else if is_shuffle {
                                     ctrl.play_queue_shuffled((*play_all_queue).clone());
                                 } else {
                                     ctrl.play_queue_linear((*play_all_queue).clone());
@@ -228,7 +220,7 @@ pub fn ShowcaseNormal(props: ShowcaseProps) -> Element {
                          if props.on_download_all.is_some() || props.on_delete_all.is_some() {
                              button {
                                  class: "w-12 h-12 rounded-full border border-white/20 hover:border-white/40 text-white/70 hover:text-white hover:bg-white/10 flex items-center justify-center transition-colors active:scale-95",
-                                 title: if all_downloaded { "Remove downloads" } else { "Download all for offline playback" },
+                                 title: if all_downloaded { i18n::t("remove_download") } else { i18n::t("download_offline") },
                                  disabled: props.is_downloading_all,
                                  onclick: move |_| {
                                      if all_downloaded {
@@ -299,13 +291,7 @@ pub fn ShowcaseNormal(props: ShowcaseProps) -> Element {
                              let can_move_up = props.is_reorderable && idx > 0;
                              let can_move_down = props.is_reorderable && idx + 1 < track_count;
 
-                             let path_str = track.uid.clone();
-                             let item_id_str: String = path_str.split(':').nth(1).unwrap_or(&path_str).to_string();
-                             let is_downloaded = if let Some(path_str) = offline_tracks.get(&item_id_str) {
-                                 std::path::Path::new(path_str).exists()
-                             } else {
-                                 false
-                             };
+                             let is_downloaded = track.offline;
                              let is_downloading = false;
                              let play_queue = std::sync::Arc::clone(&sorted_tracks_arc);
 
@@ -329,7 +315,7 @@ pub fn ShowcaseNormal(props: ShowcaseProps) -> Element {
                                                  class: "grid items-center p-2 rounded-lg hover:bg-white/5 group transition-colors relative select-none",
                                                  style: format!("grid-template-columns: {columns}; column-gap: {column_gap};"),
                                                  i { class: "fa-solid fa-compact-disc text-center" }
-                                                 p { "Disc {track.disc_number.unwrap_or(1)}" }
+                                                 p { {i18n::t_with("disc_heading", &[("number", track.disc_number.unwrap_or(1).into())])} }
                                              }
                                          }
                                      }
@@ -384,11 +370,7 @@ pub fn ShowcaseNormal(props: ShowcaseProps) -> Element {
                                                     handler.call(idx);
                                                 }
                                              },
-                                             on_remove_from_playlist: move |_| {
-                                                 if let Some(handler) = &props.on_remove_from_playlist {
-                                                     handler.call(idx);
-                                                 }
-                                             },
+                                             on_remove_from_playlist: props.on_remove_from_playlist.map(|h| EventHandler::new(move |_| h.call(idx))),
                                              on_view_metadata: props.on_view_metadata.map(|h| EventHandler::new(move |_| h.call(idx))),
                                              on_download: move |_| {
                                                  if let Some(handler) = &props.on_download_track {

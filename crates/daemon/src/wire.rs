@@ -4,17 +4,18 @@ use api::{TrackInfo, TrackKind};
 use reader::Track;
 use server::playback_ref::PlaybackItemRef;
 
-/// The wire row for a track: sentinel durations become an explicit kind, and
-/// the offline flag is derived from the config's registration map so clients
-/// never see paths.
-pub(crate) fn track_info(track: &Track, config: &config::AppConfig) -> TrackInfo {
+use crate::offline::OfflineIndex;
+
+/// The wire row for a track: sentinel durations become a kind, and the offline flag stands in for the copy's path.
+pub(crate) fn track_info(track: &Track, offline: &OfflineIndex) -> TrackInfo {
     let key = track.id.key().to_string();
     let uid = track.id.uid();
     let item_ref = PlaybackItemRef::parse(&uid);
     let radio = track.duration == u64::MAX;
     let offline = item_ref
         .primary_id()
-        .is_some_and(|id| config.offline_tracks.contains_key(id));
+        .and_then(|id| offline.present(id))
+        .is_some();
     TrackInfo {
         key,
         uid,
@@ -22,7 +23,7 @@ pub(crate) fn track_info(track: &Track, config: &config::AppConfig) -> TrackInfo
         artist: track.artist.clone(),
         album: track.album.clone(),
         album_id: track.album_id.clone(),
-        duration_ms: (!radio).then(|| track.duration.saturating_mul(1000)),
+        duration_ms: (!radio && track.duration > 0).then(|| track.duration.saturating_mul(1000)),
         khz: track.khz,
         bitrate: track.bitrate,
         track_number: track.track_number,
@@ -40,6 +41,19 @@ pub(crate) fn track_info(track: &Track, config: &config::AppConfig) -> TrackInfo
         musicbrainz_track_id: track.musicbrainz_track_id.clone(),
         artwork: crate::artwork::track_ref(track),
         credits: credits(track),
+        explicit: track.explicit,
+        plays: track.plays.clone(),
+        counterpart: track
+            .counterpart
+            .as_deref()
+            .map(|counterpart| api::TrackCounterpart {
+                key: counterpart.item_id.clone(),
+                version: match counterpart.video {
+                    true => api::TrackVersion::Video,
+                    false => api::TrackVersion::Song,
+                },
+                duration_ms: counterpart.duration_ms,
+            }),
     }
 }
 
@@ -127,7 +141,10 @@ mod tests {
             playlist_item_id: None,
             artists: vec!["Ada".into()],
             replay_gain: config::ReplayGainInfo::default(),
+            counterpart: None,
             credits,
+            explicit: false,
+            plays: None,
         }
     }
 

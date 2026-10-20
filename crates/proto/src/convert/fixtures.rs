@@ -42,8 +42,10 @@ pub(super) fn sample_state() -> api::PlayerState {
             index: Some(3),
             shuffle: true,
             loop_mode: api::LoopMode::Queue,
+            context: Some(api::QueueContext::Album { id: "MPRE1".into() }),
         },
         volume: 0.8,
+        muted: true,
         buffered: vec![api::BufferedRange {
             start: 0,
             end: 4096,
@@ -55,7 +57,6 @@ pub(super) fn sample_state() -> api::PlayerState {
                 uid: "f".into(),
                 ..Default::default()
             },
-            position_ms: 1000,
         }),
         external: Some(api::ExternalPlayback {
             kind: "spotify".into(),
@@ -64,6 +65,7 @@ pub(super) fn sample_state() -> api::PlayerState {
         error: Some(api::ErrorBody {
             code: api::ErrorCode::SourceUnreachable,
             message: "m".into(),
+            reason: None,
         }),
         output_latency_ms: Some(120),
     }

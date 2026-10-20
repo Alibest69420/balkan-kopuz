@@ -11,6 +11,9 @@ language = اللغة
 library = المكتبة
 playlists = قوائم التشغيل
 album = الألبوم
+release_single = أغنية منفردة
+release_ep = EP
+release_audiobook = Audiobook
 artist = الفنان
 home = الرئيسية
 search = بحث
@@ -31,6 +34,9 @@ add = إضافة
 add_folder = إضافة مجلد
 no_music_folders = لم يتم تكوين مجلدات موسيقى
 remote_music_folders = مجلدات الموسيقى
+source_account = الحساب
+source_account_help = لكل حساب مكتبته الخاصة. التبديل يعيد مزامنتها.
+source_accounts_failed = تعذّر تحميل الحسابات: { $error }
 parent_folder = للأعلى
 use_this_folder = إضافة هذا المجلد
 no_subfolders = لا توجد مجلدات فرعية
@@ -63,6 +69,10 @@ discord_presence = شارة Discord
 connectivity = الاتصال
 integration_connect = Connect to { $name }
 integration_connected = { $name } connected
+integration_connecting = Connecting…
+integration_browser_title = Use a signed-in browser
+integration_browser_profile = { $name } ({ $browser })
+integration_browser_none = No browser profiles found. Paste your token above instead.
 discord_presence_paused = إظهار حالة Discord عند الإيقاف المؤقت
 discord_presence_source = إظهار مصدر الوسائط في حالة Discord
 reduce_animations = تقليل الرسوم المتحركة
@@ -108,6 +118,7 @@ radio_empty = لم يتم العثور على أغانٍ مشابهة
 radio_failed = تعذر بدء الراديو
 remove_from_queue = إزالة من قائمة الانتظار
 downloading = جارٍ التنزيل…
+downloading_progress = Downloading { $done } / { $total }
 more_actions_for = إجراءات أخرى لـ { $name }
 share_musicbrainz = مشاركة (MusicBrainz)
 share_link_copied = تم نسخ رابط MusicBrainz
@@ -123,6 +134,7 @@ add_all_to_queue = إضافة الكل إلى قائمة الانتظار
 add_all_to_playlist = إضافة الكل إلى قائمة التشغيل
 select_all = تحديد الكل
 select_all_tracks = تحديد كل المسارات
+deselect_all_tracks = Deselect all tracks
 remove_from_cache = إزالة من الذاكرة المؤقتة
 create = إنشاء
 save = حفظ
@@ -145,15 +157,42 @@ new_releases = إصدارات جديدة
 # Navigation Buttons
 up_next = التالي
 lyrics = الكلمات
+track_version = الإصدار
+track_version_song = أغنية
+track_version_video = فيديو
+music_video = فيديو موسيقي
 
 # Player/Media
 loading_lyrics = جارٍ تحميل الكلمات...
 lyrics_not_found = لم يتم العثور على الكلمات
 instrumental_break = موسيقى فقط
 no_previous_songs = لا توجد أغانٍ سابقة
-playlist_track_count = { $count } مقطع
-music_playlist_count = موسيقى • { $count } مقطع
-showcase_song_count = { $count } أغنية
+playlist_track_count =
+    { $count ->
+        [few] { $count } مقاطع
+       *[other] { $count } مقطع
+    }
+playlist_folder_count =
+    { $count ->
+        [few] { $count } قوائم تشغيل
+       *[other] { $count } قائمة تشغيل
+    }
+playlists_synced_count =
+    { $count ->
+        [few] تمت مزامنة { $count } قوائم تشغيل
+       *[other] تمت مزامنة { $count } قائمة تشغيل
+    }
+playlists_loading_tracks = جارٍ تحميل المقاطع — قوائم التشغيل { $done } / { $count } (المتبقي { $remaining })
+music_playlist_count =
+    { $count ->
+        [few] موسيقى • { $count } مقاطع
+       *[other] موسيقى • { $count } مقطع
+    }
+showcase_song_count =
+    { $count ->
+        [few] { $count } أغانٍ
+       *[other] { $count } أغنية
+    }
 
 # Modal Titles
 add_playlist = إضافة قائمة تشغيل
@@ -210,8 +249,11 @@ title = العنوان
 time = الوقت
 genre = التصنيف
 plays = عدد مرات التشغيل
-track_count = { $count } مقطع
-track_count_singular = مقطع واحد
+track_count =
+    { $count ->
+        [few] { $count } مقاطع
+       *[other] { $count } مقطع
+    }
 songs = أغانٍ
 min = دقيقة
 
@@ -246,8 +288,16 @@ unknown_genre = تصنيف غير معروف
 no_tracks_in_library = لم يتم العثور على مقاطع في مكتبتك.
 no_songs_here = لا توجد أغانٍ هنا.
 syncing_with_server = جارٍ المزامنة مع الخادم...
-yt_syncing_progress = جارٍ المزامنة — تم تحميل { $count } مقطع حتى الآن
-yt_synced_total = تمت مزامنة { $count } مقطع مفضل
+yt_syncing_progress =
+    { $count ->
+        [few] جارٍ المزامنة — تم تحميل { $count } مقاطع حتى الآن
+       *[other] جارٍ المزامنة — تم تحميل { $count } مقطع حتى الآن
+    }
+yt_synced_total =
+    { $count ->
+        [few] تمت مزامنة { $count } مقاطع مفضلة
+       *[other] تمت مزامنة { $count } مقطع مفضل
+    }
 refresh = تحديث
 most_played_tracks = أكثر مقاطعك تشغيلاً.
 no_more_songs = لا توجد أغانٍ أخرى في قائمة الانتظار
@@ -352,6 +402,7 @@ replay_gain_mode_auto = تلقائي
 replay_gain_prevent_clipping = منع القَصّ
 replay_gain_preamp = تضخيم مسبق
 replay_gain_fallback = الكسب الافتراضي
+replay_gain_youtube_loudness = تسوية مستوى صوت YouTube Music
 move_to_folder = نقل إلى مجلد
 no_folders_yet = لا توجد مجلدات بعد.
 folder_name = اسم المجلد...
@@ -402,6 +453,14 @@ device_change_pause = Pause
 sample_rate_mode = معدل عينات الإخراج
 sample_rate_mode_system = اتباع النظام
 sample_rate_mode_source = مطابقة المقطع
+settings_group_streaming = البث
+stream_quality = جودة البث
+stream_quality_low = منخفضة
+stream_quality_normal = عادية
+stream_quality_high = عالية
+autoplay_radio = تشغيل راديو عند انتهاء قائمة الانتظار
+skip_explicit = تخطي المقاطع الصريحة
+pause_watch_history = إيقاف سجل المشاهدة مؤقتًا
 
 crossfade = تلاشي متقاطع
 crossfade_off = إيقاف
@@ -431,6 +490,8 @@ listen_now_layout = التخطيط
 ui_style = نمط الواجهة
 ui_normal = عادي
 ui_vaxry = Vaxry
+ui_material3 = Material 3
+system_colors = ألوان النظام
 player_bar_position = موضع شريط المشغل
 position_bottom = أسفل
 position_top = أعلى
@@ -476,6 +537,11 @@ minimize_to_tray = تصغير إلى صينية النظام
 update_available = تحديث متوفر
 update_banner_message = إصدار Kopuz { $version } متوفر.
 view_release = عرض الإصدار
+update_install = التحديث وإعادة التشغيل
+update_downloading = جارٍ تنزيل Kopuz { $version }…
+update_restarting = جارٍ إعادة التشغيل لإكمال التحديث…
+update_failed = تعذّر تثبيت Kopuz { $version }.
+update_retry = أعد المحاولة
 
 volume_scroll_step = خطوة تمرير الصوت
 
@@ -498,6 +564,50 @@ discover_more_loading = جارٍ تحميل المزيد…
 discover_failed = تعذّر تحميل قسم الاكتشاف: { $error }
 discover_unsupported = الاكتشاف متاح فقط عندما تكون YouTube Music هي الخادم النشط.
 discover_show_all = عرض الكل
+catalog_page_explore = استكشاف
+catalog_page_charts = الأكثر رواجًا
+catalog_page_moods = الحالات المزاجية والأنواع
+catalog_page_podcasts = بودكاست
+catalog_page_library_songs = أغانيك
+catalog_page_library_albums = ألبوماتك
+catalog_page_library_artists = فنانوك
+catalog_page_subscriptions = الاشتراكات
+catalog_page_library_podcasts = البودكاست الخاص بك
+catalog_page_uploads = التحميلات
+catalog_page_history = السجل
+search_filter_all = الكل
+search_filter_songs = الأغاني
+search_filter_videos = الفيديوهات
+search_filter_community_playlists = قوائم تشغيل المجتمع
+search_filter_featured_playlists = قوائم تشغيل مميزة
+search_filter_episodes = الحلقات
+search_filter_profiles = الملفات الشخصية
+discover_show_more = عرض المزيد
+discover_scroll_back = التمرير للخلف
+discover_scroll_forward = التمرير للأمام
+catalog_page_empty = لا شيء هنا بعد
+search_prompt = ابحث عن أغانٍ وألبومات وفنانين والمزيد
+search_showing_results_for = عرض نتائج “{ $query }”
+catalog_like = إعجاب
+catalog_unlike = إزالة الإعجاب
+catalog_dislike = عدم إعجاب
+catalog_undislike = إزالة عدم الإعجاب
+catalog_save = حفظ في المكتبة
+catalog_unsave = إزالة من المكتبة
+catalog_follow = متابعة
+catalog_unfollow = إلغاء المتابعة
+catalog_following = تتابع
+catalog_remove_history = إزالة من السجل
+playlist_edit_details = تعديل التفاصيل
+playlist_description = الوصف
+playlist_privacy = من يمكنه رؤيتها
+playlist_privacy_public = عامة
+playlist_privacy_unlisted = غير مدرجة
+playlist_privacy_private = خاصة
+playlist_delete_title = حذف قائمة التشغيل هذه؟
+playlist_delete_body = سيتم حذف “{ $name }” من { $service } نهائيًا.
+playlist_unsave_title = إزالة من مكتبتك؟
+playlist_unsave_body = ستغادر “{ $name }” مكتبتك في { $service }. تبقى القائمة نفسها على { $service }.
 source_anon_playlists = سجّل الدخول إلى YouTube Music لعرض قوائم التشغيل في مكتبتك.
 source_anon_favorites = سجّل الدخول إلى YouTube Music لعرض الأغاني التي أعجبتك.
 source_anon_discover = سجّل الدخول إلى YouTube Music لتصفح قسم اكتشف.
@@ -550,8 +660,13 @@ external_play_on = تشغيل على
 external_this_app = kopuz (هذا التطبيق)
 prefer_active_device = Playback device
 prefer_active_device_help = When another device is already playing, take it over instead of starting playback here.
-settings_managed_notice = بعض الإعدادات تُدار بواسطة إعدادات النظام (Nix/hjem) ولا يمكن تغييرها هنا.
+settings_managed_notice = بعض الإعدادات مأخوذة من ملف إعدادات لا يستطيع التطبيق الكتابة فيه (للقراءة فقط أو تديره Nix/hjem) ولا يمكن تغييرها هنا.
 setting_managed_by_system = يُدار بواسطة إعدادات النظام
+settings_dropin_notice = Some settings are set by drop-in files and can't be changed here.
+settings_env_notice = Some settings are set by KOPUZ_CONFIG_* environment variables and can't be changed here.
+setting_locked_by_file = معيَّن بواسطة { $path }
+setting_locked_by_dropin = معيَّن بواسطة الملف الإضافي { $path }
+setting_locked_by_env = معيَّن بواسطة { $var }
 
 settings_interface = Interface
 interface_general = General
@@ -587,6 +702,7 @@ settings_tools = Tools
 share = Share
 share_copied = Copied link
 share_no_page = Couldn't find a page for this track
+explicit = محتوى صريح
 start_daemon = Start Daemon
 
 first_run_title = Welcome to Kopuz
@@ -636,7 +752,11 @@ waiting_for_browser = Waiting for your browser…
 signed_in = Signed in
 metadata_number_invalid = Enter a number, or leave it empty to clear the tag.
 metadata_batch_keep = Leave unchanged
-metadata_batch_count = Editing { $count } tracks
+metadata_batch_count =
+    { $count ->
+        [one] Editing { $count } track
+       *[other] Editing { $count } tracks
+    }
 interface_font = Interface font
 interface_font_description = The font family to draw the interface with.
 interface_font_placeholder = Theme default
@@ -716,6 +836,13 @@ view = View
 undo = Undo
 quit = Quit
 scanning_library = Scanning library…
+network_offline_banner = No internet connection — switched to offline mode
+network_online_banner = Back online — switched to server mode
+keep_server_mode = Keep server mode
+tray_show_hide = Show / Hide Kopuz
+tray_quit = Quit Kopuz
+tray_unavailable_title = Tray icon unavailable
+tray_unavailable_message = System tray unavailable: appindicator library not found. Install libayatana-appindicator (Debian/Ubuntu/Arch) or libappindicator-gtk3 (Fedora). Closing the window will quit the app instead of minimizing to tray.
 reconnecting_attempt = Reconnecting… (attempt { $attempt })
 downloads_summary = { $done } downloaded, { $failed } failed
 job_scan = Library scan
@@ -782,11 +909,19 @@ discover_clear_search = Clear search
 discover_results_for = Results for "{ $query }"
 discover_no_results_hint = Try fewer words, or switch source and look again.
 discover_show_less = Show less
-discover_genre_count = { $count } genres
+discover_genre_count =
+    { $count ->
+        [one] { $count } genre
+       *[other] { $count } genres
+    }
 discover_read_failed = Couldn't load your library: { $error }
 palette_all_results = All results for "{ $query }" in Discover
 
-library_count = { $count } items
+library_count =
+    { $count ->
+        [one] { $count } item
+       *[other] { $count } items
+    }
 library_filter_placeholder = Filter the library…
 library_chip_downloaded = Downloaded
 library_chip_years = Years
@@ -809,7 +944,11 @@ library_tile_medium = Medium
 library_tile_large = Large
 library_default_view = Grids open as
 library_default_view_description = Whether albums, artists and playlists start as tiles or as rows.
-library_artist_tracks = { $count } tracks
+library_artist_tracks =
+    { $count ->
+        [one] { $count } track
+       *[other] { $count } tracks
+    }
 library_selected = { $count } selected
 library_whole_selection = Everything that matches
 library_read_failed = Could not read the library
@@ -848,7 +987,11 @@ downloader_history = URL downloads
 interface_skin = Skin
 interface_skin_description = The shape of the interface: how round things are, how tall a row sits.
 
-home_plays = { $count } plays
+home_plays =
+    { $count ->
+        [one] { $count } play
+       *[other] { $count } plays
+    }
 
 interface_ambient = Ambient light
 interface_ambient_description = Let the current cover cast its colour across the window.
@@ -870,3 +1013,83 @@ settings_group_interface = الواجهة
 settings_group_output = الإخراج
 settings_group_loudness = مستوى الصوت
 browse = تصفح
+
+clippsly_help = Create an App Password at clippsly.app, then sign in with your Clippsly username and that App Password. Storage limits are set by your Clippsly account.
+cloud_storage_usage = Cloud storage: { $used } of { $total } used
+upload_music = Upload music
+uploading_music = Uploading { $name }…
+music_uploaded =
+    { $count ->
+        [one] Uploaded { $count } file.
+       *[other] Uploaded { $count } files.
+    }
+music_upload_too_large = Audio files must be no larger than 500 MiB.
+cloud_storage_loading = Loading storage usage…
+
+smb_url_placeholder = smb://nas/Music
+smb_help = Connect to an SMB 2/3 share or subfolder, then sign in with your NAS account. Domain accounts can use DOMAIN\username. Files are read without mounting the share.
+invalid_smb_url = Enter smb://host/share or smb://host/share/folder, without credentials in the URL.
+
+browser_sessions_heading = مسجّل الدخول بالفعل
+browser_sessions_checking = جارٍ فحص متصفحاتك…
+browser_session_name = { $browser } · { $profile }
+browser_session_use = استخدام
+browser_session_importing = جارٍ تسجيل الدخول…
+browser_session_help = ينسخ Kopuz الجلسة من ملف تعريف المتصفح الذي تختاره. يمكن أن يبقى المتصفح مفتوحًا.
+
+playback_error_session_expired = انتهت صلاحية تسجيل دخولك إلى { $source }. سجّل الدخول مرة أخرى لمواصلة التشغيل.
+playback_error_challenged = يريد { $source } التأكد من أنك لست روبوتًا. انتظر بضع دقائق ثم حاول مرة أخرى.
+playback_error_refused = رفض { $source } تشغيل هذا المقطع. تسجيل دخولك سليم: المشكلة من جهة { $source } وتزول عادةً من تلقاء نفسها.
+playback_error_unreachable = تعذّر الوصول إلى { $source }. تحقق من اتصالك ثم حاول مرة أخرى.
+playback_error_unavailable = لا يستطيع { $source } تشغيل هذا المقطع. ربما حُذف أو أصبح خاصًا أو حُظر في منطقتك.
+playback_sign_in_again = تسجيل الدخول مرة أخرى
+playback_try_again = حاول مرة أخرى
+playback_skip = تخطي المقطع
+playback_copy_details = نسخ التفاصيل
+playback_details_copied = تم نسخ التفاصيل
+source_signed_out = ● تم تسجيل الخروج
+source_not_responding = ● لا يستجيب
+connection_test = اختبار الاتصال
+connection_testing = جارٍ الاختبار…
+connection_test_failed = تعذّر تشغيل الاختبار: { $error }
+connection_copy_report = نسخ التقرير
+connection_report_copied = تم نسخ التقرير
+connection_step_reach = الخدمة قابلة للوصول
+connection_step_session = تم قبول تسجيل الدخول
+connection_step_signed_in_playback = يعمل التشغيل بحسابك
+connection_step_anonymous_playback = يعمل التشغيل بدون حساب
+connection_step_playback_token = رمز التشغيل
+connection_step_passed = نجح
+connection_step_failed = فشل
+connection_step_skipped = تم التخطي
+
+sync_interval = Sync and rescan every
+sync_interval_never = Never
+sync_interval_minutes = { $count } min
+sync_interval_hours = { $count } h
+sync_interval_days = { $count } d
+
+error_setting_locked = A managed settings file pins this setting, so it cannot be changed here.
+error_connect_not_offered = This integration does not connect that way.
+error_api_key_missing = Set the API key and secret first.
+error_sign_in_not_started = The service did not start the sign-in. Check the API key and your connection.
+error_browser_not_opened = Could not open a browser for the sign-in.
+error_sign_in_timed_out = The sign-in was not approved in time.
+error_browser_profile_gone = That browser profile is no longer there.
+error_browser_cookies_unreadable = Could not read the cookies of that browser profile.
+error_browser_profile_signed_out = That browser profile is not signed in to the service. Sign in there, or paste your token instead.
+error_browser_profile_no_token = The service did not show a token for that profile. Paste it instead.
+error_integration_unreachable = Could not reach the service. Check your connection.
+error_credential_rejected = The service does not accept that token. Paste your token instead.
+error_default_source_undeletable = The default folder source cannot be deleted.
+error_empty_source_folder = A source folder cannot be empty.
+error_code_invalid_input = Not accepted: { $detail }
+error_code_not_found = That is no longer there.
+error_code_conflict = Already in use or in progress: { $detail }
+error_code_source_auth_expired = The source did not accept the sign-in. Sign in again in Settings.
+error_code_source_unreachable = The source could not be reached. Check your connection.
+error_code_unsupported = Not supported here: { $detail }
+error_code_internal = Something went wrong: { $detail }
+error_code_source_challenged = The source wants to check that you're not a bot. Wait a few minutes and try again.
+error_code_source_refused = The source refused the request. This is on its side and usually clears up on its own.
+error_code_item_unavailable = The source can't play this. It may have been removed, made private or blocked in your region.

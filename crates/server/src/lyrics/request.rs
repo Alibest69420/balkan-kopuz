@@ -18,6 +18,13 @@ pub struct AppleMusicLyricsAuth {
     pub catalog_id: String,
 }
 
+/// `account` is the brand account to read as; `None` is the Google account itself.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct YouTubeMusicLyricsAuth {
+    pub cookies: String,
+    pub account: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LyricsRequest {
     pub artist: String,
@@ -32,6 +39,7 @@ pub struct LyricsRequest {
     /// track path starts with `applemusic:`, the lyrics chain fetches TTML
     /// directly from the amp-api instead of using the paxsenix proxy.
     pub apple_music_auth: Option<AppleMusicLyricsAuth>,
+    pub youtube_music_auth: Option<YouTubeMusicLyricsAuth>,
 }
 
 impl LyricsRequest {
@@ -52,6 +60,7 @@ impl LyricsRequest {
             prefer_local: false,
             enable_musixmatch: false,
             apple_music_auth: None,
+            youtube_music_auth: None,
         }
     }
 
@@ -81,6 +90,11 @@ impl LyricsRequest {
 
     pub fn apple_music_auth(mut self, auth: AppleMusicLyricsAuth) -> Self {
         self.apple_music_auth = Some(auth);
+        self
+    }
+
+    pub fn youtube_music_auth(mut self, auth: YouTubeMusicLyricsAuth) -> Self {
+        self.youtube_music_auth = Some(auth);
         self
     }
 

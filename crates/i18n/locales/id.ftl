@@ -11,6 +11,9 @@ language = Bahasa
 library = Pustaka
 playlists = Daftar Putar
 album = Album
+release_single = Singel
+release_ep = EP
+release_audiobook = Audiobook
 artist = Artis
 home = Beranda
 search = Cari
@@ -31,6 +34,9 @@ add = Tambahkan
 add_folder = Tambahkan Folder
 no_music_folders = Tidak ada folder musik yang dikonfigurasi
 remote_music_folders = Folder Musik
+source_account = Akun
+source_account_help = Setiap akun punya pustakanya sendiri. Beralih akan menyinkronkannya lagi.
+source_accounts_failed = Tidak dapat memuat akun: { $error }
 parent_folder = Naik
 use_this_folder = Tambahkan Folder Ini
 no_subfolders = Tidak ada subfolder
@@ -74,10 +80,22 @@ device_change_pause = Pause
 sample_rate_mode = Laju sampel output
 sample_rate_mode_system = Ikuti sistem
 sample_rate_mode_source = Samakan dengan trek
+settings_group_streaming = Streaming
+stream_quality = Kualitas streaming
+stream_quality_low = Rendah
+stream_quality_normal = Normal
+stream_quality_high = Tinggi
+autoplay_radio = Putar radio saat antrean habis
+skip_explicit = Lewati lagu eksplisit
+pause_watch_history = Jeda histori tontonan
 discord_presence = Discord Presence
 connectivity = Konektivitas
 integration_connect = Connect to { $name }
 integration_connected = { $name } connected
+integration_connecting = Connecting…
+integration_browser_title = Use a signed-in browser
+integration_browser_profile = { $name } ({ $browser })
+integration_browser_none = No browser profiles found. Paste your token above instead.
 discord_presence_paused = Tampilkan status Discord saat dijeda
 discord_presence_source = Tampilkan sumber media di status Discord
 reduce_animations = Kurangi Animasi
@@ -141,6 +159,11 @@ downloader_status_waiting = Silahkan tunggu…
 update_available = Pembaruan tersedia
 update_banner_message = { $version } dari kopuz sudah tersedia.
 view_release = Lihat rilis
+update_install = Perbarui dan mulai ulang
+update_downloading = Mengunduh Kopuz { $version }…
+update_restarting = Memulai ulang untuk menyelesaikan pembaruan…
+update_failed = Tidak dapat memasang Kopuz { $version }.
+update_retry = Coba lagi
 
 # UI Actions & Buttons
 add_to_favorites = Tambahkan ke Favorit
@@ -156,6 +179,7 @@ radio_empty = Tidak ada lagu serupa ditemukan
 radio_failed = Tidak dapat memulai radio
 remove_from_queue = Hapus dari Antrian
 downloading = Mengunduh…
+downloading_progress = Downloading { $done } / { $total }
 more_actions_for = Tindakan lainnya untuk { $name }
 share_musicbrainz = Bagikan (MusicBrainz)
 share_link_copied = Tautan MusicBrainz disalin
@@ -171,6 +195,7 @@ add_all_to_queue = Tambahkan Semua ke Antrian
 add_all_to_playlist = Tambahkan Semua ke Daftar Putar
 select_all = Pilih semua
 select_all_tracks = Pilih semua trek
+deselect_all_tracks = Deselect all tracks
 remove_from_cache = Hapus dari Tembolok
 create = Buat
 save = Simpan
@@ -198,6 +223,10 @@ new_releases = Rilis Baru
 # Navigation Buttons
 up_next = BERIKUTNYA
 lyrics = LIRIK
+track_version = Versi
+track_version_song = Lagu
+track_version_video = Video
+music_video = Video musik
 
 # Player/Media
 loading_lyrics = Memuat lirik...
@@ -205,6 +234,9 @@ lyrics_not_found = Lirik tidak ditemukan
 instrumental_break = Instrumental
 no_previous_songs = Tidak ada lagu sebelumnya
 playlist_track_count = { $count } trek
+playlist_folder_count = { $count } daftar putar
+playlists_synced_count = { $count } daftar putar tersinkron
+playlists_loading_tracks = Memuat trek — daftar putar { $done } / { $count } ({ $remaining } tersisa)
 music_playlist_count = Musik • { $count } trek
 showcase_song_count = { $count } lagu
 
@@ -264,7 +296,6 @@ time = Waktu
 genre = Genre
 plays = Pemutaran
 track_count = { $count } trek
-track_count_singular = 1 trek
 songs = lagu
 min = min
 
@@ -307,6 +338,50 @@ discover_more_loading = Muat lainnya…
 discover_failed = Tidak dapat memuat Discover: { $error }
 discover_unsupported = Discover hanya tersedia ketika peladen YouTube Music aktif.
 discover_show_all = Tampilkan semua
+catalog_page_explore = Jelajahi
+catalog_page_charts = Tangga lagu
+catalog_page_moods = Suasana hati & genre
+catalog_page_podcasts = Podcast
+catalog_page_library_songs = Lagu kamu
+catalog_page_library_albums = Album kamu
+catalog_page_library_artists = Artis kamu
+catalog_page_subscriptions = Langganan
+catalog_page_library_podcasts = Podcast kamu
+catalog_page_uploads = Unggahan
+catalog_page_history = Riwayat
+search_filter_all = Semua
+search_filter_songs = Lagu
+search_filter_videos = Video
+search_filter_community_playlists = Playlist komunitas
+search_filter_featured_playlists = Playlist unggulan
+search_filter_episodes = Episode
+search_filter_profiles = Profil
+discover_show_more = Tampilkan lebih banyak
+discover_scroll_back = Gulir ke belakang
+discover_scroll_forward = Gulir ke depan
+catalog_page_empty = Belum ada apa-apa di sini
+search_prompt = Cari lagu, album, artis, dan lainnya
+search_showing_results_for = Menampilkan hasil untuk “{ $query }”
+catalog_like = Suka
+catalog_unlike = Hapus suka
+catalog_dislike = Tidak suka
+catalog_undislike = Hapus tidak suka
+catalog_save = Simpan ke perpustakaan
+catalog_unsave = Hapus dari perpustakaan
+catalog_follow = Ikuti
+catalog_unfollow = Berhenti mengikuti
+catalog_following = Mengikuti
+catalog_remove_history = Hapus dari riwayat
+playlist_edit_details = Edit detail
+playlist_description = Deskripsi
+playlist_privacy = Siapa yang dapat melihat
+playlist_privacy_public = Publik
+playlist_privacy_unlisted = Tidak publik
+playlist_privacy_private = Pribadi
+playlist_delete_title = Hapus playlist ini?
+playlist_delete_body = “{ $name }” akan dihapus dari { $service } untuk selamanya.
+playlist_unsave_title = Hapus dari perpustakaan Anda?
+playlist_unsave_body = “{ $name }” keluar dari perpustakaan { $service } Anda. Playlist-nya tetap ada di { $service }.
 source_anon_playlists = Masuk ke YouTube Music untuk melihat daftar putar pustaka anda.
 source_anon_favorites = Masuk ke YouTube Music untuk melihat lagu yang anda sukai.
 source_anon_discover = Masuk ke YouTube Music untuk membuka Jelajahi.
@@ -342,6 +417,8 @@ listen_now_layout = Tata Letak
 ui_style = Style Antarmuka
 ui_normal = Normal
 ui_vaxry = Vaxry
+ui_material3 = Material 3
+system_colors = Warna sistem
 player_bar_position = Posisi bilah pemutar
 position_bottom = Bawah
 position_top = Atas
@@ -431,6 +508,7 @@ replay_gain_mode_auto = Otomatis
 replay_gain_prevent_clipping = Cegah kliping
 replay_gain_preamp = Pra-penguat
 replay_gain_fallback = Penguatan bawaan
+replay_gain_youtube_loudness = Normalisasi YouTube Music
 move_to_folder = Pindahkan ke Folder
 no_folders_yet = Tidak ada folder.
 folder_name = Nama folder...
@@ -538,8 +616,13 @@ external_play_on = Putar di
 external_this_app = kopuz (aplikasi ini)
 prefer_active_device = Playback device
 prefer_active_device_help = When another device is already playing, take it over instead of starting playback here.
-settings_managed_notice = Beberapa pengaturan dikelola oleh konfigurasi sistem (Nix/hjem) dan tidak dapat diubah di sini.
+settings_managed_notice = Beberapa pengaturan berasal dari berkas pengaturan yang tidak dapat ditulis oleh aplikasi (hanya-baca atau dikelola oleh Nix/hjem) dan tidak dapat diubah di sini.
 setting_managed_by_system = Dikelola oleh konfigurasi sistem
+settings_dropin_notice = Beberapa pengaturan ditetapkan oleh berkas tambahan dan tidak dapat diubah di sini.
+settings_env_notice = Beberapa pengaturan ditetapkan oleh variabel lingkungan KOPUZ_CONFIG_* dan tidak dapat diubah di sini.
+setting_locked_by_file = Diatur oleh { $path }
+setting_locked_by_dropin = Diatur oleh berkas tambahan { $path }
+setting_locked_by_env = Diatur oleh { $var }
 
 settings_interface = Interface
 interface_general = General
@@ -575,6 +658,7 @@ settings_tools = Tools
 share = Share
 share_copied = Copied link
 share_no_page = Couldn't find a page for this track
+explicit = Eksplisit
 start_daemon = Start Daemon
 
 first_run_title = Welcome to Kopuz
@@ -624,7 +708,11 @@ waiting_for_browser = Waiting for your browser…
 signed_in = Signed in
 metadata_number_invalid = Enter a number, or leave it empty to clear the tag.
 metadata_batch_keep = Leave unchanged
-metadata_batch_count = Editing { $count } tracks
+metadata_batch_count =
+    { $count ->
+        [one] Editing { $count } track
+       *[other] Editing { $count } tracks
+    }
 interface_font = Interface font
 interface_font_description = The font family to draw the interface with.
 interface_font_placeholder = Theme default
@@ -704,6 +792,13 @@ view = View
 undo = Undo
 quit = Quit
 scanning_library = Scanning library…
+network_offline_banner = No internet connection — switched to offline mode
+network_online_banner = Back online — switched to server mode
+keep_server_mode = Keep server mode
+tray_show_hide = Show / Hide Kopuz
+tray_quit = Quit Kopuz
+tray_unavailable_title = Tray icon unavailable
+tray_unavailable_message = System tray unavailable: appindicator library not found. Install libayatana-appindicator (Debian/Ubuntu/Arch) or libappindicator-gtk3 (Fedora). Closing the window will quit the app instead of minimizing to tray.
 reconnecting_attempt = Reconnecting… (attempt { $attempt })
 downloads_summary = { $done } downloaded, { $failed } failed
 job_scan = Library scan
@@ -770,11 +865,19 @@ discover_clear_search = Clear search
 discover_results_for = Results for "{ $query }"
 discover_no_results_hint = Try fewer words, or switch source and look again.
 discover_show_less = Show less
-discover_genre_count = { $count } genres
+discover_genre_count =
+    { $count ->
+        [one] { $count } genre
+       *[other] { $count } genres
+    }
 discover_read_failed = Couldn't load your library: { $error }
 palette_all_results = All results for "{ $query }" in Discover
 
-library_count = { $count } items
+library_count =
+    { $count ->
+        [one] { $count } item
+       *[other] { $count } items
+    }
 library_filter_placeholder = Filter the library…
 library_chip_downloaded = Downloaded
 library_chip_years = Years
@@ -797,7 +900,11 @@ library_tile_medium = Medium
 library_tile_large = Large
 library_default_view = Grids open as
 library_default_view_description = Whether albums, artists and playlists start as tiles or as rows.
-library_artist_tracks = { $count } tracks
+library_artist_tracks =
+    { $count ->
+        [one] { $count } track
+       *[other] { $count } tracks
+    }
 library_selected = { $count } selected
 library_whole_selection = Everything that matches
 library_read_failed = Could not read the library
@@ -836,7 +943,11 @@ downloader_history = URL downloads
 interface_skin = Skin
 interface_skin_description = The shape of the interface: how round things are, how tall a row sits.
 
-home_plays = { $count } plays
+home_plays =
+    { $count ->
+        [one] { $count } play
+       *[other] { $count } plays
+    }
 
 interface_ambient = Ambient light
 interface_ambient_description = Let the current cover cast its colour across the window.
@@ -858,3 +969,83 @@ settings_group_interface = Antarmuka
 settings_group_output = Keluaran
 settings_group_loudness = Kenyaringan
 browse = Jelajahi
+
+clippsly_help = Create an App Password at clippsly.app, then sign in with your Clippsly username and that App Password. Storage limits are set by your Clippsly account.
+cloud_storage_usage = Cloud storage: { $used } of { $total } used
+upload_music = Upload music
+uploading_music = Uploading { $name }…
+music_uploaded =
+    { $count ->
+        [one] Uploaded { $count } file.
+       *[other] Uploaded { $count } files.
+    }
+music_upload_too_large = Audio files must be no larger than 500 MiB.
+cloud_storage_loading = Loading storage usage…
+
+smb_url_placeholder = smb://nas/Music
+smb_help = Connect to an SMB 2/3 share or subfolder, then sign in with your NAS account. Domain accounts can use DOMAIN\username. Files are read without mounting the share.
+invalid_smb_url = Enter smb://host/share or smb://host/share/folder, without credentials in the URL.
+
+browser_sessions_heading = Sudah masuk
+browser_sessions_checking = Memeriksa browser kamu…
+browser_session_name = { $browser } · { $profile }
+browser_session_use = Gunakan
+browser_session_importing = Sedang masuk…
+browser_session_help = Kopuz menyalin sesi dari profil browser yang kamu pilih. Browser boleh tetap terbuka.
+
+playback_error_session_expired = Masuk Anda ke { $source } telah kedaluwarsa. Masuk lagi untuk terus memutar.
+playback_error_challenged = { $source } ingin memastikan Anda bukan bot. Tunggu beberapa menit lalu coba lagi.
+playback_error_refused = { $source } menolak memutar trek ini. Akun Anda baik-baik saja: masalahnya ada di { $source } dan biasanya hilang sendiri.
+playback_error_unreachable = Tidak dapat menjangkau { $source }. Periksa koneksi Anda lalu coba lagi.
+playback_error_unavailable = { $source } tidak dapat memutar trek ini. Trek mungkin sudah dihapus, dijadikan privat, atau diblokir di wilayah Anda.
+playback_sign_in_again = Masuk lagi
+playback_try_again = Coba lagi
+playback_skip = Lewati trek
+playback_copy_details = Salin detail
+playback_details_copied = Detail disalin
+source_signed_out = ● Keluar
+source_not_responding = ● Tidak merespons
+connection_test = Uji koneksi
+connection_testing = Menguji…
+connection_test_failed = Tidak dapat menjalankan pengujian: { $error }
+connection_copy_report = Salin laporan
+connection_report_copied = Laporan disalin
+connection_step_reach = Layanan terjangkau
+connection_step_session = Masuk diterima
+connection_step_signed_in_playback = Diputar dengan akun Anda
+connection_step_anonymous_playback = Diputar tanpa akun
+connection_step_playback_token = Token pemutaran
+connection_step_passed = Lulus
+connection_step_failed = Gagal
+connection_step_skipped = Dilewati
+
+sync_interval = Sync and rescan every
+sync_interval_never = Never
+sync_interval_minutes = { $count } min
+sync_interval_hours = { $count } h
+sync_interval_days = { $count } d
+
+error_setting_locked = A managed settings file pins this setting, so it cannot be changed here.
+error_connect_not_offered = This integration does not connect that way.
+error_api_key_missing = Set the API key and secret first.
+error_sign_in_not_started = The service did not start the sign-in. Check the API key and your connection.
+error_browser_not_opened = Could not open a browser for the sign-in.
+error_sign_in_timed_out = The sign-in was not approved in time.
+error_browser_profile_gone = That browser profile is no longer there.
+error_browser_cookies_unreadable = Could not read the cookies of that browser profile.
+error_browser_profile_signed_out = That browser profile is not signed in to the service. Sign in there, or paste your token instead.
+error_browser_profile_no_token = The service did not show a token for that profile. Paste it instead.
+error_integration_unreachable = Could not reach the service. Check your connection.
+error_credential_rejected = The service does not accept that token. Paste your token instead.
+error_default_source_undeletable = The default folder source cannot be deleted.
+error_empty_source_folder = A source folder cannot be empty.
+error_code_invalid_input = Not accepted: { $detail }
+error_code_not_found = That is no longer there.
+error_code_conflict = Already in use or in progress: { $detail }
+error_code_source_auth_expired = The source did not accept the sign-in. Sign in again in Settings.
+error_code_source_unreachable = The source could not be reached. Check your connection.
+error_code_unsupported = Not supported here: { $detail }
+error_code_internal = Something went wrong: { $detail }
+error_code_source_challenged = The source wants to check that you're not a bot. Wait a few minutes and try again.
+error_code_source_refused = The source refused the request. This is on its side and usually clears up on its own.
+error_code_item_unavailable = The source can't play this. It may have been removed, made private or blocked in your region.

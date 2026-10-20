@@ -11,6 +11,9 @@ language = மொழி
 library = நூலகம்
 playlists = பிளேலிஸ்ட்கள்
 album = ஆல்பம்
+release_single = Single
+release_ep = EP
+release_audiobook = Audiobook
 artist = கலைஞர்
 home = முகப்பு
 search = தேடல்
@@ -31,6 +34,9 @@ add = சேர்
 add_folder = கோப்புறை சேர்
 no_music_folders = இசை கோப்புறைகள் எதுவும் கட்டமைக்கப்படவில்லை
 remote_music_folders = இசை கோப்புறைகள்
+source_account = கணக்கு
+source_account_help = ஒவ்வொரு கணக்கிற்கும் தனி நூலகம் உள்ளது. மாற்றினால் அது மீண்டும் ஒத்திசைக்கப்படும்.
+source_accounts_failed = கணக்குகளை ஏற்ற முடியவில்லை: { $error }
 parent_folder = மேலே
 use_this_folder = இந்த கோப்புறையைச் சேர்
 no_subfolders = துணைக் கோப்புறைகள் இல்லை
@@ -74,10 +80,22 @@ device_change_pause = Pause
 sample_rate_mode = வெளியீட்டு மாதிரி வீதம்
 sample_rate_mode_system = கணினியைப் பின்பற்று
 sample_rate_mode_source = தடத்திற்குப் பொருத்து
+settings_group_streaming = ஸ்ட்ரீமிங்
+stream_quality = ஸ்ட்ரீமிங் தரம்
+stream_quality_low = குறைவு
+stream_quality_normal = இயல்பு
+stream_quality_high = உயர்
+autoplay_radio = வரிசை முடிந்ததும் ஒரு வானொலியை இயக்கு
+skip_explicit = வெளிப்படையான பாடல்களைத் தவிர்
+pause_watch_history = பார்வை வரலாற்றை இடைநிறுத்து
 discord_presence = Discord இருப்பு
 connectivity = இணைப்புத்தன்மை
 integration_connect = Connect to { $name }
 integration_connected = { $name } connected
+integration_connecting = Connecting…
+integration_browser_title = Use a signed-in browser
+integration_browser_profile = { $name } ({ $browser })
+integration_browser_none = No browser profiles found. Paste your token above instead.
 discord_presence_paused = இடைநிறுத்தப்பட்ட Discord நிலையைக் காட்டு
 discord_presence_source = Discord நிலையில் மீடியா மூலத்தைக் காட்டு
 reduce_animations = அனிமேஷன்களைக் குறை
@@ -141,6 +159,11 @@ downloader_status_waiting = காத்திருக்கிறது…
 update_available = புதுப்பிப்பு கிடைக்கிறது
 update_banner_message = Kopuz { $version } கிடைக்கிறது.
 view_release = வெளியீட்டைக் காண்
+update_install = புதுப்பித்து மறுதொடக்கம் செய்
+update_downloading = Kopuz { $version } பதிவிறக்கப்படுகிறது…
+update_restarting = புதுப்பிப்பை முடிக்க மறுதொடக்கம் செய்யப்படுகிறது…
+update_failed = Kopuz { $version } ஐ நிறுவ முடியவில்லை.
+update_retry = மீண்டும் முயல்க
 
 # UI Actions & Buttons
 add_to_favorites = பிடித்தவைக்குச் சேர்
@@ -156,6 +179,7 @@ radio_empty = ஒத்த பாடல்கள் எதுவும் இல
 radio_failed = வானொலியைத் தொடங்க முடியவில்லை
 remove_from_queue = வரிசையிலிருந்து அகற்று
 downloading = பதிவிறக்குகிறது…
+downloading_progress = Downloading { $done } / { $total }
 more_actions_for = { $name } க்கான மேலும் செயல்கள்
 share_musicbrainz = பகிர் (MusicBrainz)
 share_link_copied = MusicBrainz இணைப்பு நகலெடுக்கப்பட்டது
@@ -171,6 +195,7 @@ add_all_to_queue = அனைத்தையும் வரிசையில்
 add_all_to_playlist = அனைத்தையும் பிளேலிஸ்ட்டில் சேர்
 select_all = அனைத்தையும் தேர்ந்தெடு
 select_all_tracks = அனைத்து தடங்களையும் தேர்ந்தெடு
+deselect_all_tracks = Deselect all tracks
 remove_from_cache = கேஷிலிருந்து அகற்று
 create = உருவாக்கு
 save = சேமி
@@ -198,15 +223,46 @@ new_releases = புதிய வெளியீடுகள்
 # Navigation Buttons
 up_next = அடுத்தது
 lyrics = வரிகள்
+track_version = பதிப்பு
+track_version_song = பாடல்
+track_version_video = வீடியோ
+music_video = இசை வீடியோ
 
 # Player/Media
 loading_lyrics = வரிகள் ஏற்றப்படுகிறது...
 lyrics_not_found = வரிகள் கண்டுபிடிக்கப்படவில்லை
 instrumental_break = இசைப் பகுதி
 no_previous_songs = முந்தைய பாடல்கள் இல்லை
-playlist_track_count = { $count } தடங்கள்
-music_playlist_count = இசை • { $count } தடங்கள்
-showcase_song_count = { $count } பாடல்கள்
+playlist_track_count =
+    { $count ->
+        [one] { $count } தடம்
+       *[other] { $count } தடங்கள்
+    }
+playlist_folder_count =
+    { $count ->
+        [one] { $count } playlist
+       *[other] { $count } playlists
+    }
+playlists_synced_count =
+    { $count ->
+        [one] { $count } playlist synced
+       *[other] { $count } playlists synced
+    }
+playlists_loading_tracks =
+    { $count ->
+        [one] Loading tracks — { $done } / { $count } playlist ({ $remaining } left)
+       *[other] Loading tracks — { $done } / { $count } playlists ({ $remaining } left)
+    }
+music_playlist_count =
+    { $count ->
+        [one] இசை • { $count } தடம்
+       *[other] இசை • { $count } தடங்கள்
+    }
+showcase_song_count =
+    { $count ->
+        [one] { $count } பாடல்
+       *[other] { $count } பாடல்கள்
+    }
 
 # Modal Titles
 add_playlist = பிளேலிஸ்ட் சேர்
@@ -263,8 +319,11 @@ title = தலைப்பு
 time = நேரம்
 genre = வகை
 plays = இயக்கங்கள்
-track_count = { $count } தடங்கள்
-track_count_singular = 1 தடம்
+track_count =
+    { $count ->
+        [one] { $count } தடம்
+       *[other] { $count } தடங்கள்
+    }
 songs = பாடல்கள்
 min = நிமி
 
@@ -299,14 +358,66 @@ unknown_genre = தெரியாதது
 no_tracks_in_library = உங்கள் நூலகத்தில் தடங்கள் எதுவும் கண்டுபிடிக்கப்படவில்லை.
 no_songs_here = இங்கே பாடல்கள் இல்லை.
 syncing_with_server = சேவையகத்துடன் ஒத்திசைக்கிறது...
-yt_syncing_progress = ஒத்திசைக்கிறது — இதுவரை { $count } தடங்கள் ஏற்றப்பட்டன
-yt_synced_total = { $count } விரும்பிய தடங்கள் ஒத்திசைக்கப்பட்டன
+yt_syncing_progress =
+    { $count ->
+        [one] ஒத்திசைக்கிறது — இதுவரை { $count } தடம் ஏற்றப்பட்டது
+       *[other] ஒத்திசைக்கிறது — இதுவரை { $count } தடங்கள் ஏற்றப்பட்டன
+    }
+yt_synced_total =
+    { $count ->
+        [one] { $count } விரும்பிய தடம் ஒத்திசைக்கப்பட்டது
+       *[other] { $count } விரும்பிய தடங்கள் ஒத்திசைக்கப்பட்டன
+    }
 refresh = புதுப்பி
 discover = கண்டறி
 discover_more_loading = மேலும் ஏற்றுகிறது…
 discover_failed = கண்டறிதலை ஏற்ற முடியவில்லை: { $error }
 discover_unsupported = YouTube Music செயலில் உள்ள சேவையகமாக இருக்கும்போது மட்டுமே கண்டறிதல் கிடைக்கும்.
 discover_show_all = அனைத்தையும் காட்டு
+catalog_page_explore = ஆராய்
+catalog_page_charts = தரவரிசைகள்
+catalog_page_moods = மனநிலைகள் & வகைகள்
+catalog_page_podcasts = பாட்காஸ்ட்கள்
+catalog_page_library_songs = உங்கள் பாடல்கள்
+catalog_page_library_albums = உங்கள் ஆல்பங்கள்
+catalog_page_library_artists = உங்கள் கலைஞர்கள்
+catalog_page_subscriptions = சந்தாக்கள்
+catalog_page_library_podcasts = உங்கள் பாட்காஸ்ட்கள்
+catalog_page_uploads = பதிவேற்றங்கள்
+catalog_page_history = வரலாறு
+search_filter_all = அனைத்தும்
+search_filter_songs = பாடல்கள்
+search_filter_videos = வீடியோக்கள்
+search_filter_community_playlists = சமூகப் பிளேலிஸ்ட்கள்
+search_filter_featured_playlists = சிறப்புப் பிளேலிஸ்ட்கள்
+search_filter_episodes = எபிசோடுகள்
+search_filter_profiles = சுயவிவரங்கள்
+discover_show_more = மேலும் காட்டு
+discover_scroll_back = பின்னோக்கி உருட்டு
+discover_scroll_forward = முன்னோக்கி உருட்டு
+catalog_page_empty = இங்கு இன்னும் எதுவும் இல்லை
+search_prompt = பாடல்கள், ஆல்பங்கள், கலைஞர்கள் மற்றும் பலவற்றைத் தேடுங்கள்
+search_showing_results_for = “{ $query }” க்கான முடிவுகள்
+catalog_like = விருப்பம்
+catalog_unlike = விருப்பத்தை நீக்கு
+catalog_dislike = விருப்பமில்லை
+catalog_undislike = விருப்பமின்மையை நீக்கு
+catalog_save = நூலகத்தில் சேமி
+catalog_unsave = நூலகத்திலிருந்து நீக்கு
+catalog_follow = பின்தொடர்
+catalog_unfollow = பின்தொடர்வதை நிறுத்து
+catalog_following = பின்தொடர்கிறீர்கள்
+catalog_remove_history = வரலாற்றிலிருந்து நீக்கு
+playlist_edit_details = விவரங்களைத் திருத்து
+playlist_description = விளக்கம்
+playlist_privacy = யார் பார்க்கலாம்
+playlist_privacy_public = பொது
+playlist_privacy_unlisted = பட்டியலிடப்படாதது
+playlist_privacy_private = தனிப்பட்டது
+playlist_delete_title = இந்த பிளேலிஸ்டை நீக்கவா?
+playlist_delete_body = “{ $name }” { $service }-இலிருந்து நிரந்தரமாக நீக்கப்படும்.
+playlist_unsave_title = உங்கள் நூலகத்திலிருந்து நீக்கவா?
+playlist_unsave_body = “{ $name }” உங்கள் { $service } நூலகத்திலிருந்து நீங்கும். பிளேலிஸ்ட் { $service }-இல் இருக்கும்.
 source_anon_playlists = உங்கள் நூலக பிளேலிஸ்ட்களைக் காண YouTube Music இல் உள்நுழையவும்.
 source_anon_favorites = உங்கள் விரும்பிய பாடல்களைக் காண YouTube Music இல் உள்நுழையவும்.
 source_anon_discover = கண்டறி பகுதியை உலாவ YouTube Music இல் உள்நுழையவும்.
@@ -342,6 +453,8 @@ listen_now_layout = தளவமைப்பு
 ui_style = UI பாணி
 ui_normal = சாதாரண
 ui_vaxry = Vaxry
+ui_material3 = Material 3
+system_colors = கணினி நிறங்கள்
 player_bar_position = பிளேயர் பட்டை நிலை
 position_bottom = கீழே
 position_top = மேலே
@@ -431,6 +544,7 @@ replay_gain_mode_auto = தானியங்கி
 replay_gain_prevent_clipping = ஒலிச் சிதைவைத் தடு
 replay_gain_preamp = முன் பெருக்கம்
 replay_gain_fallback = இயல்புநிலைப் பெருக்கம்
+replay_gain_youtube_loudness = YouTube Music ஒலியளவைச் சீரமை
 move_to_folder = கோப்புறைக்கு நகர்த்து
 no_folders_yet = இன்னும் கோப்புறைகள் இல்லை.
 folder_name = கோப்புறை பெயர்...
@@ -538,8 +652,13 @@ external_play_on = இதில் இயக்கு
 external_this_app = kopuz (இந்த ஆப்)
 prefer_active_device = Playback device
 prefer_active_device_help = When another device is already playing, take it over instead of starting playback here.
-settings_managed_notice = சில அமைப்புகள் கணினி உள்ளமைவால் (Nix/hjem) நிர்வகிக்கப்படுகின்றன; அவற்றை இங்கே மாற்ற முடியாது.
+settings_managed_notice = Some settings are set by a settings file the app can't write (read-only, or managed by Nix/hjem) and can't be changed here.
 setting_managed_by_system = கணினி உள்ளமைவால் நிர்வகிக்கப்படுகிறது
+settings_dropin_notice = Some settings are set by drop-in files and can't be changed here.
+settings_env_notice = Some settings are set by KOPUZ_CONFIG_* environment variables and can't be changed here.
+setting_locked_by_file = Set by { $path }
+setting_locked_by_dropin = Set by a drop-in, { $path }
+setting_locked_by_env = Set by { $var }
 
 settings_interface = Interface
 interface_general = General
@@ -575,6 +694,7 @@ settings_tools = Tools
 share = Share
 share_copied = Copied link
 share_no_page = Couldn't find a page for this track
+explicit = Explicit
 start_daemon = Start Daemon
 
 first_run_title = Welcome to Kopuz
@@ -624,7 +744,11 @@ waiting_for_browser = Waiting for your browser…
 signed_in = Signed in
 metadata_number_invalid = Enter a number, or leave it empty to clear the tag.
 metadata_batch_keep = Leave unchanged
-metadata_batch_count = Editing { $count } tracks
+metadata_batch_count =
+    { $count ->
+        [one] Editing { $count } track
+       *[other] Editing { $count } tracks
+    }
 interface_font = Interface font
 interface_font_description = The font family to draw the interface with.
 interface_font_placeholder = Theme default
@@ -704,6 +828,13 @@ view = View
 undo = Undo
 quit = Quit
 scanning_library = Scanning library…
+network_offline_banner = No internet connection — switched to offline mode
+network_online_banner = Back online — switched to server mode
+keep_server_mode = Keep server mode
+tray_show_hide = Show / Hide Kopuz
+tray_quit = Quit Kopuz
+tray_unavailable_title = Tray icon unavailable
+tray_unavailable_message = System tray unavailable: appindicator library not found. Install libayatana-appindicator (Debian/Ubuntu/Arch) or libappindicator-gtk3 (Fedora). Closing the window will quit the app instead of minimizing to tray.
 reconnecting_attempt = Reconnecting… (attempt { $attempt })
 downloads_summary = { $done } downloaded, { $failed } failed
 job_scan = Library scan
@@ -770,11 +901,19 @@ discover_clear_search = Clear search
 discover_results_for = Results for "{ $query }"
 discover_no_results_hint = Try fewer words, or switch source and look again.
 discover_show_less = Show less
-discover_genre_count = { $count } genres
+discover_genre_count =
+    { $count ->
+        [one] { $count } genre
+       *[other] { $count } genres
+    }
 discover_read_failed = Couldn't load your library: { $error }
 palette_all_results = All results for "{ $query }" in Discover
 
-library_count = { $count } items
+library_count =
+    { $count ->
+        [one] { $count } item
+       *[other] { $count } items
+    }
 library_filter_placeholder = Filter the library…
 library_chip_downloaded = Downloaded
 library_chip_years = Years
@@ -797,7 +936,11 @@ library_tile_medium = Medium
 library_tile_large = Large
 library_default_view = Grids open as
 library_default_view_description = Whether albums, artists and playlists start as tiles or as rows.
-library_artist_tracks = { $count } tracks
+library_artist_tracks =
+    { $count ->
+        [one] { $count } track
+       *[other] { $count } tracks
+    }
 library_selected = { $count } selected
 library_whole_selection = Everything that matches
 library_read_failed = Could not read the library
@@ -836,7 +979,11 @@ downloader_history = URL downloads
 interface_skin = Skin
 interface_skin_description = The shape of the interface: how round things are, how tall a row sits.
 
-home_plays = { $count } plays
+home_plays =
+    { $count ->
+        [one] { $count } play
+       *[other] { $count } plays
+    }
 
 interface_ambient = Ambient light
 interface_ambient_description = Let the current cover cast its colour across the window.
@@ -858,3 +1005,83 @@ settings_group_interface = இடைமுகம்
 settings_group_output = வெளியீடு
 settings_group_loudness = ஒலி அளவு
 browse = உலாவு
+
+clippsly_help = Create an App Password at clippsly.app, then sign in with your Clippsly username and that App Password. Storage limits are set by your Clippsly account.
+cloud_storage_usage = Cloud storage: { $used } of { $total } used
+upload_music = Upload music
+uploading_music = Uploading { $name }…
+music_uploaded =
+    { $count ->
+        [one] Uploaded { $count } file.
+       *[other] Uploaded { $count } files.
+    }
+music_upload_too_large = Audio files must be no larger than 500 MiB.
+cloud_storage_loading = Loading storage usage…
+
+smb_url_placeholder = smb://nas/Music
+smb_help = Connect to an SMB 2/3 share or subfolder, then sign in with your NAS account. Domain accounts can use DOMAIN\username. Files are read without mounting the share.
+invalid_smb_url = Enter smb://host/share or smb://host/share/folder, without credentials in the URL.
+
+browser_sessions_heading = ஏற்கெனவே உள்நுழைந்துள்ளீர்கள்
+browser_sessions_checking = உங்கள் உலாவிகளைச் சரிபார்க்கிறது…
+browser_session_name = { $browser } · { $profile }
+browser_session_use = பயன்படுத்து
+browser_session_importing = உள்நுழைகிறது…
+browser_session_help = நீங்கள் தேர்ந்தெடுக்கும் உலாவி சுயவிவரத்திலிருந்து Kopuz அமர்வை நகலெடுக்கிறது. உலாவி திறந்தே இருக்கலாம்.
+
+playback_error_session_expired = { $source } இல் உங்கள் உள்நுழைவு காலாவதியாகிவிட்டது. தொடர்ந்து இயக்க மீண்டும் உள்நுழையவும்.
+playback_error_challenged = நீங்கள் போட் அல்ல என்பதை { $source } சரிபார்க்க விரும்புகிறது. சில நிமிடங்கள் காத்திருந்து மீண்டும் முயலவும்.
+playback_error_refused = இந்தத் தடத்தை இயக்க { $source } மறுத்தது. உங்கள் உள்நுழைவு சரியாக உள்ளது: சிக்கல் { $source } பக்கத்தில் உள்ளது, பொதுவாக அது தானாகவே சரியாகிவிடும்.
+playback_error_unreachable = { $source } ஐ அடைய முடியவில்லை. உங்கள் இணைப்பைச் சரிபார்த்து மீண்டும் முயலவும்.
+playback_error_unavailable = இந்தத் தடத்தை { $source } ஆல் இயக்க முடியாது. அது நீக்கப்பட்டிருக்கலாம், தனிப்பட்டதாக்கப்பட்டிருக்கலாம் அல்லது உங்கள் பகுதியில் தடுக்கப்பட்டிருக்கலாம்.
+playback_sign_in_again = மீண்டும் உள்நுழை
+playback_try_again = மீண்டும் முயல்
+playback_skip = தடத்தைத் தவிர்
+playback_copy_details = விவரங்களை நகலெடு
+playback_details_copied = விவரங்கள் நகலெடுக்கப்பட்டன
+source_signed_out = ● வெளியேறியது
+source_not_responding = ● பதிலளிக்கவில்லை
+connection_test = இணைப்பைச் சோதி
+connection_testing = சோதிக்கிறது…
+connection_test_failed = சோதனையை இயக்க முடியவில்லை: { $error }
+connection_copy_report = அறிக்கையை நகலெடு
+connection_report_copied = அறிக்கை நகலெடுக்கப்பட்டது
+connection_step_reach = சேவையை அடைய முடிகிறது
+connection_step_session = உள்நுழைவு ஏற்கப்பட்டது
+connection_step_signed_in_playback = உங்கள் கணக்குடன் இயங்குகிறது
+connection_step_anonymous_playback = கணக்கு இல்லாமல் இயங்குகிறது
+connection_step_playback_token = இயக்க டோக்கன்
+connection_step_passed = தேர்ச்சி
+connection_step_failed = தோல்வி
+connection_step_skipped = தவிர்க்கப்பட்டது
+
+sync_interval = Sync and rescan every
+sync_interval_never = Never
+sync_interval_minutes = { $count } min
+sync_interval_hours = { $count } h
+sync_interval_days = { $count } d
+
+error_setting_locked = A managed settings file pins this setting, so it cannot be changed here.
+error_connect_not_offered = This integration does not connect that way.
+error_api_key_missing = Set the API key and secret first.
+error_sign_in_not_started = The service did not start the sign-in. Check the API key and your connection.
+error_browser_not_opened = Could not open a browser for the sign-in.
+error_sign_in_timed_out = The sign-in was not approved in time.
+error_browser_profile_gone = That browser profile is no longer there.
+error_browser_cookies_unreadable = Could not read the cookies of that browser profile.
+error_browser_profile_signed_out = That browser profile is not signed in to the service. Sign in there, or paste your token instead.
+error_browser_profile_no_token = The service did not show a token for that profile. Paste it instead.
+error_integration_unreachable = Could not reach the service. Check your connection.
+error_credential_rejected = The service does not accept that token. Paste your token instead.
+error_default_source_undeletable = The default folder source cannot be deleted.
+error_empty_source_folder = A source folder cannot be empty.
+error_code_invalid_input = Not accepted: { $detail }
+error_code_not_found = That is no longer there.
+error_code_conflict = Already in use or in progress: { $detail }
+error_code_source_auth_expired = The source did not accept the sign-in. Sign in again in Settings.
+error_code_source_unreachable = The source could not be reached. Check your connection.
+error_code_unsupported = Not supported here: { $detail }
+error_code_internal = Something went wrong: { $detail }
+error_code_source_challenged = The source wants to check that you're not a bot. Wait a few minutes and try again.
+error_code_source_refused = The source refused the request. This is on its side and usually clears up on its own.
+error_code_item_unavailable = The source can't play this. It may have been removed, made private or blocked in your region.

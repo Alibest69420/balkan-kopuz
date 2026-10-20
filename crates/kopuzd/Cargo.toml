@@ -37,10 +37,14 @@ tracing-appender = { workspace = true }
 directories = { workspace = true }
 futures-util = { workspace = true }
 libc = { workspace = true }
-rand = { workspace = true }
 player = { workspace = true }
 
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = ["Win32_UI_Shell"] }
+windows-registry = { workspace = true }
+
 [dev-dependencies]
+ctl = { package = "kopuz-ctl", path = "../ctl" }
 client = { workspace = true }
 tempfile = { workspace = true }
 async-trait = { workspace = true }

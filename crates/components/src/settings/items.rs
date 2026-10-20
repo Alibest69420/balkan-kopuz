@@ -1,5 +1,6 @@
 use config::{
-    AppConfig, BackBehavior, ChannelMode, DeviceChangeBehavior, ReplayGainMode, SampleRateMode,
+    BackBehavior, ChannelMode, DeviceChangeBehavior, ReplayGainMode, SampleRateMode, Settings,
+    StreamQuality,
 };
 use dioxus::prelude::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -10,9 +11,7 @@ static APP_SELECT_ID: AtomicUsize = AtomicUsize::new(0);
 pub fn SettingItem(
     title: String,
     control: Element,
-    /// The top-level `AppConfig` field this row edits. When the field is
-    /// pinned by a managed config layer (Nix/hjem file, drop-in, env var),
-    /// the row renders locked. Empty = never locked.
+    /// The top-level `Settings` key this row edits, rendered locked when a managed layer (Nix/hjem file, drop-in, env var) pins it; empty is never locked.
     #[props(default)]
     config_key: String,
     /// The other top-level fields a composite control edits (the Last.fm
@@ -26,10 +25,14 @@ pub fn SettingItem(
     stacked: bool,
     #[props(default)] nested: bool,
 ) -> Element {
-    let locked = try_consume_context::<hooks::config_view::LockedKeys>().is_some_and(|layers| {
-        (!config_key.is_empty() && layers.is_locked(&config_key))
-            || extra_config_keys.iter().any(|key| layers.is_locked(key))
+    let lock = try_consume_context::<hooks::config_view::LockedKeys>().and_then(|layers| {
+        std::iter::once(config_key.as_str())
+            .filter(|key| !key.is_empty())
+            .chain(extra_config_keys.iter().copied())
+            .find_map(|key| layers.lock_of_name(key))
     });
+    let locked = lock.is_some();
+    let cited = lock.as_ref().map(cite_lock).unwrap_or_default();
     let nested_class = if nested { "settings-row-nested" } else { "" };
     rsx! {
         div {
@@ -40,26 +43,44 @@ pub fn SettingItem(
                 if locked {
                     i {
                         class: "fa-solid fa-lock text-[10px] text-white/40",
-                        title: i18n::t("setting_managed_by_system"),
+                        title: "{cited}",
                     }
+                    span { class: "min-w-0 truncate text-[10px] text-white/40", title: "{cited}", "{cited}" }
                 }
             }
             if locked {
-                // `inert` is what actually disables the control: it takes the
-                // whole subtree out of the tab order and drops click/key
-                // events, so a managed setting can't be changed by keyboard
-                // either. The class/aria only cover the look and the a11y
-                // label.
+                // `inert` takes the subtree out of the tab order and drops click/key events, so a managed setting can't be changed by keyboard either.
                 div {
                     class: "opacity-50 pointer-events-none select-none",
                     inert: true,
                     aria_disabled: true,
-                    title: i18n::t("setting_managed_by_system"),
+                    title: "{cited}",
                     {control}
                 }
             } else {
                 {control}
             }
+        }
+    }
+}
+
+/// What a locked row says pins it: the managed file's or drop-in's path, or the env var's name.
+fn cite_lock(by: &config::store::LockSource) -> String {
+    use config::store::LockSource;
+    match by {
+        LockSource::Managed(path) if path.as_os_str().is_empty() => {
+            i18n::t("setting_managed_by_system")
+        }
+        LockSource::Managed(path) => i18n::t_with(
+            "setting_locked_by_file",
+            &[("path", path.display().to_string().into())],
+        ),
+        LockSource::DropIn(path) => i18n::t_with(
+            "setting_locked_by_dropin",
+            &[("path", path.display().to_string().into())],
+        ),
+        LockSource::Env(var) => {
+            i18n::t_with("setting_locked_by_env", &[("var", var.clone().into())])
         }
     }
 }
@@ -337,15 +358,17 @@ pub fn LanguageSelector(current_language: String, on_change: EventHandler<String
 
 #[component]
 pub fn ThemeSelector(current_theme: String, on_change: EventHandler<String>) -> Element {
-    let config = use_context::<Signal<AppConfig>>();
-    let mut custom: Vec<(String, String)> = config
+    let settings = use_context::<Signal<Settings>>();
+    let mut custom: Vec<(String, String)> = settings
         .read()
+        .ui
         .custom_themes
         .iter()
         .map(|(id, ct)| (id.clone(), ct.name.clone()))
         .collect();
     custom.sort_by(|a, b| a.1.cmp(&b.1));
     let mut options = vec![
+        ("system".into(), i18n::t("system_colors")),
         ("album-art".into(), i18n::t("album_art_gradient")),
         ("default".into(), i18n::t("default_theme")),
         ("amoled".into(), i18n::t("amoled_black")),
@@ -425,11 +448,13 @@ pub fn ToggleSetting(enabled: bool, on_change: EventHandler<bool>) -> Element {
             button {
                 class: "flex-1 text-[11px] font-bold z-10 transition-colors duration-300 cursor-pointer {enable_class}",
                 onclick: move |_| on_change.call(true),
+                aria_pressed: enabled,
                 "{i18n::t(\"enabled\")}"
             }
             button {
                 class: "flex-1 text-[11px] font-bold z-10 transition-colors duration-300 cursor-pointer {disable_class}",
                 onclick: move |_| on_change.call(false),
+                aria_pressed: !enabled,
                 "{i18n::t(\"disabled\")}"
             }
         }
@@ -476,12 +501,14 @@ pub fn BackBehaviorSelector(
                 class: "flex-1 text-[11px] font-bold z-10 transition-colors duration-300 cursor-pointer {rewind_class}",
                 title: "{i18n::t(\"back_behavior_rewind\")}",
                 onclick: move |_| on_change.call(BackBehavior::RewindThenPrev),
+                aria_pressed: is_rewind,
                 "{i18n::t(\"back_behavior_rewind\")}"
             }
             button {
                 class: "flex-1 text-[11px] font-bold z-10 transition-colors duration-300 cursor-pointer {always_class}",
                 title: "{i18n::t(\"back_behavior_always_prev\")}",
                 onclick: move |_| on_change.call(BackBehavior::AlwaysPrev),
+                aria_pressed: !is_rewind,
                 "{i18n::t(\"back_behavior_always_prev\")}"
             }
         }
@@ -559,9 +586,47 @@ pub fn ReplayGainModeSelector(
     }
 }
 
+#[component]
+pub fn StreamQualitySelector(
+    current: StreamQuality,
+    on_change: EventHandler<StreamQuality>,
+) -> Element {
+    let options = StreamQuality::ALL
+        .iter()
+        .map(|quality| (quality.value_str().to_string(), i18n::t(quality.i18n_key())))
+        .collect();
+    rsx! {
+        AppSelect {
+            value: current.value_str().to_string(),
+            options,
+            on_change: move |value: String| on_change.call(StreamQuality::from_value_str(&value)),
+            class: "settings-select",
+        }
+    }
+}
+
+/// Inline style for a settings range input: the accent colour, plus how far
+/// along the value sits as `--fill`. A native range input exposes no fill of
+/// its own, and the Material 3 style paints its active track from this.
+pub fn range_style(value: f64, min: f64, max: f64) -> String {
+    let fill = if max > min {
+        ((value - min) / (max - min)).clamp(0.0, 1.0) * 100.0
+    } else {
+        0.0
+    };
+    format!("accent-color: var(--color-indigo-500); --fill: {fill:.1}%;")
+}
+
 /// A dB slider with a signed monospace readout, for the two ReplayGain trims.
 #[component]
-pub fn GainSlider(value: f32, min: f32, max: f32, on_change: EventHandler<f32>) -> Element {
+pub fn GainSlider(
+    value: f32,
+    min: f32,
+    max: f32,
+    on_preview: EventHandler<f32>,
+    on_commit: EventHandler<f32>,
+) -> Element {
+    let parse = move |raw: String| raw.parse::<f32>().ok().map(|db| db.clamp(min, max));
     rsx! {
         div { class: "settings-slider flex items-center gap-3 min-w-[220px]",
             input {
@@ -571,10 +636,15 @@ pub fn GainSlider(value: f32, min: f32, max: f32, on_change: EventHandler<f32>) 
                 step: "0.5",
                 value: format!("{value:.1}"),
                 class: "w-40",
-                style: "accent-color: var(--color-indigo-500);",
+                style: range_style(f64::from(value), f64::from(min), f64::from(max)),
                 oninput: move |evt| {
-                    if let Ok(parsed) = evt.value().parse::<f32>() {
-                        on_change.call(parsed.clamp(min, max));
+                    if let Some(db) = parse(evt.value()) {
+                        on_preview.call(db);
+                    }
+                },
+                onchange: move |evt| {
+                    if let Some(db) = parse(evt.value()) {
+                        on_commit.call(db);
                     }
                 }
             }
@@ -646,7 +716,7 @@ pub fn RadioRegistryDropdown(
                         {
                             let enabled_count = registries.iter().filter(|r| r.enabled).count();
                             let total = registries.len();
-                            i18n::t_with("radio_registries_active", &[("enabled_count", enabled_count.to_string()), ("total", total.to_string())])
+                            i18n::t_with("radio_registries_active", &[("enabled_count", enabled_count.into()), ("total", total.into())])
                         }
                     }
                 }
@@ -691,7 +761,7 @@ pub fn RadioRegistryDropdown(
                                     if !is_default {
                                         button {
                                             onclick: move |_| on_delete.call(i),
-                                            class: "text-red-400 hover:text-red-300 text-xs px-2 py-0.5 rounded transition-colors shrink-0",
+                                            class: "app-button-text app-button-danger text-red-400 hover:text-red-300 text-xs px-2 py-0.5 rounded transition-colors shrink-0",
                                             "{delete_text}"
                                         }
                                     }
@@ -701,7 +771,7 @@ pub fn RadioRegistryDropdown(
                     }
                     button {
                         onclick: move |_| on_add.call(()),
-                        class: "bg-white/10 hover:bg-white/20 px-3 py-1 rounded text-sm text-white transition-colors self-start mt-1",
+                        class: "app-button-tonal bg-white/10 hover:bg-white/20 px-3 py-1 rounded text-sm text-white transition-colors self-start mt-1",
                         "{add_text}"
                     }
                 }

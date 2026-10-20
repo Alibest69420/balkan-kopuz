@@ -19,6 +19,21 @@ pub enum NextOutcome {
     Empty,
 }
 
+/// `start` stays on its track when kept, else moves to the next kept one (the
+/// last, when nothing after it is).
+pub fn without_explicit(tracks: Vec<Track>, start: Option<usize>) -> (Vec<Track>, Option<usize>) {
+    let start = start.map(|start| {
+        tracks
+            .iter()
+            .take(start)
+            .filter(|track| !track.explicit)
+            .count()
+    });
+    let kept: Vec<Track> = tracks.into_iter().filter(|track| !track.explicit).collect();
+    let start = start.map(|start| start.min(kept.len().saturating_sub(1)));
+    (kept, start)
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct QueueModel {
     items: Vec<Track>,
@@ -140,7 +155,12 @@ impl QueueModel {
     /// chosen this way, because the queue must keep reading as the outgoing
     /// track until the engine actually switches.
     pub fn peek_next(&mut self) -> NextOutcome {
-        let idx = self.current;
+        self.peek_next_where(|_| true)
+    }
+
+    /// Ends when every remaining track is refused; a looping queue comes round
+    /// to the current track again.
+    pub fn peek_next_where(&mut self, playable: impl Fn(&Track) -> bool) -> NextOutcome {
         let queue_len = if self.shuffle {
             self.repair_shuffle_order();
             self.shuffle_order.len()
@@ -153,18 +173,30 @@ impl QueueModel {
         }
 
         if self.loop_mode == LoopMode::Track {
-            return NextOutcome::Play(idx);
+            return NextOutcome::Play(self.current);
         }
-        if !Self::has_following_track(idx, queue_len, self.loop_mode) {
-            return NextOutcome::EndOfQueue;
+        let mut idx = self.current;
+        for _ in 0..queue_len {
+            if !Self::has_following_track(idx, queue_len, self.loop_mode) {
+                return NextOutcome::EndOfQueue;
+            }
+            idx = if idx + 1 < queue_len { idx + 1 } else { 0 };
+            if self.track_at(idx).is_some_and(&playable) {
+                return NextOutcome::Play(idx);
+            }
         }
-        NextOutcome::Play(if idx + 1 < queue_len { idx + 1 } else { 0 })
+        NextOutcome::EndOfQueue
     }
 
     /// The Next decision, taken: on `Play`, history is pushed and `current`
     /// moves to the position [`Self::peek_next`] reported.
     pub fn advance_next(&mut self) -> NextOutcome {
-        let outcome = self.peek_next();
+        self.advance_next_where(|_| true)
+    }
+
+    /// The tracks stepped over stay out of history.
+    pub fn advance_next_where(&mut self, playable: impl Fn(&Track) -> bool) -> NextOutcome {
+        let outcome = self.peek_next_where(playable);
         if let NextOutcome::Play(idx) = outcome {
             self.push_history_dedup();
             self.current = idx;
@@ -335,6 +367,86 @@ impl QueueModel {
                 self.current += count;
             }
             Self::shift_indices_at_or_after(&mut self.history, insert_at, count);
+        }
+    }
+
+    /// Drop every track from play-order position `from` on, with the history entries that pointed there.
+    fn drop_from(&mut self, from: usize) {
+        if self.shuffle {
+            self.repair_shuffle_order();
+            let from = from.min(self.shuffle_order.len());
+            let dropped: std::collections::HashSet<usize> =
+                self.shuffle_order.drain(from..).collect();
+            let mut remap = vec![0; self.items.len()];
+            let mut kept = Vec::with_capacity(self.items.len() - dropped.len());
+            for (idx, track) in std::mem::take(&mut self.items).into_iter().enumerate() {
+                if !dropped.contains(&idx) {
+                    remap[idx] = kept.len();
+                    kept.push(track);
+                }
+            }
+            self.items = kept;
+            for idx in &mut self.shuffle_order {
+                *idx = remap[*idx];
+            }
+        } else {
+            self.items.truncate(from);
+            let len = self.items.len();
+            self.shuffle_order.retain(|&idx| idx < len);
+        }
+        self.history.retain(|&position| position < from);
+    }
+
+    /// Remove everything from play-order position `from` on; whether anything went.
+    pub fn clear_from(&mut self, from: usize) -> bool {
+        let had = self.items.len() > from;
+        self.drop_from(from);
+        had
+    }
+
+    /// Swap everything from play-order position `from` on for `tracks`, kept in the order given.
+    pub fn replace_from(&mut self, from: usize, tracks: Vec<Track>) {
+        self.drop_from(from);
+        self.add(tracks);
+    }
+
+    /// Randomise play order from `from` on: the permutation tail under shuffle, the queue itself without.
+    pub fn shuffle_from(&mut self, from: usize) {
+        use rand::seq::SliceRandom;
+        if self.shuffle {
+            self.repair_shuffle_order();
+        }
+        let len = if self.shuffle {
+            self.shuffle_order.len()
+        } else {
+            self.items.len()
+        };
+        if from + 1 >= len {
+            return;
+        }
+        let mut order: Vec<usize> = (from..len).collect();
+        order.shuffle(&mut rand::rng());
+        if self.shuffle {
+            let old = self.shuffle_order.clone();
+            for (slot, &source) in order.iter().enumerate() {
+                self.shuffle_order[from + slot] = old[source];
+            }
+        } else {
+            let mut old: Vec<Option<Track>> = self.items.drain(from..).map(Some).collect();
+            for &source in &order {
+                if let Some(track) = old[source - from].take() {
+                    self.items.push(track);
+                }
+            }
+        }
+        let mut new_position = vec![0; len - from];
+        for (slot, &source) in order.iter().enumerate() {
+            new_position[source - from] = from + slot;
+        }
+        for position in &mut self.history {
+            if *position >= from && *position < len {
+                *position = new_position[*position - from];
+            }
         }
     }
 
@@ -599,6 +711,20 @@ impl QueueModel {
             .filter_map(|pos| self.track_at(pos).cloned().map(|t| (pos, t)))
             .collect()
     }
+
+    /// The whole queue in play order, with the permutation behind it (empty while shuffle is off).
+    pub fn play_order(&mut self) -> (Vec<Track>, Vec<usize>) {
+        if !self.shuffle {
+            return (self.items.clone(), Vec::new());
+        }
+        self.repair_shuffle_order();
+        let tracks = self
+            .shuffle_order
+            .iter()
+            .filter_map(|&idx| self.items.get(idx).cloned())
+            .collect();
+        (tracks, self.shuffle_order.clone())
+    }
 }
 
 #[cfg(test)]
@@ -625,6 +751,9 @@ mod tests {
             credits: Vec::new(),
             artists: vec![],
             replay_gain: config::ReplayGainInfo::default(),
+            explicit: false,
+            plays: None,
+            counterpart: None,
         }
     }
 
@@ -953,5 +1082,114 @@ mod tests {
         let mut physical: Vec<usize> = m.shuffle_order().to_vec();
         physical.sort_unstable();
         assert_eq!(physical, vec![0, 1, 2, 3, 4]);
+    }
+
+    fn explicit(n: usize) -> Track {
+        Track {
+            explicit: true,
+            ..track(n)
+        }
+    }
+
+    #[test]
+    fn next_steps_over_refused_tracks_and_ends_when_only_they_remain() {
+        let mut m = QueueModel::default();
+        m.replace(vec![track(0), explicit(1), track(2), explicit(3)]);
+        m.jump_to(0);
+        let clean = |t: &Track| !t.explicit;
+
+        assert_eq!(m.advance_next_where(clean), NextOutcome::Play(2));
+        assert_eq!(m.history(), &[0]);
+        assert_eq!(m.peek_next_where(clean), NextOutcome::EndOfQueue);
+        assert_eq!(m.advance_next_where(clean), NextOutcome::EndOfQueue);
+        assert_eq!(m.current_position(), 2);
+        assert_eq!(
+            m.peek_next(),
+            NextOutcome::Play(3),
+            "the plain decision is unchanged"
+        );
+
+        m.set_loop_mode(LoopMode::Queue);
+        assert_eq!(m.peek_next_where(clean), NextOutcome::Play(0));
+    }
+
+    #[test]
+    fn without_explicit_keeps_the_start_on_the_track_it_named() {
+        let tracks = vec![explicit(0), track(1), explicit(2), track(3)];
+        let (kept, start) = without_explicit(tracks.clone(), Some(3));
+        assert_eq!(
+            kept.iter().map(|t| t.title.as_str()).collect::<Vec<_>>(),
+            ["t1", "t3"]
+        );
+        assert_eq!(start, Some(1));
+        // An explicit start moves to the next kept track.
+        assert_eq!(without_explicit(tracks.clone(), Some(2)).1, Some(1));
+        assert_eq!(without_explicit(tracks.clone(), Some(0)).1, Some(0));
+        assert_eq!(without_explicit(tracks, None).1, None);
+        let (kept, _) = without_explicit(vec![explicit(0)], Some(0));
+        assert!(kept.is_empty());
+    }
+
+    fn titles(m: &mut QueueModel) -> Vec<String> {
+        m.play_order().0.into_iter().map(|t| t.title).collect()
+    }
+
+    #[test]
+    fn clear_from_drops_the_tail_and_the_history_that_pointed_into_it() {
+        for shuffle in [false, true] {
+            let mut m = model(6);
+            m.set_shuffle(shuffle);
+            m.jump_to_position(4);
+            m.jump_to_position(1);
+            assert_eq!(m.history().len(), 2);
+            let before = titles(&mut m);
+
+            assert!(m.clear_from(2));
+            assert_eq!(titles(&mut m), before[..2].to_vec());
+            assert_eq!(m.current_position(), 1);
+            assert_eq!(
+                m.history().len(),
+                1,
+                "the entry at position 4 went with its track"
+            );
+            assert!(!m.clear_from(2), "nothing left to clear");
+        }
+    }
+
+    #[test]
+    fn replace_from_keeps_what_was_before_it() {
+        for shuffle in [false, true] {
+            let mut m = model(5);
+            m.set_shuffle(shuffle);
+            m.jump_to_position(2);
+            let before = titles(&mut m);
+
+            m.replace_from(3, vec![track(20), track(21)]);
+            let mut expected = before[..3].to_vec();
+            expected.extend(["t20".to_string(), "t21".to_string()]);
+            assert_eq!(titles(&mut m), expected);
+            assert_eq!(m.len(), 5);
+        }
+    }
+
+    #[test]
+    fn shuffle_from_moves_history_entries_with_their_tracks() {
+        for shuffle in [false, true] {
+            let mut m = QueueModel::default();
+            m.replace((0..30).map(track).collect());
+            m.set_shuffle(shuffle);
+            m.jump_to_position(20);
+            m.jump_to_position(1);
+            let before = titles(&mut m);
+            let remembered = m.history().to_vec();
+
+            m.shuffle_from(2);
+            let after = titles(&mut m);
+            assert_eq!(after[..2], before[..2]);
+            assert_ne!(after, before);
+            for (old, new) in remembered.iter().zip(m.history()) {
+                assert_eq!(before[*old], after[*new]);
+            }
+        }
     }
 }

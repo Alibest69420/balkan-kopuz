@@ -18,7 +18,7 @@ pub use cache::prime;
 use cache::{LyricsInflightGuard, lyrics_cache, remember_lyrics, try_begin_lyrics_fetch};
 use local::fetch_local_lrc;
 use lrc::{extract_line_timestamps, parse_enhanced_words, parse_lrc};
-pub use request::{AppleMusicLyricsAuth, LyricsRequest, LyricsServerAuth};
+pub use request::{AppleMusicLyricsAuth, LyricsRequest, LyricsServerAuth, YouTubeMusicLyricsAuth};
 use server::{fetch_jellyfin_lyrics, fetch_subsonic_lyrics};
 pub use utils::lyrics::{LyricChunk, LyricLine, Lyrics};
 
@@ -151,8 +151,9 @@ struct PaxsenixYoutubeSearchResult {
 /// 2. Jellyfin or Subsonic server lyrics API (server tracks)
 /// 3. Paxsenix Apple Music lyrics (syllable/line synced fallback for all tracks)
 /// 4. Paxsenix YouTube lyrics (direct video-id LRC for YouTube Music tracks)
-/// 5. Optional Musixmatch richsync fallback
-/// 6. lrclib.net (fallback for all tracks)
+/// 5. YouTube Music's own lyrics (YouTube Music tracks)
+/// 6. Optional Musixmatch richsync fallback
+/// 7. lrclib.net (fallback for all tracks)
 ///
 /// For Jellyfin: `server_token` = access token, `server_user_id` = user_id (unused for lyrics)
 /// For Subsonic: `server_token` = password, `server_user_id` = username
@@ -440,24 +441,6 @@ where
         }
     }
 
-    if let Some(video_id) = extract_youtube_video_id(track_path) {
-        let started = Instant::now();
-        let native = fetch_youtube_music_lyrics(&video_id, reach).await;
-        tracing::info!(
-            target: "kopuz::lyrics",
-            "youtube_music key_hash={} elapsed_ms={} kind={}",
-            log_lyrics_key_hash(&cache_key),
-            started.elapsed().as_millis(),
-            lyrics_kind(native.as_ref())
-        );
-        if let Some(lyrics) = native
-            && lyrics_quality(&lyrics) >= lyrics_quality_option(fallback.as_ref())
-        {
-            on_progress(lyrics.clone());
-            fallback = Some(lyrics);
-        }
-    }
-
     if let Some(am_auth) = &request.apple_music_auth
         && track_path.starts_with("applemusic:")
     {
@@ -500,6 +483,17 @@ where
     // 3/4/5. Apple Music and direct YouTube lyrics are the primary remote
     // providers. Optional Musixmatch starts with them, but can only replace
     // the primary result when it returns strictly better timing quality.
+    let youtube_music_id = extract_youtube_video_id(track_path);
+    let youtube_music_started = Instant::now();
+    let youtube_music = async {
+        match &youtube_music_id {
+            Some(video_id) => {
+                fetch_youtube_music_lyrics(video_id, request.youtube_music_auth.as_ref(), reach)
+                    .await
+            }
+            None => None,
+        }
+    };
     let apple_started = Instant::now();
     let youtube_started = Instant::now();
     let musixmatch_started = Instant::now();
@@ -508,11 +502,14 @@ where
     let youtube = fetch_from_paxsenix_youtube(artist, title, duration, track_path, reach);
     let musixmatch = fetch_from_musixmatch_enhanced(artist, title, reach);
     let lrclib = fetch_from_lrclib(artist, title, album, duration, reach);
+    tokio::pin!(youtube_music);
     tokio::pin!(apple);
     tokio::pin!(youtube);
     tokio::pin!(musixmatch);
     tokio::pin!(lrclib);
 
+    let mut youtube_music_done = youtube_music_id.is_none();
+    let mut youtube_music_candidate: Option<Lyrics> = None;
     let mut apple_done = false;
     let mut youtube_done = false;
     let mut musixmatch_done = !enable_musixmatch;
@@ -527,15 +524,43 @@ where
         lyrics_debug!("provider=lrclib skipped reason=disabled");
     }
 
-    while !apple_done
+    while !youtube_music_done
+        || !apple_done
         || !youtube_done
         || (!musixmatch_done && primary_quality < 2)
         || (!lrclib_done
             && lyrics_quality_option(fallback.as_ref())
                 .max(lyrics_quality_option(musixmatch_candidate.as_ref()))
+                .max(lyrics_quality_option(youtube_music_candidate.as_ref()))
                 < 1)
     {
         tokio::select! {
+            result = &mut youtube_music, if !youtube_music_done => {
+                youtube_music_done = true;
+                tracing::info!(
+                    target: "kopuz::lyrics",
+                    "youtube_music key_hash={} elapsed_ms={} kind={}",
+                    log_lyrics_key_hash(&cache_key),
+                    youtube_music_started.elapsed().as_millis(),
+                    lyrics_kind(result.as_ref())
+                );
+                lyrics_debug!(
+                    "provider=youtube_music elapsed_ms={} kind={}",
+                    youtube_music_started.elapsed().as_millis(),
+                    lyrics_kind(result.as_ref())
+                );
+                if let Some(lyrics) = result {
+                    let should_progress = progressed
+                        .as_ref()
+                        .map(|current| lyrics_quality(&lyrics) >= lyrics_quality(current))
+                        .unwrap_or(true);
+                    if should_progress {
+                        progressed = Some(lyrics.clone());
+                        on_progress(lyrics.clone());
+                    }
+                    youtube_music_candidate = Some(lyrics);
+                }
+            }
             result = &mut apple, if !apple_done => {
                 apple_done = true;
                 tracing::info!(
@@ -621,7 +646,11 @@ where
                     musixmatch_candidate = Some(lyrics);
                 }
             }
-            result = &mut lrclib, if !lrclib_done && lyrics_quality_option(fallback.as_ref()).max(lyrics_quality_option(musixmatch_candidate.as_ref())) < 1 => {
+            result = &mut lrclib, if !lrclib_done
+                && lyrics_quality_option(fallback.as_ref())
+                    .max(lyrics_quality_option(musixmatch_candidate.as_ref()))
+                    .max(lyrics_quality_option(youtube_music_candidate.as_ref()))
+                    < 1 => {
                 lrclib_done = true;
                 tracing::info!(
                     target: "kopuz::lyrics",
@@ -647,6 +676,8 @@ where
             }
         }
     }
+
+    fallback = prefer_youtube_music(fallback, youtube_music_candidate);
 
     if let Some(lyrics) = musixmatch_candidate
         && fallback
@@ -723,10 +754,14 @@ fn is_remote_track(track_path: &str) -> bool {
 /// The song's own lyrics from YouTube Music, for a track it streams. A
 /// failed request counts as unreached, so a passing outage is not cached as
 /// the song having no lyrics.
-async fn fetch_youtube_music_lyrics(video_id: &str, reach: &ProviderReach) -> Option<Lyrics> {
+async fn fetch_youtube_music_lyrics(
+    video_id: &str,
+    auth: Option<&YouTubeMusicLyricsAuth>,
+    reach: &ProviderReach,
+) -> Option<Lyrics> {
     use crate::ytmusic::lyrics::YtLyrics;
 
-    match crate::ytmusic::lyrics::fetch(video_id, None).await {
+    match youtube_music_client(auth).lyrics(video_id).await {
         Ok(found) => found.map(|lyrics| match lyrics {
             YtLyrics::Timed(lines) => Lyrics::Synced(
                 lines
@@ -749,6 +784,28 @@ async fn fetch_youtube_music_lyrics(video_id: &str, reach: &ProviderReach) -> Op
             reach.unreachable();
             None
         }
+    }
+}
+
+/// Its line timing matches the playing recording, so it wins ties and loses only to word timing.
+fn prefer_youtube_music(current: Option<Lyrics>, youtube_music: Option<Lyrics>) -> Option<Lyrics> {
+    match youtube_music {
+        Some(lyrics) if lyrics_quality(&lyrics) >= lyrics_quality_option(current.as_ref()) => {
+            Some(lyrics)
+        }
+        _ => current,
+    }
+}
+
+fn youtube_music_client(
+    auth: Option<&YouTubeMusicLyricsAuth>,
+) -> crate::ytmusic::YouTubeMusicClient {
+    match auth {
+        Some(auth) => crate::ytmusic::YouTubeMusicClient::signed_in_as(
+            auth.cookies.clone(),
+            auth.account.clone(),
+        ),
+        None => crate::ytmusic::YouTubeMusicClient::new(),
     }
 }
 
@@ -912,7 +969,7 @@ async fn fetch_from_lrclib(
         url.push_str(&format!("&duration={}", duration));
     }
 
-    let client = reqwest::Client::new();
+    let client = utils::http::client();
     let res = match client
         .get(&url)
         .header("User-Agent", concat!("Kopuz/", env!("CARGO_PKG_VERSION")))
@@ -1006,6 +1063,25 @@ mod tests {
     };
     use super::*;
 
+    #[tokio::test]
+    async fn youtube_music_lyrics_act_as_the_chosen_brand_account() {
+        let auth = |account: Option<&str>| YouTubeMusicLyricsAuth {
+            cookies: "SAPISID=abc".into(),
+            account: account.map(Into::into),
+        };
+        let brand = auth(Some("4242"));
+        assert_eq!(
+            youtube_music_client(Some(&brand))
+                .acting_as()
+                .await
+                .as_deref(),
+            Some("4242")
+        );
+        let own = auth(None);
+        assert_eq!(youtube_music_client(Some(&own)).acting_as().await, None);
+        assert_eq!(youtube_music_client(None).acting_as().await, None);
+    }
+
     #[test]
     fn a_run_is_conclusive_until_a_provider_cannot_be_reached() {
         let reach = ProviderReach::default();
@@ -1014,6 +1090,43 @@ mod tests {
         reach.unreachable();
 
         assert!(!reach.every_provider_answered());
+    }
+
+    fn line_timed(text: &str) -> Lyrics {
+        Lyrics::Synced(parse_lrc(&format!("[00:01.00]{text}")))
+    }
+
+    #[test]
+    fn youtube_music_ranks_below_word_timing_and_above_plain() {
+        let word_timed = Lyrics::Synced(parse_lrc("[00:01.00]<00:01.10>Hello <00:01.50>world"));
+        assert_eq!(lyrics_quality(&word_timed), 2);
+        let youtube_timed = line_timed("youtube");
+        let youtube_plain = Lyrics::Plain("youtube".into());
+
+        assert_eq!(
+            prefer_youtube_music(Some(word_timed.clone()), Some(youtube_timed.clone())),
+            Some(word_timed)
+        );
+        assert_eq!(
+            prefer_youtube_music(Some(line_timed("lrclib")), Some(youtube_timed.clone())),
+            Some(youtube_timed.clone())
+        );
+        assert_eq!(
+            prefer_youtube_music(
+                Some(Lyrics::Plain("lrclib".into())),
+                Some(youtube_timed.clone())
+            ),
+            Some(youtube_timed)
+        );
+        assert_eq!(
+            prefer_youtube_music(Some(line_timed("lrclib")), Some(youtube_plain.clone())),
+            Some(line_timed("lrclib"))
+        );
+        assert_eq!(
+            prefer_youtube_music(None, Some(youtube_plain.clone())),
+            Some(youtube_plain)
+        );
+        assert_eq!(prefer_youtube_music(None, None), None);
     }
 
     #[test]

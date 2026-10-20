@@ -11,6 +11,9 @@ language = Språk
 library = Bibliotek
 playlists = Spellistor
 album = Album
+release_single = Singel
+release_ep = EP
+release_audiobook = Audiobook
 artist = Artist
 home = Hem
 search = Sök
@@ -31,6 +34,9 @@ add = Lägg till
 add_folder = Lägg till katalog
 no_music_folders = Ingen musikkatalog har konfigurerats
 remote_music_folders = Musikmappar
+source_account = Konto
+source_account_help = Varje konto har sitt eget bibliotek. Byte synkroniserar det igen.
+source_accounts_failed = Kunde inte läsa in konton: { $error }
 parent_folder = Upp
 use_this_folder = Lägg till den här mappen
 no_subfolders = Inga undermappar
@@ -74,10 +80,22 @@ device_change_pause = Pausa
 sample_rate_mode = Samplingsfrekvens för utdata
 sample_rate_mode_system = Följ systemet
 sample_rate_mode_source = Matcha låten
+settings_group_streaming = Streaming
+stream_quality = Streamingkvalitet
+stream_quality_low = Låg
+stream_quality_normal = Normal
+stream_quality_high = Hög
+autoplay_radio = Spela en radio när kön tar slut
+skip_explicit = Hoppa över explicita spår
+pause_watch_history = Pausa visningshistoriken
 discord_presence = Discord-närvaro
 connectivity = Uppkoppling
 integration_connect = Connect to { $name }
 integration_connected = { $name } connected
+integration_connecting = Connecting…
+integration_browser_title = Use a signed-in browser
+integration_browser_profile = { $name } ({ $browser })
+integration_browser_none = No browser profiles found. Paste your token above instead.
 discord_presence_paused = Visa pausad status i Discord
 discord_presence_source = Visa mediekälla i Discord-status
 reduce_animations = Minska animationer
@@ -141,6 +159,11 @@ downloader_status_waiting = Väntar…
 update_available = Uppdatering tillgänglig
 update_banner_message = Kopuz { $version } är tillgänglig.
 view_release = Visa version
+update_install = Uppdatera och starta om
+update_downloading = Laddar ned Kopuz { $version }…
+update_restarting = Startar om för att slutföra uppdateringen…
+update_failed = Det gick inte att installera Kopuz { $version }.
+update_retry = Försök igen
 
 # UI Actions & Buttons
 add_to_favorites = Lägg till i favoriter
@@ -156,6 +179,7 @@ radio_empty = Inga liknande låtar hittades
 radio_failed = Kunde inte starta radion
 remove_from_queue = Ta bort från kön
 downloading = Laddar ner…
+downloading_progress = Downloading { $done } / { $total }
 more_actions_for = Fler åtgärder för { $name }
 share_musicbrainz = Dela (MusicBrainz)
 share_link_copied = MusicBrainz länk kopierad
@@ -171,6 +195,7 @@ add_all_to_queue = Lägg till alla i kön
 add_all_to_playlist = Lägg till alla i spellistan
 select_all = Markera alla
 select_all_tracks = Markera alla låtar
+deselect_all_tracks = Avmarkera alla spår
 remove_from_cache = Ta bort från cache
 create = Skapa
 save = Spara
@@ -198,15 +223,42 @@ new_releases = Nya släpp
 # Navigation Buttons
 up_next = Spelas härnäst
 lyrics = Låttexter
+track_version = Version
+track_version_song = Låt
+track_version_video = Video
+music_video = Musikvideo
 
 # Player/Media
 loading_lyrics = Laddar låttexter...
 lyrics_not_found = Inga låttexter hittades
 instrumental_break = Instrumentalt
 no_previous_songs = Inga tidigare låtar
-playlist_track_count = { $count } låtar
-music_playlist_count = Musik • { $count } låtar
-showcase_song_count = { $count } låtar
+playlist_track_count =
+    { $count ->
+        [one] { $count } låt
+       *[other] { $count } låtar
+    }
+playlist_folder_count =
+    { $count ->
+        [one] { $count } spellista
+       *[other] { $count } spellistor
+    }
+playlists_synced_count =
+    { $count ->
+        [one] { $count } spellista synkad
+       *[other] { $count } spellistor synkade
+    }
+playlists_loading_tracks = Läser in låtar — spellistor { $done } / { $count } ({ $remaining } kvar)
+music_playlist_count =
+    { $count ->
+        [one] Musik • { $count } låt
+       *[other] Musik • { $count } låtar
+    }
+showcase_song_count =
+    { $count ->
+        [one] { $count } låt
+       *[other] { $count } låtar
+    }
 
 # Modal Titles
 add_playlist = Lägg till spellista
@@ -263,8 +315,11 @@ title = Titel
 time = Tid
 genre = Genre
 plays = Spelningar
-track_count = { $count } låtar
-track_count_singular = 1 låt
+track_count =
+    { $count ->
+        [one] { $count } låt
+       *[other] { $count } låtar
+    }
 songs = låtar
 min = min
 
@@ -299,14 +354,66 @@ unknown_genre = Okänd genre
 no_tracks_in_library = Inga låtar hittades i ditt bibliotek
 no_songs_here = Inga låtar här
 syncing_with_server = Synkar med servern...
-yt_syncing_progress = Synkar — { $count } låtar inlästa hittills
-yt_synced_total = { $count } gillade låtar synkade
+yt_syncing_progress =
+    { $count ->
+        [one] Synkar — { $count } låt inläst hittills
+       *[other] Synkar — { $count } låtar inlästa hittills
+    }
+yt_synced_total =
+    { $count ->
+        [one] { $count } gillad låt synkad
+       *[other] { $count } gillade låtar synkade
+    }
 refresh = Uppdatera
 discover = Upptäck
 discover_more_loading = Ladda mer...
 discover_failed = Kunde inte läsa in Upptäck: { $error }
 discover_unsupported = Upptäck är endast tillgängligt när YouTube Music är den aktiva servern.
 discover_show_all = Visa allt
+catalog_page_explore = Utforska
+catalog_page_charts = Topplistor
+catalog_page_moods = Stämningar och genrer
+catalog_page_podcasts = Poddar
+catalog_page_library_songs = Dina låtar
+catalog_page_library_albums = Dina album
+catalog_page_library_artists = Dina artister
+catalog_page_subscriptions = Prenumerationer
+catalog_page_library_podcasts = Dina poddar
+catalog_page_uploads = Uppladdningar
+catalog_page_history = Historik
+search_filter_all = Allt
+search_filter_songs = Låtar
+search_filter_videos = Videor
+search_filter_community_playlists = Communityspellistor
+search_filter_featured_playlists = Utvalda spellistor
+search_filter_episodes = Avsnitt
+search_filter_profiles = Profiler
+discover_show_more = Visa fler
+discover_scroll_back = Rulla bakåt
+discover_scroll_forward = Rulla framåt
+catalog_page_empty = Inget här än
+search_prompt = Sök efter låtar, album, artister med mera
+search_showing_results_for = Visar resultat för ”{ $query }”
+catalog_like = Gilla
+catalog_unlike = Ta bort gillning
+catalog_dislike = Ogilla
+catalog_undislike = Ta bort ogillning
+catalog_save = Spara i biblioteket
+catalog_unsave = Ta bort från biblioteket
+catalog_follow = Följ
+catalog_unfollow = Sluta följa
+catalog_following = Följer
+catalog_remove_history = Ta bort från historiken
+playlist_edit_details = Redigera detaljer
+playlist_description = Beskrivning
+playlist_privacy = Vem kan se den
+playlist_privacy_public = Offentlig
+playlist_privacy_unlisted = Olistad
+playlist_privacy_private = Privat
+playlist_delete_title = Radera spellistan?
+playlist_delete_body = ”{ $name }” raderas från { $service } för gott.
+playlist_unsave_title = Ta bort från ditt bibliotek?
+playlist_unsave_body = ”{ $name }” försvinner från ditt { $service }-bibliotek. Själva spellistan finns kvar på { $service }.
 source_anon_playlists = Logga in på YouTube Music för att se dina spellistor
 source_anon_favorites = Logga in på YouTube Music för att se dina gillade låtar
 source_anon_discover = Logga in på YouTube Music för att utforska Upptäck
@@ -342,6 +449,8 @@ listen_now_layout = Layout
 ui_style = Gränssnittsstil
 ui_normal = Normal
 ui_vaxry = Vaxry
+ui_material3 = Material 3
+system_colors = Systemfärger
 player_bar_position = Spelarens placering
 position_bottom = Nederst
 position_top = Överst
@@ -431,6 +540,7 @@ replay_gain_mode_auto = Automatisk
 replay_gain_prevent_clipping = Förhindra klippning
 replay_gain_preamp = Förförstärkning
 replay_gain_fallback = Standardförstärkning
+replay_gain_youtube_loudness = Normalisera YouTube Music
 move_to_folder = Flytta till katalog
 no_folders_yet = Inga kataloger ännu.
 folder_name = Katalognamn...
@@ -538,8 +648,13 @@ external_play_on = Spela på
 external_this_app = kopuz (den här appen)
 prefer_active_device = Playback device
 prefer_active_device_help = When another device is already playing, take it over instead of starting playback here.
-settings_managed_notice = Vissa inställningar hanteras av din systemkonfiguration (Nix/hjem) och kan inte ändras här.
+settings_managed_notice = Vissa inställningar kommer från en inställningsfil som appen inte kan skriva till (skrivskyddad eller hanterad av Nix/hjem) och kan inte ändras här.
 setting_managed_by_system = Hanteras av systemkonfigurationen
+settings_dropin_notice = Vissa inställningar bestäms av tilläggsfiler och kan inte ändras här.
+settings_env_notice = Vissa inställningar bestäms av miljövariablerna KOPUZ_CONFIG_* och kan inte ändras här.
+setting_locked_by_file = Inställt av { $path }
+setting_locked_by_dropin = Inställt av tilläggsfilen { $path }
+setting_locked_by_env = Inställt av { $var }
 
 settings_interface = Interface
 interface_general = General
@@ -575,6 +690,7 @@ settings_tools = Tools
 share = Share
 share_copied = Copied link
 share_no_page = Couldn't find a page for this track
+explicit = Explicit
 start_daemon = Start Daemon
 
 first_run_title = Welcome to Kopuz
@@ -624,7 +740,11 @@ waiting_for_browser = Waiting for your browser…
 signed_in = Signed in
 metadata_number_invalid = Enter a number, or leave it empty to clear the tag.
 metadata_batch_keep = Leave unchanged
-metadata_batch_count = Editing { $count } tracks
+metadata_batch_count =
+    { $count ->
+        [one] Editing { $count } track
+       *[other] Editing { $count } tracks
+    }
 interface_font = Interface font
 interface_font_description = The font family to draw the interface with.
 interface_font_placeholder = Theme default
@@ -704,6 +824,13 @@ view = View
 undo = Undo
 quit = Quit
 scanning_library = Scanning library…
+network_offline_banner = Ingen internetanslutning — bytte till offlineläge
+network_online_banner = Online igen — bytte till serverläge
+keep_server_mode = Behåll serverläge
+tray_show_hide = Visa / dölj Kopuz
+tray_quit = Avsluta Kopuz
+tray_unavailable_title = Ikonen i systemfältet är inte tillgänglig
+tray_unavailable_message = System tray unavailable: appindicator library not found. Install libayatana-appindicator (Debian/Ubuntu/Arch) or libappindicator-gtk3 (Fedora). Closing the window will quit the app instead of minimizing to tray.
 reconnecting_attempt = Reconnecting… (attempt { $attempt })
 downloads_summary = { $done } downloaded, { $failed } failed
 job_scan = Library scan
@@ -770,11 +897,19 @@ discover_clear_search = Clear search
 discover_results_for = Results for "{ $query }"
 discover_no_results_hint = Try fewer words, or switch source and look again.
 discover_show_less = Show less
-discover_genre_count = { $count } genres
+discover_genre_count =
+    { $count ->
+        [one] { $count } genre
+       *[other] { $count } genres
+    }
 discover_read_failed = Couldn't load your library: { $error }
 palette_all_results = All results for "{ $query }" in Discover
 
-library_count = { $count } items
+library_count =
+    { $count ->
+        [one] { $count } item
+       *[other] { $count } items
+    }
 library_filter_placeholder = Filter the library…
 library_chip_downloaded = Downloaded
 library_chip_years = Years
@@ -797,7 +932,11 @@ library_tile_medium = Medium
 library_tile_large = Large
 library_default_view = Grids open as
 library_default_view_description = Whether albums, artists and playlists start as tiles or as rows.
-library_artist_tracks = { $count } tracks
+library_artist_tracks =
+    { $count ->
+        [one] { $count } track
+       *[other] { $count } tracks
+    }
 library_selected = { $count } selected
 library_whole_selection = Everything that matches
 library_read_failed = Could not read the library
@@ -836,7 +975,11 @@ downloader_history = URL downloads
 interface_skin = Skin
 interface_skin_description = The shape of the interface: how round things are, how tall a row sits.
 
-home_plays = { $count } plays
+home_plays =
+    { $count ->
+        [one] { $count } play
+       *[other] { $count } plays
+    }
 
 interface_ambient = Ambient light
 interface_ambient_description = Let the current cover cast its colour across the window.
@@ -858,3 +1001,83 @@ settings_group_interface = Gränssnitt
 settings_group_output = Utgång
 settings_group_loudness = Ljudstyrka
 browse = Bläddra
+
+clippsly_help = Create an App Password at clippsly.app, then sign in with your Clippsly username and that App Password. Storage limits are set by your Clippsly account.
+cloud_storage_usage = Cloud storage: { $used } of { $total } used
+upload_music = Upload music
+uploading_music = Uploading { $name }…
+music_uploaded =
+    { $count ->
+        [one] Uploaded { $count } file.
+       *[other] Uploaded { $count } files.
+    }
+music_upload_too_large = Audio files must be no larger than 500 MiB.
+cloud_storage_loading = Loading storage usage…
+
+smb_url_placeholder = smb://nas/Music
+smb_help = Connect to an SMB 2/3 share or subfolder, then sign in with your NAS account. Domain accounts can use DOMAIN\username. Files are read without mounting the share.
+invalid_smb_url = Enter smb://host/share or smb://host/share/folder, without credentials in the URL.
+
+browser_sessions_heading = Redan inloggad
+browser_sessions_checking = Kontrollerar dina webbläsare…
+browser_session_name = { $browser } · { $profile }
+browser_session_use = Använd
+browser_session_importing = Loggar in…
+browser_session_help = Kopuz kopierar sessionen från webbläsarprofilen du väljer. Webbläsaren kan vara öppen.
+
+playback_error_session_expired = Din inloggning på { $source } har gått ut. Logga in igen för att fortsätta spela.
+playback_error_challenged = { $source } vill kontrollera att du inte är en bot. Vänta några minuter och försök igen.
+playback_error_refused = { $source } vägrade spela den här låten. Din inloggning är i ordning: felet ligger hos { $source } och brukar lösa sig själv.
+playback_error_unreachable = Det gick inte att nå { $source }. Kontrollera din anslutning och försök igen.
+playback_error_unavailable = { $source } kan inte spela den här låten. Den kan ha tagits bort, gjorts privat eller blockerats i din region.
+playback_sign_in_again = Logga in igen
+playback_try_again = Försök igen
+playback_skip = Hoppa över låt
+playback_copy_details = Kopiera detaljer
+playback_details_copied = Detaljer kopierade
+source_signed_out = ● Utloggad
+source_not_responding = ● Svarar inte
+connection_test = Testa anslutning
+connection_testing = Testar…
+connection_test_failed = Det gick inte att köra testet: { $error }
+connection_copy_report = Kopiera rapport
+connection_report_copied = Rapport kopierad
+connection_step_reach = Tjänsten nåbar
+connection_step_session = Inloggning godkänd
+connection_step_signed_in_playback = Spelar med ditt konto
+connection_step_anonymous_playback = Spelar utan konto
+connection_step_playback_token = Uppspelningstoken
+connection_step_passed = Godkänt
+connection_step_failed = Misslyckades
+connection_step_skipped = Hoppades över
+
+sync_interval = Sync and rescan every
+sync_interval_never = Never
+sync_interval_minutes = { $count } min
+sync_interval_hours = { $count } h
+sync_interval_days = { $count } d
+
+error_setting_locked = A managed settings file pins this setting, so it cannot be changed here.
+error_connect_not_offered = This integration does not connect that way.
+error_api_key_missing = Set the API key and secret first.
+error_sign_in_not_started = The service did not start the sign-in. Check the API key and your connection.
+error_browser_not_opened = Could not open a browser for the sign-in.
+error_sign_in_timed_out = The sign-in was not approved in time.
+error_browser_profile_gone = That browser profile is no longer there.
+error_browser_cookies_unreadable = Could not read the cookies of that browser profile.
+error_browser_profile_signed_out = That browser profile is not signed in to the service. Sign in there, or paste your token instead.
+error_browser_profile_no_token = The service did not show a token for that profile. Paste it instead.
+error_integration_unreachable = Could not reach the service. Check your connection.
+error_credential_rejected = The service does not accept that token. Paste your token instead.
+error_default_source_undeletable = The default folder source cannot be deleted.
+error_empty_source_folder = A source folder cannot be empty.
+error_code_invalid_input = Not accepted: { $detail }
+error_code_not_found = That is no longer there.
+error_code_conflict = Already in use or in progress: { $detail }
+error_code_source_auth_expired = The source did not accept the sign-in. Sign in again in Settings.
+error_code_source_unreachable = The source could not be reached. Check your connection.
+error_code_unsupported = Not supported here: { $detail }
+error_code_internal = Something went wrong: { $detail }
+error_code_source_challenged = The source wants to check that you're not a bot. Wait a few minutes and try again.
+error_code_source_refused = The source refused the request. This is on its side and usually clears up on its own.
+error_code_item_unavailable = The source can't play this. It may have been removed, made private or blocked in your region.

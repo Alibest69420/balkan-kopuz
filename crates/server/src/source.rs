@@ -26,28 +26,33 @@
 
 use async_trait::async_trait;
 
-use config::{AppConfig, MusicService, Source};
+use config::{MusicService, Source};
 use db::Db;
 
 use crate::server_ops::ServerConn;
+use crate::sources::Sources;
 
 mod apple_music;
 pub mod capabilities;
+mod clippsly;
 mod jellyfin;
 mod local;
 mod nextcloud;
 mod offline;
 mod search;
+mod smb;
 mod soundcloud;
 mod spotify;
 mod subsonic;
 mod types;
 mod youtube_music;
 use apple_music::AppleMusicSource;
+use clippsly::ClippslySource;
 use jellyfin::JellyfinSource;
 use local::LocalSource;
 use nextcloud::NextcloudSource;
 use offline::OfflineServerSource;
+use smb::SmbSource;
 use soundcloud::SoundcloudSource;
 use spotify::SpotifySource;
 use subsonic::SubsonicSource;
@@ -100,8 +105,21 @@ pub trait MediaSource: Send + Sync {
     ) -> Result<(), SourceError>;
 
     /// Resolve a playable stream for one item id (local = a file path, server =
-    /// the remote's URL / deciphered stream).
-    async fn resolve_stream(&self, item_id: &str) -> Result<StreamInfo, SourceError>;
+    /// the remote's URL / deciphered stream). One-format sources ignore `quality`.
+    async fn resolve_stream(
+        &self,
+        item_id: &str,
+        quality: config::StreamQuality,
+    ) -> Result<StreamInfo, SourceError>;
+
+    /// A seekable protocol-native stream, or `None` to use the resolved URL.
+    async fn open_stream(
+        &self,
+        _item_id: &str,
+        _progress: Option<crate::stream::stream_buffer::BufferProgressCallback>,
+    ) -> Result<Option<Box<dyn symphonia::core::io::MediaSource>>, SourceError> {
+        Ok(None)
+    }
 
     /// The bytes of one track, for sources that can't express it as a URL.
     ///
@@ -120,6 +138,28 @@ pub trait MediaSource: Send + Sync {
 
     /// Check stored creds against the source (local is always [`Valid`](AuthOutcome::Valid)).
     async fn validate(&self) -> AuthOutcome;
+
+    /// Each step of reaching this source and playing from it, for a
+    /// connection test. A source with nothing more to show reports its
+    /// sign-in check alone.
+    async fn diagnose(&self) -> Vec<Check> {
+        let result = match self.validate().await {
+            AuthOutcome::Valid => Ok(()),
+            AuthOutcome::Expired => Err("the sign-in is no longer accepted".to_string()),
+            AuthOutcome::Unreachable => Err("the server did not answer".to_string()),
+        };
+        vec![Check::of(CheckStep::Session, result, |()| {
+            "accepted".to_string()
+        })]
+    }
+
+    async fn storage_quota(&self) -> Result<StorageQuota, SourceError> {
+        Err(SourceError::unsupported("storage quota"))
+    }
+
+    async fn upload_track(&self, _filename: String, _content: Vec<u8>) -> Result<(), SourceError> {
+        Err(SourceError::unsupported("music uploads"))
+    }
 
     /// All favorited item ids on the remote (YT pages internally). Local has no
     /// remote set, so it returns empty.
@@ -145,6 +185,20 @@ pub trait MediaSource: Send + Sync {
         Err(SourceError::unsupported("playlist reorder"))
     }
 
+    /// The other cut of `track`, when the source pairs them and the track does not say.
+    /// `None` is an answer, not a failure: most tracks have no counterpart.
+    async fn counterpart(
+        &self,
+        _track: &reader::Track,
+    ) -> Result<Option<reader::Counterpart>, SourceError> {
+        Ok(None)
+    }
+
+    /// A video track's picture stream, which the daemon fetches by range for a frontend.
+    async fn video_stream(&self, _item_id: &str) -> Result<VideoStream, SourceError> {
+        Err(SourceError::unsupported("music videos"))
+    }
+
     /// Tell the source to stop recommending `item_id` — YT Music's dislike,
     /// which is a signal to its recommender rather than a library edit. Only
     /// sources whose [`Capabilities::dont_recommend`] is set override this; the
@@ -153,10 +207,49 @@ pub trait MediaSource: Send + Sync {
         Err(SourceError::unsupported("don't recommend"))
     }
 
+    async fn accounts(&self) -> Result<Vec<SourceAccount>, SourceError> {
+        Err(SourceError::unsupported("accounts"))
+    }
+
+    /// `item_ref` is a ref this source handed out, or a track's key.
+    async fn rate(
+        &self,
+        _item_ref: &str,
+        _rating: crate::ytmusic::discover::Rating,
+    ) -> Result<(), SourceError> {
+        Err(SourceError::unsupported("rating"))
+    }
+
+    async fn follow(&self, _artist_ref: &str, _follow: bool) -> Result<(), SourceError> {
+        Err(SourceError::unsupported("following"))
+    }
+
+    async fn save(&self, _item_ref: &str, _saved: bool) -> Result<(), SourceError> {
+        Err(SourceError::unsupported("saving to the library"))
+    }
+
+    async fn remove_from_history(&self, _token: &str) -> Result<(), SourceError> {
+        Err(SourceError::unsupported("history removal"))
+    }
+
+    async fn edit_playlist(
+        &self,
+        _playlist_id: &str,
+        _details: &PlaylistDetails,
+    ) -> Result<(), SourceError> {
+        Err(SourceError::unsupported("playlist details"))
+    }
+
+    /// Runs before the local delete. Kept apart from `delete_playlist`, which the
+    /// sync's sweep also calls for playlists the remote already dropped.
+    async fn delete_remote_playlist(&self, _playlist_id: &str) -> Result<(), SourceError> {
+        Ok(())
+    }
+
     /// Start a radio/mix seeded from a track, returning the generated queue. Only
     /// sources whose [`Capabilities::radio`] is set override this; the rest
     /// inherit the unsupported default.
-    async fn start_radio(&self, _seed_ref: &str) -> Result<Vec<reader::Track>, SourceError> {
+    async fn start_radio(&self, _seed_ref: &str) -> Result<RadioPage, SourceError> {
         Err(SourceError::unsupported("radio"))
     }
 
@@ -165,11 +258,29 @@ pub trait MediaSource: Send + Sync {
     /// playlist's tracks — so callers play it as-is. Shares
     /// [`Capabilities::radio`] with [`start_radio`](Self::start_radio): a source
     /// that can seed radio from a track can seed it from a playlist too.
-    async fn start_playlist_radio(
-        &self,
-        _playlist_ref: &str,
-    ) -> Result<Vec<reader::Track>, SourceError> {
+    async fn start_playlist_radio(&self, _playlist_ref: &str) -> Result<RadioPage, SourceError> {
         Err(SourceError::unsupported("playlist radio"))
+    }
+
+    /// Only a source that hands out a cursor is ever asked.
+    async fn more_radio(&self, _cursor: &str) -> Result<RadioPage, SourceError> {
+        Err(SourceError::unsupported("radio continuation"))
+    }
+
+    /// Whether the server now holds `queue`. A queue holding tracks the source
+    /// does not own has no remote form, so an impl skips it (`false`) rather
+    /// than saving a partial one. An empty queue clears the server's.
+    async fn save_play_queue(
+        &self,
+        _queue: &[reader::Track],
+        _current_index: usize,
+        _position_ms: u64,
+    ) -> Result<bool, SourceError> {
+        Err(SourceError::unsupported("play queue sync"))
+    }
+
+    async fn get_play_queue(&self) -> Result<Option<RemotePlayQueue>, SourceError> {
+        Err(SourceError::unsupported("play queue sync"))
     }
 
     /// The track's canonical public web URL, when this source has shareable web
@@ -184,6 +295,24 @@ pub trait MediaSource: Send + Sync {
     /// first track's page instead.
     fn album_web_url(&self, _browse_id: &str) -> Option<String> {
         None
+    }
+
+    fn artist_web_url(&self, _artist_id: &str) -> Option<String> {
+        None
+    }
+
+    fn playlist_web_url(&self, _playlist_id: &str) -> Option<String> {
+        None
+    }
+
+    /// For a key nothing has listed this session; `None` when the source has no such track.
+    async fn fetch_track(&self, _item_id: &str) -> Result<Option<reader::Track>, SourceError> {
+        Ok(None)
+    }
+
+    /// `None` anonymously, and for a source whose accounts have no picture.
+    async fn account_avatar(&self) -> Result<Option<String>, SourceError> {
+        Ok(None)
     }
 
     /// Search this source for `query`, returning matching tracks and albums. The
@@ -203,6 +332,27 @@ pub trait MediaSource: Send + Sync {
         Ok(search::filter(&q, tracks, albums))
     }
 
+    fn search_filters(&self) -> Vec<SearchFilterEntry> {
+        Vec::new()
+    }
+
+    /// Shelves for an "all" filter, one long shelf under any other.
+    async fn search_shelves(
+        &self,
+        _query: &str,
+        _filter: &str,
+        _continuation: Option<&str>,
+    ) -> Result<crate::ytmusic::browse::search::SearchPage, SourceError> {
+        Err(SourceError::unsupported("search filters"))
+    }
+
+    async fn search_suggestions(
+        &self,
+        _query: &str,
+    ) -> Result<Vec<crate::ytmusic::browse::search::Suggestion>, SourceError> {
+        Ok(Vec::new())
+    }
+
     /// The discover/home feed. Default unsupported — gated by
     /// [`Capabilities::discover`]; only catalog remotes (YT) override.
     async fn discover_home(&self) -> Result<crate::ytmusic::discover::DiscoverHome, SourceError> {
@@ -216,6 +366,27 @@ pub trait MediaSource: Send + Sync {
         _token: &str,
     ) -> Result<crate::ytmusic::discover::DiscoverHome, SourceError> {
         Err(SourceError::unsupported("discover"))
+    }
+
+    fn catalog_pages(&self) -> Vec<CatalogPageEntry> {
+        Vec::new()
+    }
+
+    /// A page by an id that `catalog_pages`, a chip or a link handed out.
+    async fn browse_page(
+        &self,
+        _id: &str,
+        _continuation: Option<&str>,
+    ) -> Result<crate::ytmusic::discover::BrowsePage, SourceError> {
+        Err(SourceError::unsupported("catalog pages"))
+    }
+
+    /// Similar songs, artists and albums for one of its tracks.
+    async fn related(
+        &self,
+        _item_id: &str,
+    ) -> Result<crate::ytmusic::discover::BrowsePage, SourceError> {
+        Err(SourceError::unsupported("related"))
     }
 
     /// The tracks of a remote album / browse id. Standard library remotes use
@@ -234,27 +405,9 @@ pub trait MediaSource: Send + Sync {
         Err(SourceError::unsupported("album"))
     }
 
-    /// Resolve an opened album reference — a raw browse id, a `ytmusic:album:MPRE…`
-    /// (search rows with an album link), or a synthesized `ytmusic:album:<hash>`
-    /// (search rows without one) — to its full remote album. `None` when it can't
-    /// be resolved or has no tracks. The id→browse-id→album dance lives here so the
-    /// UI never reaches into the per-service catalog. Default unsupported; only
-    /// catalog remotes (YT) override.
+    /// The full remote album an opened album id names, or `None` when it names none with tracks.
     async fn fetch_album_by_ref(&self, _id: &str) -> Result<Option<RemoteAlbum>, SourceError> {
         Err(SourceError::unsupported("album by ref"))
-    }
-
-    /// Resolve a saved album's title + artist to its full remote album (header +
-    /// every track) for the YT-Music-style album page — the local library stores
-    /// YT albums by hash with no browse id, so the page needs the remote listing.
-    /// `None` when it can't be resolved or has no tracks. Default unsupported; only
-    /// catalog remotes (YT) override.
-    async fn fetch_album_by_meta(
-        &self,
-        _title: &str,
-        _artist: &str,
-    ) -> Result<Option<RemoteAlbum>, SourceError> {
-        Err(SourceError::unsupported("album by meta"))
     }
 
     /// One page of a remote playlist: `cursor = None` for the first page, then
@@ -268,18 +421,6 @@ pub trait MediaSource: Send + Sync {
         _cursor: Option<String>,
     ) -> Result<(Vec<reader::Track>, Option<String>), SourceError> {
         Err(SourceError::unsupported("playlist paging"))
-    }
-
-    /// Resolve a saved album's title + artist to a remote album browse id, so
-    /// the album page can fetch the album's full track list (the local library
-    /// stores YT albums by hash, with no browse id). Default unsupported; only
-    /// catalog remotes (YT) override.
-    async fn resolve_album_browse_id(
-        &self,
-        _album: &str,
-        _artist: &str,
-    ) -> Result<Option<String>, SourceError> {
-        Err(SourceError::unsupported("album browse id"))
     }
 
     /// A remote artist profile (banner, top songs, albums, related) by channel
@@ -298,6 +439,24 @@ pub trait MediaSource: Send + Sync {
     /// (Jellyfin/Subsonic) override; the caller persists + prunes the result.
     async fn fetch_library(&self) -> Result<LibrarySnapshot, SourceError> {
         Ok(LibrarySnapshot::default())
+    }
+
+    /// Fetch a library while reporting the file currently being scanned.
+    async fn fetch_library_with_progress(
+        &self,
+        _on_progress: std::sync::Arc<dyn Fn(String) + Send + Sync>,
+    ) -> Result<LibrarySnapshot, SourceError> {
+        self.fetch_library().await
+    }
+
+    /// Resolve missing album covers after the library has been persisted.
+    async fn fetch_missing_covers(
+        &self,
+        _albums: &[reader::Album],
+        _tracks: &[reader::Track],
+        _on_progress: std::sync::Arc<dyn Fn(String) + Send + Sync>,
+    ) -> Result<Vec<reader::Album>, SourceError> {
+        Ok(Vec::new())
     }
 
     /// Fetch a playlist's tracks from the remote. Local playlists resolve their
@@ -322,6 +481,7 @@ pub trait MediaSource: Send + Sync {
         Ok(PlaylistPage {
             tracks: self.fetch_playlist_entries(playlist_id).await?,
             next: None,
+            header: None,
         })
     }
 
@@ -331,11 +491,11 @@ pub trait MediaSource: Send + Sync {
         Ok(Vec::new())
     }
 
-    /// Fetch artist → image-URL pairs from the remote (for the "artist photo"
-    /// view). Default empty (local reads them from the DB; YT has none).
-    async fn fetch_artist_images(
+    /// The remote's own artist listing: each artist as it names itself, with its photo URL when it has one.
+    /// Default empty (local reads them from the DB; YT has none).
+    async fn fetch_artists(
         &self,
-    ) -> Result<Vec<(reader::ArtistCredit, String)>, SourceError> {
+    ) -> Result<Vec<(reader::ArtistCredit, Option<String>)>, SourceError> {
         Ok(Vec::new())
     }
 
@@ -592,6 +752,24 @@ pub trait MediaSource: Send + Sync {
             .map_err(SourceError::from)
     }
 
+    /// Name every artist of this source's own listing that carries an id; answers how many rows changed. DB op.
+    async fn name_listed_artists(
+        &self,
+        listed: &[(reader::ArtistCredit, Option<String>)],
+    ) -> Result<usize, SourceError> {
+        let named: Vec<(String, String)> = listed
+            .iter()
+            .filter_map(|(artist, _)| Some((artist.id.clone()?, artist.name.clone())))
+            .collect();
+        if named.is_empty() {
+            return Ok(0);
+        }
+        self.db()
+            .name_artists(self.source(), &named)
+            .await
+            .map_err(SourceError::from)
+    }
+
     /// Record (or clear) the cached image for one of this source's artists, by its key. DB-cache op.
     async fn set_artist_image(
         &self,
@@ -795,16 +973,6 @@ pub(super) async fn mirror_created(
 
 // ============================ Resolvers ================================
 
-/// The server id of the active source — its own id, falling back to the
-/// configured server's id (matches the legacy single-server config).
-fn active_server_id(config: &AppConfig) -> Option<String> {
-    config
-        .active_source
-        .server_id()
-        .map(String::from)
-        .or_else(|| config.server.as_ref().and_then(|s| s.id.clone()))
-}
-
 /// Build the per-remote source for `conn` — the ONE place service dispatch happens.
 fn remote_source(db: Db, source: Source, conn: &ServerConn) -> Box<dyn MediaSource> {
     match conn.service {
@@ -830,6 +998,8 @@ fn remote_source(db: Db, source: Source, conn: &ServerConn) -> Box<dyn MediaSour
         }
         MusicService::Spotify => Box::new(SpotifySource::new(db, source, conn)),
         MusicService::Nextcloud => Box::new(NextcloudSource::new(db, source, conn)),
+        MusicService::Clippsly => Box::new(ClippslySource::new(db, source, conn)),
+        MusicService::Smb => Box::new(SmbSource::new(db, source, conn)),
     }
 }
 
@@ -842,9 +1012,9 @@ pub type ActiveSource = std::sync::Arc<dyn MediaSource>;
 /// The configured server's [`MediaSource`], or `None` when no usable creds
 /// exist. Unlike [`active`] this ignores the active source — the reconciler
 /// syncs the configured server even while a local page is open.
-pub fn configured_server(db: Db, config: &AppConfig) -> Option<Box<dyn MediaSource>> {
-    let conn = ServerConn::resolve(config)?;
-    let source = Source::Server(active_server_id(config).unwrap_or_default());
+pub fn configured_server(db: Db, sources: &Sources) -> Option<Box<dyn MediaSource>> {
+    let conn = ServerConn::resolve(sources)?;
+    let source = Source::Server(sources.active_server_id().unwrap_or_default());
     Some(remote_source(db, source, &conn))
 }
 
@@ -853,15 +1023,11 @@ pub fn local(db: Db, source: Source) -> Box<dyn MediaSource> {
     Box::new(LocalSource { db, source })
 }
 
-/// The [`MediaSource`] backing a given [`Source`] key — the single factory.
-/// Local needs no creds; a server resolves its creds from `config` (falling back
-/// to the offline stand-in when none are usable, so favorites still queue).
-/// Building a server source stands up an HTTP client, so resolve once and hold
-/// the result (the cached [`ActiveSource`]) rather than calling per render.
-pub fn resolve(db: Db, config: &AppConfig, source: &Source) -> Box<dyn MediaSource> {
+/// The single factory: a server without usable creds in `sources` gets the offline stand-in, and building one stands up an HTTP client, so hold the result.
+pub fn resolve(db: Db, sources: &Sources, source: &Source) -> Box<dyn MediaSource> {
     match source {
         Source::LocalLibrary(_) => local(db, source.clone()),
-        Source::Server(id) => match ServerConn::resolve(config) {
+        Source::Server(id) => match ServerConn::resolve(sources) {
             Some(conn) => remote_source(db, Source::Server(id.clone()), &conn),
             None => Box::new(OfflineServerSource {
                 db,
@@ -872,6 +1038,6 @@ pub fn resolve(db: Db, config: &AppConfig, source: &Source) -> Box<dyn MediaSour
 }
 
 /// The [`MediaSource`] for the app's active source.
-pub fn active(db: Db, config: &AppConfig) -> Box<dyn MediaSource> {
-    resolve(db, config, &config.active_source)
+pub fn active(db: Db, sources: &Sources) -> Box<dyn MediaSource> {
+    resolve(db, sources, &sources.active)
 }

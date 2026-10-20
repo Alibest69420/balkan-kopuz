@@ -11,6 +11,9 @@ language = Wika
 library = Library
 playlists = Mga Playlist
 album = Album
+release_single = Single
+release_ep = EP
+release_audiobook = Audiobook
 artist = Artista
 home = Home
 search = Maghanap
@@ -31,6 +34,9 @@ add = Idagdag
 add_folder = Magdagdag ng Folder
 no_music_folders = Walang Naka-configure na mga Folder ng Musika
 remote_music_folders = Mga Folder ng Musika
+source_account = Account
+source_account_help = May sariling library ang bawat account. Sini-sync ulit ito kapag lumipat.
+source_accounts_failed = Hindi ma-load ang mga account: { $error }
 parent_folder = Pataas
 use_this_folder = Idagdag ang Folder na Ito
 no_subfolders = Walang subfolder
@@ -74,10 +80,22 @@ device_change_pause = Pause
 sample_rate_mode = Sample rate ng output
 sample_rate_mode_system = Sundin ang sistema
 sample_rate_mode_source = Itugma sa track
+settings_group_streaming = Streaming
+stream_quality = Kalidad ng streaming
+stream_quality_low = Mababa
+stream_quality_normal = Normal
+stream_quality_high = Mataas
+autoplay_radio = Magpatugtog ng radyo kapag natapos ang queue
+skip_explicit = Laktawan ang mga explicit na track
+pause_watch_history = I-pause ang watch history
 discord_presence = Discord Presence
 connectivity = Koneksyon
 integration_connect = Connect to { $name }
 integration_connected = { $name } connected
+integration_connecting = Connecting…
+integration_browser_title = Use a signed-in browser
+integration_browser_profile = { $name } ({ $browser })
+integration_browser_none = No browser profiles found. Paste your token above instead.
 discord_presence_paused = Ipakita ang Naka-pause na Discord status
 discord_presence_source = Ipakita ang media source sa Discord status
 reduce_animations = Bawasan ang mga Animation
@@ -141,6 +159,11 @@ downloader_status_waiting = Naghihintay…
 update_available = May available na update
 update_banner_message = Available na ang Kopuz { $version }.
 view_release = Tingnan ang release
+update_install = I-update at i-restart
+update_downloading = Dina-download ang Kopuz { $version }…
+update_restarting = Nagre-restart para tapusin ang update…
+update_failed = Hindi ma-install ang Kopuz { $version }.
+update_retry = Subukang muli
 
 # UI Actions & Buttons
 add_to_favorites = Idagdag sa Paborito
@@ -156,6 +179,7 @@ radio_empty = Walang nahanap na katulad na kanta
 radio_failed = Hindi masimulan ang radyo
 remove_from_queue = Alisin sa Queue
 downloading = Nagda-download…
+downloading_progress = Downloading { $done } / { $total }
 more_actions_for = Iba pang aksyon para sa { $name }
 share_musicbrainz = Ibahagi (MusicBrainz)
 share_link_copied = Nakopya ang link ng MusicBrainz
@@ -171,6 +195,7 @@ add_all_to_queue = Idagdag Lahat sa Queue
 add_all_to_playlist = Idagdag Lahat sa Playlist
 select_all = Piliin lahat
 select_all_tracks = Piliin lahat ng track
+deselect_all_tracks = Deselect all tracks
 remove_from_cache = Alisin sa Cache
 create = Gawin
 save = I-save
@@ -198,6 +223,10 @@ new_releases = Mga Bagong Release
 # Navigation Buttons
 up_next = SUSUNOD
 lyrics = LYRICS
+track_version = Bersyon
+track_version_song = Kanta
+track_version_video = Video
+music_video = Music video
 
 # Player/Media
 loading_lyrics = Nilo-load ang lyrics...
@@ -205,6 +234,9 @@ lyrics_not_found = Hindi natagpuan ang lyrics
 instrumental_break = Instrumental
 no_previous_songs = Walang naunang kanta
 playlist_track_count = { $count } na track
+playlist_folder_count = { $count } na playlist
+playlists_synced_count = { $count } na playlist ang na-sync
+playlists_loading_tracks = Nilo-load ang mga track — mga playlist { $done } / { $count } ({ $remaining } pa)
 music_playlist_count = Musika • { $count } na track
 showcase_song_count = { $count } na kanta
 
@@ -264,7 +296,6 @@ time = Oras
 genre = Genre
 plays = Bilang ng Pagpatugtog
 track_count = { $count } na track
-track_count_singular = 1 track
 songs = mga kanta
 min = min
 
@@ -307,6 +338,50 @@ discover_more_loading = Nilo-load pa…
 discover_failed = Hindi ma-load ang Discover: { $error }
 discover_unsupported = Available lamang ang Discover kapag YouTube Music ang aktibong server.
 discover_show_all = Ipakita lahat
+catalog_page_explore = Galugarin
+catalog_page_charts = Mga Chart
+catalog_page_moods = Mga Mood at Genre
+catalog_page_podcasts = Mga Podcast
+catalog_page_library_songs = Iyong mga kanta
+catalog_page_library_albums = Iyong mga album
+catalog_page_library_artists = Iyong mga artist
+catalog_page_subscriptions = Mga Subscription
+catalog_page_library_podcasts = Iyong mga podcast
+catalog_page_uploads = Mga Upload
+catalog_page_history = History
+search_filter_all = Lahat
+search_filter_songs = Mga Kanta
+search_filter_videos = Mga Video
+search_filter_community_playlists = Mga Playlist ng Komunidad
+search_filter_featured_playlists = Mga Itinatampok na Playlist
+search_filter_episodes = Mga Episode
+search_filter_profiles = Mga Profile
+discover_show_more = Magpakita pa
+discover_scroll_back = Mag-scroll pabalik
+discover_scroll_forward = Mag-scroll pasulong
+catalog_page_empty = Wala pang laman dito
+search_prompt = Maghanap ng kanta, album, artist at iba pa
+search_showing_results_for = Mga resulta para sa “{ $query }”
+catalog_like = I-like
+catalog_unlike = Alisin ang like
+catalog_dislike = I-dislike
+catalog_undislike = Alisin ang dislike
+catalog_save = I-save sa library
+catalog_unsave = Alisin sa library
+catalog_follow = Sundan
+catalog_unfollow = Itigil ang pagsunod
+catalog_following = Sinusundan
+catalog_remove_history = Alisin sa history
+playlist_edit_details = I-edit ang detalye
+playlist_description = Paglalarawan
+playlist_privacy = Sino ang makakakita
+playlist_privacy_public = Pampubliko
+playlist_privacy_unlisted = Hindi nakalista
+playlist_privacy_private = Pribado
+playlist_delete_title = Burahin ang playlist na ito?
+playlist_delete_body = Permanenteng mabubura ang “{ $name }” sa { $service }.
+playlist_unsave_title = Alisin sa iyong library?
+playlist_unsave_body = Aalis ang “{ $name }” sa iyong { $service } library. Mananatili ang playlist sa { $service }.
 source_anon_playlists = Mag-sign in sa YouTube Music para makita ang iyong mga library playlist.
 source_anon_favorites = Mag-sign in sa YouTube Music para makita ang iyong mga liked na kanta.
 source_anon_discover = Mag-sign in sa YouTube Music para mag-browse sa Tuklasin.
@@ -342,6 +417,8 @@ listen_now_layout = Layout
 ui_style = UI style
 ui_normal = Normal
 ui_vaxry = Vaxry
+ui_material3 = Material 3
+system_colors = Mga kulay ng system
 player_bar_position = Posisyon ng Player Bar
 position_bottom = Ibaba
 position_top = Itaas
@@ -431,6 +508,7 @@ replay_gain_mode_auto = Awtomatiko
 replay_gain_prevent_clipping = Iwasan ang clipping
 replay_gain_preamp = Pre-amp
 replay_gain_fallback = Default na gain
+replay_gain_youtube_loudness = I-normalize ang YouTube Music
 move_to_folder = Ilipat sa Folder
 no_folders_yet = Wala pang folder.
 folder_name = Pangalan ng folder...
@@ -538,8 +616,13 @@ external_play_on = I-play sa
 external_this_app = kopuz (ang app na ito)
 prefer_active_device = Playback device
 prefer_active_device_help = When another device is already playing, take it over instead of starting playback here.
-settings_managed_notice = Ang ilang setting ay pinamamahalaan ng configuration ng system (Nix/hjem) at hindi mababago rito.
+settings_managed_notice = Ang ilang setting ay itinakda ng isang settings file na hindi kayang sulatan ng app (read-only o pinamamahalaan ng Nix/hjem) at hindi mababago rito.
 setting_managed_by_system = Pinamamahalaan ng configuration ng system
+settings_dropin_notice = Ang ilang setting ay itinakda ng mga karagdagang file at hindi mababago rito.
+settings_env_notice = Ang ilang setting ay itinakda ng mga environment variable na KOPUZ_CONFIG_* at hindi mababago rito.
+setting_locked_by_file = Itinakda ng { $path }
+setting_locked_by_dropin = Itinakda ng karagdagang file na { $path }
+setting_locked_by_env = Itinakda ng { $var }
 
 settings_interface = Interface
 interface_general = General
@@ -575,6 +658,7 @@ settings_tools = Tools
 share = Share
 share_copied = Copied link
 share_no_page = Couldn't find a page for this track
+explicit = Explicit
 start_daemon = Start Daemon
 
 first_run_title = Welcome to Kopuz
@@ -624,7 +708,11 @@ waiting_for_browser = Waiting for your browser…
 signed_in = Signed in
 metadata_number_invalid = Enter a number, or leave it empty to clear the tag.
 metadata_batch_keep = Leave unchanged
-metadata_batch_count = Editing { $count } tracks
+metadata_batch_count =
+    { $count ->
+        [one] Editing { $count } track
+       *[other] Editing { $count } tracks
+    }
 interface_font = Interface font
 interface_font_description = The font family to draw the interface with.
 interface_font_placeholder = Theme default
@@ -704,6 +792,13 @@ view = View
 undo = Undo
 quit = Quit
 scanning_library = Scanning library…
+network_offline_banner = No internet connection — switched to offline mode
+network_online_banner = Back online — switched to server mode
+keep_server_mode = Keep server mode
+tray_show_hide = Show / Hide Kopuz
+tray_quit = Quit Kopuz
+tray_unavailable_title = Tray icon unavailable
+tray_unavailable_message = System tray unavailable: appindicator library not found. Install libayatana-appindicator (Debian/Ubuntu/Arch) or libappindicator-gtk3 (Fedora). Closing the window will quit the app instead of minimizing to tray.
 reconnecting_attempt = Reconnecting… (attempt { $attempt })
 downloads_summary = { $done } downloaded, { $failed } failed
 job_scan = Library scan
@@ -770,11 +865,19 @@ discover_clear_search = Clear search
 discover_results_for = Results for "{ $query }"
 discover_no_results_hint = Try fewer words, or switch source and look again.
 discover_show_less = Show less
-discover_genre_count = { $count } genres
+discover_genre_count =
+    { $count ->
+        [one] { $count } genre
+       *[other] { $count } genres
+    }
 discover_read_failed = Couldn't load your library: { $error }
 palette_all_results = All results for "{ $query }" in Discover
 
-library_count = { $count } items
+library_count =
+    { $count ->
+        [one] { $count } item
+       *[other] { $count } items
+    }
 library_filter_placeholder = Filter the library…
 library_chip_downloaded = Downloaded
 library_chip_years = Years
@@ -797,7 +900,11 @@ library_tile_medium = Medium
 library_tile_large = Large
 library_default_view = Grids open as
 library_default_view_description = Whether albums, artists and playlists start as tiles or as rows.
-library_artist_tracks = { $count } tracks
+library_artist_tracks =
+    { $count ->
+        [one] { $count } track
+       *[other] { $count } tracks
+    }
 library_selected = { $count } selected
 library_whole_selection = Everything that matches
 library_read_failed = Could not read the library
@@ -836,7 +943,11 @@ downloader_history = URL downloads
 interface_skin = Skin
 interface_skin_description = The shape of the interface: how round things are, how tall a row sits.
 
-home_plays = { $count } plays
+home_plays =
+    { $count ->
+        [one] { $count } play
+       *[other] { $count } plays
+    }
 
 interface_ambient = Ambient light
 interface_ambient_description = Let the current cover cast its colour across the window.
@@ -858,3 +969,83 @@ settings_group_interface = Interface
 settings_group_output = Output
 settings_group_loudness = Lakas ng Tunog
 browse = Mag-browse
+
+clippsly_help = Create an App Password at clippsly.app, then sign in with your Clippsly username and that App Password. Storage limits are set by your Clippsly account.
+cloud_storage_usage = Cloud storage: { $used } of { $total } used
+upload_music = Upload music
+uploading_music = Uploading { $name }…
+music_uploaded =
+    { $count ->
+        [one] Uploaded { $count } file.
+       *[other] Uploaded { $count } files.
+    }
+music_upload_too_large = Audio files must be no larger than 500 MiB.
+cloud_storage_loading = Loading storage usage…
+
+smb_url_placeholder = smb://nas/Music
+smb_help = Connect to an SMB 2/3 share or subfolder, then sign in with your NAS account. Domain accounts can use DOMAIN\username. Files are read without mounting the share.
+invalid_smb_url = Enter smb://host/share or smb://host/share/folder, without credentials in the URL.
+
+browser_sessions_heading = Naka-sign in na
+browser_sessions_checking = Sinusuri ang iyong mga browser…
+browser_session_name = { $browser } · { $profile }
+browser_session_use = Gamitin
+browser_session_importing = Nagsa-sign in…
+browser_session_help = Kinokopya ng Kopuz ang session mula sa browser profile na pipiliin mo. Puwedeng manatiling bukas ang browser.
+
+playback_error_session_expired = Nag-expire na ang sign-in mo sa { $source }. Mag-sign in ulit para magpatuloy sa pagpe-play.
+playback_error_challenged = Gusto ng { $source } na tiyaking hindi ka bot. Maghintay ng ilang minuto at subukan ulit.
+playback_error_refused = Tinanggihan ng { $source } na i-play ang track na ito. Maayos ang sign-in mo: nasa panig ng { $source } ang problema at kadalasang kusa itong nawawala.
+playback_error_unreachable = Hindi maabot ang { $source }. Suriin ang koneksyon mo at subukan ulit.
+playback_error_unavailable = Hindi ma-play ng { $source } ang track na ito. Maaaring natanggal ito, ginawang pribado, o na-block sa rehiyon mo.
+playback_sign_in_again = Mag-sign in ulit
+playback_try_again = Subukan ulit
+playback_skip = Laktawan ang track
+playback_copy_details = Kopyahin ang mga detalye
+playback_details_copied = Nakopya ang mga detalye
+source_signed_out = ● Naka-sign out
+source_not_responding = ● Hindi tumutugon
+connection_test = Subukan ang koneksyon
+connection_testing = Sinusubukan…
+connection_test_failed = Hindi napatakbo ang pagsubok: { $error }
+connection_copy_report = Kopyahin ang ulat
+connection_report_copied = Nakopya ang ulat
+connection_step_reach = Naaabot ang serbisyo
+connection_step_session = Tinanggap ang sign-in
+connection_step_signed_in_playback = Nagpe-play gamit ang account mo
+connection_step_anonymous_playback = Nagpe-play nang walang account
+connection_step_playback_token = Playback token
+connection_step_passed = Pumasa
+connection_step_failed = Nabigo
+connection_step_skipped = Nilaktawan
+
+sync_interval = Sync and rescan every
+sync_interval_never = Never
+sync_interval_minutes = { $count } min
+sync_interval_hours = { $count } h
+sync_interval_days = { $count } d
+
+error_setting_locked = A managed settings file pins this setting, so it cannot be changed here.
+error_connect_not_offered = This integration does not connect that way.
+error_api_key_missing = Set the API key and secret first.
+error_sign_in_not_started = The service did not start the sign-in. Check the API key and your connection.
+error_browser_not_opened = Could not open a browser for the sign-in.
+error_sign_in_timed_out = The sign-in was not approved in time.
+error_browser_profile_gone = That browser profile is no longer there.
+error_browser_cookies_unreadable = Could not read the cookies of that browser profile.
+error_browser_profile_signed_out = That browser profile is not signed in to the service. Sign in there, or paste your token instead.
+error_browser_profile_no_token = The service did not show a token for that profile. Paste it instead.
+error_integration_unreachable = Could not reach the service. Check your connection.
+error_credential_rejected = The service does not accept that token. Paste your token instead.
+error_default_source_undeletable = The default folder source cannot be deleted.
+error_empty_source_folder = A source folder cannot be empty.
+error_code_invalid_input = Not accepted: { $detail }
+error_code_not_found = That is no longer there.
+error_code_conflict = Already in use or in progress: { $detail }
+error_code_source_auth_expired = The source did not accept the sign-in. Sign in again in Settings.
+error_code_source_unreachable = The source could not be reached. Check your connection.
+error_code_unsupported = Not supported here: { $detail }
+error_code_internal = Something went wrong: { $detail }
+error_code_source_challenged = The source wants to check that you're not a bot. Wait a few minutes and try again.
+error_code_source_refused = The source refused the request. This is on its side and usually clears up on its own.
+error_code_item_unavailable = The source can't play this. It may have been removed, made private or blocked in your region.

@@ -10,7 +10,7 @@ use hooks::favorites::toggle_favorite;
 
 #[component]
 pub fn BottombarNormal(
-    mut config: Signal<config::AppConfig>,
+    mut settings: Signal<config::Settings>,
     mut is_playing: Signal<bool>,
     mut is_fullscreen: Signal<bool>,
     mut current_song_duration: Signal<u64>,
@@ -20,7 +20,6 @@ pub fn BottombarNormal(
     mut current_song_title: Signal<String>,
     mut current_song_artist: Signal<String>,
     mut volume: Signal<f32>,
-    mut persisted_volume: Signal<f32>,
     mut is_rightbar_open: Signal<bool>,
     is_devices_open: Signal<bool>,
 ) -> Element {
@@ -69,7 +68,7 @@ pub fn BottombarNormal(
             div {
                 // The tab bar underneath owns the bottom safe area; the pill
                 // only needs to clear it.
-                class: "shrink-0 mx-2 mb-2 h-[68px] bg-[#121212]/95 backdrop-blur-3xl border border-white/10 rounded-[24px] flex items-center px-3 gap-3 relative overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.8)]",
+                class: "player-bar player-bar-mobile shrink-0 mx-2 mb-2 h-[68px] bg-(--surface-chrome-raised)/95 backdrop-blur-3xl border border-white/10 rounded-[24px] flex items-center px-3 gap-3 relative overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.8)]",
                 onclick: move |_| is_fullscreen.set(true),
                 ontouchstart: move |evt| bar_swipe.start(&evt),
                 ontouchmove: move |evt| bar_swipe.update(&evt),
@@ -96,7 +95,7 @@ pub fn BottombarNormal(
                 }
                 div { class: "flex items-center gap-1 pr-1", dir: "ltr",
                     button {
-                        class: "w-12 h-12 flex items-center justify-center text-white text-xl active:scale-90 transition-transform",
+                        class: "playback-play w-12 h-12 flex items-center justify-center text-white text-xl active:scale-90 transition-transform",
                         onclick: move |evt| { evt.stop_propagation(); ctrl.toggle(); },
                         i { class: if *is_playing.read() { "fa-solid fa-pause" } else { "fa-solid fa-play ml-1" } }
                     }
@@ -130,7 +129,7 @@ pub fn BottombarNormal(
         "fa-regular fa-heart"
     };
 
-    let position = config.read().player_bar_position;
+    let position = settings.read().ui.player_bar_position;
     let border_class = match position {
         PlayerBarPosition::Bottom => "border-t border-white/5",
         PlayerBarPosition::Top => "border-b border-white/5",
@@ -142,25 +141,26 @@ pub fn BottombarNormal(
         PlayerBarPosition::Bottom => "top",
         PlayerBarPosition::Top => "bottom",
     };
-    let bar_as_fullscreen = *is_fullscreen.read() && config.read().fullscreen_use_player_bar;
+    let bar_as_fullscreen = *is_fullscreen.read() && settings.read().ui.fullscreen_use_player_bar;
     let lift_class = if bar_as_fullscreen {
         "relative z-[60]"
     } else {
         ""
     };
-    let bg_class =
-        if config.read().cover_art_background || !config.read().custom_background_path.is_empty() {
-            "bg-black/40"
-        } else {
-            "bg-black/60"
-        };
+    let bg_class = if settings.read().background.cover_art_background
+        || !settings.read().background.custom_background_path.is_empty()
+    {
+        "bg-black/40"
+    } else {
+        "bg-black/60"
+    };
 
     rsx! {
         div {
-            class: "h-24 {bg_class} {border_class} {lift_class} px-4 flex items-center justify-between select-text shrink-0",
+            class: "player-bar h-24 {bg_class} {border_class} {lift_class} px-4 flex items-center justify-between select-text shrink-0",
 
             div {
-                class: "flex items-center gap-4 w-1/4",
+                class: "player-track flex items-center gap-4 w-1/4",
                 oncontextmenu: move |evt| {
                     evt.prevent_default();
                     if ctrl.current_track_snapshot.peek().is_some() {
@@ -170,7 +170,7 @@ pub fn BottombarNormal(
                 },
                 if !bar_as_fullscreen {
                     div {
-                        class: "w-14 h-14 bg-white/5 rounded-md flex-shrink-0 overflow-hidden",
+                        class: "player-cover w-14 h-14 bg-white/5 rounded-md flex-shrink-0 overflow-hidden",
                         if cover.is_empty() {
                             div {
                                 class: "w-full h-full flex items-center justify-center",
@@ -223,8 +223,8 @@ pub fn BottombarNormal(
             }
 
             div {
-                class: "flex items-center justify-end gap-4 w-1/4",
-                VolumeSlider { config, volume, persisted_volume, variant: ControlsVariant::Bar }
+                class: "player-tools flex items-center justify-end gap-4 w-1/4",
+                VolumeSlider { settings, volume, variant: ControlsVariant::Bar }
                 button {
                     class: "w-9 h-9 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors active:scale-95",
                     onclick: move |_| { let c = *is_rightbar_open.read(); is_rightbar_open.set(!c); },

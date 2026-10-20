@@ -49,6 +49,22 @@ pub fn track_kind_from_proto(value: i32) -> api::TrackKind {
     }
 }
 
+pub fn track_version_to_proto(value: api::TrackVersion) -> TrackVersion {
+    match value {
+        api::TrackVersion::Song => TrackVersion::Song,
+        api::TrackVersion::Video => TrackVersion::Video,
+    }
+}
+
+/// `None` for an unspecified version, which names no cut to switch to.
+pub fn track_version_from_proto(value: i32) -> Option<api::TrackVersion> {
+    match TrackVersion::try_from(value).unwrap_or(TrackVersion::Unspecified) {
+        TrackVersion::Song => Some(api::TrackVersion::Song),
+        TrackVersion::Video => Some(api::TrackVersion::Video),
+        TrackVersion::Unspecified => None,
+    }
+}
+
 pub fn queue_mode_to_proto(value: api::QueueMode) -> QueueMode {
     match value {
         api::QueueMode::Replace => QueueMode::Replace,
@@ -75,6 +91,7 @@ pub fn table_to_proto(value: api::Table) -> Table {
         api::Table::Servers => Table::Servers,
         api::Table::Recents => Table::Recents,
         api::Table::Stations => Table::Stations,
+        api::Table::Artists => Table::Artists,
         api::Table::Unknown => Table::Unspecified,
     }
 }
@@ -89,6 +106,7 @@ pub fn table_from_proto(value: i32) -> api::Table {
         Table::Servers => api::Table::Servers,
         Table::Recents => api::Table::Recents,
         Table::Stations => api::Table::Stations,
+        Table::Artists => api::Table::Artists,
         Table::Unspecified => api::Table::Unknown,
     }
 }
@@ -155,6 +173,46 @@ pub fn source_state_from_proto(value: i32) -> api::SourceState {
     }
 }
 
+pub fn connection_check_to_proto(value: &api::ConnectionCheck) -> ConnectionCheck {
+    ConnectionCheck {
+        step: match value.step {
+            api::CheckStep::Reach => CheckStep::Reach,
+            api::CheckStep::Session => CheckStep::Session,
+            api::CheckStep::SignedInPlayback => CheckStep::SignedInPlayback,
+            api::CheckStep::AnonymousPlayback => CheckStep::AnonymousPlayback,
+            api::CheckStep::PlaybackToken => CheckStep::PlaybackToken,
+        } as i32,
+        outcome: match value.outcome {
+            api::CheckOutcome::Passed => CheckOutcome::Passed,
+            api::CheckOutcome::Failed => CheckOutcome::Failed,
+            api::CheckOutcome::Skipped => CheckOutcome::Skipped,
+        } as i32,
+        detail: value.detail.clone(),
+    }
+}
+
+/// A step this build does not know is dropped rather than shown as another.
+pub fn connection_check_from_proto(value: &ConnectionCheck) -> Option<api::ConnectionCheck> {
+    let step = match CheckStep::try_from(value.step).ok()? {
+        CheckStep::Reach => api::CheckStep::Reach,
+        CheckStep::Session => api::CheckStep::Session,
+        CheckStep::SignedInPlayback => api::CheckStep::SignedInPlayback,
+        CheckStep::AnonymousPlayback => api::CheckStep::AnonymousPlayback,
+        CheckStep::PlaybackToken => api::CheckStep::PlaybackToken,
+        CheckStep::Unspecified => return None,
+    };
+    let outcome = match CheckOutcome::try_from(value.outcome).unwrap_or(CheckOutcome::Unspecified) {
+        CheckOutcome::Passed => api::CheckOutcome::Passed,
+        CheckOutcome::Failed => api::CheckOutcome::Failed,
+        CheckOutcome::Skipped | CheckOutcome::Unspecified => api::CheckOutcome::Skipped,
+    };
+    Some(api::ConnectionCheck {
+        step,
+        outcome,
+        detail: value.detail.clone(),
+    })
+}
+
 pub fn notice_level_to_proto(value: api::NoticeLevel) -> NoticeLevel {
     match value {
         api::NoticeLevel::Info => NoticeLevel::Info,
@@ -170,6 +228,46 @@ pub fn notice_level_from_proto(value: i32) -> api::NoticeLevel {
         NoticeLevel::Warning => api::NoticeLevel::Warning,
         NoticeLevel::Error => api::NoticeLevel::Error,
         NoticeLevel::Unspecified => api::NoticeLevel::Unknown,
+    }
+}
+
+pub fn album_order_field_to_proto(value: ::config::AlbumSortField) -> AlbumOrderField {
+    match value {
+        ::config::AlbumSortField::Title => AlbumOrderField::Title,
+        ::config::AlbumSortField::Artist => AlbumOrderField::Artist,
+        ::config::AlbumSortField::Year => AlbumOrderField::Year,
+        ::config::AlbumSortField::Genre => AlbumOrderField::Genre,
+        ::config::AlbumSortField::RecentlyAdded => AlbumOrderField::RecentlyAdded,
+        ::config::AlbumSortField::TrackCount => AlbumOrderField::TrackCount,
+    }
+}
+
+/// An order this build does not know falls back to the title, as an unspecified one does.
+pub fn album_order_field_from_proto(value: i32) -> ::config::AlbumSortField {
+    match AlbumOrderField::try_from(value).unwrap_or(AlbumOrderField::Unspecified) {
+        AlbumOrderField::Artist => ::config::AlbumSortField::Artist,
+        AlbumOrderField::Year => ::config::AlbumSortField::Year,
+        AlbumOrderField::Genre => ::config::AlbumSortField::Genre,
+        AlbumOrderField::RecentlyAdded => ::config::AlbumSortField::RecentlyAdded,
+        AlbumOrderField::TrackCount => ::config::AlbumSortField::TrackCount,
+        AlbumOrderField::Title | AlbumOrderField::Unspecified => ::config::AlbumSortField::Title,
+    }
+}
+
+pub fn artist_order_field_to_proto(value: ::config::ArtistSortField) -> ArtistOrderField {
+    match value {
+        ::config::ArtistSortField::Name => ArtistOrderField::Name,
+        ::config::ArtistSortField::Tracks => ArtistOrderField::TrackCount,
+        ::config::ArtistSortField::Albums => ArtistOrderField::AlbumCount,
+    }
+}
+
+/// An order this build does not know falls back to the name, as an unspecified one does.
+pub fn artist_order_field_from_proto(value: i32) -> ::config::ArtistSortField {
+    match ArtistOrderField::try_from(value).unwrap_or(ArtistOrderField::Unspecified) {
+        ArtistOrderField::TrackCount => ::config::ArtistSortField::Tracks,
+        ArtistOrderField::AlbumCount => ::config::ArtistSortField::Albums,
+        ArtistOrderField::Name | ArtistOrderField::Unspecified => ::config::ArtistSortField::Name,
     }
 }
 
@@ -199,12 +297,12 @@ pub fn track_sort_from_proto(value: i32, fields: &[SortCriterion]) -> api::Track
         TrackSort::Fields => api::TrackSort::Fields(
             fields
                 .iter()
-                .map(|criterion| config::SortCriterion {
+                .map(|criterion| ::config::SortCriterion {
                     field: track_sort_field_from_proto(criterion.field),
                     direction: if criterion.descending {
-                        config::SortDirection::Desc
+                        ::config::SortDirection::Desc
                     } else {
-                        config::SortDirection::Asc
+                        ::config::SortDirection::Asc
                     },
                 })
                 .collect(),
@@ -220,7 +318,7 @@ pub fn sort_criteria_to_proto(value: &api::TrackSort) -> Vec<SortCriterion> {
         .iter()
         .map(|criterion| SortCriterion {
             field: track_sort_field_to_proto(criterion.field) as i32,
-            descending: criterion.direction == config::SortDirection::Desc,
+            descending: criterion.direction == ::config::SortDirection::Desc,
         })
         .collect()
 }
@@ -252,6 +350,41 @@ mod tests {
     }
 
     #[test]
+    fn every_listing_order_round_trips() {
+        for field in [
+            ::config::AlbumSortField::Title,
+            ::config::AlbumSortField::Artist,
+            ::config::AlbumSortField::Year,
+            ::config::AlbumSortField::Genre,
+            ::config::AlbumSortField::RecentlyAdded,
+            ::config::AlbumSortField::TrackCount,
+        ] {
+            assert_eq!(
+                field,
+                album_order_field_from_proto(album_order_field_to_proto(field) as i32)
+            );
+        }
+        for field in [
+            ::config::ArtistSortField::Name,
+            ::config::ArtistSortField::Tracks,
+            ::config::ArtistSortField::Albums,
+        ] {
+            assert_eq!(
+                field,
+                artist_order_field_from_proto(artist_order_field_to_proto(field) as i32)
+            );
+        }
+        assert_eq!(
+            album_order_field_from_proto(404),
+            ::config::AlbumSortField::Title
+        );
+        assert_eq!(
+            artist_order_field_from_proto(404),
+            ::config::ArtistSortField::Name
+        );
+    }
+
+    #[test]
     fn every_table_round_trips() {
         for table in [
             api::Table::Tracks,
@@ -262,6 +395,7 @@ mod tests {
             api::Table::Servers,
             api::Table::Recents,
             api::Table::Stations,
+            api::Table::Artists,
             api::Table::Unknown,
         ] {
             assert_eq!(table, table_from_proto(table_to_proto(table) as i32));

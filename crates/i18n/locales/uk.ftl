@@ -11,6 +11,9 @@ language = Мова
 library = Бібліотека
 playlists = Плейлисти
 album = Альбом
+release_single = Сингл
+release_ep = EP
+release_audiobook = Audiobook
 artist = Виконавець
 home = Дім
 search = Пошук
@@ -31,6 +34,9 @@ add = Додати
 add_folder = Додати папку
 no_music_folders = Музичні папки не налаштовані
 remote_music_folders = Папки з музикою
+source_account = Обліковий запис
+source_account_help = Кожен обліковий запис має власну медіатеку. Під час перемикання вона синхронізується знову.
+source_accounts_failed = Не вдалося завантажити облікові записи: { $error }
 parent_folder = Вгору
 use_this_folder = Додати цю папку
 no_subfolders = Немає вкладених папок
@@ -63,6 +69,10 @@ discord_presence = присутність Discord
 connectivity = Підключення
 integration_connect = Connect to { $name }
 integration_connected = { $name } connected
+integration_connecting = Connecting…
+integration_browser_title = Use a signed-in browser
+integration_browser_profile = { $name } ({ $browser })
+integration_browser_none = No browser profiles found. Paste your token above instead.
 discord_presence_paused = Показати статус Discord на паузі
 discord_presence_source = Показувати джерело медіа у статусі Discord
 reduce_animations = Зменшити кількість анімацій
@@ -108,6 +118,7 @@ radio_empty = Схожих треків не знайдено
 radio_failed = Не вдалося запустити радіо
 remove_from_queue = Видалити з черги
 downloading = Завантаження…
+downloading_progress = Downloading { $done } / { $total }
 more_actions_for = Інші дії для { $name }
 share_musicbrainz = Поділитися (MusicBrainz)
 share_link_copied = Посилання MusicBrainz скопійовано
@@ -123,6 +134,7 @@ add_all_to_queue = Додати все до черги
 add_all_to_playlist = Додати все до плейлиста
 select_all = Вибрати все
 select_all_tracks = Вибрати всі треки
+deselect_all_tracks = Зняти вибір з усіх треків
 remove_from_cache = Видалити з кешу
 create = Створити
 save = Зберегти
@@ -145,15 +157,52 @@ new_releases = Нові релізи
 # Navigation Buttons
 up_next = НАСТУПНЕ
 lyrics = ТЕКСТ ПІСНІ
+track_version = Версія
+track_version_song = Пісня
+track_version_video = Відео
+music_video = Кліп
 
 # Player/Media
 loading_lyrics = Завантажуємо текст...
 lyrics_not_found = Текст не знайдено
 instrumental_break = Інструментал
 no_previous_songs = Немає попередніх пісень
-playlist_track_count = { $count } треків
-music_playlist_count = Музика • { $count } треків
-showcase_song_count = { $count } пісень
+playlist_track_count =
+    { $count ->
+        [one] { $count } трек
+        [few] { $count } треки
+        [many] { $count } треків
+       *[other] { $count } треку
+    }
+playlist_folder_count =
+    { $count ->
+        [one] { $count } плейлист
+        [few] { $count } плейлисти
+        [many] { $count } плейлистів
+       *[other] { $count } плейлиста
+    }
+playlists_synced_count =
+    { $count ->
+        [one] Синхронізовано { $count } плейлист
+        [few] Синхронізовано { $count } плейлисти
+        [many] Синхронізовано { $count } плейлистів
+       *[other] Синхронізовано { $count } плейлиста
+    }
+playlists_loading_tracks = Завантаження треків — плейлисти { $done } / { $count } (залишилось { $remaining })
+music_playlist_count =
+    { $count ->
+        [one] Музика • { $count } трек
+        [few] Музика • { $count } треки
+        [many] Музика • { $count } треків
+       *[other] Музика • { $count } треку
+    }
+showcase_song_count =
+    { $count ->
+        [one] { $count } пісня
+        [few] { $count } пісні
+        [many] { $count } пісень
+       *[other] { $count } пісні
+    }
 
 # Modal Titles
 add_playlist = Додати плейлист
@@ -210,8 +259,13 @@ title = Назва
 time = Час
 genre = Жанр
 plays = Програвань
-track_count = { $count } треків
-track_count_singular = 1 трек
+track_count =
+    { $count ->
+        [one] { $count } трек
+        [few] { $count } треки
+        [many] { $count } треків
+       *[other] { $count } треку
+    }
 songs = пісні
 min = хв
 
@@ -246,8 +300,20 @@ unknown_genre = Невідомий жанр
 no_tracks_in_library = Немає пісень у вашій бібліотеці.
 no_songs_here = Немає пісень тут.
 syncing_with_server = Синхронізація зі сервером ...
-yt_syncing_progress = Синхронізація — завантажено { $count } треків
-yt_synced_total = { $count } улюблених треків синхронізовано
+yt_syncing_progress =
+    { $count ->
+        [one] Синхронізація — завантажено { $count } трек
+        [few] Синхронізація — завантажено { $count } треки
+        [many] Синхронізація — завантажено { $count } треків
+       *[other] Синхронізація — завантажено { $count } треку
+    }
+yt_synced_total =
+    { $count ->
+        [one] { $count } улюблений трек синхронізовано
+        [few] { $count } улюблені треки синхронізовано
+        [many] { $count } улюблених треків синхронізовано
+       *[other] { $count } улюбленого треку синхронізовано
+    }
 refresh = Оновити
 most_played_tracks = Ваші найбільш програні треки.
 no_more_songs = Більше ніяких пісень у черзі
@@ -346,6 +412,7 @@ replay_gain_mode_auto = Автоматично
 replay_gain_prevent_clipping = Запобігати кліпінгу
 replay_gain_preamp = Попереднє підсилення
 replay_gain_fallback = Стандартне підсилення
+replay_gain_youtube_loudness = Нормалізувати гучність YouTube Music
 move_to_folder = Перемістити до папки
 no_folders_yet = Поки немає папок.
 folder_name = Ім'я папки...
@@ -396,6 +463,14 @@ device_change_pause = Pause
 sample_rate_mode = Частота дискретизації виводу
 sample_rate_mode_system = Як у системі
 sample_rate_mode_source = Як у треку
+settings_group_streaming = Стримінг
+stream_quality = Якість стримінгу
+stream_quality_low = Низька
+stream_quality_normal = Звичайна
+stream_quality_high = Висока
+autoplay_radio = Вмикати радіо, коли черга закінчиться
+skip_explicit = Пропускати треки з відвертим вмістом
+pause_watch_history = Призупинити історію переглядів
 
 crossfade = Кросфейд
 crossfade_off = Вимкнено
@@ -425,6 +500,8 @@ listen_now_layout = Вигляд
 ui_style = Стиль інтерфейсу
 ui_normal = Звичайний
 ui_vaxry = Vaxry
+ui_material3 = Material 3
+system_colors = Системні кольори
 player_bar_position = Положення панелі плеєра
 position_bottom = Знизу
 position_top = Зверху
@@ -470,6 +547,11 @@ minimize_to_tray = Згорнути в системний лоток
 update_available = Доступне оновлення
 update_banner_message = Доступна версія Kopuz { $version }.
 view_release = Переглянути реліз
+update_install = Оновити й перезапустити
+update_downloading = Завантаження Kopuz { $version }…
+update_restarting = Перезапуск для завершення оновлення…
+update_failed = Не вдалося встановити Kopuz { $version }.
+update_retry = Спробувати ще раз
 
 volume_scroll_step = Крок прокрутки гучності
 
@@ -492,6 +574,50 @@ discover_more_loading = Завантаження…
 discover_failed = Не вдалося завантажити Відкриття: { $error }
 discover_unsupported = Відкриття доступні лише коли YouTube Music — активний сервер.
 discover_show_all = Показати все
+catalog_page_explore = Огляд
+catalog_page_charts = Чарти
+catalog_page_moods = Настрої та жанри
+catalog_page_podcasts = Подкасти
+catalog_page_library_songs = Ваші треки
+catalog_page_library_albums = Ваші альбоми
+catalog_page_library_artists = Ваші виконавці
+catalog_page_subscriptions = Підписки
+catalog_page_library_podcasts = Ваші подкасти
+catalog_page_uploads = Завантаження
+catalog_page_history = Історія
+search_filter_all = Усе
+search_filter_songs = Треки
+search_filter_videos = Відео
+search_filter_community_playlists = Плейлисти спільноти
+search_filter_featured_playlists = Рекомендовані плейлисти
+search_filter_episodes = Випуски
+search_filter_profiles = Профілі
+discover_show_more = Показати більше
+discover_scroll_back = Прокрутити назад
+discover_scroll_forward = Прокрутити вперед
+catalog_page_empty = Тут поки нічого немає
+search_prompt = Шукайте пісні, альбоми, виконавців тощо
+search_showing_results_for = Показано результати для «{ $query }»
+catalog_like = Подобається
+catalog_unlike = Прибрати вподобання
+catalog_dislike = Не подобається
+catalog_undislike = Прибрати «Не подобається»
+catalog_save = Зберегти в бібліотеку
+catalog_unsave = Прибрати з бібліотеки
+catalog_follow = Стежити
+catalog_unfollow = Не стежити
+catalog_following = Ви стежите
+catalog_remove_history = Прибрати з історії
+playlist_edit_details = Змінити відомості
+playlist_description = Опис
+playlist_privacy = Хто може бачити
+playlist_privacy_public = Загальнодоступний
+playlist_privacy_unlisted = Доступ за посиланням
+playlist_privacy_private = Приватний
+playlist_delete_title = Видалити цей плейлист?
+playlist_delete_body = «{ $name }» буде назавжди видалено з { $service }.
+playlist_unsave_title = Прибрати з бібліотеки?
+playlist_unsave_body = «{ $name }» зникне з вашої бібліотеки { $service }. Сам плейлист залишиться в { $service }.
 source_anon_playlists = Увійдіть у YouTube Music, щоб переглянути плейлисти з бібліотеки.
 source_anon_favorites = Увійдіть у YouTube Music, щоб переглянути вподобані треки.
 source_anon_discover = Увійдіть у YouTube Music, щоб переглянути Огляд.
@@ -544,8 +670,13 @@ external_play_on = Відтворити на
 external_this_app = kopuz (цей застосунок)
 prefer_active_device = Playback device
 prefer_active_device_help = When another device is already playing, take it over instead of starting playback here.
-settings_managed_notice = Деякі налаштування керуються конфігурацією системи (Nix/hjem) і не можуть бути змінені тут.
+settings_managed_notice = Деякі налаштування задано у файлі налаштувань, який застосунок не може змінити (лише для читання або керується Nix/hjem), і їх не можна змінити тут.
 setting_managed_by_system = Керується конфігурацією системи
+settings_dropin_notice = Деякі налаштування задані додатковими файлами і не можуть бути змінені тут.
+settings_env_notice = Деякі налаштування задані змінними середовища KOPUZ_CONFIG_* і не можуть бути змінені тут.
+setting_locked_by_file = Задано в { $path }
+setting_locked_by_dropin = Задано додатковим файлом { $path }
+setting_locked_by_env = Задано змінною { $var }
 
 settings_interface = Interface
 interface_general = General
@@ -581,6 +712,7 @@ settings_tools = Tools
 share = Share
 share_copied = Copied link
 share_no_page = Couldn't find a page for this track
+explicit = Відвертий вміст
 start_daemon = Start Daemon
 
 first_run_title = Welcome to Kopuz
@@ -630,7 +762,11 @@ waiting_for_browser = Waiting for your browser…
 signed_in = Signed in
 metadata_number_invalid = Enter a number, or leave it empty to clear the tag.
 metadata_batch_keep = Leave unchanged
-metadata_batch_count = Editing { $count } tracks
+metadata_batch_count =
+    { $count ->
+        [one] Editing { $count } track
+       *[other] Editing { $count } tracks
+    }
 interface_font = Interface font
 interface_font_description = The font family to draw the interface with.
 interface_font_placeholder = Theme default
@@ -710,6 +846,13 @@ view = View
 undo = Undo
 quit = Quit
 scanning_library = Scanning library…
+network_offline_banner = Немає підключення до інтернету — увімкнено офлайн-режим
+network_online_banner = Знову в мережі — увімкнено режим сервера
+keep_server_mode = Залишитися в режимі сервера
+tray_show_hide = Показати / сховати Kopuz
+tray_quit = Вийти з Kopuz
+tray_unavailable_title = Значок у треї недоступний
+tray_unavailable_message = System tray unavailable: appindicator library not found. Install libayatana-appindicator (Debian/Ubuntu/Arch) or libappindicator-gtk3 (Fedora). Closing the window will quit the app instead of minimizing to tray.
 reconnecting_attempt = Reconnecting… (attempt { $attempt })
 downloads_summary = { $done } downloaded, { $failed } failed
 job_scan = Library scan
@@ -776,11 +919,19 @@ discover_clear_search = Clear search
 discover_results_for = Results for "{ $query }"
 discover_no_results_hint = Try fewer words, or switch source and look again.
 discover_show_less = Show less
-discover_genre_count = { $count } genres
+discover_genre_count =
+    { $count ->
+        [one] { $count } genre
+       *[other] { $count } genres
+    }
 discover_read_failed = Couldn't load your library: { $error }
 palette_all_results = All results for "{ $query }" in Discover
 
-library_count = { $count } items
+library_count =
+    { $count ->
+        [one] { $count } item
+       *[other] { $count } items
+    }
 library_filter_placeholder = Filter the library…
 library_chip_downloaded = Downloaded
 library_chip_years = Years
@@ -803,7 +954,11 @@ library_tile_medium = Medium
 library_tile_large = Large
 library_default_view = Grids open as
 library_default_view_description = Whether albums, artists and playlists start as tiles or as rows.
-library_artist_tracks = { $count } tracks
+library_artist_tracks =
+    { $count ->
+        [one] { $count } track
+       *[other] { $count } tracks
+    }
 library_selected = { $count } selected
 library_whole_selection = Everything that matches
 library_read_failed = Could not read the library
@@ -842,7 +997,11 @@ downloader_history = URL downloads
 interface_skin = Skin
 interface_skin_description = The shape of the interface: how round things are, how tall a row sits.
 
-home_plays = { $count } plays
+home_plays =
+    { $count ->
+        [one] { $count } play
+       *[other] { $count } plays
+    }
 
 interface_ambient = Ambient light
 interface_ambient_description = Let the current cover cast its colour across the window.
@@ -864,3 +1023,83 @@ settings_group_interface = Інтерфейс
 settings_group_output = Вивід
 settings_group_loudness = Гучність
 browse = Огляд
+
+clippsly_help = Create an App Password at clippsly.app, then sign in with your Clippsly username and that App Password. Storage limits are set by your Clippsly account.
+cloud_storage_usage = Cloud storage: { $used } of { $total } used
+upload_music = Upload music
+uploading_music = Uploading { $name }…
+music_uploaded =
+    { $count ->
+        [one] Uploaded { $count } file.
+       *[other] Uploaded { $count } files.
+    }
+music_upload_too_large = Audio files must be no larger than 500 MiB.
+cloud_storage_loading = Loading storage usage…
+
+smb_url_placeholder = smb://nas/Music
+smb_help = Connect to an SMB 2/3 share or subfolder, then sign in with your NAS account. Domain accounts can use DOMAIN\username. Files are read without mounting the share.
+invalid_smb_url = Enter smb://host/share or smb://host/share/folder, without credentials in the URL.
+
+browser_sessions_heading = Вхід уже виконано
+browser_sessions_checking = Перевірка браузерів…
+browser_session_name = { $browser } · { $profile }
+browser_session_use = Використати
+browser_session_importing = Вхід…
+browser_session_help = Kopuz копіює сеанс із вибраного профілю браузера. Браузер можна не закривати.
+
+playback_error_session_expired = Термін дії входу в { $source } минув. Увійдіть знову, щоб продовжити відтворення.
+playback_error_challenged = { $source } хоче переконатися, що ви не бот. Зачекайте кілька хвилин і спробуйте ще раз.
+playback_error_refused = { $source } відмовився відтворювати цей трек. Вхід у порядку: проблема на боці { $source }, зазвичай вона минає сама.
+playback_error_unreachable = Не вдалося зв'язатися з { $source }. Перевірте з'єднання й спробуйте ще раз.
+playback_error_unavailable = { $source } не може відтворити цей трек. Можливо, його видалили, зробили приватним або заблокували у вашому регіоні.
+playback_sign_in_again = Увійти знову
+playback_try_again = Спробувати ще раз
+playback_skip = Пропустити трек
+playback_copy_details = Копіювати подробиці
+playback_details_copied = Подробиці скопійовано
+source_signed_out = ● Вихід виконано
+source_not_responding = ● Не відповідає
+connection_test = Перевірити з'єднання
+connection_testing = Перевірка…
+connection_test_failed = Не вдалося виконати перевірку: { $error }
+connection_copy_report = Копіювати звіт
+connection_report_copied = Звіт скопійовано
+connection_step_reach = Сервіс доступний
+connection_step_session = Вхід прийнято
+connection_step_signed_in_playback = Відтворюється з вашим обліковим записом
+connection_step_anonymous_playback = Відтворюється без облікового запису
+connection_step_playback_token = Токен відтворення
+connection_step_passed = Успішно
+connection_step_failed = Помилка
+connection_step_skipped = Пропущено
+
+sync_interval = Sync and rescan every
+sync_interval_never = Never
+sync_interval_minutes = { $count } min
+sync_interval_hours = { $count } h
+sync_interval_days = { $count } d
+
+error_setting_locked = A managed settings file pins this setting, so it cannot be changed here.
+error_connect_not_offered = This integration does not connect that way.
+error_api_key_missing = Set the API key and secret first.
+error_sign_in_not_started = The service did not start the sign-in. Check the API key and your connection.
+error_browser_not_opened = Could not open a browser for the sign-in.
+error_sign_in_timed_out = The sign-in was not approved in time.
+error_browser_profile_gone = That browser profile is no longer there.
+error_browser_cookies_unreadable = Could not read the cookies of that browser profile.
+error_browser_profile_signed_out = That browser profile is not signed in to the service. Sign in there, or paste your token instead.
+error_browser_profile_no_token = The service did not show a token for that profile. Paste it instead.
+error_integration_unreachable = Could not reach the service. Check your connection.
+error_credential_rejected = The service does not accept that token. Paste your token instead.
+error_default_source_undeletable = The default folder source cannot be deleted.
+error_empty_source_folder = A source folder cannot be empty.
+error_code_invalid_input = Not accepted: { $detail }
+error_code_not_found = That is no longer there.
+error_code_conflict = Already in use or in progress: { $detail }
+error_code_source_auth_expired = The source did not accept the sign-in. Sign in again in Settings.
+error_code_source_unreachable = The source could not be reached. Check your connection.
+error_code_unsupported = Not supported here: { $detail }
+error_code_internal = Something went wrong: { $detail }
+error_code_source_challenged = The source wants to check that you're not a bot. Wait a few minutes and try again.
+error_code_source_refused = The source refused the request. This is on its side and usually clears up on its own.
+error_code_item_unavailable = The source can't play this. It may have been removed, made private or blocked in your region.

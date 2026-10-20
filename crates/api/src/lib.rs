@@ -17,31 +17,43 @@ mod library;
 mod mutations;
 mod player;
 mod playlists;
+mod prefs;
 mod queue;
 mod radio;
 pub mod schema;
 mod sources;
 
+pub use sources::{MAX_MUSIC_UPLOAD_BYTES, StorageQuota, TrackUpload};
+
 pub use artwork::{ArtworkData, ArtworkRef, ArtworkRequest, ArtworkTarget};
 pub use catalog::{
-    CatalogDetail, CatalogDetailRequest, CatalogItem, CatalogItemKind, CatalogPage, CatalogShelf,
+    CatalogActions, CatalogChip, CatalogDetail, CatalogDetailRequest, CatalogHeader, CatalogItem,
+    CatalogItemKind, CatalogPage, CatalogShelf, Rating, ReleaseKind, ShelfLayout,
 };
-pub use error::{ApiError, ErrorBody, ErrorCode};
+pub use error::{ApiError, ErrorBody, ErrorCode, ErrorReason};
 pub use events::{ApiEvent, JobKind, JobProgress, NoticeLevel, SourceState, Table};
 pub use jobs::{
     DownloadCandidate, DownloadHistoryEntry, DownloadItemState, DownloadItemStatus, DownloadState,
 };
 pub use library::{
-    AlbumInfo, AlbumPage, ArtistCredit, ArtistDetail, ArtistInfo, ArtistPage, DEFAULT_PAGE_LIMIT,
-    LyricChunkView, LyricLineView, LyricsView, Page, SearchResults, StatsView, TrackFilter,
-    TrackInfo, TrackPage, TrackSort,
+    AlbumInfo, AlbumPage, AlbumQuery, ArtistCredit, ArtistDetail, ArtistInfo, ArtistPage,
+    ArtistQuery, DEFAULT_PAGE_LIMIT, LyricChunkView, LyricLineView, LyricsView, Page,
+    SearchRequest, SearchResults, SearchSuggestion, StatsView, TrackCounterpart, TrackFilter,
+    TrackInfo, TrackPage, TrackSort, TrackVersion, total_duration_secs,
 };
 pub use mutations::{ArtworkChange, ArtworkUpload, TrackMetadataPatch};
 pub use player::{
     BufferedRange, ExternalDevice, ExternalPlayback, FadingState, Intent, LoopMode, Phase,
-    PlayerCommand, PlayerState, PositionAnchor, QueueSummary, TrackKind,
+    PlayerCommand, PlayerState, PositionAnchor, QueueSummary, TrackKind, VideoChunk, VideoRequest,
 };
-pub use playlists::{PlaylistCatalog, PlaylistFolderInfo, PlaylistInfo, PlaylistReorder};
+pub use playlists::{
+    PlaylistCatalog, PlaylistEdit, PlaylistFolderInfo, PlaylistInfo, PlaylistPrivacy,
+    PlaylistReorder,
+};
+pub use prefs::{
+    FrontendPref, MAX_PREF_ENTRIES_PER_CALL, MAX_PREF_FRONTEND_BYTES, MAX_PREF_KEY_BYTES,
+    MAX_PREF_TOTAL_BYTES, MAX_PREF_VALUE_BYTES, PrefEntry,
+};
 pub use queue::{
     QueueContext, QueueEdit, QueueItem, QueueMode, QueueSnapshot, QueueWindow, SetQueueRequest,
 };
@@ -51,24 +63,46 @@ pub use schema::{
     encode_directories, spec_value, toggle_of, value_of,
 };
 pub use sources::{
-    AlbumPresentation, ArtistPresentation, ConnectKind, CredentialProvision, DraftCheck,
-    FavoritesSyncMode, IntegrationInfo, PlaylistCapability, ServiceInfo, ServiceRef, SignInKind,
-    SourceCapabilities, SourceDraft, SourceFolderEntry, SourceInfo, SourceLoginRequest,
+    AlbumPresentation, ArtistPresentation, BrowserProfile, BrowserSession, CheckOutcome, CheckStep,
+    ConnectKind, ConnectionCheck, CredentialProvision, DraftCheck, FavoritesSyncMode,
+    IntegrationInfo, PageEntry, PlaylistCapability, SearchFilter, ServiceInfo, ServiceRef,
+    SignInKind, SourceAccount, SourceCapabilities, SourceDraft, SourceFolderEntry, SourceInfo,
+    SourceLoginRequest,
 };
 
-/// The config view: the layered config with credential keys
-/// stripped, plus the keys a managed settings file pins (rendered locked in
-/// settings UIs).
+pub use config::store::{LockSource, SettingLock};
+pub use config::{SettingKey, SettingsEdit};
+
+/// The layered settings, plus the keys a managed layer pins and which layer that is (rendered locked, citing it, in settings UIs).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ConfigView {
-    pub config: config::AppConfig,
-    pub locked_keys: Vec<String>,
+    pub settings: config::Settings,
+    pub locks: Vec<SettingLock>,
     /// Rises with every saved change, so a client can tell an older view from a newer one.
     pub revision: u64,
 }
 
+/// What became of one edit sent to [`ConfigApi::edit_config`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EditOutcome {
+    Applied,
+    /// A managed settings layer pins the key.
+    Locked,
+    /// The value breaks a rule, or the daemon owns the key and sets it through another API.
+    Invalid {
+        reason: String,
+    },
+}
+
+/// One outcome per edit, in the order sent, and the settings after them all.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct EditReport {
+    pub outcomes: Vec<EditOutcome>,
+    pub view: ConfigView,
+}
+
 /// What this build speaks: bump it with any wire change a mismatched peer would misread, never for an added field.
-pub const WIRE_REVISION: u32 = 1;
+pub const WIRE_REVISION: u32 = 3;
 
 /// What a daemon says it is, for a frontend that was not built beside it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -113,6 +147,8 @@ pub struct JobStatus {
     pub total: Option<u64>,
     pub message: Option<String>,
     pub error: Option<ErrorBody>,
+    /// Started by the daemon's own schedule rather than by a user.
+    pub automatic: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -150,6 +186,10 @@ pub trait PlayerApi: Send + Sync {
         source_id: String,
         device_id: Option<String>,
     ) -> Result<(), ApiError>;
+
+    /// A byte range of a queued music video's picture for a muted element, which follows
+    /// [`PlayerState::position`] less `output_latency_ms` one to one.
+    async fn video(&self, request: VideoRequest) -> Result<VideoChunk, ApiError>;
 }
 
 /// Reading the library, and the per-track state that belongs to it.
@@ -164,19 +204,18 @@ pub trait LibraryApi: Send + Sync {
     /// not hold are skipped rather than erroring.
     async fn tracks_by_keys(&self, keys: Vec<String>) -> Result<Vec<TrackInfo>, ApiError>;
 
-    async fn albums(&self, page: Page) -> Result<AlbumPage, ApiError>;
+    /// A window of the albums `query` selects; `total` counts the whole filtered set.
+    async fn albums(&self, query: AlbumQuery, page: Page) -> Result<AlbumPage, ApiError>;
 
-    /// Albums newest-first by when their tracks were added. Its own call
-    /// because [`LibraryApi::albums`] answers alphabetically, and recency comes
-    /// from each album's newest track — an order no reshuffling of an
-    /// alphabetical page can recover.
+    /// Non-empty albums newest-first, the order of [`config::AlbumSortField::RecentlyAdded`].
     async fn albums_recently_added(&self, page: Page) -> Result<AlbumPage, ApiError>;
 
     async fn album(&self, id: String) -> Result<Option<AlbumInfo>, ApiError>;
 
     async fn album_tracks(&self, id: String, page: Page) -> Result<TrackPage, ApiError>;
 
-    async fn artists(&self, page: Page) -> Result<ArtistPage, ApiError>;
+    /// A window of the artists `query` selects; `total` counts the whole filtered set.
+    async fn artists(&self, query: ArtistQuery, page: Page) -> Result<ArtistPage, ApiError>;
 
     async fn artist_tracks(&self, artist: String, page: Page) -> Result<TrackPage, ApiError>;
 
@@ -198,7 +237,10 @@ pub trait LibraryApi: Send + Sync {
 
     /// Search the active source. Remote sources answer over the network, so
     /// this is a daemon call and not a filter the caller composes.
-    async fn search(&self, query: String) -> Result<SearchResults, ApiError>;
+    async fn search(&self, request: SearchRequest) -> Result<SearchResults, ApiError>;
+
+    /// Completions for a half-typed query; empty for a source that offers none.
+    async fn search_suggestions(&self, query: String) -> Result<Vec<SearchSuggestion>, ApiError>;
 
     /// The source's public page for a row, for a share action. `None` when the
     /// source has no web pages, which is a client's cue to fall back to a
@@ -257,6 +299,15 @@ pub trait LibraryApi: Send + Sync {
     /// it holds for the track, so the local favorite row is cleared with it.
     async fn dont_recommend(&self, key: String) -> Result<(), ApiError>;
 
+    /// Takes a `rate_ref` or a track's key; a like on a song also sets its favorite.
+    async fn rate(&self, item_ref: String, rating: Rating) -> Result<(), ApiError>;
+
+    async fn follow(&self, artist_ref: String, follow: bool) -> Result<(), ApiError>;
+
+    async fn save(&self, item_ref: String, saved: bool) -> Result<(), ApiError>;
+
+    async fn remove_from_history(&self, token: String) -> Result<(), ApiError>;
+
     /// Rewrite one track's tags, and its embedded cover with them. Only
     /// files have tags to edit; a server track answers `unsupported`.
     async fn update_track_metadata(&self, patch: TrackMetadataPatch)
@@ -289,6 +340,9 @@ pub trait PlaylistApi: Send + Sync {
     async fn create_playlist(&self, name: String, keys: Vec<String>) -> Result<String, ApiError>;
 
     async fn rename_playlist(&self, id: String, name: String) -> Result<(), ApiError>;
+
+    /// A description or privacy needs `playlist_details` and goes to the source with the name.
+    async fn edit_playlist(&self, id: String, edit: PlaylistEdit) -> Result<(), ApiError>;
 
     async fn delete_playlist(&self, id: String) -> Result<(), ApiError>;
 
@@ -340,7 +394,7 @@ pub trait ArtworkApi: Send + Sync {
 pub trait JobApi: Send + Sync {
     /// Start a long-running job (`scan`, `library_sync`, `favorites_sync`).
     /// Progress arrives as `job.progress` / `job.finished` events; a second
-    /// start of an already-running kind returns `conflict`.
+    /// start of an already-running kind joins it and returns its ref.
     async fn start_job(&self, kind: JobKind) -> Result<JobRef, ApiError>;
 
     async fn jobs(&self) -> Result<Vec<JobStatus>, ApiError>;
@@ -393,6 +447,11 @@ pub trait JobApi: Send + Sync {
 /// here for the same reason: it spawns a browser and ends holding a token.
 #[async_trait::async_trait]
 pub trait SourceApi: Send + Sync {
+    async fn storage_quota(&self, id: String) -> Result<StorageQuota, ApiError>;
+
+    /// Upload one audio file. Refresh the library after a batch has finished.
+    async fn upload_track(&self, upload: TrackUpload) -> Result<(), ApiError>;
+
     async fn sources(&self) -> Result<Vec<SourceInfo>, ApiError>;
 
     /// Every service this daemon can be pointed at, each with the form that
@@ -438,6 +497,16 @@ pub trait SourceApi: Send + Sync {
     /// learns that the source is authenticated, never with what.
     async fn authenticate_source(&self, id: String) -> Result<SourceInfo, ApiError>;
 
+    /// Profiles on the daemon's machine already signed in to `service`.
+    async fn browser_sessions(&self, service: String) -> Result<Vec<BrowserSession>, ApiError>;
+
+    /// The browser can stay open.
+    async fn import_browser_session(
+        &self,
+        id: String,
+        session: String,
+    ) -> Result<SourceInfo, ApiError>;
+
     /// List folders on a server that has them, for a folder picker.
     async fn browse_source(
         &self,
@@ -447,6 +516,20 @@ pub trait SourceApi: Send + Sync {
 
     /// Probe whether a source is reachable and still signed in.
     async fn validate_source(&self, id: String) -> Result<SourceState, ApiError>;
+
+    async fn accounts(&self, id: String) -> Result<Vec<SourceAccount>, ApiError>;
+
+    /// `None` is the signed-in account itself. On the active source playback
+    /// stops and the library, playlists and favorites sync again.
+    async fn switch_account(
+        &self,
+        id: String,
+        account: Option<String>,
+    ) -> Result<SourceInfo, ApiError>;
+
+    /// Walk each step of reaching a source and playing from it, and report
+    /// every one, so a failure says which part broke. Records nothing.
+    async fn test_source_connection(&self, id: String) -> Result<Vec<ConnectionCheck>, ApiError>;
 
     /// Whether this daemon can run a browser sign-in at all. A sandboxed
     /// daemon cannot spawn one, and a client asks before offering a source
@@ -469,6 +552,18 @@ pub trait SourceApi: Send + Sync {
 
     /// Run a service's web sign-in and keep the session key it returns.
     async fn authenticate_integration(&self, id: String) -> Result<IntegrationInfo, ApiError>;
+
+    /// The browser profiles on the daemon's machine, for an integration
+    /// connected from one.
+    async fn browser_profiles(&self) -> Result<Vec<BrowserProfile>, ApiError>;
+
+    /// Take an integration's credential from a browser profile signed in to
+    /// it, checked with the service before it is kept.
+    async fn connect_integration_from_browser(
+        &self,
+        id: String,
+        profile: String,
+    ) -> Result<IntegrationInfo, ApiError>;
 }
 
 /// The settings surface.
@@ -476,16 +571,19 @@ pub trait SourceApi: Send + Sync {
 pub trait ConfigApi: Send + Sync {
     async fn config(&self) -> Result<ConfigView, ApiError>;
 
-    /// Replace the settings surface. Read [`Self::config`], change what you
-    /// want, send it back. Credential fields are ignored (the daemon keeps
-    /// its own), and a locked key whose value actually differs is refused
-    /// with `invalid_input`.
-    async fn set_config(&self, config: config::AppConfig) -> Result<ConfigView, ApiError>;
+    /// Apply each edit in order and answer each on its own; a refused edit never refuses the rest, and a key no edit names is left as held.
+    async fn edit_config(&self, edits: Vec<SettingsEdit>) -> Result<EditReport, ApiError>;
 
     /// Hear an equalizer setting without keeping it. The engine applies it
     /// live; nothing is written, so cancelling a preview is doing nothing.
     async fn preview_equalizer(&self, equalizer: config::EqualizerSettings)
     -> Result<(), ApiError>;
+
+    /// Hear a ReplayGain setting without keeping it, as [`Self::preview_equalizer`] does.
+    async fn preview_replay_gain(
+        &self,
+        replay_gain: config::ReplayGainSettings,
+    ) -> Result<(), ApiError>;
 
     /// What this daemon is, including the wire contract it speaks.
     async fn daemon_status(&self) -> Result<DaemonStatus, ApiError>;
@@ -512,6 +610,20 @@ pub enum Handshake {
     Mismatched { daemon: u32, client: u32 },
 }
 
+/// Where a frontend keeps its own UI preferences, namespaced by frontend name.
+#[async_trait::async_trait]
+pub trait PrefsApi: Send + Sync {
+    /// Every preference stored for `frontend`, key-ordered.
+    async fn frontend_prefs(&self, frontend: String) -> Result<Vec<FrontendPref>, ApiError>;
+
+    /// Store (`Some`) or delete (`None`) each key, all or none; the event names only keys that changed.
+    async fn set_frontend_prefs(
+        &self,
+        frontend: String,
+        entries: Vec<PrefEntry>,
+    ) -> Result<(), ApiError>;
+}
+
 /// Subscribe to the state stream. Every subscriber gets every event from the
 /// moment of subscription; a snapshot fetch plus this stream is the complete
 /// synchronization story.
@@ -532,6 +644,7 @@ pub trait KopuzApi:
     + JobApi
     + SourceApi
     + ConfigApi
+    + PrefsApi
     + EventApi
     + Send
     + Sync
@@ -546,6 +659,7 @@ impl<T> KopuzApi for T where
         + JobApi
         + SourceApi
         + ConfigApi
+        + PrefsApi
         + EventApi
         + Send
         + Sync
@@ -558,7 +672,7 @@ impl<T> KopuzApi for T where
 pub mod prelude {
     pub use super::{
         ArtworkApi, ConfigApi, EventApi, JobApi, KopuzApi, LibraryApi, PlayerApi, PlaylistApi,
-        SourceApi,
+        PrefsApi, SourceApi,
     };
 }
 
@@ -573,10 +687,13 @@ mod handshake_tests {
         async fn config(&self) -> Result<ConfigView, ApiError> {
             unreachable!()
         }
-        async fn set_config(&self, _: config::AppConfig) -> Result<ConfigView, ApiError> {
+        async fn edit_config(&self, _: Vec<SettingsEdit>) -> Result<EditReport, ApiError> {
             unreachable!()
         }
         async fn preview_equalizer(&self, _: config::EqualizerSettings) -> Result<(), ApiError> {
+            unreachable!()
+        }
+        async fn preview_replay_gain(&self, _: config::ReplayGainSettings) -> Result<(), ApiError> {
             unreachable!()
         }
         async fn daemon_status(&self) -> Result<DaemonStatus, ApiError> {
@@ -607,10 +724,7 @@ mod handshake_tests {
     /// A status that never arrived proves nothing, so it is the caller's error, not a match.
     #[tokio::test]
     async fn a_failed_status_is_an_error_not_a_match() {
-        let gone = ApiError {
-            code: ErrorCode::DaemonGone,
-            message: "gone".into(),
-        };
+        let gone = ApiError::new(ErrorCode::DaemonGone, "gone");
 
         let result = Daemon(Err(gone.clone())).handshake().await;
 

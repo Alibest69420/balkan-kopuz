@@ -26,7 +26,11 @@ where
 
 #[async_trait]
 pub trait PlayableSource: SourceIdentity + Send + Sync {
-    async fn resolve_stream(&self, item_id: &str) -> Result<StreamInfo, SourceError>;
+    async fn resolve_stream(
+        &self,
+        item_id: &str,
+        quality: config::StreamQuality,
+    ) -> Result<StreamInfo, SourceError>;
     async fn validate(&self) -> AuthOutcome;
     fn web_url(&self, track: &reader::Track) -> Option<String>;
 }
@@ -36,8 +40,12 @@ impl<T> PlayableSource for T
 where
     T: MediaSource + ?Sized,
 {
-    async fn resolve_stream(&self, item_id: &str) -> Result<StreamInfo, SourceError> {
-        <T as MediaSource>::resolve_stream(self, item_id).await
+    async fn resolve_stream(
+        &self,
+        item_id: &str,
+        quality: config::StreamQuality,
+    ) -> Result<StreamInfo, SourceError> {
+        <T as MediaSource>::resolve_stream(self, item_id, quality).await
     }
 
     async fn validate(&self) -> AuthOutcome {
@@ -219,8 +227,9 @@ where
 pub trait LibrarySource: SourceIdentity + Send + Sync {
     async fn fetch_library(&self) -> Result<LibrarySnapshot, SourceError>;
     async fn album_tracks(&self, album_id: &str) -> Result<Vec<reader::Track>, SourceError>;
-    async fn fetch_artist_images(&self)
-    -> Result<Vec<(reader::ArtistCredit, String)>, SourceError>;
+    async fn fetch_artists(
+        &self,
+    ) -> Result<Vec<(reader::ArtistCredit, Option<String>)>, SourceError>;
     async fn fetch_artist_image(
         &self,
         artist: &reader::ArtistCredit,
@@ -240,10 +249,10 @@ where
         <T as MediaSource>::album_tracks(self, album_id).await
     }
 
-    async fn fetch_artist_images(
+    async fn fetch_artists(
         &self,
-    ) -> Result<Vec<(reader::ArtistCredit, String)>, SourceError> {
-        <T as MediaSource>::fetch_artist_images(self).await
+    ) -> Result<Vec<(reader::ArtistCredit, Option<String>)>, SourceError> {
+        <T as MediaSource>::fetch_artists(self).await
     }
 
     async fn fetch_artist_image(

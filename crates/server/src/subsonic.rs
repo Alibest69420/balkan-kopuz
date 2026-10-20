@@ -2,6 +2,8 @@ use rand::{RngExt, distr::Alphanumeric};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
+use crate::source::SourceError;
+
 const SUBSONIC_API_VERSION: &str = "1.16.1";
 const CLIENT_NAME: &str = "kopuz";
 
@@ -124,6 +126,7 @@ impl SubsonicSong {
             album_peak: gain
                 .album_peak
                 .filter(|peak| peak.is_finite() && *peak > 0.0),
+            loudness_db: None,
         }
     }
 }
@@ -254,6 +257,16 @@ struct SimilarSongsContainer {
     song: Vec<SubsonicSong>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubsonicPlayQueue {
+    pub current: Option<String>,
+    pub position: Option<u64>,
+    pub changed_by: Option<String>,
+    #[serde(default)]
+    pub entry: Vec<SubsonicSong>,
+}
+
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GetSimilarSongsData {
@@ -298,6 +311,13 @@ struct GetOpenSubsonicExtensionsData {
     open_subsonic_extensions: Vec<OpenSubsonicExtension>,
 }
 
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GetPlayQueueData {
+    #[serde(default)]
+    play_queue: Option<SubsonicPlayQueue>,
+}
+
 /// Build a Subsonic `getCoverArt` URL without the caller holding a client — the
 /// player's synchronous cover path needs it but must not construct a client.
 pub fn cover_art_url(
@@ -325,9 +345,9 @@ pub fn stream_url_with_bitrate(
 
 impl SubsonicClient {
     pub fn new(base_url: &str, username: &str, password: &str) -> Self {
-        let builder = reqwest::Client::builder();
+        let builder = utils::http::builder();
         let builder = builder.timeout(DEFAULT_TIMEOUT);
-        let http_client = builder.build().unwrap_or_else(|_| reqwest::Client::new());
+        let http_client = builder.build().unwrap_or_else(|_| utils::http::client());
 
         Self {
             http_client,
@@ -339,8 +359,8 @@ impl SubsonicClient {
         }
     }
 
-    pub async fn ping(&self) -> Result<(), String> {
-        self.call::<EmptyData>("ping.view", vec![])
+    pub async fn ping(&self) -> Result<(), SourceError> {
+        self.request::<EmptyData>("ping.view", vec![], DEFAULT_TIMEOUT)
             .await
             .map(|_| ())
     }
@@ -349,7 +369,7 @@ impl SubsonicClient {
         &self,
         offset: usize,
         size: usize,
-    ) -> Result<Vec<SubsonicAlbum>, String> {
+    ) -> Result<Vec<SubsonicAlbum>, SourceError> {
         let data = self
             .call::<GetAlbumList2Data>(
                 "getAlbumList2.view",
@@ -363,7 +383,7 @@ impl SubsonicClient {
         Ok(data.album_list2.album)
     }
 
-    pub async fn get_album_songs(&self, album_id: &str) -> Result<Vec<SubsonicSong>, String> {
+    pub async fn get_album_songs(&self, album_id: &str) -> Result<Vec<SubsonicSong>, SourceError> {
         let data = self
             .call::<GetAlbumData>(
                 "getAlbum.view",
@@ -384,7 +404,7 @@ impl SubsonicClient {
         &self,
         song_id: &str,
         count: usize,
-    ) -> Result<Vec<SubsonicSong>, String> {
+    ) -> Result<Vec<SubsonicSong>, SourceError> {
         if self.has_sonic_similarity().await {
             match self.get_sonic_similar_tracks(song_id, count).await {
                 Ok(songs) if !songs.is_empty() => return Ok(songs),
@@ -425,7 +445,7 @@ impl SubsonicClient {
         &self,
         song_id: &str,
         count: usize,
-    ) -> Result<Vec<SubsonicSong>, String> {
+    ) -> Result<Vec<SubsonicSong>, SourceError> {
         let data = self
             .call_within::<GetSonicSimilarTracksData>(
                 "getSonicSimilarTracks.view",
@@ -446,7 +466,7 @@ impl SubsonicClient {
         &self,
         song_id: &str,
         count: usize,
-    ) -> Result<Vec<SubsonicSong>, String> {
+    ) -> Result<Vec<SubsonicSong>, SourceError> {
         let data = self
             .call_within::<GetSimilarSongsData>(
                 "getSimilarSongs.view",
@@ -462,7 +482,7 @@ impl SubsonicClient {
 
     /// One song by id. Radio uses it to put the seed at the head of the queue:
     /// `getSimilarSongs2` never includes the seed itself.
-    pub async fn get_song(&self, song_id: &str) -> Result<Option<SubsonicSong>, String> {
+    pub async fn get_song(&self, song_id: &str) -> Result<Option<SubsonicSong>, SourceError> {
         let data = self
             .call::<GetSongData>(
                 "getSong.view",
@@ -472,7 +492,7 @@ impl SubsonicClient {
         Ok(data.song)
     }
 
-    pub async fn get_playlists(&self) -> Result<Vec<SubsonicPlaylist>, String> {
+    pub async fn get_playlists(&self) -> Result<Vec<SubsonicPlaylist>, SourceError> {
         let data = self
             .call::<GetPlaylistsData>("getPlaylists.view", vec![])
             .await?;
@@ -482,7 +502,7 @@ impl SubsonicClient {
     pub async fn get_playlist_entries(
         &self,
         playlist_id: &str,
-    ) -> Result<Vec<SubsonicSong>, String> {
+    ) -> Result<Vec<SubsonicSong>, SourceError> {
         let data = self
             .call::<GetPlaylistData>(
                 "getPlaylist.view",
@@ -492,7 +512,11 @@ impl SubsonicClient {
         Ok(data.playlist.map(|p| p.entry).unwrap_or_default())
     }
 
-    pub async fn create_playlist(&self, name: &str, item_ids: &[&str]) -> Result<String, String> {
+    pub async fn create_playlist(
+        &self,
+        name: &str,
+        item_ids: &[&str],
+    ) -> Result<String, SourceError> {
         let mut params = vec![("name".to_string(), name.to_string())];
         for item_id in item_ids {
             params.push(("songId".to_string(), (*item_id).to_string()));
@@ -506,10 +530,16 @@ impl SubsonicClient {
             return Ok(playlist.id);
         }
 
-        Err("Subsonic createPlaylist did not return a playlist id".to_string())
+        Err(SourceError::Backend(
+            "Subsonic createPlaylist did not return a playlist id".to_string(),
+        ))
     }
 
-    pub async fn add_to_playlist(&self, playlist_id: &str, item_id: &str) -> Result<(), String> {
+    pub async fn add_to_playlist(
+        &self,
+        playlist_id: &str,
+        item_id: &str,
+    ) -> Result<(), SourceError> {
         self.call::<EmptyData>(
             "updatePlaylist.view",
             vec![
@@ -525,7 +555,7 @@ impl SubsonicClient {
         &self,
         playlist_id: &str,
         song_index: usize,
-    ) -> Result<(), String> {
+    ) -> Result<(), SourceError> {
         self.call::<EmptyData>(
             "updatePlaylist.view",
             vec![
@@ -542,7 +572,7 @@ impl SubsonicClient {
         playlist_id: &str,
         ordered_song_ids: &[&str],
         total_tracks: usize,
-    ) -> Result<(), String> {
+    ) -> Result<(), SourceError> {
         let mut params: Vec<(String, String)> =
             vec![("playlistId".to_string(), playlist_id.to_string())];
         for i in 0..total_tracks {
@@ -556,7 +586,7 @@ impl SubsonicClient {
             .map(|_| ())
     }
 
-    pub async fn get_artists(&self) -> Result<Vec<SubsonicArtist>, String> {
+    pub async fn get_artists(&self) -> Result<Vec<SubsonicArtist>, SourceError> {
         let data = self
             .call::<GetArtistsData>("getArtists.view", vec![])
             .await?;
@@ -568,7 +598,7 @@ impl SubsonicClient {
             .collect())
     }
 
-    pub async fn get_starred_song_ids(&self) -> Result<Vec<String>, String> {
+    pub async fn get_starred_song_ids(&self) -> Result<Vec<String>, SourceError> {
         let data = self
             .call::<GetStarred2Data>("getStarred2.view", vec![])
             .await?;
@@ -578,13 +608,13 @@ impl SubsonicClient {
             .unwrap_or_default())
     }
 
-    pub async fn star(&self, item_id: &str) -> Result<(), String> {
+    pub async fn star(&self, item_id: &str) -> Result<(), SourceError> {
         self.call::<EmptyData>("star.view", vec![("id".to_string(), item_id.to_string())])
             .await
             .map(|_| ())
     }
 
-    pub async fn unstar(&self, item_id: &str) -> Result<(), String> {
+    pub async fn unstar(&self, item_id: &str) -> Result<(), SourceError> {
         self.call::<EmptyData>("unstar.view", vec![("id".to_string(), item_id.to_string())])
             .await
             .map(|_| ())
@@ -617,7 +647,7 @@ impl SubsonicClient {
         Ok(url.to_string())
     }
 
-    pub async fn scrobble_now_playing(&self, item_id: &str) -> Result<(), String> {
+    pub async fn scrobble_now_playing(&self, item_id: &str) -> Result<(), SourceError> {
         self.call::<EmptyData>(
             "scrobble.view",
             vec![
@@ -629,7 +659,7 @@ impl SubsonicClient {
         .map(|_| ())
     }
 
-    pub async fn scrobble(&self, item_id: &str) -> Result<(), String> {
+    pub async fn scrobble(&self, item_id: &str) -> Result<(), SourceError> {
         self.call::<EmptyData>(
             "scrobble.view",
             vec![
@@ -661,6 +691,35 @@ impl SubsonicClient {
         Ok(url.to_string())
     }
 
+    pub async fn get_play_queue(&self) -> Result<Option<SubsonicPlayQueue>, SourceError> {
+        let data = self
+            .call::<GetPlayQueueData>("getPlayQueue.view", vec![])
+            .await?;
+        Ok(data.play_queue)
+    }
+
+    /// An empty `item_ids` with no `current` clears the saved queue.
+    pub async fn save_play_queue(
+        &self,
+        item_ids: &[&str],
+        current_id: Option<&str>,
+        position_ms: Option<u64>,
+    ) -> Result<(), SourceError> {
+        let mut params: Vec<(String, String)> = item_ids
+            .iter()
+            .map(|id| ("id".to_string(), (*id).to_string()))
+            .collect();
+        if let Some(current) = current_id {
+            params.push(("current".to_string(), current.to_string()));
+        }
+        if let Some(position) = position_ms {
+            params.push(("position".to_string(), position.to_string()));
+        }
+        self.call::<EmptyData>("savePlayQueue.view", params)
+            .await
+            .map(|_| ())
+    }
+
     fn auth_params(&self) -> Vec<(String, String)> {
         let salt = self.random_salt();
         let token_input = format!("{}{}", self.password, salt);
@@ -688,18 +747,27 @@ impl SubsonicClient {
         &self,
         endpoint: &str,
         extra_params: Vec<(String, String)>,
-    ) -> Result<T, String> {
+    ) -> Result<T, SourceError> {
         self.call_within(endpoint, extra_params, DEFAULT_TIMEOUT)
             .await
     }
 
-    #[tracing::instrument(name = "subsonic.call", skip_all, fields(endpoint = %endpoint))]
     async fn call_within<T: DeserializeOwned + Default>(
+        &self,
+        endpoint: &str,
+        extra_params: Vec<(String, String)>,
+        timeout: std::time::Duration,
+    ) -> Result<T, SourceError> {
+        self.request(endpoint, extra_params, timeout).await
+    }
+
+    #[tracing::instrument(name = "subsonic.call", skip_all, fields(endpoint = %endpoint))]
+    async fn request<T: DeserializeOwned + Default>(
         &self,
         endpoint: &str,
         mut extra_params: Vec<(String, String)>,
         timeout: std::time::Duration,
-    ) -> Result<T, String> {
+    ) -> Result<T, SourceError> {
         let url = format!("{}/rest/{}", self.base_url, endpoint);
 
         let mut params = self.auth_params();
@@ -712,32 +780,134 @@ impl SubsonicClient {
             .timeout(timeout)
             .send()
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(SourceError::from_request)?;
 
         if !resp.status().is_success() {
-            return Err(format!("Subsonic request failed: {}", resp.status()));
+            return Err(SourceError::from_status(resp.status(), "Subsonic request"));
         }
 
-        let parsed: SubsonicEnvelope<T> = resp.json().await.map_err(|e| e.to_string())?;
+        let parsed: SubsonicEnvelope<T> = resp
+            .json()
+            .await
+            .map_err(|error| SourceError::Backend(redacted(error)))?;
 
         if parsed.response.status.eq_ignore_ascii_case("ok") {
             return Ok(parsed.response.data);
         }
 
-        if let Some(err) = parsed.response.error {
-            return Err(format!(
-                "Subsonic request failed ({}): {}",
-                err.code, err.message
-            ));
+        match parsed.response.error {
+            Some(err) => Err(envelope_error(err.code, &err.message)),
+            None => Err(SourceError::Backend(
+                "Subsonic request failed with unknown error".to_string(),
+            )),
         }
-
-        Err("Subsonic request failed with unknown error".to_string())
     }
+}
+
+/// 40 is wrong credentials, 44 an invalid API key (OpenSubsonic) and 50 an account not allowed to do it.
+fn envelope_error(code: i32, message: &str) -> SourceError {
+    match code {
+        40 | 44 | 50 => SourceError::Auth,
+        _ => SourceError::Backend(format!("Subsonic request failed ({code}): {message}")),
+    }
+}
+
+/// A request error as text without its URL, whose query carries the user name, token and salt.
+fn redacted(error: reqwest::Error) -> String {
+    error.without_url().to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn assert_no_credentials(error: &str) {
+        for secret in ["someone", "u=", "t=", "s="] {
+            assert!(!error.contains(secret), "{secret} in {error}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_failed_call_keeps_the_credentials_out_of_its_error() {
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let address = closed.local_addr().expect("address");
+        drop(closed);
+        let unreachable = SubsonicClient::new(&format!("http://{address}"), "someone", "hunter2");
+        let error = unreachable.ping().await.expect_err("nothing listens");
+        assert_eq!(error, SourceError::Connectivity);
+        assert_no_credentials(&error.to_string());
+        assert_eq!(
+            unreachable.get_album_list(0, 10).await.err(),
+            Some(SourceError::Connectivity),
+            "a library call keeps the kind too"
+        );
+
+        let server = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let address = server.local_addr().expect("address");
+        tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            if let Ok((mut stream, _)) = server.accept().await {
+                let mut request = [0u8; 4096];
+                let _ = stream.read(&mut request).await;
+                let _ = stream
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\nConnection: close\r\n\r\nnot",
+                    )
+                    .await;
+            }
+        });
+        let garbled = SubsonicClient::new(&format!("http://{address}"), "someone", "hunter2");
+        let error = garbled.ping().await.expect_err("not json");
+        assert_no_credentials(&error.to_string());
+    }
+
+    /// One canned HTTP answer on a local port, for a client to call.
+    async fn answering(status: &str, body: &str) -> String {
+        let server = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let address = server.local_addr().expect("address");
+        let reply = format!(
+            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            if let Ok((mut stream, _)) = server.accept().await {
+                let mut request = [0u8; 4096];
+                let _ = stream.read(&mut request).await;
+                let _ = stream.write_all(reply.as_bytes()).await;
+            }
+        });
+        format!("http://{address}")
+    }
+
+    #[tokio::test]
+    async fn wrong_credentials_are_an_auth_failure() {
+        let body = r#"{"subsonic-response":{"status":"failed","version":"1.16.1","error":{"code":40,"message":"Wrong username or password"}}}"#;
+        let url = answering("200 OK", body).await;
+        let client = SubsonicClient::new(&url, "someone", "hunter2");
+        assert_eq!(client.ping().await, Err(SourceError::Auth));
+
+        let url = answering("401 Unauthorized", "").await;
+        let client = SubsonicClient::new(&url, "someone", "hunter2");
+        assert_eq!(client.ping().await, Err(SourceError::Auth));
+    }
+
+    #[test]
+    fn only_a_credential_code_is_an_auth_failure() {
+        for code in [40, 44, 50] {
+            assert_eq!(envelope_error(code, "m"), SourceError::Auth, "{code}");
+        }
+        for code in [0, 10, 30, 41, 70] {
+            assert!(
+                matches!(envelope_error(code, "m"), SourceError::Backend(_)),
+                "{code}"
+            );
+        }
+    }
 
     fn parse<T: DeserializeOwned + Default>(body: serde_json::Value) -> T {
         let envelope: SubsonicEnvelope<T> =
@@ -869,5 +1039,49 @@ mod tests {
     fn a_song_without_the_object_reports_nothing() {
         let song: SubsonicSong = serde_json::from_str(r#"{"id": "1", "title": "T"}"#).unwrap();
         assert!(song.replay_gain_info().is_empty());
+    }
+
+    /// Captured from Navidrome 0.63.2, trimmed to the fields this crate reads.
+    #[test]
+    fn play_queue_response_parses() {
+        let data: GetPlayQueueData = parse(serde_json::json!({
+            "subsonic-response": {
+                "status": "ok",
+                "version": "1.16.1",
+                "playQueue": {
+                    "entry": [{
+                        "id": "BgdZpTKEu8u6xLGYsZCCXq",
+                        "title": "Expectation",
+                        "album": "Innerspeaker",
+                        "albumId": "7tbDxWiXuAInyHqxBR8ukM",
+                        "artist": "Tame Impala",
+                        "duration": 362,
+                        "bitRate": 901,
+                        "coverArt": "mf-BgdZpTKEu8u6xLGYsZCCXq_6a69cd29"
+                    }],
+                    "current": "BgdZpTKEu8u6xLGYsZCCXq",
+                    "position": 45000,
+                    "username": "someone",
+                    "changed": "2026-08-09T18:08:10.49647068Z",
+                    "changedBy": "Arpeggi"
+                }
+            }
+        }));
+
+        let queue = data.play_queue.expect("playQueue present");
+        assert_eq!(queue.current.as_deref(), Some("BgdZpTKEu8u6xLGYsZCCXq"));
+        assert_eq!(queue.position, Some(45000));
+        assert_eq!(queue.changed_by.as_deref(), Some("Arpeggi"));
+        assert_eq!(queue.entry.len(), 1);
+        assert_eq!(queue.entry[0].title, "Expectation");
+    }
+
+    #[test]
+    fn play_queue_absent_when_nothing_saved() {
+        let data: GetPlayQueueData = parse(serde_json::json!({
+            "subsonic-response": { "status": "ok", "version": "1.16.1" }
+        }));
+
+        assert!(data.play_queue.is_none());
     }
 }

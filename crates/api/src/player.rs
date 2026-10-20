@@ -66,13 +66,11 @@ pub struct BufferedRange {
     pub total: Option<u64>,
 }
 
-/// The outgoing session during a crossfade. While present, frontends keep
-/// displaying this track and drive the seek bar from `position_ms`.
+/// The outgoing session during a crossfade, which frontends keep displaying; the position anchor follows it meanwhile.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct FadingState {
     pub from_token: u64,
     pub track: crate::TrackInfo,
-    pub position_ms: u64,
 }
 
 /// Playback happening outside the engine (Spotify in a browser).
@@ -96,13 +94,16 @@ pub struct ExternalDevice {
     pub active: bool,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct QueueSummary {
     pub rev: u64,
     pub length: u32,
+    /// Play-order position of the current track, as in `QueueSnapshot::position`.
     pub index: Option<u32>,
     pub shuffle: bool,
     pub loop_mode: LoopMode,
+    /// The container the queue was built from ("playing from"); None for a raw track list.
+    pub context: Option<crate::QueueContext>,
 }
 
 /// The player snapshot (`GetPlayerState`) and the `player_state` event payload.
@@ -116,7 +117,10 @@ pub struct PlayerState {
     pub track: Option<crate::TrackInfo>,
     pub position: Option<PositionAnchor>,
     pub queue: QueueSummary,
+    /// The level to return to: muting leaves it alone.
     pub volume: f32,
+    /// Output is silenced while `volume` is kept; a `SetVolume` clears it.
+    pub muted: bool,
     pub buffered: Vec<BufferedRange>,
     pub fading: Option<FadingState>,
     pub external: Option<ExternalPlayback>,
@@ -136,11 +140,38 @@ pub enum PlayerCommand {
     Seek {
         position_ms: u64,
     },
+    /// Also unmutes.
     SetVolume {
         volume: f32,
+    },
+    SetMuted {
+        muted: bool,
     },
     SetMode {
         shuffle: Option<bool>,
         loop_mode: Option<LoopMode>,
     },
+    /// Swap the playing track for its other cut at the same place in the song.
+    /// A track with no [`crate::TrackCounterpart`] of that version answers `invalid_input`.
+    SetVersion {
+        version: crate::TrackVersion,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VideoRequest {
+    /// A queued track whose version is [`crate::TrackVersion::Video`].
+    pub key: String,
+    pub start: u64,
+    /// At most this many bytes; the daemon may send fewer.
+    pub length: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct VideoChunk {
+    pub content_type: String,
+    pub start: u64,
+    /// The whole stream's length, when the source says.
+    pub total: Option<u64>,
+    pub bytes: Vec<u8>,
 }

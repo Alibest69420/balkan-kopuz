@@ -13,6 +13,9 @@ pub struct TrackListViewProps {
     pub tracks: Vec<Track>,
     #[props(default = false)]
     pub is_album: bool,
+    /// The album these tracks are, in the daemon's order, so playing them all plays the album.
+    #[props(default)]
+    pub album_id: Option<String>,
     #[props(default)]
     pub release_year: Option<u16>,
     pub on_close: EventHandler<()>,
@@ -38,6 +41,9 @@ pub struct TrackListViewProps {
     pub actions: Option<Element>,
     #[props(default)]
     pub on_start_radio: Option<EventHandler<()>>,
+    /// Plays the whole list by id instead of queueing the rows shown.
+    #[props(default)]
+    pub on_play_all: Option<EventHandler<()>>,
 }
 
 #[component]
@@ -90,6 +96,7 @@ pub fn TrackListView(props: TrackListViewProps) -> Element {
                 cover_url: props.cover_url.clone(),
                 tracks: props.tracks.clone(),
                 is_album: props.is_album,
+                album_id: props.album_id.clone(),
                 release_year: props.release_year,
                 is_selection_mode: is_selection_mode(),
                 selected_tracks: selected_tracks.read().clone(),
@@ -129,6 +136,10 @@ pub fn TrackListView(props: TrackListViewProps) -> Element {
                     }
                 },
                 on_play_all: move |_| {
+                    if let Some(play_all) = props.on_play_all {
+                        play_all.call(());
+                        return;
+                    }
                     let is_shuffle = *ctrl.shuffle.peek();
                     if is_shuffle {
                         ctrl.play_queue_shuffled(tracks_play_all.clone());

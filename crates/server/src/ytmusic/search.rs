@@ -3,19 +3,12 @@ use serde_json::{Value, json};
 
 use super::SOURCE_PREFIX;
 use super::clients::WEB_REMIX;
-use super::innertube::sapisid_hash;
+use super::innertube::{sapisid_hash, signed};
+use crate::source::SourceError;
 
 const ORIGIN_YT_MUSIC: &str = "https://music.youtube.com";
 const SONGS_FILTER: &str = "EgWKAQIIAWoMEAMQBBAJEAoQDhAV";
 const VIDEOS_FILTER: &str = "EgWKAQIQAWoMEAMQBBAJEAoQDhAV";
-// `params` value for "Artists" tab on YT Music search. Restricts hits
-// to musicResponsiveListItemRenderer rows whose nav endpoint browseId
-// begins with `UC…`, exactly what we need for name → channel resolve.
-const ARTISTS_FILTER: &str = "EgWKAQIgAWoMEAMQBBAJEAoQDhAV";
-// `params` value for the "Albums" tab. Restricts hits to album rows whose
-// nav endpoint browseId begins with `MPRE…`, what we need to resolve a
-// title+artist back to its album browse id (see `resolve_album_browse_id`).
-const ALBUMS_FILTER: &str = "EgWKAQIYAWoMEAMQBBAJEAoQDhAV";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MusicVideoType {
@@ -45,18 +38,23 @@ impl MusicVideoType {
 }
 
 #[derive(Debug, Clone)]
-struct ParsedRow {
-    video_id: String,
-    title: String,
-    artists: Vec<ArtistCredit>,
-    album: Option<String>,
-    album_browse_id: Option<String>,
-    duration: u64,
-    thumbnail_url: Option<String>,
+pub(super) struct ParsedRow {
+    pub video_id: String,
+    pub title: String,
+    pub artists: Vec<ArtistCredit>,
+    pub album: Option<String>,
+    pub album_browse_id: Option<String>,
+    pub duration: u64,
+    pub thumbnail_url: Option<String>,
+    pub explicit: bool,
+    pub plays: Option<String>,
 }
 
 #[tracing::instrument(name = "yt.search", skip(cookies), fields(query = %query))]
-pub async fn music_search_tracks(query: &str, cookies: Option<&str>) -> Result<Vec<Track>, String> {
+pub async fn music_search_tracks(
+    query: &str,
+    cookies: Option<&str>,
+) -> Result<Vec<Track>, SourceError> {
     let http = super::innertube::http_client();
     let (top, songs, videos) = tokio::join!(
         do_search(http, query, None, cookies),
@@ -96,163 +94,6 @@ pub async fn music_search_tracks(query: &str, cookies: Option<&str>) -> Result<V
     Ok(out)
 }
 
-/// Resolve an album title + artist to its YT Music album browse id
-/// (`MPRE…`). The local library stores YT albums under a title+artist hash
-/// with no browse id, so the album page resolves it on demand to fetch the
-/// album's full track list (see [`fetch_album`](super::discover::fetch_album)).
-/// Searches the Albums tab for "<album> <artist>" and takes the first
-/// `MPRE…` browseId — the top-ranked match. Returns None if nothing matched.
-#[tracing::instrument(name = "yt.resolve_album", skip(cookies), fields(album = %album))]
-pub async fn resolve_album_browse_id(
-    album: &str,
-    artist: &str,
-    cookies: Option<&str>,
-) -> Result<Option<String>, String> {
-    if album.trim().is_empty() {
-        return Ok(None);
-    }
-    let query = if artist.trim().is_empty() {
-        album.to_string()
-    } else {
-        format!("{album} {artist}")
-    };
-    let http = super::innertube::http_client();
-    let resp = do_search_raw(http, &query, Some(ALBUMS_FILTER), cookies).await?;
-    Ok(walk_first_album_browse_id(&resp))
-}
-
-/// Recursively walk the JSON for the first browseEndpoint pointing at an
-/// `MPRE…` album. The albums filter restricts results to album rows so the
-/// first hit is the top-ranked match.
-fn walk_first_album_browse_id(v: &Value) -> Option<String> {
-    match v {
-        Value::Object(map) => {
-            if let Some(ep) = map.get("browseEndpoint")
-                && let Some(bid) = ep.get("browseId").and_then(|x| x.as_str())
-                && bid.starts_with("MPRE")
-            {
-                return Some(bid.to_string());
-            }
-            for child in map.values() {
-                if let Some(found) = walk_first_album_browse_id(child) {
-                    return Some(found);
-                }
-            }
-            None
-        }
-        Value::Array(arr) => arr.iter().find_map(walk_first_album_browse_id),
-        _ => None,
-    }
-}
-
-/// The best-matching artist's avatar URL for `name` from the YT Music
-/// "Artists" tab. Powers the Artists grid so its circular photos are the real
-/// YT artist images and nothing else. Returns None when no artist row
-/// survived the row checks — the grid then falls back to an album cover,
-/// which beats confidently showing someone else's face.
-#[tracing::instrument(name = "yt.artist_image", skip(cookies), fields(name = %name))]
-pub async fn resolve_artist_image(
-    name: &str,
-    cookies: Option<&str>,
-) -> Result<Option<String>, String> {
-    if name.trim().is_empty() {
-        return Ok(None);
-    }
-    let http = super::innertube::http_client();
-    let resp = do_search_raw(http, name, Some(ARTISTS_FILTER), cookies).await?;
-    Ok(pick_artist_row(&resp, name).and_then(best_thumbnail))
-}
-
-/// The search row that best represents artist `want`:
-///
-/// - only rows whose OWN navigation endpoint browses to a `UC…` channel typed
-///   `MUSIC_PAGE_TYPE_ARTIST` count. Checking for a `UC…` id anywhere inside
-///   the row (as this used to) also matched playlist/profile rows, whose
-///   per-artist title runs carry channel links — donating a playlist cover as
-///   an "artist photo".
-/// - aggregate auto-channels are skipped: they title themselves with a pile
-///   of names ("A、B、C、…"), carry a generic mosaic avatar, and rank first
-///   for many different queries — the "several tiles share one wrong photo"
-///   failure.
-/// - a row whose folded title equals the query wins; otherwise the first
-///   surviving row does. The fallback is deliberate: YT restyles names the
-///   library spells differently (romanization, casing, spacing — "さんみゅ~"
-///   is titled "Sunmyu" with `hl=en`), so demanding a title match would strip
-///   photos from every such artist.
-fn pick_artist_row<'a>(resp: &'a Value, want: &str) -> Option<&'a Value> {
-    let mut rows = Vec::new();
-    collect_search_rows(resp, &mut rows);
-    let candidates: Vec<&Value> = rows
-        .into_iter()
-        .filter(|r| is_artist_row(r))
-        .filter(|r| row_title(r).is_some_and(|t| !looks_like_artist_pile(t)))
-        .collect();
-    let want = fold_artist_name(want);
-    candidates
-        .iter()
-        .find(|r| row_title(r).is_some_and(|t| fold_artist_name(t) == want))
-        .or(candidates.first())
-        .copied()
-}
-
-/// Every `musicResponsiveListItemRenderer` in the response, in document order.
-fn collect_search_rows<'a>(v: &'a Value, out: &mut Vec<&'a Value>) {
-    match v {
-        Value::Object(map) => {
-            if let Some(row) = map.get("musicResponsiveListItemRenderer") {
-                out.push(row);
-            }
-            for child in map.values() {
-                collect_search_rows(child, out);
-            }
-        }
-        Value::Array(arr) => {
-            for child in arr {
-                collect_search_rows(child, out);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// Whether the row itself navigates to an artist page (not merely contains a
-/// channel link somewhere inside).
-fn is_artist_row(row: &Value) -> bool {
-    let Some(ep) = row.pointer("/navigationEndpoint/browseEndpoint") else {
-        return false;
-    };
-    ep.get("browseId")
-        .and_then(|v| v.as_str())
-        .is_some_and(|b| b.starts_with("UC"))
-        && ep
-            .pointer(
-                "/browseEndpointContextSupportedConfigs/browseEndpointContextMusicConfig/pageType",
-            )
-            .and_then(|v| v.as_str())
-            == Some("MUSIC_PAGE_TYPE_ARTIST")
-}
-
-fn row_title(row: &Value) -> Option<&str> {
-    row.pointer("/flexColumns/0/musicResponsiveListItemFlexColumnRenderer/text/runs/0/text")
-        .and_then(|v| v.as_str())
-}
-
-/// Aggregate auto-channels list several artists in their title; three or more
-/// comma segments marks one. (Two is a legitimate duo credit.)
-fn looks_like_artist_pile(title: &str) -> bool {
-    title.split(['、', ',']).count() >= 3
-}
-
-/// Fold a name for comparison: lowercase, whitespace removed. YT restyles
-/// casing and spacing freely — "FujiwaraHagane" for "Fujiwara Hagane",
-/// "D-Cell" for "D-CELL".
-pub(super) fn fold_artist_name(s: &str) -> String {
-    s.chars()
-        .filter(|c| !c.is_whitespace())
-        .collect::<String>()
-        .to_lowercase()
-}
-
 /// A column's text up to its first " • ", every run joined as displayed.
 fn leading_text(row: &Value, col: usize) -> String {
     row.get("flexColumns")
@@ -276,13 +117,13 @@ async fn do_search_raw(
     query: &str,
     params: Option<&str>,
     cookies: Option<&str>,
-) -> Result<Value, String> {
+) -> Result<Value, SourceError> {
     let client = WEB_REMIX;
     let mut body = json!({
         "context": {
             "client": {
                 "clientName": client.client_name,
-                "clientVersion": client.client_version,
+                "clientVersion": client.version(),
                 "hl": "en",
                 "gl": "US",
             },
@@ -302,25 +143,27 @@ async fn do_search_raw(
         .header("Content-Type", "application/json")
         .header("X-Goog-Api-Format-Version", "1")
         .header("X-YouTube-Client-Name", client.client_id)
-        .header("X-YouTube-Client-Version", client.client_version)
+        .header("X-YouTube-Client-Version", client.version())
         .header("X-Origin", ORIGIN_YT_MUSIC)
         .header("Origin", ORIGIN_YT_MUSIC)
-        .header("Referer", format!("{ORIGIN_YT_MUSIC}/"))
-        .json(&body);
+        .header("Referer", format!("{ORIGIN_YT_MUSIC}/"));
     if let Some(c) = cookies {
-        req = req.header("Cookie", c);
-        if let Some(auth) = sapisid_hash(c, ORIGIN_YT_MUSIC) {
-            req = req.header("Authorization", auth);
-        }
+        req = match sapisid_hash(c, ORIGIN_YT_MUSIC) {
+            Some(auth) => signed(req, &mut body, c, auth),
+            None => req.header("Cookie", c),
+        };
     }
-    req.send()
+    let resp = req
+        .json(&body)
+        .send()
         .await
-        .map_err(|e| format!("search HTTP: {e}"))?
-        .error_for_status()
-        .map_err(|e| format!("search HTTP: {e}"))?
-        .json::<Value>()
+        .map_err(SourceError::from_request)?;
+    if !resp.status().is_success() {
+        return Err(SourceError::from_status(resp.status(), "search"));
+    }
+    resp.json::<Value>()
         .await
-        .map_err(|e| format!("search JSON: {e}"))
+        .map_err(|e| SourceError::Backend(format!("search JSON: {e}")))
 }
 
 async fn do_search(
@@ -328,12 +171,12 @@ async fn do_search(
     query: &str,
     params: Option<&str>,
     cookies: Option<&str>,
-) -> Result<Vec<Track>, String> {
+) -> Result<Vec<Track>, SourceError> {
     let resp = do_search_raw(http, query, params, cookies).await?;
     Ok(walk_tracks(&resp))
 }
 
-fn walk_tracks(resp: &Value) -> Vec<Track> {
+pub(super) fn walk_tracks(resp: &Value) -> Vec<Track> {
     let shelves = resp
         .pointer("/contents/tabbedSearchResultsRenderer/tabs/0/tabRenderer/content/sectionListRenderer/contents")
         .and_then(|v| v.as_array());
@@ -441,6 +284,8 @@ fn parse_card_shelf(card: &Value) -> Option<ParsedRow> {
         album_browse_id,
         duration,
         thumbnail_url,
+        explicit: super::has_explicit_badge(card),
+        plays: None,
     })
 }
 
@@ -492,9 +337,10 @@ fn parse_playlist_track(
             artists.push(ArtistCredit::unlinked(name));
         }
     }
+    // Some playlists put the play count in the album column.
     let album = if mvt.has_album() {
         let s = pick_run(row, 2, 0);
-        if s.is_empty() { None } else { Some(s) }
+        (!s.is_empty() && !super::is_count(&s)).then_some(s)
     } else {
         None
     };
@@ -521,6 +367,8 @@ fn parse_playlist_track(
         album_browse_id,
         duration,
         thumbnail_url,
+        explicit: super::has_explicit_badge(row),
+        plays: row_plays(row),
     }
 }
 
@@ -572,6 +420,8 @@ fn parse_search_row(
         album_browse_id,
         duration,
         thumbnail_url,
+        explicit: super::has_explicit_badge(row),
+        plays: row_plays(row),
     }
 }
 
@@ -589,7 +439,7 @@ fn pick_runs_with_browse(row: &Value, col: usize) -> Vec<(String, Option<String>
 
 /// A `text/runs` array → `(text, browse_id)` pairs, separators and empty runs
 /// dropped. Shared by the flex-column rows and the top-result card subtitle.
-fn runs_with_browse(runs: Option<&Value>) -> Vec<(String, Option<String>)> {
+pub(crate) fn runs_with_browse(runs: Option<&Value>) -> Vec<(String, Option<String>)> {
     runs.and_then(|v| v.as_array())
         .map(|runs| {
             runs.iter()
@@ -609,17 +459,18 @@ fn runs_with_browse(runs: Option<&Value>) -> Vec<(String, Option<String>)> {
         .unwrap_or_default()
 }
 
-fn parsed_to_track(p: ParsedRow) -> Track {
+pub(super) fn parsed_to_track(p: ParsedRow) -> Track {
     let primary_artist = p
         .artists
         .first()
         .map(|credit| credit.name.clone())
         .unwrap_or_default();
     let album = p.album.clone().unwrap_or_default();
-    let album_id = match p.album_browse_id {
-        Some(id) => format!("{SOURCE_PREFIX}:album:{id}"),
-        None => synthesize_album_id(&album, &primary_artist),
-    };
+    let album_id = p
+        .album_browse_id
+        .as_deref()
+        .map(album_id)
+        .unwrap_or_default();
     let cover = p.thumbnail_url.filter(|u| !u.is_empty());
 
     Track {
@@ -641,7 +492,30 @@ fn parsed_to_track(p: ParsedRow) -> Track {
         artists: p.artists.iter().map(|c| c.name.clone()).collect(),
         credits: p.artists,
         replay_gain: config::ReplayGainInfo::default(),
+        explicit: p.explicit,
+        plays: p.plays,
+        counterpart: None,
     }
+}
+
+/// A row's play or view count, from whichever column or `•` part holds it.
+fn row_plays(row: &Value) -> Option<String> {
+    row["flexColumns"]
+        .as_array()?
+        .iter()
+        .skip(1)
+        .flat_map(|column| {
+            column["musicResponsiveListItemFlexColumnRenderer"]["text"]["runs"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|run| run["text"].as_str())
+                .collect::<String>()
+                .split(" • ")
+                .map(|part| part.trim().to_string())
+                .collect::<Vec<_>>()
+        })
+        .find(|part| super::is_count(part))
 }
 
 fn pick_run(row: &Value, col: usize, run: usize) -> String {
@@ -817,40 +691,23 @@ fn normalize_yt_thumbnail(url: &str) -> String {
     url.to_string()
 }
 
-pub(crate) fn synthesize_album_id(album: &str, artist: &str) -> String {
-    if album.is_empty() {
-        return format!("{SOURCE_PREFIX}:album:singles");
-    }
-    let mut key = album.to_lowercase();
-    if !artist.is_empty() {
-        key.push('|');
-        key.push_str(&artist.to_lowercase());
-    }
-    format!("{SOURCE_PREFIX}:album:{}", hex::encode(key.as_bytes()))
+/// The album a row links to, by its `MPRE…` browse id; a row with no album link has no album.
+pub(crate) fn album_id(browse_id: &str) -> String {
+    format!("{SOURCE_PREFIX}:album:{browse_id}")
 }
 
-/// The real `MPRE…` album browse id carried by an album id, if any. Handles
-/// both the raw `MPRE…` form (Discover passes that straight to navigation) and
-/// the `ytmusic:album:MPRE…` form synthesized for search/track rows. Returns
-/// None for synthesized hash ids and the `singles` bucket.
+/// The `(title, album id)` of the run that links an `MPRE…` album, if any.
+pub(crate) fn linked_album(runs: &[(String, Option<String>)]) -> Option<(String, String)> {
+    runs.iter().find_map(|(text, browse)| {
+        let id = browse.as_deref().filter(|id| id.starts_with("MPRE"))?;
+        Some((text.clone(), album_id(id)))
+    })
+}
+
+/// The `MPRE…` browse id an album id carries, raw (as Discover passes it) or as `ytmusic:album:MPRE…`.
 pub fn album_browse_id(id: &str) -> Option<String> {
     let token = id.rsplit(':').next().unwrap_or(id);
     token.starts_with("MPRE").then(|| token.to_string())
-}
-
-/// `(album, artist)` recovered from a synthesized album id
-/// (`ytmusic:album:<hex(album|artist)>`). Lets the album page resolve a browse
-/// id on demand for albums that came back from search without an `MPRE` link.
-/// None for browse-id ids and the `singles` bucket.
-pub fn synth_album_parts(id: &str) -> Option<(String, String)> {
-    let token = id.rsplit(':').next()?;
-    if token.starts_with("MPRE") || token == "singles" {
-        return None;
-    }
-    let bytes = hex::decode(token).ok()?;
-    let decoded = String::from_utf8(bytes).ok()?;
-    let (album, artist) = decoded.split_once('|').unwrap_or((decoded.as_str(), ""));
-    (!album.is_empty()).then(|| (album.to_string(), artist.to_string()))
 }
 
 fn parse_mm_ss(s: &str) -> Option<u64> {
@@ -963,6 +820,45 @@ mod credit_tests {
 
         assert_eq!(parsed.artists.len(), 1);
         assert_eq!(parsed.album.as_deref(), Some("One"));
+    }
+
+    #[test]
+    fn a_track_files_under_the_release_its_album_run_links() {
+        let linked = parsed_to_track(search_row(&[
+            ("Ada", Some("UCada")),
+            ("Hits", Some("MPREb_one")),
+            ("3:00", None),
+        ]));
+        assert_eq!(linked.album_id, "ytmusic:album:MPREb_one");
+
+        let namesake = parsed_to_track(search_row(&[
+            ("Ada", Some("UCada")),
+            ("Hits", Some("MPREb_two")),
+        ]));
+        assert_ne!(
+            linked.album_id, namesake.album_id,
+            "same names, two releases"
+        );
+
+        let unlinked = parsed_to_track(search_row(&[("Ada", Some("UCada")), ("3:00", None)]));
+        assert_eq!(unlinked.album_id, "", "no album link, no album");
+    }
+
+    /// The old fallback minted one album from the row's album and artist text, so unlinked namesakes merged.
+    #[test]
+    fn unlinked_rows_sharing_album_text_share_no_album() {
+        let row = || {
+            parsed_to_track(search_row(&[
+                ("Ada", Some("UCada")),
+                ("Hits", None),
+                ("3:00", None),
+            ]))
+        };
+        let (first, second) = (row(), row());
+        assert_eq!(
+            (first.album_id.as_str(), second.album_id.as_str()),
+            ("", "")
+        );
     }
 
     #[test]

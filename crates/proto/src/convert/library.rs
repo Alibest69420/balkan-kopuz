@@ -9,6 +9,10 @@ pub fn track_filter_to_proto(value: &api::TrackFilter) -> TrackFilter {
         favorite: value.favorite,
         sort: track_sort_to_proto(&value.sort) as i32,
         sort_fields: sort_criteria_to_proto(&value.sort),
+        downloaded: value.downloaded,
+        year_from: value.year_from.map(u32::from),
+        year_to: value.year_to.map(u32::from),
+        reverse: value.reverse,
     }
 }
 
@@ -19,6 +23,106 @@ pub fn track_filter_from_proto(value: &TrackFilter) -> api::TrackFilter {
         genre: value.genre.clone(),
         favorite: value.favorite,
         sort: track_sort_from_proto(value.sort, &value.sort_fields),
+        downloaded: value.downloaded,
+        year_from: value.year_from.map(year_from_proto),
+        year_to: value.year_to.map(year_from_proto),
+        reverse: value.reverse,
+    }
+}
+
+fn year_from_proto(year: u32) -> u16 {
+    year.min(u32::from(u16::MAX)) as u16
+}
+
+pub fn album_query_to_proto(value: &api::AlbumQuery) -> AlbumQuery {
+    AlbumQuery {
+        search: value.search.clone(),
+        genre: value.genre.clone(),
+        year_from: value.year_from.map(u32::from),
+        year_to: value.year_to.map(u32::from),
+        artist_key: value.artist_key.clone(),
+        downloaded: value.downloaded,
+        ids: value.ids.clone().map(|ids| AlbumIds { ids }),
+        sort: value
+            .sort
+            .iter()
+            .map(|sort| AlbumOrder {
+                field: album_order_field_to_proto(sort.field) as i32,
+                descending: sort.direction == ::config::SortDirection::Desc,
+            })
+            .collect(),
+    }
+}
+
+pub fn album_query_from_proto(value: &AlbumQuery) -> api::AlbumQuery {
+    api::AlbumQuery {
+        search: value.search.clone(),
+        genre: value.genre.clone(),
+        year_from: value.year_from.map(year_from_proto),
+        year_to: value.year_to.map(year_from_proto),
+        artist_key: value.artist_key.clone(),
+        downloaded: value.downloaded,
+        ids: value.ids.as_ref().map(|ids| ids.ids.clone()),
+        sort: value
+            .sort
+            .iter()
+            .map(|sort| ::config::SortCriterion {
+                field: album_order_field_from_proto(sort.field),
+                direction: if sort.descending {
+                    ::config::SortDirection::Desc
+                } else {
+                    ::config::SortDirection::Asc
+                },
+            })
+            .collect(),
+    }
+}
+
+pub fn albums_request_to_proto(query: &api::AlbumQuery, page: api::Page) -> AlbumsRequest {
+    AlbumsRequest {
+        query: Some(album_query_to_proto(query)),
+        page: Some(page_to_proto(page)),
+    }
+}
+
+pub fn artist_query_to_proto(value: &api::ArtistQuery) -> ArtistQuery {
+    ArtistQuery {
+        search: value.search.clone(),
+        downloaded: value.downloaded,
+        sort: value
+            .sort
+            .iter()
+            .map(|sort| ArtistOrder {
+                field: artist_order_field_to_proto(sort.field) as i32,
+                descending: sort.direction == ::config::SortDirection::Desc,
+            })
+            .collect(),
+    }
+}
+
+pub fn artist_query_from_proto(value: &ArtistQuery) -> api::ArtistQuery {
+    api::ArtistQuery {
+        search: value.search.clone(),
+        downloaded: value.downloaded,
+        sort: value
+            .sort
+            .iter()
+            .map(|sort| ::config::SortCriterion {
+                field: artist_order_field_from_proto(sort.field),
+                direction: if sort.descending {
+                    ::config::SortDirection::Desc
+                } else {
+                    ::config::SortDirection::Asc
+                },
+            })
+            .collect(),
+    }
+}
+
+pub fn artists_request_to_proto(query: &api::ArtistQuery, page: api::Page) -> ArtistsRequest {
+    ArtistsRequest {
+        query: Some(artist_query_to_proto(query)),
+        page: Some(page_to_proto(page)),
     }
 }
 
@@ -63,6 +167,16 @@ pub fn track_info_to_proto(value: &api::TrackInfo) -> TrackInfo {
         musicbrainz_track_id: value.musicbrainz_track_id.clone(),
         artwork: value.artwork.as_ref().map(artwork_ref_to_proto),
         credits: value.credits.iter().map(artist_credit_to_proto).collect(),
+        explicit: value.explicit,
+        plays: value.plays.clone(),
+        counterpart: value
+            .counterpart
+            .as_ref()
+            .map(|counterpart| TrackCounterpart {
+                key: counterpart.key.clone(),
+                version: track_version_to_proto(counterpart.version) as i32,
+                duration_ms: counterpart.duration_ms,
+            }),
     }
 }
 
@@ -88,6 +202,15 @@ pub fn track_info_from_proto(value: &TrackInfo) -> api::TrackInfo {
         musicbrainz_track_id: value.musicbrainz_track_id.clone(),
         artwork: value.artwork.as_ref().and_then(artwork_ref_from_proto),
         credits: value.credits.iter().map(artist_credit_from_proto).collect(),
+        explicit: value.explicit,
+        plays: value.plays.clone(),
+        counterpart: value.counterpart.as_ref().and_then(|counterpart| {
+            Some(api::TrackCounterpart {
+                key: counterpart.key.clone(),
+                version: track_version_from_proto(counterpart.version)?,
+                duration_ms: counterpart.duration_ms,
+            })
+        }),
     }
 }
 
@@ -180,6 +303,7 @@ pub fn artwork_request_to_proto(value: &api::ArtworkRequest) -> ArtworkRequest {
         api::ArtworkTarget::Playlist(id) => Entity::Playlist(id.clone()),
         api::ArtworkTarget::Catalog(id) => Entity::Catalog(id.clone()),
         api::ArtworkTarget::Station(id) => Entity::Station(id.clone()),
+        api::ArtworkTarget::Account(id) => Entity::Account(id.clone()),
     };
     ArtworkRequest {
         entity: Some(entity),
@@ -196,6 +320,7 @@ pub fn artwork_request_from_proto(value: &ArtworkRequest) -> Option<api::Artwork
         Entity::Playlist(id) => api::ArtworkTarget::Playlist(id.clone()),
         Entity::Catalog(id) => api::ArtworkTarget::Catalog(id.clone()),
         Entity::Station(id) => api::ArtworkTarget::Station(id.clone()),
+        Entity::Account(id) => api::ArtworkTarget::Account(id.clone()),
     };
     Some(api::ArtworkRequest {
         target,
@@ -212,6 +337,7 @@ pub fn artwork_target_to_proto(value: &api::ArtworkTarget) -> ArtworkTarget {
         api::ArtworkTarget::Playlist(id) => Entity::Playlist(id.clone()),
         api::ArtworkTarget::Catalog(id) => Entity::Catalog(id.clone()),
         api::ArtworkTarget::Station(id) => Entity::Station(id.clone()),
+        api::ArtworkTarget::Account(id) => Entity::Account(id.clone()),
     };
     ArtworkTarget {
         entity: Some(entity),
@@ -227,6 +353,7 @@ pub fn artwork_target_from_proto(value: &ArtworkTarget) -> Option<api::ArtworkTa
         Entity::Playlist(id) => api::ArtworkTarget::Playlist(id.clone()),
         Entity::Catalog(id) => api::ArtworkTarget::Catalog(id.clone()),
         Entity::Station(id) => api::ArtworkTarget::Station(id.clone()),
+        Entity::Account(id) => api::ArtworkTarget::Account(id.clone()),
     })
 }
 
@@ -289,6 +416,7 @@ pub fn artist_info_to_proto(value: &api::ArtistInfo) -> ArtistInfo {
         key: value.key.to_string(),
         name: value.name.clone(),
         track_count: value.track_count,
+        album_count: value.album_count,
         artwork: value.artwork.as_ref().map(artwork_ref_to_proto),
     }
 }
@@ -298,6 +426,7 @@ pub fn artist_info_from_proto(value: &ArtistInfo) -> api::ArtistInfo {
         key: value.key.clone(),
         name: value.name.clone(),
         track_count: value.track_count,
+        album_count: value.album_count,
         artwork: value.artwork.as_ref().and_then(artwork_ref_from_proto),
     }
 }
@@ -316,10 +445,29 @@ pub fn artist_page_from_proto(value: &ArtistPage) -> api::ArtistPage {
     }
 }
 
+pub fn search_request_to_proto(value: &api::SearchRequest) -> SearchRequest {
+    SearchRequest {
+        query: value.query.clone(),
+        filter: value.filter.clone(),
+        continuation: value.continuation.clone(),
+    }
+}
+
+pub fn search_request_from_proto(value: &SearchRequest) -> api::SearchRequest {
+    api::SearchRequest {
+        query: value.query.clone(),
+        filter: value.filter.clone(),
+        continuation: value.continuation.clone(),
+    }
+}
+
 pub fn search_results_to_proto(value: &api::SearchResults) -> SearchResults {
     SearchResults {
         tracks: value.tracks.iter().map(track_info_to_proto).collect(),
         albums: value.albums.iter().map(album_info_to_proto).collect(),
+        shelves: value.shelves.iter().map(catalog_shelf_to_proto).collect(),
+        continuation: value.continuation.clone(),
+        correction: value.correction.clone(),
     }
 }
 
@@ -327,6 +475,25 @@ pub fn search_results_from_proto(value: &SearchResults) -> api::SearchResults {
     api::SearchResults {
         tracks: value.tracks.iter().map(track_info_from_proto).collect(),
         albums: value.albums.iter().map(album_info_from_proto).collect(),
+        shelves: value.shelves.iter().map(catalog_shelf_from_proto).collect(),
+        continuation: value.continuation.clone(),
+        correction: value.correction.clone(),
+    }
+}
+
+pub fn search_suggestion_to_proto(value: &api::SearchSuggestion) -> SearchSuggestion {
+    SearchSuggestion {
+        text: value.text.clone(),
+        from_history: value.from_history,
+        item: value.item.as_ref().map(catalog_item_to_proto),
+    }
+}
+
+pub fn search_suggestion_from_proto(value: &SearchSuggestion) -> api::SearchSuggestion {
+    api::SearchSuggestion {
+        text: value.text.clone(),
+        from_history: value.from_history,
+        item: value.item.as_ref().map(catalog_item_from_proto),
     }
 }
 
@@ -364,7 +531,6 @@ pub fn artist_tracks_request_to_proto(artist: &str, page: api::Page) -> ArtistTr
 pub fn artist_detail_to_proto(value: &api::ArtistDetail) -> ArtistDetail {
     ArtistDetail {
         info: Some(artist_info_to_proto(&value.info)),
-        albums: value.albums.iter().map(album_info_to_proto).collect(),
     }
 }
 
@@ -372,13 +538,68 @@ pub fn artist_detail_to_proto(value: &api::ArtistDetail) -> ArtistDetail {
 pub fn artist_detail_from_proto(value: &ArtistDetail) -> Option<api::ArtistDetail> {
     Some(api::ArtistDetail {
         info: artist_info_from_proto(value.info.as_ref()?),
-        albums: value.albums.iter().map(album_info_from_proto).collect(),
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_search_and_its_suggestions_round_trip() {
+        let request = api::SearchRequest {
+            query: "daft punk".into(),
+            filter: Some("songs".into()),
+            continuation: Some("search||4qmF".into()),
+        };
+        assert_eq!(
+            request,
+            search_request_from_proto(&search_request_to_proto(&request))
+        );
+        assert_eq!(
+            api::SearchRequest::new("q"),
+            search_request_from_proto(&search_request_to_proto(&api::SearchRequest::new("q")))
+        );
+
+        let results = api::SearchResults {
+            shelves: vec![api::CatalogShelf {
+                title: "Songs".into(),
+                layout: api::ShelfLayout::List,
+                search_filter: Some("songs".into()),
+                ..Default::default()
+            }],
+            continuation: Some("next".into()),
+            correction: Some("daft punk".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            results,
+            search_results_from_proto(&search_results_to_proto(&results))
+        );
+
+        for suggestion in [
+            api::SearchSuggestion {
+                text: "daft punk".into(),
+                from_history: true,
+                item: None,
+            },
+            api::SearchSuggestion {
+                text: "Daft Punk".into(),
+                from_history: false,
+                item: Some(api::CatalogItem {
+                    kind: api::CatalogItemKind::Artist,
+                    id: "UC".into(),
+                    title: "Daft Punk".into(),
+                    ..Default::default()
+                }),
+            },
+        ] {
+            assert_eq!(
+                suggestion,
+                search_suggestion_from_proto(&search_suggestion_to_proto(&suggestion))
+            );
+        }
+    }
 
     /// A track row is what every listing renders, down to the file details a
     /// row shows, so all of it has to survive the wire.
@@ -417,8 +638,26 @@ mod tests {
                     key: None,
                 },
             ],
+            explicit: true,
+            plays: Some("1.2B plays".into()),
+            counterpart: Some(api::TrackCounterpart {
+                key: "dQw4w9WgXcQ".into(),
+                version: api::TrackVersion::Video,
+                duration_ms: Some(213_000),
+            }),
         };
         assert_eq!(track, track_info_from_proto(&track_info_to_proto(&track)));
+    }
+
+    #[test]
+    fn a_counterpart_of_no_version_is_dropped() {
+        let mut wire = track_info_to_proto(&api::TrackInfo::default());
+        wire.counterpart = Some(TrackCounterpart {
+            key: "x".into(),
+            version: TrackVersion::Unspecified as i32,
+            duration_ms: None,
+        });
+        assert_eq!(track_info_from_proto(&wire).counterpart, None);
     }
 
     #[test]
@@ -440,13 +679,9 @@ mod tests {
                 key: key.clone(),
                 name: "Ada".into(),
                 track_count: 2,
+                album_count: 1,
                 artwork: None,
             },
-            albums: vec![api::AlbumInfo {
-                id: "al".into(),
-                artist_key: Some(key),
-                ..Default::default()
-            }],
         };
         assert_eq!(
             artist_detail_from_proto(&artist_detail_to_proto(&detail)),
@@ -455,11 +690,148 @@ mod tests {
     }
 
     #[test]
-    fn a_detail_naming_no_artist_is_malformed() {
-        let sent = ArtistDetail {
-            info: None,
-            albums: Vec::new(),
+    fn a_track_filter_round_trips_every_field() {
+        let filter = api::TrackFilter {
+            search: Some("s".into()),
+            album: Some("al-1".into()),
+            genre: Some("Rock".into()),
+            favorite: Some(false),
+            sort: api::TrackSort::Fields(vec![::config::SortCriterion::new(
+                ::config::TrackSortField::Duration,
+                ::config::SortDirection::Desc,
+            )]),
+            downloaded: Some(true),
+            year_from: Some(1990),
+            year_to: Some(1999),
+            reverse: true,
         };
+        assert_eq!(
+            track_filter_from_proto(&track_filter_to_proto(&filter)),
+            filter
+        );
+        let plain = api::TrackFilter::default();
+        assert_eq!(
+            track_filter_from_proto(&track_filter_to_proto(&plain)),
+            plain,
+            "an absent bound stays absent rather than becoming year 0"
+        );
+    }
+
+    #[test]
+    fn an_album_query_round_trips_every_field() {
+        let query = api::AlbumQuery {
+            search: Some("alp".into()),
+            genre: Some("Rock".into()),
+            year_from: Some(1990),
+            year_to: Some(2005),
+            artist_key: Some("ar-1".into()),
+            downloaded: Some(true),
+            ids: Some(vec!["a1".into(), "a2".into()]),
+            sort: vec![
+                ::config::SortCriterion::new(
+                    ::config::AlbumSortField::RecentlyAdded,
+                    ::config::SortDirection::Desc,
+                ),
+                ::config::SortCriterion::new(
+                    ::config::AlbumSortField::Title,
+                    ::config::SortDirection::Asc,
+                ),
+            ],
+        };
+        assert_eq!(album_query_from_proto(&album_query_to_proto(&query)), query);
+        let sent = albums_request_to_proto(
+            &query,
+            api::Page {
+                offset: 3,
+                limit: 7,
+            },
+        );
+        assert_eq!(
+            sent.query.as_ref().map(album_query_from_proto),
+            Some(query),
+            "the query rides the request beside its page"
+        );
+        assert_eq!(page_from_proto(sent.page.as_ref()).offset, 3);
+        assert_eq!(
+            album_query_from_proto(&AlbumQuery::default()),
+            api::AlbumQuery::default(),
+            "an empty query lists everything"
+        );
+        let none = api::AlbumQuery {
+            ids: Some(Vec::new()),
+            ..Default::default()
+        };
+        assert_eq!(
+            album_query_from_proto(&album_query_to_proto(&none)),
+            none,
+            "an empty id list still selects nothing"
+        );
+    }
+
+    #[test]
+    fn an_artist_query_round_trips_every_field() {
+        let query = api::ArtistQuery {
+            search: Some("ada".into()),
+            downloaded: Some(false),
+            sort: vec![
+                ::config::SortCriterion::new(
+                    ::config::ArtistSortField::Albums,
+                    ::config::SortDirection::Desc,
+                ),
+                ::config::SortCriterion::new(
+                    ::config::ArtistSortField::Name,
+                    ::config::SortDirection::Asc,
+                ),
+            ],
+        };
+        assert_eq!(
+            artist_query_from_proto(&artist_query_to_proto(&query)),
+            query
+        );
+        let sent = artists_request_to_proto(
+            &query,
+            api::Page {
+                offset: 1,
+                limit: 2,
+            },
+        );
+        assert_eq!(
+            sent.query.as_ref().map(artist_query_from_proto),
+            Some(query)
+        );
+        assert_eq!(page_from_proto(sent.page.as_ref()).limit, 2);
+    }
+
+    #[test]
+    fn an_artist_row_carries_its_album_count() {
+        let artist = api::ArtistInfo {
+            key: "ar-1".into(),
+            name: "Ada".into(),
+            track_count: 9,
+            album_count: 4,
+            artwork: None,
+        };
+        assert_eq!(
+            artist_info_from_proto(&artist_info_to_proto(&artist)),
+            artist
+        );
+    }
+
+    #[test]
+    fn a_detail_naming_no_artist_is_malformed() {
+        let sent = ArtistDetail { info: None };
         assert_eq!(artist_detail_from_proto(&sent), None);
+    }
+
+    #[test]
+    fn an_account_picture_is_asked_for_by_its_source() {
+        let request = api::ArtworkRequest {
+            target: api::ArtworkTarget::Account("yt".into()),
+            hq: false,
+        };
+        assert_eq!(
+            Some(request.clone()),
+            artwork_request_from_proto(&artwork_request_to_proto(&request))
+        );
     }
 }

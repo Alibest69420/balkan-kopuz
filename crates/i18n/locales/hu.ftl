@@ -11,6 +11,9 @@ language = Nyelv
 library = Könyvtár
 playlists = Lejátszási listák
 album = Album
+release_single = Kislemez
+release_ep = EP
+release_audiobook = Audiobook
 artist = Előadó
 home = Kezdőlap
 search = Keresés
@@ -31,6 +34,9 @@ add = Hozzáadás
 add_folder = Mappa hozzáadása
 no_music_folders = Nincs zene mappa beállítva
 remote_music_folders = Zenemappák
+source_account = Fiók
+source_account_help = Minden fióknak saját könyvtára van. Váltáskor újra szinkronizálódik.
+source_accounts_failed = Nem sikerült betölteni a fiókokat: { $error }
 parent_folder = Fel
 use_this_folder = Mappa hozzáadása
 no_subfolders = Nincsenek almappák
@@ -63,6 +69,10 @@ discord_presence = Discord jelenlét
 connectivity = Kapcsolódás
 integration_connect = Connect to { $name }
 integration_connected = { $name } connected
+integration_connecting = Connecting…
+integration_browser_title = Use a signed-in browser
+integration_browser_profile = { $name } ({ $browser })
+integration_browser_none = No browser profiles found. Paste your token above instead.
 discord_presence_paused = Szüneteltetett Discord állapot megjelenítése
 discord_presence_source = Médiaforrás megjelenítése a Discord állapotban
 reduce_animations = Animációk csökkentése
@@ -108,6 +118,7 @@ radio_empty = Nem található hasonló szám
 radio_failed = A rádió indítása sikertelen
 remove_from_queue = Eltávolítás a sorból
 downloading = Letöltés folyamatban…
+downloading_progress = Downloading { $done } / { $total }
 more_actions_for = További műveletek: { $name }
 share_musicbrainz = Megosztás (MusicBrainz)
 share_link_copied = MusicBrainz-link másolva
@@ -123,6 +134,7 @@ add_all_to_queue = Összes hozzáadása a sorhoz
 add_all_to_playlist = Összes hozzáadása a lejátszási listához
 select_all = Összes kijelölése
 select_all_tracks = Összes szám kijelölése
+deselect_all_tracks = Deselect all tracks
 remove_from_cache = Eltávolítás a gyorsítótárból
 create = Létrehozás
 save = Mentés
@@ -145,6 +157,10 @@ new_releases = Új megjelenések
 # Navigation Buttons
 up_next = KÖVETKEZŐ
 lyrics = DALSZÖVEG
+track_version = Változat
+track_version_song = Dal
+track_version_video = Videó
+music_video = Videoklip
 
 # Player/Media
 loading_lyrics = Dalszöveg betöltése...
@@ -152,6 +168,9 @@ lyrics_not_found = Dalszöveg nem található
 instrumental_break = Hangszeres rész
 no_previous_songs = Nincsenek előző dalok
 playlist_track_count = { $count } dal
+playlist_folder_count = { $count } lejátszási lista
+playlists_synced_count = { $count } lejátszási lista szinkronizálva
+playlists_loading_tracks = Dalok betöltése — lejátszási listák { $done } / { $count } (még { $remaining })
 music_playlist_count = Zene • { $count } dal
 showcase_song_count = { $count } dal
 
@@ -211,7 +230,6 @@ time = Idő
 genre = Műfaj
 plays = Lejátszások
 track_count = { $count } dal
-track_count_singular = 1 dal
 songs = dalok
 min = perc
 
@@ -346,6 +364,7 @@ replay_gain_mode_auto = Automatikus
 replay_gain_prevent_clipping = Torzítás megelőzése
 replay_gain_preamp = Előerősítés
 replay_gain_fallback = Alapértelmezett erősítés
+replay_gain_youtube_loudness = YouTube Music hangerejének normalizálása
 move_to_folder = Áthelyezés mappába
 no_folders_yet = Még nincsenek mappák.
 folder_name = Mappanév...
@@ -396,6 +415,14 @@ device_change_pause = Pause
 sample_rate_mode = Kimeneti mintavételi frekvencia
 sample_rate_mode_system = Rendszer követése
 sample_rate_mode_source = Igazítás a dalhoz
+settings_group_streaming = Streamelés
+stream_quality = Streamelés minősége
+stream_quality_low = Alacsony
+stream_quality_normal = Normál
+stream_quality_high = Magas
+autoplay_radio = Rádió lejátszása, ha a lejátszási sor véget ér
+skip_explicit = Explicit számok kihagyása
+pause_watch_history = Megtekintési előzmények szüneteltetése
 
 crossfade = Áttűnés
 crossfade_off = Ki
@@ -425,6 +452,8 @@ listen_now_layout = Elrendezés
 ui_style = Felület stílusa
 ui_normal = Normál
 ui_vaxry = Vaxry
+ui_material3 = Material 3
+system_colors = Rendszerszínek
 player_bar_position = Lejátszó sáv pozíciója
 position_bottom = Lent
 position_top = Fent
@@ -470,6 +499,11 @@ minimize_to_tray = Kicsinyítés a tálcára
 update_available = Elérhető frissítés
 update_banner_message = A Kopuz { $version } elérhető.
 view_release = Kiadás megtekintése
+update_install = Frissítés és újraindítás
+update_downloading = A Kopuz { $version } letöltése…
+update_restarting = Újraindítás a frissítés befejezéséhez…
+update_failed = A Kopuz { $version } telepítése sikertelen.
+update_retry = Újrapróbálás
 
 volume_scroll_step = Hangerő görgetési lépés
 
@@ -492,6 +526,50 @@ discover_more_loading = További betöltése…
 discover_failed = Nem sikerült betölteni a Felfedezést: { $error }
 discover_unsupported = A Felfedezés csak akkor érhető el, ha a YouTube Music az aktív szerver.
 discover_show_all = Összes megjelenítése
+catalog_page_explore = Felfedezés
+catalog_page_charts = Toplisták
+catalog_page_moods = Hangulatok és műfajok
+catalog_page_podcasts = Podcastok
+catalog_page_library_songs = Dalaid
+catalog_page_library_albums = Albumaid
+catalog_page_library_artists = Előadóid
+catalog_page_subscriptions = Feliratkozások
+catalog_page_library_podcasts = Podcastjaid
+catalog_page_uploads = Feltöltések
+catalog_page_history = Előzmények
+search_filter_all = Összes
+search_filter_songs = Dalok
+search_filter_videos = Videók
+search_filter_community_playlists = Közösségi lejátszási listák
+search_filter_featured_playlists = Kiemelt lejátszási listák
+search_filter_episodes = Epizódok
+search_filter_profiles = Profilok
+discover_show_more = Több megjelenítése
+discover_scroll_back = Görgetés vissza
+discover_scroll_forward = Görgetés előre
+catalog_page_empty = Itt még nincs semmi
+search_prompt = Keress dalokat, albumokat, előadókat és mást
+search_showing_results_for = Találatok erre: „{ $query }”
+catalog_like = Tetszik
+catalog_unlike = Tetszés visszavonása
+catalog_dislike = Nem tetszik
+catalog_undislike = Nem tetszik visszavonása
+catalog_save = Mentés a könyvtárba
+catalog_unsave = Eltávolítás a könyvtárból
+catalog_follow = Követés
+catalog_unfollow = Követés leállítása
+catalog_following = Követed
+catalog_remove_history = Eltávolítás az előzményekből
+playlist_edit_details = Részletek szerkesztése
+playlist_description = Leírás
+playlist_privacy = Ki láthatja
+playlist_privacy_public = Nyilvános
+playlist_privacy_unlisted = Nem nyilvános
+playlist_privacy_private = Privát
+playlist_delete_title = Törlöd ezt a lejátszási listát?
+playlist_delete_body = A(z) „{ $name }” véglegesen törlődik innen: { $service }.
+playlist_unsave_title = Eltávolítod a könyvtáradból?
+playlist_unsave_body = A(z) „{ $name }” kikerül a(z) { $service } könyvtáradból. Maga a lista marad a(z) { $service } szolgáltatásban.
 source_anon_playlists = Jelentkezz be a YouTube Musicba a könyvtárad lejátszási listáinak megtekintéséhez.
 source_anon_favorites = Jelentkezz be a YouTube Musicba a kedvelt dalaid megtekintéséhez.
 source_anon_discover = Jelentkezz be a YouTube Musicba a Felfedezés böngészéséhez.
@@ -544,8 +622,13 @@ external_play_on = Lejátszás itt
 external_this_app = kopuz (ez az alkalmazás)
 prefer_active_device = Playback device
 prefer_active_device_help = When another device is already playing, take it over instead of starting playback here.
-settings_managed_notice = Egyes beállításokat a rendszerkonfiguráció (Nix/hjem) kezel, és itt nem módosíthatók.
+settings_managed_notice = Egyes beállításokat egy olyan beállításfájl határoz meg, amelyet az alkalmazás nem tud írni (csak olvasható vagy a Nix/hjem kezeli), ezért itt nem módosíthatók.
 setting_managed_by_system = A rendszerkonfiguráció kezeli
+settings_dropin_notice = Egyes beállításokat kiegészítő fájlok határoznak meg, és itt nem módosíthatók.
+settings_env_notice = Egyes beállításokat KOPUZ_CONFIG_* környezeti változók határoznak meg, és itt nem módosíthatók.
+setting_locked_by_file = Beállította: { $path }
+setting_locked_by_dropin = Beállította a kiegészítő fájl: { $path }
+setting_locked_by_env = Beállította: { $var }
 
 settings_interface = Interface
 interface_general = General
@@ -581,6 +664,7 @@ settings_tools = Tools
 share = Share
 share_copied = Copied link
 share_no_page = Couldn't find a page for this track
+explicit = Explicit
 start_daemon = Start Daemon
 
 first_run_title = Welcome to Kopuz
@@ -630,7 +714,11 @@ waiting_for_browser = Waiting for your browser…
 signed_in = Signed in
 metadata_number_invalid = Enter a number, or leave it empty to clear the tag.
 metadata_batch_keep = Leave unchanged
-metadata_batch_count = Editing { $count } tracks
+metadata_batch_count =
+    { $count ->
+        [one] Editing { $count } track
+       *[other] Editing { $count } tracks
+    }
 interface_font = Interface font
 interface_font_description = The font family to draw the interface with.
 interface_font_placeholder = Theme default
@@ -710,6 +798,13 @@ view = View
 undo = Undo
 quit = Quit
 scanning_library = Scanning library…
+network_offline_banner = No internet connection — switched to offline mode
+network_online_banner = Back online — switched to server mode
+keep_server_mode = Keep server mode
+tray_show_hide = Show / Hide Kopuz
+tray_quit = Quit Kopuz
+tray_unavailable_title = Tray icon unavailable
+tray_unavailable_message = System tray unavailable: appindicator library not found. Install libayatana-appindicator (Debian/Ubuntu/Arch) or libappindicator-gtk3 (Fedora). Closing the window will quit the app instead of minimizing to tray.
 reconnecting_attempt = Reconnecting… (attempt { $attempt })
 downloads_summary = { $done } downloaded, { $failed } failed
 job_scan = Library scan
@@ -776,11 +871,19 @@ discover_clear_search = Clear search
 discover_results_for = Results for "{ $query }"
 discover_no_results_hint = Try fewer words, or switch source and look again.
 discover_show_less = Show less
-discover_genre_count = { $count } genres
+discover_genre_count =
+    { $count ->
+        [one] { $count } genre
+       *[other] { $count } genres
+    }
 discover_read_failed = Couldn't load your library: { $error }
 palette_all_results = All results for "{ $query }" in Discover
 
-library_count = { $count } items
+library_count =
+    { $count ->
+        [one] { $count } item
+       *[other] { $count } items
+    }
 library_filter_placeholder = Filter the library…
 library_chip_downloaded = Downloaded
 library_chip_years = Years
@@ -803,7 +906,11 @@ library_tile_medium = Medium
 library_tile_large = Large
 library_default_view = Grids open as
 library_default_view_description = Whether albums, artists and playlists start as tiles or as rows.
-library_artist_tracks = { $count } tracks
+library_artist_tracks =
+    { $count ->
+        [one] { $count } track
+       *[other] { $count } tracks
+    }
 library_selected = { $count } selected
 library_whole_selection = Everything that matches
 library_read_failed = Could not read the library
@@ -842,7 +949,11 @@ downloader_history = URL downloads
 interface_skin = Skin
 interface_skin_description = The shape of the interface: how round things are, how tall a row sits.
 
-home_plays = { $count } plays
+home_plays =
+    { $count ->
+        [one] { $count } play
+       *[other] { $count } plays
+    }
 
 interface_ambient = Ambient light
 interface_ambient_description = Let the current cover cast its colour across the window.
@@ -864,3 +975,83 @@ settings_group_interface = Felület
 settings_group_output = Kimenet
 settings_group_loudness = Hangerő
 browse = Böngészés
+
+clippsly_help = Create an App Password at clippsly.app, then sign in with your Clippsly username and that App Password. Storage limits are set by your Clippsly account.
+cloud_storage_usage = Cloud storage: { $used } of { $total } used
+upload_music = Upload music
+uploading_music = Uploading { $name }…
+music_uploaded =
+    { $count ->
+        [one] Uploaded { $count } file.
+       *[other] Uploaded { $count } files.
+    }
+music_upload_too_large = Audio files must be no larger than 500 MiB.
+cloud_storage_loading = Loading storage usage…
+
+smb_url_placeholder = smb://nas/Music
+smb_help = Connect to an SMB 2/3 share or subfolder, then sign in with your NAS account. Domain accounts can use DOMAIN\username. Files are read without mounting the share.
+invalid_smb_url = Enter smb://host/share or smb://host/share/folder, without credentials in the URL.
+
+browser_sessions_heading = Már bejelentkezve
+browser_sessions_checking = Böngészők ellenőrzése…
+browser_session_name = { $browser } · { $profile }
+browser_session_use = Használat
+browser_session_importing = Bejelentkezés…
+browser_session_help = A Kopuz átmásolja a munkamenetet a kiválasztott böngészőprofilból. A böngésző nyitva maradhat.
+
+playback_error_session_expired = A(z) { $source } bejelentkezésed lejárt. Jelentkezz be újra a lejátszás folytatásához.
+playback_error_challenged = A(z) { $source } ellenőrizni szeretné, hogy nem vagy-e robot. Várj néhány percet, és próbáld újra.
+playback_error_refused = A(z) { $source } nem játszotta le ezt a dalt. A bejelentkezésed rendben van: a hiba a(z) { $source } oldalán van, és általában magától megszűnik.
+playback_error_unreachable = A(z) { $source } nem érhető el. Ellenőrizd a kapcsolatot, és próbáld újra.
+playback_error_unavailable = A(z) { $source } nem tudja lejátszani ezt a dalt. Lehet, hogy eltávolították, priváttá tették vagy a régiódban letiltották.
+playback_sign_in_again = Bejelentkezés újra
+playback_try_again = Újrapróbálás
+playback_skip = Dal kihagyása
+playback_copy_details = Részletek másolása
+playback_details_copied = Részletek átmásolva
+source_signed_out = ● Kijelentkezve
+source_not_responding = ● Nem válaszol
+connection_test = Kapcsolat tesztelése
+connection_testing = Tesztelés…
+connection_test_failed = A tesztet nem sikerült lefuttatni: { $error }
+connection_copy_report = Jelentés másolása
+connection_report_copied = Jelentés átmásolva
+connection_step_reach = A szolgáltatás elérhető
+connection_step_session = Bejelentkezés elfogadva
+connection_step_signed_in_playback = Lejátszás a fiókoddal
+connection_step_anonymous_playback = Lejátszás fiók nélkül
+connection_step_playback_token = Lejátszási token
+connection_step_passed = Sikeres
+connection_step_failed = Sikertelen
+connection_step_skipped = Kihagyva
+
+sync_interval = Sync and rescan every
+sync_interval_never = Never
+sync_interval_minutes = { $count } min
+sync_interval_hours = { $count } h
+sync_interval_days = { $count } d
+
+error_setting_locked = A managed settings file pins this setting, so it cannot be changed here.
+error_connect_not_offered = This integration does not connect that way.
+error_api_key_missing = Set the API key and secret first.
+error_sign_in_not_started = The service did not start the sign-in. Check the API key and your connection.
+error_browser_not_opened = Could not open a browser for the sign-in.
+error_sign_in_timed_out = The sign-in was not approved in time.
+error_browser_profile_gone = That browser profile is no longer there.
+error_browser_cookies_unreadable = Could not read the cookies of that browser profile.
+error_browser_profile_signed_out = That browser profile is not signed in to the service. Sign in there, or paste your token instead.
+error_browser_profile_no_token = The service did not show a token for that profile. Paste it instead.
+error_integration_unreachable = Could not reach the service. Check your connection.
+error_credential_rejected = The service does not accept that token. Paste your token instead.
+error_default_source_undeletable = The default folder source cannot be deleted.
+error_empty_source_folder = A source folder cannot be empty.
+error_code_invalid_input = Not accepted: { $detail }
+error_code_not_found = That is no longer there.
+error_code_conflict = Already in use or in progress: { $detail }
+error_code_source_auth_expired = The source did not accept the sign-in. Sign in again in Settings.
+error_code_source_unreachable = The source could not be reached. Check your connection.
+error_code_unsupported = Not supported here: { $detail }
+error_code_internal = Something went wrong: { $detail }
+error_code_source_challenged = The source wants to check that you're not a bot. Wait a few minutes and try again.
+error_code_source_refused = The source refused the request. This is on its side and usually clears up on its own.
+error_code_item_unavailable = The source can't play this. It may have been removed, made private or blocked in your region.

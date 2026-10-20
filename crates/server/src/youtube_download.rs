@@ -11,9 +11,7 @@ use reader::Track;
 use serde_json::Value;
 use tokio::io::AsyncWriteExt;
 
-use crate::ytmusic::{
-    YtStreamInfo, clients::WEB_REMIX, discover, innertube, playlists, search::synthesize_album_id,
-};
+use crate::ytmusic::{YtStreamInfo, clients::WEB_REMIX, discover, innertube, playlists};
 
 /// What a pasted link points at.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -152,7 +150,7 @@ impl YoutubeDownloader {
     }
 
     /// Songs on YouTube Music matching `query`, best match first.
-    pub async fn search(&self, query: &str) -> Result<Vec<Track>, String> {
+    pub async fn search(&self, query: &str) -> Result<Vec<Track>, crate::source::SourceError> {
         crate::ytmusic::search::music_search_tracks(query, self.cookies.as_deref()).await
     }
 
@@ -190,7 +188,7 @@ impl YoutubeDownloader {
         Ok(Track {
             id: crate::ytmusic::yt_id(video_id),
             cover: best_thumbnail(details),
-            album_id: synthesize_album_id("", &artist),
+            album_id: String::new(),
             title: text("title").unwrap_or_default().to_string(),
             artists: if artist.is_empty() {
                 Vec::new()
@@ -211,12 +209,20 @@ impl YoutubeDownloader {
             musicbrainz_track_id: None,
             playlist_item_id: None,
             replay_gain: config::ReplayGainInfo::default(),
+            counterpart: None,
             credits: Vec::new(),
+            explicit: false,
+            plays: None,
         })
     }
 
     pub async fn stream(&self, video_id: &str) -> Result<YtStreamInfo, String> {
-        crate::ytmusic::probe_stream(video_id, self.cookies.as_deref()).await
+        crate::ytmusic::probe_stream(
+            video_id,
+            self.cookies.as_deref(),
+            config::StreamQuality::High,
+        )
+        .await
     }
 }
 
@@ -234,7 +240,7 @@ pub async fn fetch_stream(
     cancelled: &(dyn Fn() -> bool + Send + Sync),
     progress: Progress<'_>,
 ) -> Result<(), String> {
-    let client = reqwest::Client::builder()
+    let client = utils::http::builder()
         .connect_timeout(Duration::from_secs(20))
         .build()
         .map_err(|error| format!("the download client could not start: {error}"))?;

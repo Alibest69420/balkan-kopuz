@@ -11,6 +11,9 @@ language = Γλώσσα
 library = Βιβλιοθήκη
 playlists = Λίστες Αναπαραγωγής
 album = Άλμπουμ
+release_single = Σινγκλ
+release_ep = EP
+release_audiobook = Audiobook
 artist = Καλλιτέχνης
 home = Αρχική
 search = Αναζήτηση
@@ -31,6 +34,9 @@ add = Προσθήκη
 add_folder = Προσθήκη φακέλου
 no_music_folders = Δεν έχουν οριστεί φάκελοι μουσικής
 remote_music_folders = Φάκελοι μουσικής
+source_account = Λογαριασμός
+source_account_help = Κάθε λογαριασμός έχει τη δική του βιβλιοθήκη. Η εναλλαγή τη συγχρονίζει ξανά.
+source_accounts_failed = Αδυναμία φόρτωσης λογαριασμών: { $error }
 parent_folder = Πάνω
 use_this_folder = Προσθήκη αυτού του φακέλου
 no_subfolders = Χωρίς υποφακέλους
@@ -63,6 +69,10 @@ discord_presence = Κατάσταση Discord
 connectivity = Συνδεσιμότητα
 integration_connect = Connect to { $name }
 integration_connected = { $name } connected
+integration_connecting = Connecting…
+integration_browser_title = Use a signed-in browser
+integration_browser_profile = { $name } ({ $browser })
+integration_browser_none = No browser profiles found. Paste your token above instead.
 discord_presence_paused = Εμφάνιση κατάστασης Discord σε παύση
 discord_presence_source = Εμφάνιση πηγής πολυμέσων στην κατάσταση Discord
 reduce_animations = Μείωση κινήσεων
@@ -108,6 +118,7 @@ radio_empty = Δεν βρέθηκαν παρόμοια τραγούδια
 radio_failed = Δεν ήταν δυνατή η έναρξη του ραδιοφώνου
 remove_from_queue = Αφαίρεση από την Ουρά
 downloading = Γίνεται λήψη…
+downloading_progress = Downloading { $done } / { $total }
 more_actions_for = Περισσότερες ενέργειες για { $name }
 share_musicbrainz = Κοινοποίηση (MusicBrainz)
 share_link_copied = Ο σύνδεσμος MusicBrainz αντιγράφηκε
@@ -123,6 +134,7 @@ add_all_to_queue = Προσθήκη Όλων στην Ουρά
 add_all_to_playlist = Προσθήκη Όλων στη Λίστα Αναπαραγωγής
 select_all = Επιλογή όλων
 select_all_tracks = Επιλογή όλων των κομματιών
+deselect_all_tracks = Deselect all tracks
 remove_from_cache = Αφαίρεση από την Κρυφή Μνήμη
 create = Δημιουργία
 save = Αποθήκευση
@@ -145,15 +157,42 @@ new_releases = Νέες Κυκλοφορίες
 # Navigation Buttons
 up_next = Επόμενο
 lyrics = Στίχοι
+track_version = Έκδοση
+track_version_song = Τραγούδι
+track_version_video = Βίντεο
+music_video = Μουσικό βίντεο
 
 # Player/Media
 loading_lyrics = Φόρτωση στίχων...
 lyrics_not_found = Οι στίχοι δεν βρέθηκαν
 instrumental_break = Ορχηστρικό
 no_previous_songs = Δεν υπάρχει προηγούμενο τραγούδι
-playlist_track_count = { $count } κομμάτια
-music_playlist_count = Μουσική • { $count } κομμάτια
-showcase_song_count = { $count } τραγούδια
+playlist_track_count =
+    { $count ->
+        [one] { $count } κομμάτι
+       *[other] { $count } κομμάτια
+    }
+playlist_folder_count =
+    { $count ->
+        [one] { $count } λίστα αναπαραγωγής
+       *[other] { $count } λίστες αναπαραγωγής
+    }
+playlists_synced_count =
+    { $count ->
+        [one] Συγχρονίστηκε { $count } λίστα αναπαραγωγής
+       *[other] Συγχρονίστηκαν { $count } λίστες αναπαραγωγής
+    }
+playlists_loading_tracks = Φόρτωση κομματιών — λίστες { $done } / { $count } (απομένουν { $remaining })
+music_playlist_count =
+    { $count ->
+        [one] Μουσική • { $count } κομμάτι
+       *[other] Μουσική • { $count } κομμάτια
+    }
+showcase_song_count =
+    { $count ->
+        [one] { $count } τραγούδι
+       *[other] { $count } τραγούδια
+    }
 
 # Modal Titles
 add_playlist = Προσθήκη λίστας αναπαραγωγής
@@ -210,8 +249,11 @@ title = Τίτλος
 time = Διάρκεια
 genre = Είδος
 plays = Αναπαραγωγές
-track_count = { $count } κομμάτια
-track_count_singular = 1 κομμάτι
+track_count =
+    { $count ->
+        [one] { $count } κομμάτι
+       *[other] { $count } κομμάτια
+    }
 songs = τραγούδια
 min = λεπτ
 
@@ -246,8 +288,16 @@ unknown_genre = Άγνωστο
 no_tracks_in_library = Δεν βρέθηκαν κομμάτια στη βιβλιοθήκη σας.
 no_songs_here = Δεν υπάρχουν τραγούδια εδώ.
 syncing_with_server = Συγχρονισμός με τον διακομιστή...
-yt_syncing_progress = Συγχρονισμός — φορτώθηκαν { $count } κομμάτια
-yt_synced_total = Συγχρονίστηκαν { $count } αγαπημένα κομμάτια
+yt_syncing_progress =
+    { $count ->
+        [one] Συγχρονισμός — φορτώθηκε { $count } κομμάτι
+       *[other] Συγχρονισμός — φορτώθηκαν { $count } κομμάτια
+    }
+yt_synced_total =
+    { $count ->
+        [one] Συγχρονίστηκε { $count } αγαπημένο κομμάτι
+       *[other] Συγχρονίστηκαν { $count } αγαπημένα κομμάτια
+    }
 refresh = Ανανέωση
 most_played_tracks = Τα πιο πολυπαιγμένα κομμάτια σας.
 no_more_songs = Δεν υπάρχουν άλλα τραγούδια στην ουρά
@@ -346,6 +396,7 @@ replay_gain_mode_auto = Αυτόματη
 replay_gain_prevent_clipping = Αποφυγή ψαλιδισμού
 replay_gain_preamp = Προενίσχυση
 replay_gain_fallback = Προεπιλεγμένη ενίσχυση
+replay_gain_youtube_loudness = Κανονικοποίηση έντασης YouTube Music
 move_to_folder = Μετακίνηση σε φάκελο
 no_folders_yet = Δεν υπάρχουν φάκελοι ακόμα.
 folder_name = Όνομα φακέλου...
@@ -396,6 +447,14 @@ device_change_pause = Pause
 sample_rate_mode = Ρυθμός δειγματοληψίας εξόδου
 sample_rate_mode_system = Ακολούθηση συστήματος
 sample_rate_mode_source = Αντιστοίχιση με το κομμάτι
+settings_group_streaming = Ροή
+stream_quality = Ποιότητα ροής
+stream_quality_low = Χαμηλή
+stream_quality_normal = Κανονική
+stream_quality_high = Υψηλή
+autoplay_radio = Αναπαραγωγή ραδιοφώνου όταν τελειώσει η ουρά
+skip_explicit = Παράλειψη ρητών κομματιών
+pause_watch_history = Παύση ιστορικού παρακολούθησης
 
 crossfade = Crossfade (Σταδιακή μίξη)
 crossfade_off = Ανενεργό
@@ -425,6 +484,8 @@ listen_now_layout = Διάταξη
 ui_style = Στυλ διεπαφής
 ui_normal = Κανονικό
 ui_vaxry = Vaxry
+ui_material3 = Material 3
+system_colors = Χρώματα συστήματος
 player_bar_position = Θέση μπάρας αναπαραγωγής
 position_bottom = Κάτω
 position_top = Πάνω
@@ -470,6 +531,11 @@ minimize_to_tray = Ελαχιστοποίηση στη γραμμή συστήμ
 update_available = Διαθέσιμη ενημέρωση
 update_banner_message = Το Kopuz { $version } είναι διαθέσιμο.
 view_release = Προβολή έκδοσης
+update_install = Ενημέρωση και επανεκκίνηση
+update_downloading = Λήψη του Kopuz { $version }…
+update_restarting = Επανεκκίνηση για ολοκλήρωση της ενημέρωσης…
+update_failed = Δεν ήταν δυνατή η εγκατάσταση του Kopuz { $version }.
+update_retry = Δοκιμάστε ξανά
 
 volume_scroll_step = Βήμα κύλισης έντασης
 
@@ -492,6 +558,50 @@ discover_more_loading = Φόρτωση περισσότερων…
 discover_failed = Αδυναμία φόρτωσης Ανακάλυψης: { $error }
 discover_unsupported = Η Ανακάλυψη είναι διαθέσιμη μόνο όταν το YouTube Music είναι ο ενεργός διακομιστής.
 discover_show_all = Εμφάνιση όλων
+catalog_page_explore = Εξερεύνηση
+catalog_page_charts = Τσαρτ
+catalog_page_moods = Διαθέσεις και είδη
+catalog_page_podcasts = Podcast
+catalog_page_library_songs = Τα τραγούδια σου
+catalog_page_library_albums = Τα άλμπουμ σου
+catalog_page_library_artists = Οι καλλιτέχνες σου
+catalog_page_subscriptions = Συνδρομές
+catalog_page_library_podcasts = Τα podcast σου
+catalog_page_uploads = Μεταφορτώσεις
+catalog_page_history = Ιστορικό
+search_filter_all = Όλα
+search_filter_songs = Τραγούδια
+search_filter_videos = Βίντεο
+search_filter_community_playlists = Λίστες κοινότητας
+search_filter_featured_playlists = Προτεινόμενες λίστες
+search_filter_episodes = Επεισόδια
+search_filter_profiles = Προφίλ
+discover_show_more = Εμφάνιση περισσότερων
+discover_scroll_back = Κύλιση πίσω
+discover_scroll_forward = Κύλιση εμπρός
+catalog_page_empty = Τίποτα εδώ ακόμη
+search_prompt = Αναζητήστε τραγούδια, άλμπουμ, καλλιτέχνες και άλλα
+search_showing_results_for = Εμφάνιση αποτελεσμάτων για «{ $query }»
+catalog_like = Μου αρέσει
+catalog_unlike = Αφαίρεση «Μου αρέσει»
+catalog_dislike = Δεν μου αρέσει
+catalog_undislike = Αφαίρεση «Δεν μου αρέσει»
+catalog_save = Αποθήκευση στη βιβλιοθήκη
+catalog_unsave = Αφαίρεση από τη βιβλιοθήκη
+catalog_follow = Ακολούθηση
+catalog_unfollow = Διακοπή ακολούθησης
+catalog_following = Ακολουθείτε
+catalog_remove_history = Αφαίρεση από το ιστορικό
+playlist_edit_details = Επεξεργασία στοιχείων
+playlist_description = Περιγραφή
+playlist_privacy = Ποιος τη βλέπει
+playlist_privacy_public = Δημόσια
+playlist_privacy_unlisted = Μη καταχωρισμένη
+playlist_privacy_private = Ιδιωτική
+playlist_delete_title = Διαγραφή αυτής της λίστας;
+playlist_delete_body = Η «{ $name }» θα διαγραφεί οριστικά από το { $service }.
+playlist_unsave_title = Αφαίρεση από τη βιβλιοθήκη σας;
+playlist_unsave_body = Η «{ $name }» φεύγει από τη βιβλιοθήκη σας στο { $service }. Η λίστα παραμένει στο { $service }.
 source_anon_playlists = Συνδέσου στο YouTube Music για να δεις τις λίστες αναπαραγωγής σου.
 source_anon_favorites = Συνδέσου στο YouTube Music για να δεις τα τραγούδια που σου άρεσαν.
 source_anon_discover = Συνδέσου στο YouTube Music για να δεις την Ανακάλυψη.
@@ -544,8 +654,13 @@ external_play_on = Αναπαραγωγή σε
 external_this_app = kopuz (αυτή η εφαρμογή)
 prefer_active_device = Playback device
 prefer_active_device_help = When another device is already playing, take it over instead of starting playback here.
-settings_managed_notice = Ορισμένες ρυθμίσεις διαχειρίζονται από τη διαμόρφωση του συστήματος (Nix/hjem) και δεν μπορούν να αλλάξουν εδώ.
+settings_managed_notice = Ορισμένες ρυθμίσεις προέρχονται από ένα αρχείο ρυθμίσεων στο οποίο η εφαρμογή δεν μπορεί να γράψει (μόνο για ανάγνωση ή υπό τη διαχείριση του Nix/hjem) και δεν μπορούν να αλλάξουν εδώ.
 setting_managed_by_system = Διαχειρίζεται από τη διαμόρφωση του συστήματος
+settings_dropin_notice = Ορισμένες ρυθμίσεις ορίζονται από πρόσθετα αρχεία και δεν μπορούν να αλλάξουν εδώ.
+settings_env_notice = Ορισμένες ρυθμίσεις ορίζονται από μεταβλητές περιβάλλοντος KOPUZ_CONFIG_* και δεν μπορούν να αλλάξουν εδώ.
+setting_locked_by_file = Ορίστηκε από { $path }
+setting_locked_by_dropin = Ορίστηκε από το πρόσθετο αρχείο { $path }
+setting_locked_by_env = Ορίστηκε από { $var }
 
 settings_interface = Interface
 interface_general = General
@@ -581,6 +696,7 @@ settings_tools = Tools
 share = Share
 share_copied = Copied link
 share_no_page = Couldn't find a page for this track
+explicit = Ρητό περιεχόμενο
 start_daemon = Start Daemon
 
 first_run_title = Welcome to Kopuz
@@ -630,7 +746,11 @@ waiting_for_browser = Waiting for your browser…
 signed_in = Signed in
 metadata_number_invalid = Enter a number, or leave it empty to clear the tag.
 metadata_batch_keep = Leave unchanged
-metadata_batch_count = Editing { $count } tracks
+metadata_batch_count =
+    { $count ->
+        [one] Editing { $count } track
+       *[other] Editing { $count } tracks
+    }
 interface_font = Interface font
 interface_font_description = The font family to draw the interface with.
 interface_font_placeholder = Theme default
@@ -710,6 +830,13 @@ view = View
 undo = Undo
 quit = Quit
 scanning_library = Scanning library…
+network_offline_banner = No internet connection — switched to offline mode
+network_online_banner = Back online — switched to server mode
+keep_server_mode = Keep server mode
+tray_show_hide = Show / Hide Kopuz
+tray_quit = Quit Kopuz
+tray_unavailable_title = Tray icon unavailable
+tray_unavailable_message = System tray unavailable: appindicator library not found. Install libayatana-appindicator (Debian/Ubuntu/Arch) or libappindicator-gtk3 (Fedora). Closing the window will quit the app instead of minimizing to tray.
 reconnecting_attempt = Reconnecting… (attempt { $attempt })
 downloads_summary = { $done } downloaded, { $failed } failed
 job_scan = Library scan
@@ -776,11 +903,19 @@ discover_clear_search = Clear search
 discover_results_for = Results for "{ $query }"
 discover_no_results_hint = Try fewer words, or switch source and look again.
 discover_show_less = Show less
-discover_genre_count = { $count } genres
+discover_genre_count =
+    { $count ->
+        [one] { $count } genre
+       *[other] { $count } genres
+    }
 discover_read_failed = Couldn't load your library: { $error }
 palette_all_results = All results for "{ $query }" in Discover
 
-library_count = { $count } items
+library_count =
+    { $count ->
+        [one] { $count } item
+       *[other] { $count } items
+    }
 library_filter_placeholder = Filter the library…
 library_chip_downloaded = Downloaded
 library_chip_years = Years
@@ -803,7 +938,11 @@ library_tile_medium = Medium
 library_tile_large = Large
 library_default_view = Grids open as
 library_default_view_description = Whether albums, artists and playlists start as tiles or as rows.
-library_artist_tracks = { $count } tracks
+library_artist_tracks =
+    { $count ->
+        [one] { $count } track
+       *[other] { $count } tracks
+    }
 library_selected = { $count } selected
 library_whole_selection = Everything that matches
 library_read_failed = Could not read the library
@@ -842,7 +981,11 @@ downloader_history = URL downloads
 interface_skin = Skin
 interface_skin_description = The shape of the interface: how round things are, how tall a row sits.
 
-home_plays = { $count } plays
+home_plays =
+    { $count ->
+        [one] { $count } play
+       *[other] { $count } plays
+    }
 
 interface_ambient = Ambient light
 interface_ambient_description = Let the current cover cast its colour across the window.
@@ -864,3 +1007,83 @@ settings_group_interface = Διεπαφή
 settings_group_output = Έξοδος
 settings_group_loudness = Ένταση
 browse = Περιήγηση
+
+clippsly_help = Create an App Password at clippsly.app, then sign in with your Clippsly username and that App Password. Storage limits are set by your Clippsly account.
+cloud_storage_usage = Cloud storage: { $used } of { $total } used
+upload_music = Upload music
+uploading_music = Uploading { $name }…
+music_uploaded =
+    { $count ->
+        [one] Uploaded { $count } file.
+       *[other] Uploaded { $count } files.
+    }
+music_upload_too_large = Audio files must be no larger than 500 MiB.
+cloud_storage_loading = Loading storage usage…
+
+smb_url_placeholder = smb://nas/Music
+smb_help = Connect to an SMB 2/3 share or subfolder, then sign in with your NAS account. Domain accounts can use DOMAIN\username. Files are read without mounting the share.
+invalid_smb_url = Enter smb://host/share or smb://host/share/folder, without credentials in the URL.
+
+browser_sessions_heading = Ήδη συνδεδεμένοι
+browser_sessions_checking = Έλεγχος των προγραμμάτων περιήγησής σας…
+browser_session_name = { $browser } · { $profile }
+browser_session_use = Χρήση
+browser_session_importing = Σύνδεση…
+browser_session_help = Το Kopuz αντιγράφει τη συνεδρία από το προφίλ προγράμματος περιήγησης που επιλέγετε. Το πρόγραμμα περιήγησης μπορεί να μείνει ανοιχτό.
+
+playback_error_session_expired = Η σύνδεσή σας στο { $source } έληξε. Συνδεθείτε ξανά για να συνεχίσετε την αναπαραγωγή.
+playback_error_challenged = Το { $source } θέλει να επαληθεύσει ότι δεν είστε ρομπότ. Περιμένετε λίγα λεπτά και δοκιμάστε ξανά.
+playback_error_refused = Το { $source } αρνήθηκε να παίξει αυτό το κομμάτι. Η σύνδεσή σας είναι εντάξει: το πρόβλημα είναι στο { $source } και συνήθως φεύγει μόνο του.
+playback_error_unreachable = Δεν είναι δυνατή η σύνδεση με το { $source }. Ελέγξτε τη σύνδεσή σας και δοκιμάστε ξανά.
+playback_error_unavailable = Το { $source } δεν μπορεί να παίξει αυτό το κομμάτι. Μπορεί να έχει αφαιρεθεί, να έγινε ιδιωτικό ή να έχει αποκλειστεί στην περιοχή σας.
+playback_sign_in_again = Σύνδεση ξανά
+playback_try_again = Δοκιμή ξανά
+playback_skip = Παράλειψη κομματιού
+playback_copy_details = Αντιγραφή λεπτομερειών
+playback_details_copied = Οι λεπτομέρειες αντιγράφηκαν
+source_signed_out = ● Αποσυνδεδεμένο
+source_not_responding = ● Δεν ανταποκρίνεται
+connection_test = Δοκιμή σύνδεσης
+connection_testing = Δοκιμή…
+connection_test_failed = Δεν ήταν δυνατή η εκτέλεση της δοκιμής: { $error }
+connection_copy_report = Αντιγραφή αναφοράς
+connection_report_copied = Η αναφορά αντιγράφηκε
+connection_step_reach = Η υπηρεσία είναι προσβάσιμη
+connection_step_session = Η σύνδεση έγινε αποδεκτή
+connection_step_signed_in_playback = Παίζει με τον λογαριασμό σας
+connection_step_anonymous_playback = Παίζει χωρίς λογαριασμό
+connection_step_playback_token = Διακριτικό αναπαραγωγής
+connection_step_passed = Επιτυχία
+connection_step_failed = Αποτυχία
+connection_step_skipped = Παραλείφθηκε
+
+sync_interval = Sync and rescan every
+sync_interval_never = Never
+sync_interval_minutes = { $count } min
+sync_interval_hours = { $count } h
+sync_interval_days = { $count } d
+
+error_setting_locked = A managed settings file pins this setting, so it cannot be changed here.
+error_connect_not_offered = This integration does not connect that way.
+error_api_key_missing = Set the API key and secret first.
+error_sign_in_not_started = The service did not start the sign-in. Check the API key and your connection.
+error_browser_not_opened = Could not open a browser for the sign-in.
+error_sign_in_timed_out = The sign-in was not approved in time.
+error_browser_profile_gone = That browser profile is no longer there.
+error_browser_cookies_unreadable = Could not read the cookies of that browser profile.
+error_browser_profile_signed_out = That browser profile is not signed in to the service. Sign in there, or paste your token instead.
+error_browser_profile_no_token = The service did not show a token for that profile. Paste it instead.
+error_integration_unreachable = Could not reach the service. Check your connection.
+error_credential_rejected = The service does not accept that token. Paste your token instead.
+error_default_source_undeletable = The default folder source cannot be deleted.
+error_empty_source_folder = A source folder cannot be empty.
+error_code_invalid_input = Not accepted: { $detail }
+error_code_not_found = That is no longer there.
+error_code_conflict = Already in use or in progress: { $detail }
+error_code_source_auth_expired = The source did not accept the sign-in. Sign in again in Settings.
+error_code_source_unreachable = The source could not be reached. Check your connection.
+error_code_unsupported = Not supported here: { $detail }
+error_code_internal = Something went wrong: { $detail }
+error_code_source_challenged = The source wants to check that you're not a bot. Wait a few minutes and try again.
+error_code_source_refused = The source refused the request. This is on its side and usually clears up on its own.
+error_code_item_unavailable = The source can't play this. It may have been removed, made private or blocked in your region.
