@@ -302,7 +302,6 @@ impl PlaylistDetail {
                 return v_flex()
                     .flex_1()
                     .min_h_0()
-                    .pb_20()
                     .child(components::skeleton::rows(10, px(56.), true, 3, cx))
                     .into_any_element();
             }
@@ -320,7 +319,6 @@ impl PlaylistDetail {
         v_flex()
             .flex_1()
             .min_h_0()
-            .pb_20()
             .gap_2()
             .child(TrackHeader::new(
                 "playlist-header",

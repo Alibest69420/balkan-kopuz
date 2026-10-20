@@ -434,7 +434,6 @@ impl ArtistDetail {
             div()
                 .flex_1()
                 .min_h_0()
-                .pb_20()
                 .child(
                     self.collection
                         .bands::<Self>(self.albums.clone(), mode, window, cx),

@@ -99,7 +99,6 @@ impl Render for Artists {
             _ => div()
                 .flex_1()
                 .min_h_0()
-                .pb_20()
                 .child(
                     self.grid
                         .bands(
