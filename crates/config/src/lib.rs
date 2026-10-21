@@ -1067,6 +1067,14 @@ pub struct Library {
     #[serde(default)]
     #[garde(skip)]
     pub offline_quality: OfflineQuality,
+    /// Keep songs streamed from across the internet for offline listening; off stops adding to the cache and keeps what it holds.
+    #[serde(default = "default_true")]
+    #[garde(skip)]
+    pub offline_cache_enabled: bool,
+    /// The cache's size cap; past it the least recently played songs go first, and downloads never count.
+    #[serde(default = "default_offline_cache_max_bytes")]
+    #[garde(range(min = MIN_OFFLINE_CACHE_BYTES, max = MAX_OFFLINE_CACHE_BYTES))]
+    pub offline_cache_max_bytes: u64,
     /// Minutes between the daemon's own library syncs and folder rescans; 0 turns them off.
     #[serde(default = "default_sync_interval_minutes")]
     #[garde(range(max = MAX_SYNC_INTERVAL_MINUTES))]
@@ -1082,9 +1090,22 @@ impl Default for Library {
             auto_fetch_covers: false,
             cover_fetch_strategy: FetchStrategy::default(),
             offline_quality: OfflineQuality::default(),
+            offline_cache_enabled: true,
+            offline_cache_max_bytes: default_offline_cache_max_bytes(),
             sync_interval_minutes: default_sync_interval_minutes(),
         }
     }
+}
+
+pub const DEFAULT_OFFLINE_CACHE_MAX_BYTES: u64 = 5_000_000_000;
+
+/// The smallest cap the settings UI offers: a few albums.
+pub const MIN_OFFLINE_CACHE_BYTES: u64 = 500_000_000;
+
+pub const MAX_OFFLINE_CACHE_BYTES: u64 = 1_000_000_000_000;
+
+fn default_offline_cache_max_bytes() -> u64 {
+    DEFAULT_OFFLINE_CACHE_MAX_BYTES
 }
 
 impl Library {

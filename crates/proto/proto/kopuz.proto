@@ -1880,6 +1880,8 @@ message ConfigEdit {
     bool auto_check_updates = 34;
     bool minimize_to_tray = 35;
     StringList connectivity_check_urls = 83;
+    bool offline_cache_enabled = 84;
+    uint64 offline_cache_max_bytes = 85;
   }
 }
 
@@ -2000,6 +2002,8 @@ enum SettingKey {
   SETTING_KEY_DOWNLOADER_OUTPUT_DIR = 76;
   SETTING_KEY_DOWNLOADER_OPTIONS = 77;
   SETTING_KEY_CONNECTIVITY_CHECK_URLS = 83;
+  SETTING_KEY_OFFLINE_CACHE_ENABLED = 84;
+  SETTING_KEY_OFFLINE_CACHE_MAX_BYTES = 85;
 }
 
 message GetFrontendPrefsRequest {
@@ -2141,6 +2145,9 @@ message Config {
   DownloaderOptions downloader_options = 77;
   // Absent from a peer that predates it, which must not read as an empty list (no check).
   StringList connectivity_check_urls = 83;
+  // Both absent from a peer that predates them, which must read as the defaults: on, and 5 GB.
+  optional bool offline_cache_enabled = 84;
+  optional uint64 offline_cache_max_bytes = 85;
 }
 
 message DownloaderOptions {

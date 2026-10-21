@@ -76,6 +76,8 @@
   "lyrics_offset_auto": true,
   "lyrics_offset_ms": 1000,
   "minimize_to_tray": false,
+  "offline_cache_enabled": true,
+  "offline_cache_max_bytes": 5000000000,
   "offline_quality": "Kbps256",
   "pause_watch_history": false,
   "player_bar_position": "Bottom",
