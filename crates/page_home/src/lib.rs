@@ -14,17 +14,16 @@ use std::collections::HashMap;
 
 use api::{AlbumPage, ArtistPage, Page, StatsView, Table, TrackFilter, TrackPage, TrackSort};
 use components::format::t;
-use components::{EmptyState, PageHeader, TitleSize, icons, style};
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{Sizable as _, v_flex};
+use components::{EmptyState, PageHeader, TitleSize, icons};
+use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
-    ParentElement as _, Render, ScrollHandle, SharedString, StatefulInteractiveElement as _,
-    Styled, Subscription, Window,
+    ParentElement as _, Render, ScrollHandle, StatefulInteractiveElement as _, Styled,
+    Subscription, Window,
 };
 use store::layout::Ordered as _;
-use store::{ForYouModel, ForYouState, Navigator, PlaylistsModel, Query, Route, SourcesModel};
+use store::{ForYouModel, ForYouState, PlaylistsModel, Query, SourcesModel};
 
 use data::{RECENT_TRACKS_WINDOW, RECENTLY_ADDED_WINDOW, Shelf};
 
@@ -230,32 +229,11 @@ impl Render for Home {
     }
 }
 
-/// `text-4xl font-black` "Home", and the pill that opens where the shelves are arranged.
-fn heading(cx: &App) -> AnyElement {
+/// `text-4xl font-black` "Home"; its shelves are arranged in Settings → Interface.
+fn heading(_: &App) -> AnyElement {
     PageHeader::new(t("home"))
         .size(TitleSize::Display)
         .flush()
-        .action(
-            Button::new("home-customize")
-                .custom(style::quiet_button(
-                    style::white(style::TEXT_STRONG, cx),
-                    cx,
-                ))
-                .small()
-                .rounded_full()
-                .border_1()
-                .border_color(style::white(style::BORDER, cx))
-                .icon(icons::icon(icons::SETTINGS))
-                .label(t("customize_home"))
-                .on_click(|_, _, cx| {
-                    Navigator::navigate(
-                        Route::Settings {
-                            section: Some(SharedString::new_static("home")),
-                        },
-                        cx,
-                    )
-                }),
-        )
         .into_any_element()
 }
 

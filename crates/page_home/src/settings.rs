@@ -13,7 +13,7 @@ use store::layout::{SHELVES, Section as Group};
 pub fn register(cx: &mut App) {
     settings_interface::register(
         "home",
-        "home",
+        "customize_home",
         3,
         Some(Group::Home),
         |window, cx| cx.new(|cx| Shelves::new(window, cx)).into(),
