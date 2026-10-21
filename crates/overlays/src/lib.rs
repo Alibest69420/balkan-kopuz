@@ -14,10 +14,10 @@ use gpui_kit::{
 };
 mod hint;
 
-use status::{ConnectionBanner, Toasts};
+use status::{ConnectionBanner, NetworkBanner, Toasts};
 use store::{JobsModel, PlayerModel};
 
-// TODO(parity): the offline and update banners need a connectivity probe and GitHub, both outside the daemon seam (§3.1).
+// TODO(parity): the update banner needs GitHub, which is outside the daemon seam (§3.1).
 
 const SCAN_BAR: Pixels = px(2.);
 const SCAN_ROW_PY: Pixels = px(3.);
@@ -40,6 +40,7 @@ pub struct Overlays {
     // The error the user closed, so the banner stays gone until the daemon reports a different one.
     dismissed_error: Option<String>,
     banner: Entity<ConnectionBanner>,
+    network: Entity<NetworkBanner>,
     // Held, not drawn: toasts must keep arriving in compact mode, where nothing here renders.
     _toasts: Entity<Toasts>,
     _subscriptions: Vec<Subscription>,
@@ -50,16 +51,19 @@ impl Overlays {
         let jobs = JobsModel::global(cx);
         let player = PlayerModel::global(cx);
         let banner = cx.new(|cx| ConnectionBanner::new(window, cx));
+        let network = cx.new(|cx| NetworkBanner::new(window, cx));
         let subscriptions = vec![
             cx.observe(&jobs, |_, _, cx| cx.notify()),
             cx.observe(&player, |_, _, cx| cx.notify()),
             cx.observe(&banner, |_, _, cx| cx.notify()),
+            cx.observe(&network, |_, _, cx| cx.notify()),
             cx.observe(&store::SetupModel::global(cx), |_, _, cx| cx.notify()),
             cx.observe(&store::LayoutModel::global(cx), |_, _, cx| cx.notify()),
         ];
         Self {
             dismissed_error: None,
             banner,
+            network,
             _toasts: cx.new(|cx| Toasts::new(window, cx)),
             _subscriptions: subscriptions,
         }
@@ -206,16 +210,23 @@ impl Render for Overlays {
             .cloned();
         let error = self.playback_error(cx);
         let offline = ConnectionBanner::is_offline(cx);
+        let network = !offline && NetworkBanner::is_showing(cx);
         let tips = match offline {
             true => None,
             false => hint::card(window, cx),
         };
-        if scan.is_none() && error.is_none() && !offline && tips.is_none() {
+        if scan.is_none() && error.is_none() && !offline && !network && tips.is_none() {
             return div().into_any_element();
         }
 
         let scan = scan.map(|progress| self.scan_banner(&progress, window, cx));
         let error = error.map(|message| self.error_banner(message, window, cx));
+        let network = network.then(|| {
+            div()
+                .w_full()
+                .opacity(appear("network-banner", window, cx))
+                .child(self.network.clone())
+        });
         v_flex()
             .absolute()
             .inset_0()
@@ -233,6 +244,7 @@ impl Render for Overlays {
                 v_flex()
                     .w_full()
                     .when(offline, |column| column.child(self.banner.clone()))
+                    .children(network)
                     .children(scan)
                     .children(error),
             )

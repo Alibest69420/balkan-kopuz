@@ -5,11 +5,12 @@ use components::{StatusDot, icons, style};
 use gpui_kit::base::StyledExt as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, Icon, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Anchor, App, IntoElement, ParentElement as _, Pixels, RenderOnce, SharedString, Styled, Window,
-    div, px,
+    Anchor, App, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, RenderOnce,
+    SharedString, StatefulInteractiveElement as _, Styled, Window, div, px,
 };
 use store::{Navigator, Route, SourceStatus, SourcesModel};
 
@@ -24,6 +25,8 @@ const SUBLINE_GAP: Pixels = px(2.);
 // The switcher's own dimmed tones, which are off the named alpha scale.
 const HEAD_COUNT: f32 = 0.38;
 const ROW_NAME: f32 = 0.85;
+/// A source the internet being down leaves out of reach still answers a click, with the daemon's refusal.
+const CUT_OFF: f32 = 0.45;
 
 const MANAGE_ICON: &str = "icons/sliders-horizontal.svg";
 
@@ -130,10 +133,17 @@ fn row(source: &SourceInfo, cx: &App) -> PopupMenuItem {
         false => style::white(ROW_NAME, cx),
     };
     let muted = style::white(style::TEXT_SUBTLE, cx);
+    let cut_off = SourcesModel::global(cx).read(cx).cut_off(source);
+    let row_id = SharedString::from(format!("source-row-{}", source.id));
     PopupMenuItem::element(move |_, _| {
         h_flex()
+            .id(row_id.clone())
             .w_full()
             .gap_2p5()
+            .when(cut_off, |row| {
+                row.opacity(CUT_OFF)
+                    .tooltip(|window, cx| Tooltip::new(t("error_network_down")).build(window, cx))
+            })
             .child(mark.clone())
             .child(
                 v_flex()
@@ -166,6 +176,9 @@ fn row(source: &SourceInfo, cx: &App) -> PopupMenuItem {
                         .size(CHECK)
                         .text_color(accent),
                 )
+            })
+            .when(cut_off, |row| {
+                row.child(icons::icon(icons::WIFI_OFF).size(CHECK).text_color(muted))
             })
     })
     .on_click(move |_, window, cx| {
