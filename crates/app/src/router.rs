@@ -63,6 +63,9 @@ fn build(route: &Route, window: &mut Window, cx: &mut Context<Shell>) -> AnyView
         Route::DiscoverArtist(key) => cx
             .new(|cx| discover::CatalogArtist::new(key, window, cx))
             .into(),
+        Route::CatalogPage { id } => cx
+            .new(|cx| discover::CatalogPage::new(id, window, cx))
+            .into(),
         // Both library routes collapse to one cache key, so a chip does not rebuild the page.
         // The four old listings redirect here, and only reach this arm if one ever slips through.
         Route::Library

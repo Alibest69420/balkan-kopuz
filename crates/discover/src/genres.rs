@@ -1,9 +1,8 @@
-//! Genres: the tiles the library's own tags make, and the page one of them opens.
+//! A genre's page: every track filed under it.
 
-use std::collections::HashMap;
 use std::rc::Rc;
 
-use api::{AlbumInfo, ArtworkRef, Table, TrackPage};
+use api::{Table, TrackPage};
 use components::format::{t, t_with};
 use components::{
     DetailActions, EmptyState, Loading, Look, PageHeader, TrackActions, TrackList, TrackListEvent,
@@ -17,43 +16,6 @@ use gpui_kit::{
 use store::{Query, SourcesModel, actions, all};
 
 use crate::states;
-
-/// One genre tile: the name, and the cover of the first album filed under it.
-pub struct GenreTile {
-    pub name: SharedString,
-    pub artwork: Option<ArtworkRef>,
-}
-
-/// The card for one tile.
-pub fn genre_card(tile: &GenreTile) -> components::GenreCard {
-    components::GenreCard::new(tile.name.clone(), tile.artwork.clone())
-}
-
-/// Genres are no listing of their own: they are the album rows' `genre` field, split and folded.
-pub fn genres_of(albums: &[AlbumInfo]) -> Vec<GenreTile> {
-    let mut covers: HashMap<&str, Option<&ArtworkRef>> = HashMap::new();
-    for album in albums {
-        for genre in album.genre.split(['/', ';', ',']) {
-            let genre = genre.trim();
-            if genre.is_empty() {
-                continue;
-            }
-            let entry = covers.entry(genre).or_default();
-            if entry.is_none() {
-                *entry = album.artwork.as_ref();
-            }
-        }
-    }
-    let mut tiles: Vec<GenreTile> = covers
-        .into_iter()
-        .map(|(name, artwork)| GenreTile {
-            name: name.to_string().into(),
-            artwork: artwork.cloned(),
-        })
-        .collect();
-    tiles.sort_by(|left, right| left.name.cmp(&right.name));
-    tiles
-}
 
 fn track_count(count: usize) -> SharedString {
     t_with("track_count", &[("count", count.into())])
@@ -190,37 +152,5 @@ impl Render for Genre {
                     }),
             )
             .child(body)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn album(genre: &str) -> AlbumInfo {
-        AlbumInfo {
-            genre: genre.to_string(),
-            ..AlbumInfo::default()
-        }
-    }
-
-    #[test]
-    fn a_multi_genre_tag_becomes_one_tile_each() {
-        let albums = [album("Rock / Post-Rock; Shoegaze")];
-        let tiles = genres_of(&albums);
-        let names: Vec<&str> = tiles.iter().map(|tile| tile.name.as_ref()).collect();
-        assert_eq!(names, ["Post-Rock", "Rock", "Shoegaze"]);
-    }
-
-    #[test]
-    fn the_same_genre_on_two_albums_is_one_tile() {
-        let albums = [album("Jazz"), album("Jazz,"), album("")];
-        assert_eq!(genres_of(&albums).len(), 1);
-    }
-
-    #[test]
-    fn a_library_that_tags_nothing_has_no_genres() {
-        let albums = [album(""), album("  ,  ")];
-        assert!(genres_of(&albums).is_empty());
     }
 }

@@ -12,6 +12,10 @@ pub enum Route {
         title: SharedString,
     },
     DiscoverArtist(String),
+    /// A catalog page the source declares or a tile opens, read with `CatalogDetailRequest::page`.
+    CatalogPage {
+        id: SharedString,
+    },
     Library,
     /// The library with a facet and a filter set on it, encoded so back and forward restore them.
     LibraryView(SharedString),
@@ -59,7 +63,9 @@ impl Route {
             Route::Album(_) => Route::Albums,
             Route::Artist(_) => Route::Artists,
             Route::Playlist(_) | Route::PlaylistFolder(_) => Route::Playlists,
-            Route::DiscoverPlaylist { .. } | Route::DiscoverArtist(_) => Route::Discover,
+            Route::DiscoverPlaylist { .. }
+            | Route::DiscoverArtist(_)
+            | Route::CatalogPage { .. } => Route::Discover,
             Route::Settings { .. } => Route::Settings { section: None },
             other => other.clone(),
         }
@@ -142,6 +148,7 @@ impl Route {
             Route::Discover
             | Route::DiscoverPlaylist { .. }
             | Route::DiscoverArtist(_)
+            | Route::CatalogPage { .. }
             | Route::Search
             | Route::Genre(_) => "discover",
             Route::Radio => "radio",
@@ -367,6 +374,11 @@ mod tests {
             Some("library")
         );
         assert_eq!(Route::Search.destination_of(false), Some("discover"));
+        let page = Route::CatalogPage {
+            id: "FEmusic_charts".into(),
+        };
+        assert_eq!(page.destination_of(false), Some("discover"));
+        assert_eq!(page.root(), Route::Discover);
         assert_eq!(
             Route::Playlist("x".into()).destination_of(false),
             Some("playlists")
