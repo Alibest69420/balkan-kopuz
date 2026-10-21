@@ -474,7 +474,8 @@ impl AlbumDetail {
                         v_flex()
                             .flex_1()
                             .min_w_0()
-                            .pb_24()
+                            .h_full()
+                            .min_h_0()
                             .child(self.tracks_body()),
                     ),
             )
