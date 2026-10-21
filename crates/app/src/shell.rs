@@ -114,6 +114,7 @@ impl Shell {
         let subscriptions = vec![
             // Unmounted, the guide's own notify has no ancestor to dirty, so it would never appear.
             cx.observe(&first_run, |_, _, cx| cx.notify()),
+            cx.observe(&store::SetupModel::global(cx), |_, _, cx| cx.notify()),
             cx.observe(&connection, |_, _, cx| cx.notify()),
             cx.observe(&navigator, |_, _, cx| cx.notify()),
             cx.observe(&chrome, |_, _, cx| cx.notify()),
@@ -206,7 +207,7 @@ impl Render for Shell {
         // A disconnect outranks compact: a mini player with nothing behind it would keep showing
         // the last track it saw, with no way to learn the daemon had gone.
         let compact = chrome.is_compact() && connected;
-        let first_run = self.first_run.read(cx).showing(cx);
+        let first_run = store::SetupModel::global(cx).read(cx).showing() && connected;
         let nav_left = store::layout(cx).nav.position == store::layout::NavPosition::Left;
         let bar = Some(self.topbar.clone());
         let playlists = self.playlists_panel.read(cx);

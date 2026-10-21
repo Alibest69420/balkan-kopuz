@@ -5203,9 +5203,13 @@ dependencies = [
  "components",
  "gpui-kit",
  "kopuz-api",
+ "kopuz-config",
+ "kopuz-i18n",
+ "link",
  "profile",
  "settings_sources",
  "store",
+ "tracing",
 ]
 
 [[package]]

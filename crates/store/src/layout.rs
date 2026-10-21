@@ -698,8 +698,6 @@ pub struct Layout {
     pub skin: String,
     /// Command id to keystroke, overriding what the registry binds by default.
     pub shortcuts: BTreeMap<String, String>,
-    /// The first-run guide was skipped; cleared again once a source holds something.
-    pub first_run_dismissed: bool,
     /// The sorts and view modes every Kopuz frontend keeps, under the same keys the daemon seeded.
     #[serde(flatten)]
     pub ui: config::UiPrefs,
@@ -724,7 +722,6 @@ impl Default for Layout {
             motion: Motion::default(),
             skin: "normal".into(),
             shortcuts: BTreeMap::new(),
-            first_run_dismissed: false,
             ui: config::UiPrefs::default(),
         }
     }
