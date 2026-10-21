@@ -482,6 +482,16 @@ impl api::LibraryApi for LocalApi {
             .await
     }
 
+    async fn for_you(&self) -> Result<api::ForYou, ApiError> {
+        self.recovering(|| async move { self.catalog()?.for_you().await })
+            .await
+    }
+
+    async fn refresh_for_you(&self) -> Result<api::ForYou, ApiError> {
+        self.recovering(|| async move { self.catalog()?.refresh_for_you().await })
+            .await
+    }
+
     async fn radio_stations(&self) -> Result<Vec<api::RadioStationInfo>, ApiError> {
         Ok(self.radio()?.stations().await)
     }

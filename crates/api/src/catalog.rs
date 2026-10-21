@@ -189,3 +189,20 @@ pub enum ReleaseKind {
     Ep,
     Audiobook,
 }
+
+/// The active source's "For you" mix: songs from radios seeded by a few of its liked tracks.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ForYou {
+    /// Shuffled, without repeats; the same until refreshed or the daemon restarts.
+    Mix(Vec<TrackInfo>),
+    /// There is nothing to mix from, so a frontend hides the row.
+    Unavailable(ForYouUnavailable),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForYouUnavailable {
+    /// The source cannot start a radio from a track.
+    NoTrackRadio,
+    /// Nothing is liked on the source yet.
+    NoLikes,
+}

@@ -28,7 +28,8 @@ pub use sources::{MAX_MUSIC_UPLOAD_BYTES, StorageQuota, TrackUpload};
 pub use artwork::{ArtworkData, ArtworkRef, ArtworkRequest, ArtworkTarget};
 pub use catalog::{
     CatalogActions, CatalogChip, CatalogDetail, CatalogDetailRequest, CatalogHeader, CatalogItem,
-    CatalogItemKind, CatalogPage, CatalogShelf, Rating, ReleaseKind, ShelfLayout,
+    CatalogItemKind, CatalogPage, CatalogShelf, ForYou, ForYouUnavailable, Rating, ReleaseKind,
+    ShelfLayout,
 };
 pub use error::{ApiError, ErrorBody, ErrorCode, ErrorReason};
 pub use events::{ApiEvent, JobKind, JobProgress, NoticeLevel, SourceState, Table};
@@ -259,6 +260,12 @@ pub trait LibraryApi: Send + Sync {
         &self,
         request: CatalogDetailRequest,
     ) -> Result<CatalogDetail, ApiError>;
+
+    /// The active source's "For you" mix, built on first ask and held in memory; fails only when every radio does.
+    async fn for_you(&self) -> Result<ForYou, ApiError>;
+
+    /// Throw the mix away and build a new one from a fresh pick of liked tracks.
+    async fn refresh_for_you(&self) -> Result<ForYou, ApiError>;
 
     /// Every station the configured registries hold, pinned ones marked.
     async fn radio_stations(&self) -> Result<Vec<RadioStationInfo>, ApiError>;

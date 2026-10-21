@@ -530,6 +530,24 @@ impl api::LibraryApi for GrpcApi {
         Ok(convert::catalog_detail_from_proto(detail.get_ref()))
     }
 
+    async fn for_you(&self) -> Result<api::ForYou, ApiError> {
+        let mix = self
+            .client()
+            .get_for_you(Request::new(proto::GetForYouRequest {}))
+            .await
+            .map_err(wire_error)?;
+        Ok(convert::for_you_from_proto(mix.get_ref()))
+    }
+
+    async fn refresh_for_you(&self) -> Result<api::ForYou, ApiError> {
+        let mix = self
+            .client()
+            .refresh_for_you(Request::new(proto::RefreshForYouRequest {}))
+            .await
+            .map_err(wire_error)?;
+        Ok(convert::for_you_from_proto(mix.get_ref()))
+    }
+
     async fn radio_stations(&self) -> Result<Vec<api::RadioStationInfo>, ApiError> {
         let list = self
             .client()

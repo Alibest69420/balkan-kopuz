@@ -510,6 +510,22 @@ impl Kopuz for KopuzGrpc {
         Ok(Response::new(convert::catalog_detail_to_proto(&detail)))
     }
 
+    async fn get_for_you(
+        &self,
+        _request: Request<proto::GetForYouRequest>,
+    ) -> Result<Response<proto::ForYou>, Status> {
+        let mix = self.0.api.for_you().await.map_err(failed)?;
+        Ok(Response::new(convert::for_you_to_proto(&mix)))
+    }
+
+    async fn refresh_for_you(
+        &self,
+        _request: Request<proto::RefreshForYouRequest>,
+    ) -> Result<Response<proto::ForYou>, Status> {
+        let mix = self.0.api.refresh_for_you().await.map_err(failed)?;
+        Ok(Response::new(convert::for_you_to_proto(&mix)))
+    }
+
     async fn get_radio_stations(
         &self,
         _: Request<proto::GetRadioStationsRequest>,

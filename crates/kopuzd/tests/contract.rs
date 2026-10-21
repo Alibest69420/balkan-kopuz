@@ -218,9 +218,11 @@ async fn spawn_pair() -> Pair {
     let downloader =
         daemon::UrlDownloadService::new(database.clone(), config_service.clone(), sources.clone());
     let prefs = daemon::PrefsService::new(database.clone(), session.clone());
+    let catalog = daemon::CatalogService::new(database.clone(), session.clone(), library.clone());
     let build_api = |session: SessionHandle| {
         LocalApi::new(session)
             .with_config(config_service.clone())
+            .with_catalog(catalog.clone())
             .with_prefs(prefs.clone())
             .with_library(library.clone())
             .with_jobs(jobs.clone())
@@ -2919,6 +2921,22 @@ async fn catalog_and_radio_report_absence_identically() {
             .err()
             .map(|e| e.code),
     );
+}
+
+/// A folder library starts no radio, so "For you" is unavailable rather than an error, on both transports.
+#[tokio::test]
+async fn for_you_without_track_radio_hides_the_row_on_both_transports() {
+    let pair = spawn_pair().await;
+    pair.local
+        .set_favorite("/lib/seed-0.flac".into(), true)
+        .await
+        .expect("a like to seed from");
+    let hidden = api::ForYou::Unavailable(api::ForYouUnavailable::NoTrackRadio);
+
+    assert_eq!(pair.local.for_you().await, Ok(hidden.clone()));
+    assert_eq!(pair.wire.for_you().await, Ok(hidden.clone()));
+    assert_eq!(pair.local.refresh_for_you().await, Ok(hidden.clone()));
+    assert_eq!(pair.wire.refresh_for_you().await, Ok(hidden));
 }
 
 /// Opening a page the source does not have fails the same way on both transports.

@@ -10,18 +10,21 @@
 //! exactly one way to get a picture and one that cannot fetch a URL itself
 //! still works.
 
-use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Mutex};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::future::Future;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use api::{
     ApiError, ArtworkRef, ArtworkTarget, CatalogActions, CatalogChip, CatalogDetail,
     CatalogDetailRequest, CatalogHeader, CatalogItem, CatalogItemKind, CatalogPage, CatalogShelf,
-    ShelfLayout, Table,
+    ForYou, ForYouUnavailable, ShelfLayout, Table,
 };
+use rand::seq::SliceRandom;
 use server::source::RadioPage;
 use server::ytmusic::discover::{
     BrowsePage, DiscoverHome, DiscoverItem, DiscoverShelf, ItemActions, LinkKind, PageHeader,
 };
+use tokio::sync::OnceCell;
 
 use server::source::MediaSource;
 
@@ -32,11 +35,21 @@ use crate::sources::source_error;
 /// Roughly a few pages of browsing; the oldest tiles fall out.
 const MAX_REMEMBERED_TILES: usize = 4096;
 
+/// How many liked tracks seed the "For you" mix.
+const FOR_YOU_SEEDS: usize = 5;
+/// How many songs from the top of each seed's radio join it.
+const FOR_YOU_PER_RADIO: usize = 3;
+
+/// One build of a source's mix, shared by every caller that asks while it runs.
+type ForYouBuild = Arc<OnceCell<Result<Vec<reader::Track>, ApiError>>>;
+type ForYouMixes = Mutex<HashMap<config::Source, ForYouBuild>>;
+
 pub struct CatalogService {
     db: db::Db,
     session: SessionHandle,
     library: Arc<LibraryService>,
     thumbnails: Mutex<Thumbnails>,
+    for_you: ForYouMixes,
 }
 
 #[derive(Default)]
@@ -52,6 +65,7 @@ impl CatalogService {
             session,
             library,
             thumbnails: Mutex::new(Thumbnails::default()),
+            for_you: Mutex::default(),
         })
     }
 
@@ -756,6 +770,130 @@ impl CatalogService {
             .transient_track(key)
             .ok_or_else(|| ApiError::not_found("unknown radio seed"))
     }
+
+    pub async fn for_you(&self) -> Result<ForYou, ApiError> {
+        self.for_you_mix(false).await
+    }
+
+    pub async fn refresh_for_you(&self) -> Result<ForYou, ApiError> {
+        self.for_you_mix(true).await
+    }
+
+    async fn for_you_mix(&self, fresh: bool) -> Result<ForYou, ApiError> {
+        let source = self.source();
+        let track_radio = source.capabilities().radio.track;
+        let likes = match track_radio {
+            true => source.favorites().await.map_err(source_error)?,
+            false => Vec::new(),
+        };
+        if let Some(reason) = for_you_unavailable(track_radio, &likes) {
+            return Ok(ForYou::Unavailable(reason));
+        }
+        let build = for_you_build(&self.for_you, source.source(), fresh);
+        let built = build
+            .get_or_init(|| {
+                mix_for_you(likes, |seed| {
+                    let source = &source;
+                    async move { self.radio_songs(source.as_ref(), &seed).await }
+                })
+            })
+            .await
+            .clone();
+        match built {
+            Ok(tracks) => {
+                self.library.register_transient(&tracks);
+                let offline = self.session.offline();
+                Ok(ForYou::Mix(
+                    tracks
+                        .iter()
+                        .map(|track| crate::wire::track_info(track, offline))
+                        .collect(),
+                ))
+            }
+            Err(error) => {
+                forget_failed_for_you(&self.for_you, source.source(), &build);
+                Err(error)
+            }
+        }
+    }
+
+    /// A seed's radio as its source ranks it; unlike [`Self::track_radio`] the seed is not pinned, since the mix drops it.
+    async fn radio_songs(
+        &self,
+        source: &dyn MediaSource,
+        seed: &str,
+    ) -> Result<Vec<reader::Track>, ApiError> {
+        let mut page = source.start_radio(seed).await.map_err(source_error)?;
+        crate::wire::listed_by(source.source(), &mut page.tracks);
+        Ok(page.tracks)
+    }
+}
+
+fn for_you_unavailable(track_radio: bool, likes: &[String]) -> Option<ForYouUnavailable> {
+    match (track_radio, likes.is_empty()) {
+        (false, _) => Some(ForYouUnavailable::NoTrackRadio),
+        (true, true) => Some(ForYouUnavailable::NoLikes),
+        (true, false) => None,
+    }
+}
+
+/// The build a request for `source`'s mix joins: the held one, or a new one when there is none or `fresh` asks to drop it.
+fn for_you_build(mixes: &ForYouMixes, source: &config::Source, fresh: bool) -> ForYouBuild {
+    let mut mixes = mixes.lock().unwrap_or_else(PoisonError::into_inner);
+    if fresh {
+        mixes.remove(source);
+    }
+    mixes.entry(source.clone()).or_default().clone()
+}
+
+/// A failed build is not a mix to keep: the next request tries again, unless a refresh already replaced it.
+fn forget_failed_for_you(mixes: &ForYouMixes, source: &config::Source, build: &ForYouBuild) {
+    let mut mixes = mixes.lock().unwrap_or_else(PoisonError::into_inner);
+    if mixes
+        .get(source)
+        .is_some_and(|held| Arc::ptr_eq(held, build))
+    {
+        mixes.remove(source);
+    }
+}
+
+/// Radios from up to [`FOR_YOU_SEEDS`] random likes, the top [`FOR_YOU_PER_RADIO`] of each bar the seed, without repeats, shuffled.
+async fn mix_for_you<F, Fut>(
+    mut likes: Vec<String>,
+    radio: F,
+) -> Result<Vec<reader::Track>, ApiError>
+where
+    F: Fn(String) -> Fut,
+    Fut: Future<Output = Result<Vec<reader::Track>, ApiError>>,
+{
+    likes.shuffle(&mut rand::rng());
+    likes.truncate(FOR_YOU_SEEDS);
+    let radios = futures_util::future::join_all(likes.iter().cloned().map(radio)).await;
+    let mut seen = HashSet::new();
+    let mut tracks = Vec::new();
+    let mut failure = None;
+    let mut answered = false;
+    for (seed, outcome) in likes.iter().zip(radios) {
+        match outcome {
+            Ok(songs) => {
+                answered = true;
+                let top = songs
+                    .into_iter()
+                    .filter(|track| track.id.key() != seed.as_str())
+                    .take(FOR_YOU_PER_RADIO);
+                tracks.extend(top.filter(|track| seen.insert(track.id.key().into_owned())));
+            }
+            Err(error) => {
+                tracing::warn!(%error, seed, "a For you radio failed");
+                failure.get_or_insert(error);
+            }
+        }
+    }
+    if let (false, Some(error)) = (answered, failure) {
+        return Err(error);
+    }
+    tracks.shuffle(&mut rand::rng());
+    Ok(tracks)
 }
 
 /// The library's way to the catalog, so tests can build a queue from a catalog id offline.
@@ -903,5 +1041,215 @@ mod tests {
 
         assert!(take_seed(&mut mix, "seed").is_none());
         assert_eq!(mix.len(), 2, "nothing was taken");
+    }
+
+    mod for_you {
+        use std::collections::HashMap;
+        use std::sync::{Arc, Mutex};
+
+        use api::{ApiError, ErrorCode, ForYouUnavailable};
+
+        use super::super::{
+            FOR_YOU_PER_RADIO, FOR_YOU_SEEDS, ForYouMixes, for_you_build, for_you_unavailable,
+            forget_failed_for_you, mix_for_you,
+        };
+        use super::track;
+
+        fn likes(keys: &[&str]) -> Vec<String> {
+            keys.iter().map(|key| key.to_string()).collect()
+        }
+
+        fn sorted(tracks: &[reader::Track]) -> Vec<String> {
+            let mut keys: Vec<String> = tracks.iter().map(|t| t.id.key().into_owned()).collect();
+            keys.sort();
+            keys
+        }
+
+        type Radio = std::future::Ready<Result<Vec<reader::Track>, ApiError>>;
+        type Asked = Arc<Mutex<Vec<String>>>;
+
+        /// A radio per seed from a fixed table; a seed missing from it fails as unreachable.
+        fn radios(table: &[(&str, &[&str])]) -> (impl Fn(String) -> Radio, Asked) {
+            let table: HashMap<String, Vec<String>> = table
+                .iter()
+                .map(|(seed, songs)| (seed.to_string(), likes(songs)))
+                .collect();
+            let asked = Arc::new(Mutex::new(Vec::new()));
+            let log = asked.clone();
+            let radio = move |seed: String| {
+                log.lock().unwrap().push(seed.clone());
+                std::future::ready(match table.get(&seed) {
+                    Some(songs) => Ok(songs.iter().map(|key| track(key)).collect()),
+                    None => Err(ApiError::new(ErrorCode::SourceUnreachable, "offline")),
+                })
+            };
+            (radio, asked)
+        }
+
+        #[tokio::test]
+        async fn each_radio_adds_its_top_three_without_the_seed() {
+            let (radio, _) = radios(&[("a", &["a", "r1", "r2", "r3", "r4"])]);
+
+            let mix = mix_for_you(likes(&["a"]), radio).await.unwrap();
+
+            assert_eq!(FOR_YOU_PER_RADIO, 3);
+            assert_eq!(sorted(&mix), ["r1", "r2", "r3"]);
+        }
+
+        #[tokio::test]
+        async fn a_song_two_radios_share_is_mixed_in_once() {
+            let (radio, _) = radios(&[("a", &["x", "y", "z"]), ("b", &["y", "z", "w"])]);
+
+            let mix = mix_for_you(likes(&["a", "b"]), radio).await.unwrap();
+
+            assert_eq!(sorted(&mix), ["w", "x", "y", "z"]);
+        }
+
+        #[tokio::test]
+        async fn five_random_likes_seed_it_and_fewer_all_do() {
+            let songs: &[&str] = &["s1", "s2", "s3"];
+            let many = ["l1", "l2", "l3", "l4", "l5", "l6", "l7", "l8"];
+            let table: Vec<(&str, &[&str])> = many.iter().map(|seed| (*seed, songs)).collect();
+            let (radio, asked) = radios(&table);
+
+            mix_for_you(likes(&many), radio).await.unwrap();
+
+            let mut asked = asked.lock().unwrap().clone();
+            asked.sort();
+            asked.dedup();
+            assert_eq!(FOR_YOU_SEEDS, 5);
+            assert_eq!(asked.len(), FOR_YOU_SEEDS, "{asked:?}");
+            assert!(asked.iter().all(|seed| many.contains(&seed.as_str())));
+
+            let (radio, asked) = radios(&table);
+            mix_for_you(likes(&many[..3]), radio).await.unwrap();
+            let mut asked = asked.lock().unwrap().clone();
+            asked.sort();
+            assert_eq!(asked, ["l1", "l2", "l3"]);
+        }
+
+        #[tokio::test]
+        async fn the_radios_that_answered_make_the_mix_when_others_fail() {
+            let (radio, _) = radios(&[("b", &["x", "y"])]);
+
+            let mix = mix_for_you(likes(&["a", "b", "c"]), radio).await.unwrap();
+
+            assert_eq!(sorted(&mix), ["x", "y"]);
+        }
+
+        #[tokio::test]
+        async fn every_radio_failing_is_the_radios_error() {
+            let (radio, _) = radios(&[]);
+
+            let error = mix_for_you(likes(&["a", "b"]), radio).await.unwrap_err();
+
+            assert_eq!(error.code, ErrorCode::SourceUnreachable);
+        }
+
+        #[test]
+        fn no_track_radio_or_no_likes_hides_the_row() {
+            assert_eq!(
+                for_you_unavailable(false, &likes(&["a"])),
+                Some(ForYouUnavailable::NoTrackRadio)
+            );
+            assert_eq!(
+                for_you_unavailable(true, &[]),
+                Some(ForYouUnavailable::NoLikes)
+            );
+            assert_eq!(for_you_unavailable(true, &likes(&["a"])), None);
+        }
+
+        fn server(id: &str) -> config::Source {
+            config::Source::Server(id.into())
+        }
+
+        async fn build_on(
+            mixes: &ForYouMixes,
+            source: &config::Source,
+            fresh: bool,
+            builds: &Mutex<u32>,
+        ) -> Result<Vec<reader::Track>, ApiError> {
+            let build = for_you_build(mixes, source, fresh);
+            build
+                .get_or_init(|| async {
+                    tokio::task::yield_now().await;
+                    let mut count = builds.lock().unwrap();
+                    *count += 1;
+                    Ok(vec![track(&format!("build-{count}"))])
+                })
+                .await
+                .clone()
+        }
+
+        #[tokio::test]
+        async fn the_mix_holds_until_a_refresh_builds_another() {
+            let mixes = ForYouMixes::default();
+            let builds = Mutex::new(0);
+            let yt = server("yt");
+
+            let first = build_on(&mixes, &yt, false, &builds).await.unwrap();
+            let again = build_on(&mixes, &yt, false, &builds).await.unwrap();
+            assert_eq!(sorted(&first), sorted(&again));
+            assert_eq!(*builds.lock().unwrap(), 1);
+
+            let refreshed = build_on(&mixes, &yt, true, &builds).await.unwrap();
+            assert_eq!(sorted(&refreshed), ["build-2"]);
+            let after = build_on(&mixes, &yt, false, &builds).await.unwrap();
+            assert_eq!(
+                sorted(&after),
+                ["build-2"],
+                "the refreshed mix is the one held"
+            );
+
+            let other = build_on(&mixes, &server("other"), false, &builds)
+                .await
+                .unwrap();
+            assert_eq!(
+                sorted(&other),
+                ["build-3"],
+                "each source has a mix of its own"
+            );
+        }
+
+        #[tokio::test]
+        async fn requests_while_it_builds_share_the_one_build() {
+            let mixes = ForYouMixes::default();
+            let builds = Mutex::new(0);
+            let yt = server("yt");
+
+            let (a, b) = tokio::join!(
+                build_on(&mixes, &yt, false, &builds),
+                build_on(&mixes, &yt, false, &builds)
+            );
+
+            assert_eq!(sorted(&a.unwrap()), sorted(&b.unwrap()));
+            assert_eq!(*builds.lock().unwrap(), 1);
+        }
+
+        #[tokio::test]
+        async fn a_failed_build_is_not_kept() {
+            let mixes = ForYouMixes::default();
+            let yt = server("yt");
+            let build = for_you_build(&mixes, &yt, false);
+            build
+                .get_or_init(|| async { Err(ApiError::internal("down")) })
+                .await;
+
+            forget_failed_for_you(&mixes, &yt, &build);
+
+            assert!(!for_you_build(&mixes, &yt, false).initialized());
+        }
+
+        #[tokio::test]
+        async fn a_late_failure_leaves_a_refreshed_build_alone() {
+            let mixes = ForYouMixes::default();
+            let yt = server("yt");
+            let stale = for_you_build(&mixes, &yt, false);
+            let refreshed = for_you_build(&mixes, &yt, true);
+
+            forget_failed_for_you(&mixes, &yt, &stale);
+
+            assert!(Arc::ptr_eq(&refreshed, &for_you_build(&mixes, &yt, false)));
+        }
     }
 }

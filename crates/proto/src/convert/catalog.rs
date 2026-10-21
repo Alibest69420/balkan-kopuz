@@ -313,6 +313,42 @@ pub fn catalog_detail_from_proto(value: &CatalogDetail) -> api::CatalogDetail {
     }
 }
 
+pub fn for_you_to_proto(value: &api::ForYou) -> ForYou {
+    let outcome = match value {
+        api::ForYou::Mix(tracks) => for_you::Outcome::Mix(TrackList {
+            items: tracks.iter().map(track_info_to_proto).collect(),
+        }),
+        api::ForYou::Unavailable(reason) => {
+            let reason = match reason {
+                api::ForYouUnavailable::NoTrackRadio => ForYouUnavailable::NoTrackRadio,
+                api::ForYouUnavailable::NoLikes => ForYouUnavailable::NoLikes,
+            };
+            for_you::Outcome::Unavailable(reason as i32)
+        }
+    };
+    ForYou {
+        outcome: Some(outcome),
+    }
+}
+
+pub fn for_you_from_proto(value: &ForYou) -> api::ForYou {
+    match &value.outcome {
+        Some(for_you::Outcome::Mix(list)) => {
+            api::ForYou::Mix(list.items.iter().map(track_info_from_proto).collect())
+        }
+        Some(for_you::Outcome::Unavailable(reason)) => {
+            api::ForYou::Unavailable(match ForYouUnavailable::try_from(*reason) {
+                Ok(ForYouUnavailable::NoTrackRadio) => api::ForYouUnavailable::NoTrackRadio,
+                // A reason this build does not know still means there is no row to show.
+                Ok(ForYouUnavailable::NoLikes | ForYouUnavailable::Unspecified) | Err(_) => {
+                    api::ForYouUnavailable::NoLikes
+                }
+            })
+        }
+        None => api::ForYou::Mix(Vec::new()),
+    }
+}
+
 pub fn radio_station_to_proto(value: &api::RadioStationInfo) -> RadioStationInfo {
     RadioStationInfo {
         id: value.id.clone(),
@@ -563,5 +599,20 @@ mod tests {
             station,
             radio_station_from_proto(&radio_station_to_proto(&station))
         );
+    }
+
+    #[test]
+    fn for_you_round_trips() {
+        let track = super::super::fixtures::sample_state()
+            .track
+            .expect("the sample state plays a track");
+        for value in [
+            api::ForYou::Mix(vec![track.clone(), track]),
+            api::ForYou::Mix(Vec::new()),
+            api::ForYou::Unavailable(api::ForYouUnavailable::NoTrackRadio),
+            api::ForYou::Unavailable(api::ForYouUnavailable::NoLikes),
+        ] {
+            assert_eq!(value, for_you_from_proto(&for_you_to_proto(&value)));
+        }
     }
 }

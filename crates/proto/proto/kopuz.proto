@@ -55,6 +55,8 @@ service Kopuz {
   rpc GetAlbumWebUrl(AlbumWebUrlRequest) returns (WebUrl);
   rpc GetCatalog(CatalogRequest) returns (CatalogPage);
   rpc GetCatalogDetail(CatalogDetailRequest) returns (CatalogDetail);
+  rpc GetForYou(GetForYouRequest) returns (ForYou);
+  rpc RefreshForYou(RefreshForYouRequest) returns (ForYou);
   rpc GetRadioStations(GetRadioStationsRequest) returns (RadioStationList);
   rpc SearchRadio(SearchRadioRequest) returns (RadioStationList);
   rpc PinRadioStation(PinRadioStationRequest) returns (Unit);
@@ -1362,6 +1364,23 @@ enum ReleaseKind {
   RELEASE_KIND_SINGLE = 2;
   RELEASE_KIND_EP = 3;
   RELEASE_KIND_AUDIOBOOK = 4;
+}
+
+message GetForYouRequest {}
+message RefreshForYouRequest {}
+
+// Why there is no mix; a frontend hides the row.
+enum ForYouUnavailable {
+  FOR_YOU_UNAVAILABLE_UNSPECIFIED = 0;
+  FOR_YOU_UNAVAILABLE_NO_TRACK_RADIO = 1;
+  FOR_YOU_UNAVAILABLE_NO_LIKES = 2;
+}
+
+message ForYou {
+  oneof outcome {
+    TrackList mix = 1;
+    ForYouUnavailable unavailable = 2;
+  }
 }
 
 // ---------------- radio ----------------
