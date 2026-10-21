@@ -1,6 +1,6 @@
 //! Home's "For you" row: the active source's mix, asked for once the row is on screen.
 
-use api::{ApiError, ForYou, TrackInfo};
+use api::{ApiError, ErrorCode, ForYou, TrackInfo};
 use gpui_kit::{App, Context, Entity, Subscription, Task};
 use link::Link;
 
@@ -52,6 +52,8 @@ impl Machine {
         self.state = match result {
             Ok(ForYou::Mix(tracks)) => ForYouState::Mix(tracks),
             Ok(ForYou::Unavailable(_)) => ForYouState::Unavailable,
+            // A daemon from before For you answers every ask this way.
+            Err(error) if error.code == ErrorCode::Unsupported => ForYouState::Unavailable,
             Err(error) => ForYouState::Failed(error),
         };
         true
@@ -137,7 +139,7 @@ impl ForYouModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use api::{ErrorCode, ForYouUnavailable};
+    use api::ForYouUnavailable;
 
     fn track(key: &str) -> TrackInfo {
         TrackInfo {
@@ -196,6 +198,21 @@ mod tests {
         machine.settle(generation, Err(error()));
         assert_eq!(machine.state, ForYouState::Failed(error()));
         assert!(machine.state.is_shown());
+    }
+
+    #[test]
+    fn a_daemon_without_for_you_hides_the_row() {
+        for after_a_mix in [false, true] {
+            let mut machine = Machine::default();
+            if after_a_mix {
+                let first = machine.begin();
+                machine.settle(first, Ok(ForYou::Mix(vec![track("a")])));
+            }
+            let generation = machine.begin();
+            machine.settle(generation, Err(ApiError::new(ErrorCode::Unsupported, "")));
+            assert_eq!(machine.state, ForYouState::Unavailable);
+            assert!(!machine.state.is_shown());
+        }
     }
 
     #[test]
