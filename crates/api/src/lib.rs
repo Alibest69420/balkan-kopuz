@@ -32,7 +32,7 @@ pub use catalog::{
     ReleaseKind, ShelfLayout,
 };
 pub use error::{ApiError, ErrorBody, ErrorCode, ErrorReason};
-pub use events::{ApiEvent, JobKind, JobProgress, NoticeLevel, SourceState, Table};
+pub use events::{ApiEvent, JobKind, JobProgress, NetworkStatus, NoticeLevel, SourceState, Table};
 pub use jobs::{
     DownloadCandidate, DownloadHistoryEntry, DownloadItemState, DownloadItemStatus, DownloadState,
 };
@@ -532,6 +532,9 @@ pub trait SourceApi: Send + Sync {
 
     /// Probe whether a source is reachable and still signed in.
     async fn validate_source(&self, id: String) -> Result<SourceState, ApiError>;
+
+    /// Whether the internet is reachable, and the source to offer back once it is; changes arrive as `NetworkStatus` events.
+    async fn network_status(&self) -> Result<NetworkStatus, ApiError>;
 
     async fn accounts(&self, id: String) -> Result<Vec<SourceAccount>, ApiError>;
 

@@ -1693,6 +1693,14 @@ impl Kopuz for KopuzGrpc {
         }))
     }
 
+    async fn get_network_status(
+        &self,
+        _request: Request<proto::GetNetworkStatusRequest>,
+    ) -> Result<Response<proto::NetworkStatus>, Status> {
+        let status = self.0.api.network_status().await.map_err(failed)?;
+        Ok(Response::new(convert::network_status_to_proto(&status)))
+    }
+
     async fn get_source_accounts(
         &self,
         request: Request<proto::SourceId>,

@@ -1554,6 +1554,15 @@ impl api::SourceApi for GrpcApi {
         Ok(convert::source_state_from_proto(state.get_ref().state))
     }
 
+    async fn network_status(&self) -> Result<api::NetworkStatus, ApiError> {
+        let status = self
+            .client()
+            .get_network_status(Request::new(proto::GetNetworkStatusRequest {}))
+            .await
+            .map_err(wire_error)?;
+        Ok(convert::network_status_from_proto(status.get_ref()))
+    }
+
     async fn accounts(&self, id: String) -> Result<Vec<api::SourceAccount>, ApiError> {
         let list = self
             .client()

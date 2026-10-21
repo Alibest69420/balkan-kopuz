@@ -63,6 +63,15 @@ pub enum SourceState {
     Offline,
 }
 
+/// Whether the daemon reaches the internet, as its last check after a source stopped answering found.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NetworkStatus {
+    /// Every connectivity check failed, so only sources on this machine or its network are usable.
+    pub internet_down: bool,
+    /// The source the daemon moved off when the internet went down, kept so a frontend can offer it back once it is up.
+    pub left_source: Option<String>,
+}
+
 /// One event on the daemon's Subscribe stream (`proto/kopuz.proto` carries the
 /// wire shape). The variant names are the event identities. Clients
 /// must ignore unknown event types.
@@ -112,6 +121,8 @@ pub enum ApiEvent {
         source: String,
         state: SourceState,
     },
+    /// The internet went down or came back, or the source offered back changed.
+    NetworkStatus(NetworkStatus),
     Notice {
         level: NoticeLevel,
         code: String,

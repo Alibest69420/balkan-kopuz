@@ -1091,3 +1091,4 @@ daemon_down_hint = Başlamazsa bir terminalde systemctl --user enable --now kopu
 retry = Yeniden dene
 connectivity_check_urls = Bağlantı denetimi
 connectivity_check_urls_description = Bir kaynak yanıt vermediğinde bağlantının mı koptuğunu yoksa sunucunun mu çöktüğünü anlamak için sorulan adresler. Denetimi atlamak için boş bırakın.
+error_network_down = Çevrimdışısınız. Bağlantı geri gelene kadar yalnızca bu bilgisayardaki ya da yerel ağınızdaki müzikler çalınabilir.

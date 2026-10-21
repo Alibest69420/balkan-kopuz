@@ -137,6 +137,7 @@ service Kopuz {
   rpc ImportBrowserSession(ImportBrowserSessionRequest) returns (SourceInfo);
   rpc BrowseSource(BrowseSourceRequest) returns (SourceFolderList);
   rpc ValidateSource(SourceId) returns (SourceStateResponse);
+  rpc GetNetworkStatus(GetNetworkStatusRequest) returns (NetworkStatus);
   rpc TestSourceConnection(SourceId) returns (ConnectionReport);
   rpc CanOpenBrowser(CanOpenBrowserRequest) returns (BrowserAccess);
   rpc GetSourceAccounts(SourceId) returns (SourceAccountList);
@@ -246,6 +247,7 @@ message Event {
     // The reconnect gap exceeded the replay ring: refetch snapshots.
     Unit resync = 12;
     FrontendPrefsChanged frontend_prefs_changed = 13;
+    NetworkStatus network_status = 14;
   }
 }
 
@@ -308,6 +310,16 @@ message SourceStatusEvent {
   string source = 1;
   SourceState state = 2;
 }
+
+// Whether the daemon reaches the internet, as its last check after a source stopped answering found.
+message NetworkStatus {
+  // Every connectivity check failed, so only sources on this machine or its network are usable.
+  bool internet_down = 1;
+  // The source the daemon moved off when the internet went down, to offer back once it is up.
+  optional string left_source = 2;
+}
+
+message GetNetworkStatusRequest {}
 
 message Notice {
   NoticeLevel level = 1;
@@ -2371,6 +2383,7 @@ enum ErrorReason {
   ERROR_REASON_APPLE_MUSIC_TOKEN_REQUIRED = 19;
   ERROR_REASON_INVALID_SMB_URL = 20;
   ERROR_REASON_INVALID_SERVER_URL = 21;
+  ERROR_REASON_NETWORK_DOWN = 22;
 }
 
 enum ErrorCode {

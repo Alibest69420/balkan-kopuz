@@ -1132,3 +1132,4 @@ daemon_down_hint = If it doesn't start, run systemctl --user enable --now kopuzd
 retry = Retry
 connectivity_check_urls = Connectivity checks
 connectivity_check_urls_description = Addresses asked when a source stops answering, to tell a dropped connection from a server that is down. Leave empty to skip the check.
+error_network_down = You're offline. Until the connection is back, only music on this computer or your local network can play.

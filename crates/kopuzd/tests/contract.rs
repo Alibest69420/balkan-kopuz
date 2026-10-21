@@ -160,10 +160,18 @@ async fn spawn_pair() -> Pair {
         .upsert_tracks(&config::Source::default(), &seeded)
         .await
         .expect("seed tracks");
+    // No test may ask the real internet whether it is there; one that needs a check names its own address.
+    let quiet = config::Settings {
+        system: config::System {
+            connectivity_check_urls: Vec::new(),
+            ..config::System::default()
+        },
+        ..config::Settings::default()
+    };
     let config_service = Arc::new(ConfigService::new(
         database.clone(),
         dir.path().join("settings.toml"),
-        config::Settings::default(),
+        quiet,
     ));
     let credentials = daemon::CredentialStore::load(&database)
         .await
@@ -2937,6 +2945,79 @@ async fn for_you_without_track_radio_hides_the_row_on_both_transports() {
     assert_eq!(pair.wire.for_you().await, Ok(hidden.clone()));
     assert_eq!(pair.local.refresh_for_you().await, Ok(hidden.clone()));
     assert_eq!(pair.wire.refresh_for_you().await, Ok(hidden));
+}
+
+/// A source across the internet going quiet while the checks fail too is the internet down, on both transports, and a switch back to it is refused.
+#[tokio::test]
+async fn the_internet_going_down_reaches_both_transports_and_refuses_a_switch() {
+    use futures_util::StreamExt;
+    let pair = spawn_pair().await;
+    for api in [&pair.local as &dyn KopuzApi, &pair.wire] {
+        assert_eq!(
+            api.network_status().await,
+            Ok(api::NetworkStatus::default())
+        );
+    }
+    let closed = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        format!("http://{}/", listener.local_addr().expect("address"))
+    };
+    let report = pair
+        .wire
+        .edit_config(vec![config::SettingsEdit::System(
+            config::SystemEdit::ConnectivityCheckUrls(vec![closed]),
+        )])
+        .await
+        .expect("edit");
+    assert_eq!(report.outcomes, [api::EditOutcome::Applied]);
+    let far = pair
+        .wire
+        .upsert_source(api::SourceDraft {
+            name: "Far away".into(),
+            service: "jellyfin".into(),
+            values: vec![api::FieldValue::new("url", "https://jellyfin.invalid")],
+            ..Default::default()
+        })
+        .await
+        .expect("add");
+    pair.wire
+        .provision_credentials(api::CredentialProvision {
+            server_id: far.id.clone(),
+            secret: "token".into(),
+            user_id: Some("ada".into()),
+            browser: None,
+        })
+        .await
+        .expect("sign in");
+    let mut events = pair.wire.events();
+
+    assert_eq!(
+        pair.wire.validate_source(far.id.clone()).await,
+        Ok(api::SourceState::Offline)
+    );
+
+    let down = tokio::time::timeout(Duration::from_secs(20), async {
+        while let Some(event) = events.next().await {
+            if let ApiEvent::NetworkStatus(status) = event {
+                return status;
+            }
+        }
+        panic!("the event stream ended");
+    })
+    .await
+    .expect("the check ran");
+    assert!(down.internet_down);
+    assert_eq!(
+        down.left_source, None,
+        "the active folder library needs no move"
+    );
+    assert_eq!(pair.local.network_status().await, Ok(down));
+    let refused = pair
+        .wire
+        .switch_source(far.id)
+        .await
+        .expect_err("the internet is down");
+    assert_eq!(refused.reason, Some(api::ErrorReason::NetworkDown));
 }
 
 /// A folder library's Discover rows agree on both transports and hold until a refresh, even past a play.

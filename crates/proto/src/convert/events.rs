@@ -1,6 +1,20 @@
 use super::*;
 use crate::*;
 
+pub fn network_status_to_proto(value: &api::NetworkStatus) -> NetworkStatus {
+    NetworkStatus {
+        internet_down: value.internet_down,
+        left_source: value.left_source.clone(),
+    }
+}
+
+pub fn network_status_from_proto(value: &NetworkStatus) -> api::NetworkStatus {
+    api::NetworkStatus {
+        internet_down: value.internet_down,
+        left_source: value.left_source.clone(),
+    }
+}
+
 pub fn event_to_proto(value: &api::ApiEvent) -> Event {
     let kind = match value {
         api::ApiEvent::PlayerState(state) => event::Kind::PlayerState(player_state_to_proto(state)),
@@ -68,6 +82,9 @@ pub fn event_to_proto(value: &api::ApiEvent) -> Event {
                 state: source_state_to_proto(*state) as i32,
             })
         }
+        api::ApiEvent::NetworkStatus(status) => {
+            event::Kind::NetworkStatus(network_status_to_proto(status))
+        }
         api::ApiEvent::Notice {
             level,
             code,
@@ -132,6 +149,9 @@ pub fn event_from_proto(value: &Event) -> Option<api::ApiEvent> {
             source: status.source.clone(),
             state: source_state_from_proto(status.state),
         },
+        event::Kind::NetworkStatus(status) => {
+            api::ApiEvent::NetworkStatus(network_status_from_proto(status))
+        }
         event::Kind::Notice(notice) => api::ApiEvent::Notice {
             level: notice_level_from_proto(notice.level),
             code: notice.code.clone(),
@@ -208,6 +228,11 @@ mod tests {
                 source: "jellyfin".into(),
                 state: api::SourceState::AuthExpired,
             },
+            api::ApiEvent::NetworkStatus(api::NetworkStatus {
+                internet_down: true,
+                left_source: Some("yt".into()),
+            }),
+            api::ApiEvent::NetworkStatus(api::NetworkStatus::default()),
             api::ApiEvent::Notice {
                 level: api::NoticeLevel::Warning,
                 code: "c".into(),

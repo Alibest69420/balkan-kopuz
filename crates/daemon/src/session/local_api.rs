@@ -1015,6 +1015,10 @@ impl api::SourceApi for LocalApi {
         self.sources()?.validate_source(&id).await
     }
 
+    async fn network_status(&self) -> Result<api::NetworkStatus, ApiError> {
+        Ok(self.sources()?.network_status())
+    }
+
     async fn accounts(&self, id: String) -> Result<Vec<api::SourceAccount>, ApiError> {
         self.sources()?.accounts(&id).await
     }

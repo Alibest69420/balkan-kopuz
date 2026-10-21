@@ -1103,3 +1103,4 @@ daemon_down_hint = Wenn er nicht startet, führe systemctl --user enable --now k
 retry = Erneut versuchen
 connectivity_check_urls = Verbindungsprüfung
 connectivity_check_urls_description = Adressen, die abgefragt werden, wenn eine Quelle nicht mehr antwortet, um eine getrennte Verbindung von einem ausgefallenen Server zu unterscheiden. Leer lassen, um die Prüfung zu überspringen.
+error_network_down = Du bist offline. Bis die Verbindung zurück ist, lässt sich nur Musik auf diesem Computer oder in deinem lokalen Netzwerk abspielen.
