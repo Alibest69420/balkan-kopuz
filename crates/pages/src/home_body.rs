@@ -128,7 +128,7 @@ pub fn HomeBody(
     // cannot hold hook state of their own.
     let active_card_menu = use_signal(|| None::<String>);
 
-    // Offline every shelf holds only what has a downloaded copy.
+    // Offline every shelf holds only what has a downloaded or cached copy.
     let offline = use_memo(move || caps().downloads && *is_offline.read());
     let downloaded = move || offline().then_some(true);
     let albums_query = use_memo(move || {
@@ -137,7 +137,7 @@ pub fn HomeBody(
                 config::AlbumSortField::Title,
                 config::SortDirection::Asc,
             )],
-            downloaded: downloaded(),
+            offline: downloaded(),
             ..Default::default()
         })
     });
@@ -148,7 +148,7 @@ pub fn HomeBody(
                 config::AlbumSortField::Year,
                 config::SortDirection::Desc,
             )],
-            downloaded: downloaded(),
+            offline: downloaded(),
             ..Default::default()
         })
     });
@@ -159,7 +159,7 @@ pub fn HomeBody(
                 config::AlbumSortField::RecentlyAdded,
                 config::SortDirection::Desc,
             )],
-            downloaded: downloaded(),
+            offline: downloaded(),
             ..Default::default()
         })
     });
@@ -221,7 +221,7 @@ pub fn HomeBody(
         let genre = top_genre_res.read().clone().flatten()?;
         Some(hooks::AlbumQuery {
             genre: Some(genre),
-            downloaded: downloaded(),
+            offline: downloaded(),
             ..Default::default()
         })
     });

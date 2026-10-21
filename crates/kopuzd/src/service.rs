@@ -1719,6 +1719,19 @@ impl Kopuz for KopuzGrpc {
         Ok(Response::new(convert::network_status_to_proto(&status)))
     }
 
+    async fn set_offline(
+        &self,
+        request: Request<proto::SetOfflineRequest>,
+    ) -> Result<Response<proto::NetworkStatus>, Status> {
+        let status = self
+            .0
+            .api
+            .set_offline(request.get_ref().offline)
+            .await
+            .map_err(failed)?;
+        Ok(Response::new(convert::network_status_to_proto(&status)))
+    }
+
     async fn get_source_accounts(
         &self,
         request: Request<proto::SourceId>,

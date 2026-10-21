@@ -23,6 +23,8 @@ use crate::{
 #[derive(Debug, Default, Clone)]
 pub struct CoreArgs {
     pub db_path: Option<String>,
+    /// Start in offline mode, as `--offline` asks: listings and playback keep to downloads and cached songs.
+    pub offline: bool,
 }
 
 /// Everything a running daemon owns. The services are public because a host
@@ -284,6 +286,9 @@ pub async fn assemble(args: &CoreArgs) -> Result<Core, Box<dyn std::error::Error
     sources.spawn_credential_upkeep();
     sources.watch_active(session.sources_watch());
     sources.watch_network();
+    if args.offline {
+        sources.set_offline(true);
+    }
     crate::auto_sync::spawn(
         database.clone(),
         jobs.clone(),

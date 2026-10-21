@@ -181,7 +181,7 @@ fn main() -> std::process::ExitCode {
         // the log instead of being lost. The chrome trace is the one part that
         // has to wait: whether it is wanted lives in the library.
         logging::init(&log_dir);
-        let core = match backend::start() {
+        let core = match backend::start(backend::core_args(std::env::args().skip(1))) {
             Ok(core) => core,
             Err(error) => {
                 tracing::error!(%error, "the daemon core failed to start");
@@ -297,7 +297,7 @@ fn main() -> std::process::ExitCode {
         // `App` reads the core out of `backend` while it renders, so it has to
         // exist before the UI launches, exactly as on desktop. Only the socket
         // is desktop-only; the core itself is what every hook reads through.
-        if let Err(error) = backend::start() {
+        if let Err(error) = backend::start(daemon::boot::CoreArgs::default()) {
             tracing::error!(%error, "the daemon core failed to start");
             return std::process::ExitCode::FAILURE;
         }
@@ -562,7 +562,7 @@ fn App() -> Element {
     let queue = use_signal(Vec::<api::TrackInfo>::new);
     let current_queue_index = use_signal(|| 0usize);
 
-    let mut network_banner: Signal<Option<bool>> = use_signal(|| None);
+    let mut network_banner: Signal<Option<app_lifecycle::NetworkBanner>> = use_signal(|| None);
     let mut update_banner: Signal<Option<updates::AvailableUpdate>> = use_signal(|| None);
     let mut did_check_updates = use_signal(|| false);
     let mut update_progress: Signal<Option<updates::InstallProgress>> = use_signal(|| None);
@@ -785,7 +785,7 @@ fn App() -> Element {
         });
     }
 
-    let _is_offline = app_lifecycle::use_connectivity_probe(network_banner);
+    let _is_offline = app_lifecycle::use_offline_mode(network_banner);
 
     let favorites_for_load = favorites_service.clone();
     use_hook(move || {
@@ -1233,8 +1233,6 @@ fn App() -> Element {
     });
 
     let reduce_animations = use_memo(move || settings.read().ui.reduce_animations);
-    let switch_source = hooks::source_switch::use_switch_source();
-    let all_sources = hooks::sources::use_sources();
     let mut show_quick_search = use_signal(|| false);
     #[cfg(target_os = "android")]
     use_future(move || async move {
@@ -1401,42 +1399,41 @@ fn App() -> Element {
                 }
             }
 
-            if let Some(is_offline) = *network_banner.read() {
+            if let Some(banner) = network_banner.read().clone() {
                 div {
                     class: "flex-shrink-0",
                     div {
-                        class: if is_offline {
+                        class: if banner == app_lifecycle::NetworkBanner::Offline {
                             "flex items-center justify-between gap-3 px-4 py-2 bg-amber-500/15 border-b border-amber-500/20 text-amber-300 text-sm"
                         } else {
                             "flex items-center justify-between gap-3 px-4 py-2 bg-emerald-500/15 border-b border-emerald-500/20 text-emerald-300 text-sm"
                         },
                         div {
                             class: "flex items-center gap-2",
-                            i { class: if is_offline { "fa-solid fa-wifi-slash text-xs" } else { "fa-solid fa-wifi text-xs" } }
-                            span {
-                                if is_offline {
-                                    {i18n::t("network_offline_banner")}
-                                } else {
-                                    {i18n::t("network_online_banner")}
-                                }
-                            }
-                            if is_offline {
-                                button {
-                                    class: "ml-2 text-xs underline opacity-70 hover:opacity-100 transition-opacity",
-                                    onclick: move |_| {
-                                        let rows = all_sources.read().clone().unwrap_or_default();
-                                        let target = rows
-                                            .iter()
-                                            .find(|source| source.needs_network && source.active)
-                                            .or_else(|| rows.iter().find(|source| source.needs_network))
-                                            .map(|source| source.id.clone());
-                                        if let Some(s) = target {
-                                            switch_source(s);
-                                        }
-                                        network_banner.set(None);
-                                    },
-                                    {i18n::t("keep_server_mode")}
-                                }
+                            i { class: if banner == app_lifecycle::NetworkBanner::Offline { "fa-solid fa-wifi-slash text-xs" } else { "fa-solid fa-wifi text-xs" } }
+                            span { {app_lifecycle::banner_text(&banner)} }
+                            match banner.clone() {
+                                app_lifecycle::NetworkBanner::Offline => rsx! {
+                                    button {
+                                        class: "ml-2 text-xs underline opacity-70 hover:opacity-100 transition-opacity",
+                                        onclick: move |_| {
+                                            app_lifecycle::switch_back(None);
+                                            network_banner.set(None);
+                                        },
+                                        {i18n::t("keep_server_mode")}
+                                    }
+                                },
+                                app_lifecycle::NetworkBanner::SwitchBack { source, .. } => rsx! {
+                                    button {
+                                        class: "ml-2 text-xs underline opacity-70 hover:opacity-100 transition-opacity",
+                                        onclick: move |_| {
+                                            app_lifecycle::switch_back(Some(source.clone()));
+                                            network_banner.set(None);
+                                        },
+                                        {i18n::t("switch_to_server")}
+                                    }
+                                },
+                                app_lifecycle::NetworkBanner::BackOnline => rsx! {},
                             }
                         }
                         button {

@@ -90,7 +90,7 @@ fn AlbumGrid(mut album_id: Signal<String>, mut open_album_menu: Signal<Option<St
     let albums_query = use_memo(move || {
         Some(hooks::AlbumQuery {
             sort: album_sort.read().clone(),
-            downloaded: (caps().downloads && *is_offline.read()).then_some(true),
+            offline: (caps().downloads && *is_offline.read()).then_some(true),
             ..Default::default()
         })
     });
@@ -405,7 +405,7 @@ fn AlbumDetail(
             .clone()
             .unwrap_or_default()
             .into_iter()
-            .filter(|t| !offline || t.offline)
+            .filter(|t| !offline || t.offline || t.cached)
             .collect::<Vec<api::TrackInfo>>()
     });
 

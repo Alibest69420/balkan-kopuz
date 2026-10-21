@@ -5,6 +5,7 @@ pub fn network_status_to_proto(value: &api::NetworkStatus) -> NetworkStatus {
     NetworkStatus {
         internet_down: value.internet_down,
         left_source: value.left_source.clone(),
+        offline_mode: offline_mode_to_proto(value.offline_mode) as i32,
     }
 }
 
@@ -12,6 +13,24 @@ pub fn network_status_from_proto(value: &NetworkStatus) -> api::NetworkStatus {
     api::NetworkStatus {
         internet_down: value.internet_down,
         left_source: value.left_source.clone(),
+        offline_mode: offline_mode_from_proto(value.offline_mode),
+    }
+}
+
+fn offline_mode_to_proto(value: api::OfflineMode) -> OfflineMode {
+    match value {
+        api::OfflineMode::Off => OfflineMode::Off,
+        api::OfflineMode::Automatic => OfflineMode::Automatic,
+        api::OfflineMode::Requested => OfflineMode::Requested,
+    }
+}
+
+/// A mode this build does not know is still a mode that is on, so its listings stay offline.
+fn offline_mode_from_proto(value: i32) -> api::OfflineMode {
+    match OfflineMode::try_from(value) {
+        Ok(OfflineMode::Off) => api::OfflineMode::Off,
+        Ok(OfflineMode::Automatic) => api::OfflineMode::Automatic,
+        Ok(OfflineMode::Requested) | Err(_) => api::OfflineMode::Requested,
     }
 }
 
@@ -249,6 +268,16 @@ mod tests {
             api::ApiEvent::NetworkStatus(api::NetworkStatus {
                 internet_down: true,
                 left_source: Some("yt".into()),
+                offline_mode: api::OfflineMode::Off,
+            }),
+            api::ApiEvent::NetworkStatus(api::NetworkStatus {
+                internet_down: true,
+                left_source: None,
+                offline_mode: api::OfflineMode::Automatic,
+            }),
+            api::ApiEvent::NetworkStatus(api::NetworkStatus {
+                offline_mode: api::OfflineMode::Requested,
+                ..Default::default()
             }),
             api::ApiEvent::NetworkStatus(api::NetworkStatus::default()),
             api::ApiEvent::Notice {
@@ -262,6 +291,17 @@ mod tests {
             let back = event_from_proto(&event_to_proto(&event)).expect("event survives");
             assert_eq!(event, back);
         }
+    }
+
+    #[test]
+    fn an_older_daemon_is_never_offline_and_an_unknown_mode_is_on() {
+        let older = network_status_from_proto(&NetworkStatus::default());
+        assert_eq!(older.offline_mode, api::OfflineMode::Off);
+        let newer = network_status_from_proto(&NetworkStatus {
+            offline_mode: 99,
+            ..Default::default()
+        });
+        assert!(newer.offline_mode.is_on());
     }
 
     #[test]

@@ -69,6 +69,11 @@ impl Session {
         } else {
             None
         };
+        let offline_refused = self.offline.offline_mode()
+            && (is_radio
+                || (is_server
+                    && !self.offline.has_copy(&item_id)
+                    && crate::network::needs_internet(&self.sources)));
 
         let mut use_icy = false;
         let remote_ref = if factory_override.is_some() || offline_path.is_some() {
@@ -101,10 +106,11 @@ impl Session {
             None
         };
 
-        if factory_override.is_none()
-            && offline_path.is_none()
-            && local_path.is_none()
-            && remote_ref.is_none()
+        if offline_refused
+            || (factory_override.is_none()
+                && offline_path.is_none()
+                && local_path.is_none()
+                && remote_ref.is_none())
         {
             // A crossfade candidate that cannot resolve is dropped whole; the
             // end-of-track advance retries on the committed model and reports
@@ -133,15 +139,26 @@ impl Session {
                 at_ms: self.now_ms(),
                 playing: false,
             });
-            let message = if is_radio {
-                "couldn't load this track: the radio station or stream is unknown"
+            let (message, reason) = if offline_refused {
+                (
+                    "couldn't load this track: offline mode is on, and it has no copy here",
+                    Some(api::ErrorReason::OfflineMode),
+                )
+            } else if is_radio {
+                (
+                    "couldn't load this track: the radio station or stream is unknown",
+                    None,
+                )
             } else {
-                "couldn't load this track: no connected source can provide it"
+                (
+                    "couldn't load this track: no connected source can provide it",
+                    None,
+                )
             };
             self.error = Some(api::ErrorBody {
                 code: api::ErrorCode::SourceUnreachable,
                 message: message.to_string(),
-                reason: None,
+                reason,
             });
             return false;
         }

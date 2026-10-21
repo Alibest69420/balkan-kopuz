@@ -33,8 +33,8 @@ pub use catalog::{
 };
 pub use error::{ApiError, ErrorBody, ErrorCode, ErrorReason};
 pub use events::{
-    ApiEvent, JobKind, JobProgress, NetworkStatus, NoticeLevel, OfflineCacheStatus, SourceState,
-    Table,
+    ApiEvent, JobKind, JobProgress, NetworkStatus, NoticeLevel, OfflineCacheStatus, OfflineMode,
+    SourceState, Table,
 };
 pub use jobs::{
     DownloadCandidate, DownloadHistoryEntry, DownloadItemState, DownloadItemStatus, DownloadState,
@@ -544,6 +544,9 @@ pub trait SourceApi: Send + Sync {
 
     /// Whether the internet is reachable, and the source to offer back once it is; changes arrive as `NetworkStatus` events.
     async fn network_status(&self) -> Result<NetworkStatus, ApiError>;
+
+    /// Enter offline mode (`true`), or leave it however it was entered; answers the status it leads to.
+    async fn set_offline(&self, offline: bool) -> Result<NetworkStatus, ApiError>;
 
     async fn accounts(&self, id: String) -> Result<Vec<SourceAccount>, ApiError>;
 

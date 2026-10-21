@@ -1580,6 +1580,15 @@ impl api::SourceApi for GrpcApi {
         Ok(convert::network_status_from_proto(status.get_ref()))
     }
 
+    async fn set_offline(&self, offline: bool) -> Result<api::NetworkStatus, ApiError> {
+        let status = self
+            .client()
+            .set_offline(Request::new(proto::SetOfflineRequest { offline }))
+            .await
+            .map_err(wire_error)?;
+        Ok(convert::network_status_from_proto(status.get_ref()))
+    }
+
     async fn accounts(&self, id: String) -> Result<Vec<api::SourceAccount>, ApiError> {
         let list = self
             .client()

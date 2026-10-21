@@ -19,8 +19,8 @@ use std::time::Duration;
 
 use api::{
     ApiError, ApiEvent, BrowserSession, CredentialProvision, ErrorCode, ErrorReason, NetworkStatus,
-    SourceCapabilities, SourceDraft, SourceFolderEntry, SourceInfo, SourceLoginRequest,
-    SourceState, Table,
+    OfflineMode, SourceCapabilities, SourceDraft, SourceFolderEntry, SourceInfo,
+    SourceLoginRequest, SourceState, Table,
 };
 use server::source::{AuthOutcome, MediaSource};
 use server::sources::Sources;
@@ -1678,10 +1678,48 @@ impl SourceService {
         None
     }
 
-    /// No source works without the internet, so the active one stays and frontends show it offline.
+    /// No source works without the internet, so the active one stays and offline mode keeps it to the songs with a copy here.
     fn enter_offline_mode(&self) {
-        // Daemon-owned offline mode, built with the offline playback cache, starts here.
-        tracing::info!("the internet is down and no source works without it; the active one stays");
+        {
+            let mut status = self.network.lock().unwrap_or_else(PoisonError::into_inner);
+            if status.offline_mode.is_on() {
+                return;
+            }
+            status.offline_mode = OfflineMode::Automatic;
+        }
+        tracing::info!(
+            "the internet is down and no source works without it; offline mode keeps to downloads and cached songs"
+        );
+        self.offline_mode_moved();
+    }
+
+    /// Enter offline mode at someone's asking, or leave it however it was entered; only this leaves it.
+    pub fn set_offline(&self, on: bool) -> NetworkStatus {
+        let next = match on {
+            true => OfflineMode::Requested,
+            false => OfflineMode::Off,
+        };
+        let moved = {
+            let mut status = self.network.lock().unwrap_or_else(PoisonError::into_inner);
+            std::mem::replace(&mut status.offline_mode, next).is_on() != next.is_on()
+        };
+        tracing::info!(on, "offline mode set");
+        if moved {
+            self.offline_mode_moved();
+        } else {
+            self.publish_network();
+        }
+        self.network_status()
+    }
+
+    /// Offline mode came on or went off: listings change what they hold, and every frontend hears it.
+    fn offline_mode_moved(&self) {
+        let on = self.network_status().offline_mode.is_on();
+        self.session.offline().set_offline_mode(on);
+        for table in [Table::Tracks, Table::Albums, Table::Artists, Table::Recents] {
+            self.session.invalidate(table);
+        }
+        self.publish_network();
     }
 
     fn internet_came_back(&self) {
@@ -2616,6 +2654,7 @@ mod tests {
             NetworkStatus {
                 internet_down: true,
                 left_source: left.map(str::to_string),
+                offline_mode: OfflineMode::Off,
             }
         }
 
@@ -2647,7 +2686,12 @@ mod tests {
             fixture.sources.check_network(false).await;
 
             assert_eq!(active(&fixture).await, config::Source::Server("yt".into()));
-            assert_eq!(fixture.sources.network_status(), down(None));
+            let automatic = NetworkStatus {
+                offline_mode: OfflineMode::Automatic,
+                ..down(None)
+            };
+            assert_eq!(fixture.sources.network_status(), automatic);
+            assert!(fixture.sources.session.offline().offline_mode());
         }
 
         #[tokio::test]
@@ -2685,6 +2729,7 @@ mod tests {
             let back = NetworkStatus {
                 internet_down: false,
                 left_source: Some("yt".into()),
+                offline_mode: OfflineMode::Off,
             };
             assert_eq!(fixture.sources.network_status(), back);
             assert_eq!(active(&fixture).await, config::Source::default());
@@ -2762,6 +2807,74 @@ mod tests {
             .expect("the check ran");
             assert_eq!(published, down(Some("yt")));
             assert_eq!(asks(&upstream), 1);
+        }
+
+        fn mode(fixture: &Fixture) -> OfflineMode {
+            fixture.sources.network_status().offline_mode
+        }
+
+        #[tokio::test]
+        async fn an_automatic_offline_mode_outlasts_the_outage_until_someone_leaves_it() {
+            let upstream = scripted(&[Verdict::Down, Verdict::Up]);
+            let fixture = signed_in_with(upstream, config::Settings::default()).await;
+            let mut events = fixture.sources.session.subscribe();
+            fixture.sources.check_network(false).await;
+            assert_eq!(mode(&fixture), OfflineMode::Automatic);
+
+            assert_eq!(fixture.sources.check_network(true).await, Verdict::Up);
+
+            let back = fixture.sources.network_status();
+            assert!(!back.internet_down);
+            assert_eq!(
+                back.offline_mode,
+                OfflineMode::Automatic,
+                "a frontend offers to leave"
+            );
+            assert!(fixture.sources.session.offline().offline_mode());
+            let left = fixture.sources.set_offline(false);
+            assert_eq!(left, NetworkStatus::default());
+            assert!(!fixture.sources.session.offline().offline_mode());
+            let mut invalidated = Vec::new();
+            let published = loop {
+                match events.recv().await.expect("an event") {
+                    ApiEvent::LibraryInvalidated { table } => invalidated.push(table),
+                    ApiEvent::NetworkStatus(status) if status.offline_mode == OfflineMode::Off => {
+                        break status;
+                    }
+                    _ => continue,
+                }
+            };
+            assert_eq!(published, NetworkStatus::default());
+            assert!(invalidated.contains(&Table::Tracks), "{invalidated:?}");
+        }
+
+        #[tokio::test]
+        async fn an_offline_mode_someone_asked_for_stays_through_the_internet_coming_back() {
+            let upstream = scripted(&[Verdict::Down, Verdict::Up]);
+            let fixture = with_local_music(upstream, config::Settings::default()).await;
+
+            let status = fixture.sources.set_offline(true);
+            assert_eq!(status.offline_mode, OfflineMode::Requested);
+            assert!(fixture.sources.session.offline().offline_mode());
+            fixture.sources.check_network(false).await;
+            fixture.sources.check_network(true).await;
+
+            assert_eq!(mode(&fixture), OfflineMode::Requested);
+            assert_eq!(
+                fixture.sources.set_offline(false).offline_mode,
+                OfflineMode::Off
+            );
+        }
+
+        #[tokio::test]
+        async fn a_move_to_the_folder_library_is_no_offline_mode() {
+            let fixture =
+                with_local_music(scripted(&[Verdict::Down]), config::Settings::default()).await;
+
+            fixture.sources.check_network(false).await;
+
+            assert_eq!(mode(&fixture), OfflineMode::Off);
+            assert!(!fixture.sources.session.offline().offline_mode());
         }
     }
 }

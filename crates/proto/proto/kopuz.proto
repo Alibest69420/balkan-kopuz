@@ -140,6 +140,7 @@ service Kopuz {
   rpc BrowseSource(BrowseSourceRequest) returns (SourceFolderList);
   rpc ValidateSource(SourceId) returns (SourceStateResponse);
   rpc GetNetworkStatus(GetNetworkStatusRequest) returns (NetworkStatus);
+  rpc SetOffline(SetOfflineRequest) returns (NetworkStatus);
   rpc TestSourceConnection(SourceId) returns (ConnectionReport);
   rpc CanOpenBrowser(CanOpenBrowserRequest) returns (BrowserAccess);
   rpc GetSourceAccounts(SourceId) returns (SourceAccountList);
@@ -319,9 +320,23 @@ message NetworkStatus {
   bool internet_down = 1;
   // The source the daemon moved off when the internet went down, to offer back once it is up.
   optional string left_source = 2;
+  OfflineMode offline_mode = 3;
+}
+
+// Whether listings and playback keep to what plays without the internet: downloads and cached songs.
+enum OfflineMode {
+  OFFLINE_MODE_OFF = 0;
+  // The internet went down with nothing nearby to play; a frontend offers to leave once it is back.
+  OFFLINE_MODE_AUTOMATIC = 1;
+  // Asked for, by --offline or SetOffline, and left only by SetOffline.
+  OFFLINE_MODE_REQUESTED = 2;
 }
 
 message GetNetworkStatusRequest {}
+
+message SetOfflineRequest {
+  bool offline = 1;
+}
 
 message Notice {
   NoticeLevel level = 1;
@@ -2413,6 +2428,7 @@ enum ErrorReason {
   ERROR_REASON_INVALID_SMB_URL = 20;
   ERROR_REASON_INVALID_SERVER_URL = 21;
   ERROR_REASON_NETWORK_DOWN = 22;
+  ERROR_REASON_OFFLINE_MODE = 23;
 }
 
 enum ErrorCode {

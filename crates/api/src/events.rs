@@ -70,6 +70,24 @@ pub struct NetworkStatus {
     pub internet_down: bool,
     /// The source the daemon moved off when the internet went down, kept so a frontend can offer it back once it is up.
     pub left_source: Option<String>,
+    pub offline_mode: OfflineMode,
+}
+
+/// Whether listings and playback keep to what plays without the internet: downloads and cached songs.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum OfflineMode {
+    #[default]
+    Off,
+    /// The internet went down with nothing on this machine or its network to play; once it is back a frontend offers to leave, and `set_offline(false)` does.
+    Automatic,
+    /// Asked for, by `--offline` or `set_offline(true)`, and left only by `set_offline(false)`.
+    Requested,
+}
+
+impl OfflineMode {
+    pub fn is_on(self) -> bool {
+        self != Self::Off
+    }
 }
 
 /// The offline playback cache: songs kept from their own stream, least recently played evicted first past the cap; downloads are apart and never count.

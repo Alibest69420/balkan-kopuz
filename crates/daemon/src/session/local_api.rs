@@ -1027,6 +1027,10 @@ impl api::SourceApi for LocalApi {
         Ok(self.sources()?.network_status())
     }
 
+    async fn set_offline(&self, offline: bool) -> Result<api::NetworkStatus, ApiError> {
+        Ok(self.sources()?.set_offline(offline))
+    }
+
     async fn accounts(&self, id: String) -> Result<Vec<api::SourceAccount>, ApiError> {
         self.sources()?.accounts(&id).await
     }

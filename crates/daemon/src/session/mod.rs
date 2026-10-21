@@ -1383,7 +1383,8 @@ impl Session {
         allow_crossfade: bool,
         state_tx: &watch::Sender<PlayerState>,
     ) -> Result<(), ApiError> {
-        let playable = playable(self.settings.playback.skip_explicit);
+        let gate = self.offline_gate();
+        let playable = playable(self.settings.playback.skip_explicit, gate.as_ref());
         if allow_crossfade {
             if let NextOutcome::Play(idx) = self.model.peek_next_where(playable)
                 && !self.start_load(idx, true)
@@ -1433,10 +1434,23 @@ impl Session {
         tracks: Vec<Track>,
         start: Option<usize>,
     ) -> Result<(Vec<Track>, Option<usize>), ApiError> {
-        if !self.settings.playback.skip_explicit || tracks.is_empty() {
+        let skip = self.settings.playback.skip_explicit;
+        let gate = self.offline_gate();
+        if (!skip && gate.is_none()) || tracks.is_empty() {
             return Ok((tracks, start));
         }
-        let (kept, start) = crate::queue_model::without_explicit(tracks, start);
+        let nothing_offline = gate
+            .as_ref()
+            .is_some_and(|gate| !tracks.iter().any(|track| gate.admits(track)));
+        let (kept, start) =
+            crate::queue_model::keep_where(tracks, start, playable(skip, gate.as_ref()));
+        if nothing_offline {
+            return Err(ApiError::new(
+                api::ErrorCode::SourceUnreachable,
+                "offline mode is on, and nothing here has a copy that plays offline",
+            )
+            .because(api::ErrorReason::OfflineMode));
+        }
         if kept.is_empty() {
             return Err(ApiError::invalid_input(
                 "every track here is explicit, and explicit tracks are skipped",
@@ -1445,15 +1459,26 @@ impl Session {
         Ok((kept, start))
     }
 
+    /// What offline mode keeps the queue to, or `None` while it is off.
+    pub(super) fn offline_gate(&self) -> Option<OfflineGate> {
+        self.offline.offline_mode().then(|| OfflineGate {
+            index: self.offline.clone(),
+            needs_internet: crate::network::needs_internet(&self.sources),
+        })
+    }
+
     /// Keep the song after this one in the offline cache ahead of time, in play order, so shuffle's.
     pub(super) fn prefetch_next(&mut self) {
         let cache = self.offline.cache().clone();
-        if !cache.enabled() || self.external.is_some() || !crate::network::cacheable(&self.sources)
+        if !cache.enabled()
+            || self.offline.offline_mode()
+            || self.external.is_some()
+            || !crate::network::cacheable(&self.sources)
         {
             return;
         }
         let skip = self.settings.playback.skip_explicit;
-        let NextOutcome::Play(idx) = self.model.peek_next_where(playable(skip)) else {
+        let NextOutcome::Play(idx) = self.model.peek_next_where(playable(skip, None)) else {
             return;
         };
         if idx == self.model.current_position() {
@@ -1490,6 +1515,7 @@ impl Session {
             .is_some_and(|source| source.capabilities().radio.track);
         if !self.settings.playback.autoplay_radio
             || !radio
+            || self.offline.offline_mode()
             || self.current_track_is_radio()
             || self
                 .autoplay_task
@@ -1570,7 +1596,7 @@ impl Session {
         // From here it tops itself up like any radio queue.
         self.set_radio_feed(page.more);
         let mut candidate = self.model.clone();
-        if let NextOutcome::Play(idx) = candidate.advance_next_where(playable(skip))
+        if let NextOutcome::Play(idx) = candidate.advance_next_where(playable(skip, None))
             && let Err(error) = self.start_immediate_load(candidate, idx)
         {
             tracing::warn!(%error, "autoplay radio would not start");
@@ -2244,9 +2270,11 @@ impl Session {
             return;
         };
         let (position, key) = (pending.to_position, pending.to_key.clone());
-        let next = self
-            .model
-            .peek_next_where(playable(self.settings.playback.skip_explicit));
+        let gate = self.offline_gate();
+        let next = self.model.peek_next_where(playable(
+            self.settings.playback.skip_explicit,
+            gate.as_ref(),
+        ));
         let still_next = matches!(next, NextOutcome::Play(next) if next == position)
             && self
                 .model
@@ -2478,8 +2506,25 @@ struct ExternalState {
     completed_key: Option<String>,
 }
 
-fn playable(skip_explicit: bool) -> impl Fn(&Track) -> bool + Copy {
-    move |track| !(skip_explicit && track.explicit)
+/// What offline mode lets the queue play: files, songs with a copy here, and every song of a source that needs no internet.
+#[derive(Clone)]
+pub(super) struct OfflineGate {
+    index: crate::offline::OfflineIndex,
+    needs_internet: bool,
+}
+
+impl OfflineGate {
+    fn admits(&self, track: &Track) -> bool {
+        self.index.plays_offline(track, self.needs_internet)
+    }
+}
+
+/// What the queue may move on to: no explicit track the settings skip, and in offline mode none without a copy that plays offline.
+fn playable(
+    skip_explicit: bool,
+    gate: Option<&OfflineGate>,
+) -> impl Fn(&Track) -> bool + Copy + '_ {
+    move |track| !(skip_explicit && track.explicit) && gate.is_none_or(|gate| gate.admits(track))
 }
 
 /// Tell clients play history moved, sent after the write so a re-read sees it.

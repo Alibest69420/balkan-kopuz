@@ -4335,6 +4335,35 @@ async fn upcoming_edits_agree_across_transports() {
     }
 }
 
+/// Offline mode is the same daemon state on both transports: entered and left by either, heard by both.
+#[tokio::test]
+async fn offline_mode_is_set_and_heard_on_both_transports() {
+    use futures_util::StreamExt;
+    let pair = spawn_pair().await;
+    let mut events = pair.local.events();
+
+    let on = pair.wire.set_offline(true).await.expect("enter");
+    assert_eq!(on.offline_mode, api::OfflineMode::Requested);
+    for api in [&pair.local as &dyn KopuzApi, &pair.wire] {
+        assert_eq!(api.network_status().await, Ok(on.clone()));
+    }
+    let heard = tokio::time::timeout(Duration::from_secs(10), async {
+        while let Some(event) = events.next().await {
+            if let ApiEvent::NetworkStatus(status) = event {
+                return status;
+            }
+        }
+        panic!("the event stream ended");
+    })
+    .await
+    .expect("published");
+    assert_eq!(heard, on);
+
+    let off = pair.local.set_offline(false).await.expect("leave");
+    assert_eq!(off, api::NetworkStatus::default());
+    assert_eq!(pair.wire.network_status().await, Ok(off));
+}
+
 /// The offline cache's status and its clearing answer alike on both transports, and neither touches a download.
 #[tokio::test]
 async fn the_offline_cache_answers_alike_on_both_transports() {
