@@ -1345,6 +1345,9 @@ message CatalogDetail {
   ReleaseKind release_kind = 22;
   // For an artist; subtitle carries its subscribers.
   optional string monthly_listeners = 18;
+  // For an artist, PlaylistRadio ids of its Shuffle and Mix.
+  optional string shuffle_radio = 23;
+  optional string mix_radio = 24;
   optional string owner = 19;
   optional string plays = 20;
   optional string web_url = 21;
