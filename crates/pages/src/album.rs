@@ -115,12 +115,7 @@ fn AlbumGrid(mut album_id: Signal<String>, mut open_album_menu: Signal<Option<St
     // A source's first sync lists nothing until it lands, which is not an empty library.
     let filling = hooks::jobs::use_library_filling();
 
-    // Enough cards up front to reach a restored scroll offset; a 180px column
-    // seldom fits more than eight to a row of roughly 250px.
-    let mut shown = use_signal(|| {
-        let rows = (crate::scroll_persist::get("albums") / 250.0).ceil() as usize;
-        ALBUM_BATCH + rows * 8
-    });
+    let mut shown = use_signal(|| ALBUM_BATCH);
     crate::server::use_infinite_scroll(
         "album-grid-sentinel",
         move || shown().min(albums.read().len()),
@@ -131,18 +126,26 @@ fn AlbumGrid(mut album_id: Signal<String>, mut open_album_menu: Signal<Option<St
         },
     );
 
-    // Restore the grid scroll once after the albums first render; guarded so DB
-    // reactivity re-runs don't keep snapping the view back to the saved offset.
-    let mut scroll_restored = use_signal(|| false);
+    // Restore the saved offset once. A deep one lies past the first batch: the
+    // browser clamps to the bottom instead, which brings the sentinel in and
+    // loads the next batch, and the restore runs again until the grid's own
+    // scroll event reports it landed. Guarded so DB reactivity re-runs don't
+    // keep snapping the view back.
+    let target = use_hook(|| crate::scroll_persist::get("albums"));
+    let mut scroll_restored = use_signal(move || target <= 0.0);
     use_effect(move || {
-        if *scroll_restored.read() || albums.read().is_empty() {
+        let loaded = shown();
+        if *scroll_restored.peek() || albums.read().is_empty() {
             return;
         }
-        scroll_restored.set(true);
-        let _ = dioxus::document::eval(&crate::scroll_persist::restore_eval(
-            "album-grid-scroll",
-            "albums",
+        let _ = dioxus::document::eval(&format!(
+            "requestAnimationFrame(() => {{ \
+             const el = document.getElementById('album-grid-scroll'); \
+             if (el) el.scrollTop = {target}; }});"
         ));
+        if loaded >= albums.peek().len() {
+            scroll_restored.set(true);
+        }
     });
 
     let delete_from_disk = caps().delete_from_disk;
@@ -159,7 +162,15 @@ fn AlbumGrid(mut album_id: Signal<String>, mut open_album_menu: Signal<Option<St
         div {
             id: "album-grid-scroll",
             class: "flex-1 min-h-0 overflow-y-auto pb-8",
-            onscroll: move |e| crate::scroll_persist::save("albums", e.scroll_top()),
+            onscroll: move |e| {
+                let top = e.scroll_top();
+                // The clamped offsets a restore passes through are not where the user left it.
+                if *scroll_restored.peek() {
+                    crate::scroll_persist::save("albums", top);
+                } else if top >= target - 1.0 {
+                    scroll_restored.set(true);
+                }
+            },
             if albums_res.read().is_none() || (albums.is_empty() && filling()) {
                 div { class: "flex items-center justify-center py-12",
                     i { class: "fa-solid fa-spinner fa-spin text-3xl text-white/20" }
