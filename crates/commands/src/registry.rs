@@ -1091,4 +1091,18 @@ static COMMANDS: &[Command] = &[
         run: |_, _, cx| Navigator::navigate(Route::Settings { section: None }, cx),
         action: Some(|| Box::new(crate::keys::OpenSettings)),
     },
+    Command {
+        id: "app.add_source",
+        labels: &["add_source"],
+        label: |_, _| t("add_source"),
+        icon: Some(icons::PLUS),
+        group: Group::App,
+        section: Section::Hidden,
+        keys: NO_KEYS,
+        danger: false,
+        applies: NOTHING,
+        available: |_, cx| store::SetupModel::global(cx).read(cx).is_decided(),
+        run: |_, _, cx| store::SetupModel::start_over(cx),
+        action: None,
+    },
 ];

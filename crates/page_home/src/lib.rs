@@ -224,7 +224,14 @@ impl Render for Home {
             .children(banner)
             .children(rows)
             .when(bare, |page| {
-                page.child(EmptyState::new(t("no_albums_found")).icon(icons::DISC))
+                page.child(
+                    EmptyState::new(t("no_albums_found"))
+                        .icon(icons::DISC)
+                        .detail(t("add_music_to_get_started"))
+                        .action(t("add_source"), |_, _, cx| {
+                            store::SetupModel::start_over(cx)
+                        }),
+                )
             })
     }
 }
