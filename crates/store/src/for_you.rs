@@ -1,0 +1,233 @@
+//! Home's "For you" row: the active source's mix, asked for once the row is on screen.
+
+use api::{ApiError, ForYou, TrackInfo};
+use gpui_kit::{App, Context, Entity, Subscription, Task};
+use link::Link;
+
+use crate::invalidation::{Invalidation, TablesChanged};
+
+/// What the row shows.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum ForYouState {
+    /// Nobody has asked since the last resync or source switch.
+    #[default]
+    Idle,
+    Loading,
+    Mix(Vec<TrackInfo>),
+    /// The source has no likes or no track radio, so the row is hidden.
+    Unavailable,
+    Failed(ApiError),
+}
+
+impl ForYouState {
+    /// Whether Home draws the row at all.
+    pub fn is_shown(&self) -> bool {
+        match self {
+            Self::Unavailable => false,
+            Self::Mix(tracks) => !tracks.is_empty(),
+            Self::Idle | Self::Loading | Self::Failed(_) => true,
+        }
+    }
+}
+
+/// The transitions, apart from GPUI so they can be tested.
+#[derive(Debug, Default)]
+struct Machine {
+    state: ForYouState,
+    generation: u64,
+}
+
+impl Machine {
+    fn begin(&mut self) -> u64 {
+        self.generation += 1;
+        self.state = ForYouState::Loading;
+        self.generation
+    }
+
+    /// Take an answer, unless a newer ask or a reset has overtaken it.
+    fn settle(&mut self, generation: u64, result: Result<ForYou, ApiError>) -> bool {
+        if generation != self.generation {
+            return false;
+        }
+        self.state = match result {
+            Ok(ForYou::Mix(tracks)) => ForYouState::Mix(tracks),
+            Ok(ForYou::Unavailable(_)) => ForYouState::Unavailable,
+            Err(error) => ForYouState::Failed(error),
+        };
+        true
+    }
+
+    fn reset(&mut self) {
+        self.generation += 1;
+        self.state = ForYouState::Idle;
+    }
+}
+
+pub struct ForYouModel {
+    machine: Machine,
+    _fetch: Option<Task<()>>,
+    _subscription: Subscription,
+}
+
+impl ForYouModel {
+    pub fn global(cx: &App) -> Entity<Self> {
+        crate::handle(cx)
+    }
+
+    pub(crate) fn new(cx: &mut Context<Self>) -> Self {
+        let invalidation = Invalidation::global(cx);
+        let subscription = cx.subscribe(&invalidation, |this, _, event: &TablesChanged, cx| {
+            if event.is_all() {
+                this.reset(cx);
+            }
+        });
+        Self {
+            machine: Machine::default(),
+            _fetch: None,
+            _subscription: subscription,
+        }
+    }
+
+    pub fn state(&self) -> &ForYouState {
+        &self.machine.state
+    }
+
+    /// Ask for the mix unless it is held or on its way; the daemon caches it, so this is cheap.
+    pub fn ensure(&mut self, cx: &mut Context<Self>) {
+        if self.machine.state == ForYouState::Idle && Link::connection(cx).read(cx).is_connected() {
+            self.fetch(false, cx);
+        }
+    }
+
+    /// Throw the mix away and have the daemon build another.
+    pub fn refresh(&mut self, cx: &mut Context<Self>) {
+        self.fetch(true, cx);
+    }
+
+    fn fetch(&mut self, fresh: bool, cx: &mut Context<Self>) {
+        let generation = self.machine.begin();
+        let call = Link::global(cx).call(move |api| async move {
+            match fresh {
+                true => api.refresh_for_you().await,
+                false => api.for_you().await,
+            }
+        });
+        crate::notify(cx);
+        self._fetch = Some(cx.spawn(async move |this, cx| {
+            let result = call.await;
+            this.update(cx, |this, cx| {
+                if let Err(error) = &result {
+                    tracing::debug!(%error, "for you failed");
+                }
+                if this.machine.settle(generation, result) {
+                    crate::notify(cx);
+                }
+            })
+            .ok();
+        }));
+    }
+
+    fn reset(&mut self, cx: &mut Context<Self>) {
+        self.machine.reset();
+        self._fetch = None;
+        crate::notify(cx);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use api::{ErrorCode, ForYouUnavailable};
+
+    fn track(key: &str) -> TrackInfo {
+        TrackInfo {
+            key: key.into(),
+            ..Default::default()
+        }
+    }
+
+    fn error() -> ApiError {
+        ApiError::new(ErrorCode::SourceUnreachable, "radio down")
+    }
+
+    #[test]
+    fn a_fresh_row_waits_to_be_asked() {
+        let machine = Machine::default();
+        assert_eq!(machine.state, ForYouState::Idle);
+        assert!(machine.state.is_shown());
+    }
+
+    #[test]
+    fn loading_fills_with_the_mix() {
+        let mut machine = Machine::default();
+        let generation = machine.begin();
+        assert_eq!(machine.state, ForYouState::Loading);
+        assert!(machine.settle(generation, Ok(ForYou::Mix(vec![track("a"), track("b")]))));
+        assert_eq!(
+            machine.state,
+            ForYouState::Mix(vec![track("a"), track("b")])
+        );
+        assert!(machine.state.is_shown());
+    }
+
+    #[test]
+    fn nothing_to_mix_from_hides_the_row() {
+        for reason in [ForYouUnavailable::NoLikes, ForYouUnavailable::NoTrackRadio] {
+            let mut machine = Machine::default();
+            let generation = machine.begin();
+            machine.settle(generation, Ok(ForYou::Unavailable(reason)));
+            assert_eq!(machine.state, ForYouState::Unavailable);
+            assert!(!machine.state.is_shown());
+        }
+    }
+
+    #[test]
+    fn an_empty_mix_hides_the_row() {
+        let mut machine = Machine::default();
+        let generation = machine.begin();
+        machine.settle(generation, Ok(ForYou::Mix(Vec::new())));
+        assert!(!machine.state.is_shown());
+    }
+
+    #[test]
+    fn a_failure_keeps_the_row_to_say_so() {
+        let mut machine = Machine::default();
+        let generation = machine.begin();
+        machine.settle(generation, Err(error()));
+        assert_eq!(machine.state, ForYouState::Failed(error()));
+        assert!(machine.state.is_shown());
+    }
+
+    #[test]
+    fn a_refresh_shows_the_placeholder_and_drops_the_older_answer() {
+        let mut machine = Machine::default();
+        let first = machine.begin();
+        machine.settle(first, Ok(ForYou::Mix(vec![track("a")])));
+        let second = machine.begin();
+        assert_eq!(machine.state, ForYouState::Loading);
+        assert!(!machine.settle(first, Ok(ForYou::Mix(vec![track("old")]))));
+        assert_eq!(machine.state, ForYouState::Loading);
+        assert!(machine.settle(second, Ok(ForYou::Mix(vec![track("b")]))));
+        assert_eq!(machine.state, ForYouState::Mix(vec![track("b")]));
+    }
+
+    #[test]
+    fn a_refresh_after_a_failure_can_still_fill_the_row() {
+        let mut machine = Machine::default();
+        let first = machine.begin();
+        machine.settle(first, Err(error()));
+        let second = machine.begin();
+        machine.settle(second, Ok(ForYou::Mix(vec![track("a")])));
+        assert_eq!(machine.state, ForYouState::Mix(vec![track("a")]));
+    }
+
+    #[test]
+    fn a_resync_forgets_the_mix_and_ignores_the_answer_in_flight() {
+        let mut machine = Machine::default();
+        let generation = machine.begin();
+        machine.reset();
+        assert_eq!(machine.state, ForYouState::Idle);
+        assert!(!machine.settle(generation, Ok(ForYou::Mix(vec![track("a")]))));
+        assert_eq!(machine.state, ForYouState::Idle);
+    }
+}

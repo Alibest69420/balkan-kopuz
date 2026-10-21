@@ -2,6 +2,7 @@
 
 mod cards;
 mod data;
+mod for_you;
 mod ranked;
 mod resume;
 mod settings;
@@ -23,7 +24,7 @@ use gpui_kit::{
     Styled, Subscription, Window,
 };
 use store::layout::Ordered as _;
-use store::{Navigator, PlaylistsModel, Query, Route, SourcesModel};
+use store::{ForYouModel, ForYouState, Navigator, PlaylistsModel, Query, Route, SourcesModel};
 
 use data::{RECENT_TRACKS_WINDOW, RECENTLY_ADDED_WINDOW, Shelf};
 
@@ -118,6 +119,7 @@ impl Home {
             cx.observe(&genre, |this, _, cx| this.rebuild(cx)),
             cx.observe(&PlaylistsModel::global(cx), |this, _, cx| this.rebuild(cx)),
             cx.observe(&SourcesModel::global(cx), |this, _, cx| this.rebuild(cx)),
+            cx.observe(&ForYouModel::global(cx), |this, _, cx| this.rebuild(cx)),
         ];
 
         Self {
@@ -141,6 +143,11 @@ impl Home {
 
     fn rebuild(&mut self, cx: &mut Context<Self>) {
         let playlists = PlaylistsModel::global(cx).read(cx).playlists().to_vec();
+        let for_you = ForYouModel::global(cx);
+        let for_you = match for_you.read(cx).state() {
+            ForYouState::Mix(tracks) => tracks.as_slice(),
+            _ => &[],
+        };
         self.shelves = data::build(data::Inputs {
             albums: self.albums.read(cx).value(),
             recently_added: self.recently_added.read(cx).value(),
@@ -154,6 +161,7 @@ impl Home {
                 .map(|stats| &stats.listen_counts),
             genre: self.genre.read(cx).value().and_then(|genre| genre.as_ref()),
             playlists: &playlists,
+            for_you,
             seed: self.seed,
         });
         cx.notify();
@@ -161,12 +169,17 @@ impl Home {
 
     /// The shelves the layout asks for, in its order, skipping the ones with nothing in them.
     fn drawn(&self, cx: &Context<Self>) -> Vec<usize> {
+        let for_you = ForYouModel::global(cx).read(cx).state().is_shown();
         store::layout(cx)
             .home
             .visible()
             .into_iter()
             .filter_map(|name| self.shelves.iter().position(|shelf| shelf.name == name))
-            .filter(|index| !self.shelves[*index].tiles.is_empty())
+            .filter(|index| match self.shelves[*index].name {
+                // Waiting and failing are both said in the row, so it stands before it has tiles.
+                "for_you" => for_you,
+                _ => !self.shelves[*index].tiles.is_empty(),
+            })
             .collect()
     }
 }
@@ -177,6 +190,9 @@ impl Render for Home {
         components::scroll::smooth("home-scroll", &self.page, window, cx);
         let banner = resume::banner(cx);
         let drawn = self.drawn(cx);
+        let asks = drawn
+            .iter()
+            .any(|index| self.shelves[*index].name == "for_you");
         let mut rows: Vec<AnyElement> = Vec::with_capacity(drawn.len());
         for index in drawn {
             let shelf = &self.shelves[index];
@@ -186,8 +202,14 @@ impl Render for Home {
             // A ranking is a list and a shelf is a row; `Form` is what says which a name gets.
             rows.push(match shelf.form {
                 data::Form::Ranked => ranked::ranked(shelf, cx),
+                _ if shelf.name == "for_you" => for_you::row(shelf, &handle, cx),
                 _ => shelf::shelf(shelf, &handle),
             });
+        }
+        // Asked only once the row is on screen, and outside the frame being drawn.
+        let model = ForYouModel::global(cx);
+        if asks && *model.read(cx).state() == ForYouState::Idle {
+            cx.defer(move |cx| model.update(cx, |model, cx| model.ensure(cx)));
         }
         // Nothing to show is only worth saying once the library has actually answered.
         let bare = banner.is_none() && rows.is_empty() && self.albums.read(cx).is_settled();

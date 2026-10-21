@@ -23,6 +23,8 @@ pub(crate) enum Play {
     Album(String),
     Track(String),
     Playlist(String),
+    /// A new track radio from this key, whatever is playing.
+    Radio(String),
 }
 
 /// One card, with everything a frame needs already in the shape the frame wants it.
@@ -84,6 +86,7 @@ pub(crate) struct Inputs<'a> {
     pub plays: Option<&'a HashMap<String, u64>>,
     pub genre: Option<&'a String>,
     pub playlists: &'a [PlaylistInfo],
+    pub for_you: &'a [TrackInfo],
     pub seed: u64,
 }
 
@@ -144,6 +147,7 @@ pub(crate) fn build(inputs: Inputs<'_>) -> Vec<Shelf> {
 
     vec![
         Shelf::new("jump_back_in", jump_back_in(recents, &by_id)),
+        Shelf::new("for_you", for_you(inputs.for_you)),
         Shelf::new(
             "recently_added",
             recently_added
@@ -231,6 +235,18 @@ fn recently_played(recents: &[TrackInfo]) -> Vec<Tile> {
         .filter(|track| !track.title.trim().is_empty())
         .take(SHELF)
         .map(|track| track_tile("recently-played", track))
+        .collect()
+}
+
+/// The daemon's mix as it came, each tile starting a radio of its own rather than the row as a queue.
+fn for_you(tracks: &[TrackInfo]) -> Vec<Tile> {
+    tracks
+        .iter()
+        .map(|track| Tile {
+            route: None,
+            play: Play::Radio(track.key.clone()),
+            ..track_tile("for-you", track)
+        })
         .collect()
 }
 
@@ -422,6 +438,17 @@ mod tests {
     }
 
     #[test]
+    fn a_for_you_tile_starts_a_radio_from_its_own_track() {
+        let tiles = for_you(&[
+            track("t1", "One", "NONEP", "a1"),
+            track("t2", "Two", "AKASAKI", ""),
+        ]);
+        assert_eq!(tiles.len(), 2);
+        assert!(tiles.iter().all(|tile| tile.route.is_none()));
+        assert!(matches!(&tiles[1].play, Play::Radio(key) if key == "key-t2"));
+    }
+
+    #[test]
     fn recently_played_keeps_every_play_in_order() {
         let recents = vec![
             track("t1", "One", "NONEP", "a1"),
@@ -444,6 +471,7 @@ mod tests {
             plays: None,
             genre: None,
             playlists: &[],
+            for_you: &[],
             seed: 1,
         });
         let names: Vec<&str> = shelves.iter().map(|shelf| shelf.name).collect();

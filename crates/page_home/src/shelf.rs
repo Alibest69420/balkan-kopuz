@@ -8,6 +8,10 @@ use crate::cards::{GAP, TILE, card};
 use crate::data::{Form, Shelf};
 
 pub(crate) fn shelf(shelf: &Shelf, handle: &ScrollHandle) -> AnyElement {
+    carousel(shelf, handle).into_any_element()
+}
+
+pub(crate) fn carousel(shelf: &Shelf, handle: &ScrollHandle) -> Carousel {
     let tiles = shelf.tiles.clone();
     Carousel::new(
         shelf.name,
@@ -22,17 +26,28 @@ pub(crate) fn shelf(shelf: &Shelf, handle: &ScrollHandle) -> AnyElement {
         _ => Heading::Shelf,
     })
     .handle(handle.clone())
-    .into_any_element()
 }
 
 /// The i18n key a shelf is titled by.
 pub(crate) fn title(name: &str) -> &'static str {
     match name {
         "jump_back_in" => "jump_back_in",
+        "for_you" => "for_you",
         "recently_added" => "recently_added",
         "made_for_you" => "made_for_you",
         "top_artists" => "top_artists",
         "your_playlists" => "playlists",
         _ => "recently_played",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use components::format::t;
+
+    #[test]
+    fn the_for_you_row_has_its_own_title() {
+        assert_ne!(t(super::title("for_you")), "for_you");
+        assert_ne!(super::title("for_you"), super::title("made_for_you"));
     }
 }

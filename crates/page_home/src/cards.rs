@@ -27,6 +27,10 @@ pub(crate) fn card(tile: &Tile, cx: &App) -> AnyElement {
     if let Some(route) = tile.route.clone() {
         card = card.route(route);
     }
+    if let Play::Radio(key) = &tile.play {
+        let key = key.clone();
+        card = card.on_click(move |_, _, cx| actions::start_track_radio(key.clone(), cx));
+    }
     if !matches!(tile.play, Play::None) {
         let current = is_current(&tile.play, cx);
         let state = match current && PlayerModel::global(cx).read(cx).is_playing() {
@@ -65,6 +69,7 @@ fn start(play: &Play, current: bool, cx: &mut App) {
             actions::play_context(QueueContext::Playlist { id: id.clone() }, Some(0), cx)
         }
         Play::Track(key) => actions::play_tracks(vec![key.clone()], Some(0), cx),
+        Play::Radio(key) => actions::start_track_radio(key.clone(), cx),
         Play::None => {}
     }
 }

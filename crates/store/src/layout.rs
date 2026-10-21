@@ -549,6 +549,7 @@ impl Default for Home {
 /// The home shelves, in their designed order.
 pub const SHELVES: &[&str] = &[
     "jump_back_in",
+    "for_you",
     "recently_added",
     "made_for_you",
     "top_artists",
@@ -1144,8 +1145,8 @@ mod tests {
     #[test]
     fn moving_a_shelf_changes_what_the_page_draws() {
         let mut home = Home::default();
-        home.step("recently_added", -1);
-        assert_eq!(&home.visible()[..2], &["recently_added", "jump_back_in"]);
+        home.step("for_you", -1);
+        assert_eq!(&home.visible()[..2], &["for_you", "jump_back_in"]);
     }
 
     #[test]
