@@ -285,7 +285,7 @@ fn CatalogPageView(
                 if let Some(err) = error.read().clone() {
                     div { class: "py-12 text-rose-400 text-sm", "{err}" }
                 } else if let Some(loaded) = loaded {
-                    if !listed {
+                    if !listed && !embedded {
                         PageHeader { detail: loaded.clone(), fallback: page.title.clone() }
                     }
                     if !loaded.chips.is_empty() {
