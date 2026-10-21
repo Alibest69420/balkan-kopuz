@@ -1081,3 +1081,23 @@ service_summary_spotify = Deine Spotify-Bibliothek, abgespielt über Spotify im 
 service_summary_nextcloud = Musikdateien in deiner Nextcloud
 service_summary_clippsly = Musik, die du in deinen Clippsly-Cloudspeicher hochlädst und von dort streamst
 service_summary_smb = Musikdateien auf einer Netzwerkfreigabe (SMB), gelesen ohne sie einzubinden
+onboarding_welcome_blurb = Kopuz spielt die Musik auf diesem Computer, auf deinem eigenen Server und bei deinen Streamingdiensten, alles an einem Ort.
+onboarding_desktop_library_note = Wenn du die Kopuz-Desktop-App nutzt, ist deine Bibliothek schon hier
+onboarding_privacy_title = Datenschutz
+onboarding_privacy_discord = Der Discord-Status zeigt in deinem Discord-Profil, welchen Song du gerade hörst.
+onboarding_privacy_updates = Die Update-Suche fragt beim Start bei GitHub nach der neuesten Kopuz-Version.
+onboarding_privacy_watch_history = Der YouTube-Wiedergabeverlauf nimmt die Songs auf, die du hier hörst, und prägt so deine Empfehlungen.
+onboarding_ready_summary =
+    { $tracks } Titel, { $albums ->
+        [one] { $albums } Album
+       *[other] { $albums } Alben
+    }
+onboarding_start_listening = Jetzt hören
+onboarding_run_again = Einrichtung erneut starten
+onboarding_probe_found = { $count } Titel gefunden
+onboarding_probe_empty = In diesem Ordner wurde keine Musik gefunden
+onboarding_probe_unreachable = { $url } ist nicht erreichbar
+onboarding_step = Schritt { $current } von { $total }
+daemon_down_title = Kopuz braucht seinen Hintergrunddienst
+daemon_down_hint = Wenn er nicht startet, führe systemctl --user enable --now kopuzd in einem Terminal aus.
+retry = Erneut versuchen
