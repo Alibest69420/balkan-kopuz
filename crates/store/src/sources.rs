@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use api::{ApiEvent, SourceCapabilities, SourceInfo, SourceState, Table};
+use api::{ApiEvent, NetworkStatus, SourceCapabilities, SourceInfo, SourceState, Table};
 use gpui_kit::{App, Context, Entity, Subscription, Task, Window};
 use link::Link;
 
@@ -33,6 +33,9 @@ pub struct SourcesModel {
     /// The daemon's latest probe answers, laid over each fetch: a fetch that left before an answer carries the older one.
     heard: HashMap<String, SourceState>,
     loaded: bool,
+    /// Whether the daemon reaches the internet, which decides what a remote source can do.
+    network: NetworkStatus,
+    _network: Option<Task<()>>,
     _fetch: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
@@ -60,7 +63,14 @@ impl SourcesModel {
                         }
                     }
                     // Answers may have been lost; the refetch the resync starts is trusted over them.
-                    ApiEvent::Resync => this.heard.clear(),
+                    ApiEvent::Resync => {
+                        this.heard.clear();
+                        this.read_network(cx);
+                    }
+                    ApiEvent::NetworkStatus(status) => {
+                        this.network = status.clone();
+                        crate::notify(cx);
+                    }
                     _ => {}
                 }
             }),
@@ -69,6 +79,8 @@ impl SourcesModel {
             sources: Vec::new(),
             heard: HashMap::new(),
             loaded: false,
+            network: NetworkStatus::default(),
+            _network: None,
             _fetch: None,
             _subscriptions: subscriptions,
         }
@@ -97,6 +109,22 @@ impl SourcesModel {
         if switched {
             Invalidation::global(cx).update(cx, |invalidation, cx| invalidation.invalidate_all(cx));
         }
+    }
+
+    pub fn network(&self) -> &NetworkStatus {
+        &self.network
+    }
+
+    fn read_network(&mut self, cx: &mut Context<Self>) {
+        let call = Link::global(cx).call(|api| async move { api.network_status().await });
+        self._network = Some(cx.spawn(async move |this, cx| {
+            let Ok(status) = call.await else { return };
+            this.update(cx, |this, cx| {
+                this.network = status;
+                crate::notify(cx);
+            })
+            .ok();
+        }));
     }
 
     pub fn is_loaded(&self) -> bool {
