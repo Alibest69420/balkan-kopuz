@@ -1118,3 +1118,6 @@ offline_cache_description = Songs, die du übers Internet streamst, werden auf d
 back_online_switch_to = Wieder online, zu { $source } wechseln?
 onboarding_offline_cache = Gespielte Songs zum Offline-Hören behalten (bis zu { $size })
 error_offline_mode = Der Offline-Modus ist an, und für diesen Song gibt es keine heruntergeladene oder zwischengespeicherte Kopie zum Abspielen.
+discover_your_mixes = Deine Mixe
+discover_never_played = Nie gespielt
+discover_forgotten_favorites = Vergessene Favoriten

@@ -1106,3 +1106,6 @@ offline_cache_description = İnternet üzerinden dinlediğiniz şarkılar bağla
 back_online_switch_to = Yeniden çevrimiçisiniz, { $source } kaynağına geçilsin mi?
 onboarding_offline_cache = Çaldığınız şarkıları çevrimdışı dinlemek için sakla ({ $size } kadar)
 error_offline_mode = Çevrimdışı mod açık ve bu şarkının çalınabilecek indirilmiş ya da önbellekte bir kopyası yok.
+discover_your_mixes = Mikslerin
+discover_never_played = Hiç dinlenmedi
+discover_forgotten_favorites = Unutulan favoriler
