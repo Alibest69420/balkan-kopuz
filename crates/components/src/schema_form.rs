@@ -153,6 +153,16 @@ impl SchemaForm {
             .collect()
     }
 
+    /// Take what is typed in every box as answered, as leaving it would; a button press does not blur it.
+    pub fn commit_typed(&mut self, cx: &mut Context<Self>) {
+        let typed: Vec<(String, String)> = self
+            .inputs
+            .iter()
+            .map(|(key, input)| (key.clone(), input.read(cx).value().to_string()))
+            .collect();
+        self.values.extend(typed);
+    }
+
     pub fn value(&self, key: &str) -> Option<&str> {
         self.values.get(key).map(String::as_str)
     }
