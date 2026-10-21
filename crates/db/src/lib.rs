@@ -227,6 +227,15 @@ pub struct ArtistRow {
     pub albums: u32,
 }
 
+/// One track's play count, and when it was last played.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PlayRecord {
+    pub track_key: String,
+    pub count: u64,
+    /// Unix seconds; `None` for a play counted before times were kept that had already left the recent history, so long ago.
+    pub last_played_at: Option<i64>,
+}
+
 /// Per-artist images: `(overrides, photos)`. `overrides` are user-set custom
 /// photos (always a local path, highest priority); `photos` are the synced photo
 /// per artist as a uniform [`reader::ArtistImageRef`] (a server URL or a local
@@ -461,6 +470,15 @@ pub trait ReadStore: Send + Sync {
 
     /// Every play count, keyed by [`Source::listen_count_key`] over the track's uid.
     async fn listen_counts(&self) -> Result<std::collections::HashMap<String, u64>, DbError>;
+
+    /// Every played track of `source`, most played first.
+    async fn play_history(&self, source: &Source) -> Result<Vec<PlayRecord>, DbError>;
+
+    /// `server_id`'s favorite refs with the Unix second each was liked.
+    async fn favorites_liked_at(&self, server_id: &str) -> Result<Vec<(String, i64)>, DbError>;
+
+    /// The albums of `source` that hold tracks and none with a play count or a recently-played entry.
+    async fn unplayed_albums(&self, source: &Source) -> Result<Vec<reader::Album>, DbError>;
 
     /// Every downloaded copy, item id to file path.
     async fn offline_tracks(&self) -> Result<std::collections::HashMap<String, String>, DbError>;

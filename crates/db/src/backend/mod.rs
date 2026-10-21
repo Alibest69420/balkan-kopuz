@@ -416,6 +416,21 @@ impl ReadStore for Native {
         cfg_store::listen_counts(&self.pool()).await
     }
 
+    async fn play_history(
+        &self,
+        source: &crate::Source,
+    ) -> Result<Vec<crate::PlayRecord>, DbError> {
+        cfg_store::play_history(&self.pool(), source).await
+    }
+
+    async fn favorites_liked_at(&self, server_id: &str) -> Result<Vec<(String, i64)>, DbError> {
+        queries::favorites_liked_at(&self.pool(), server_id).await
+    }
+
+    async fn unplayed_albums(&self, source: &crate::Source) -> Result<Vec<reader::Album>, DbError> {
+        queries::unplayed_albums(&self.pool(), source).await
+    }
+
     async fn offline_tracks(&self) -> Result<std::collections::HashMap<String, String>, DbError> {
         cfg_store::offline_tracks(&self.pool()).await
     }
