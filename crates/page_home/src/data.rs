@@ -146,8 +146,8 @@ pub(crate) fn build(inputs: Inputs<'_>) -> Vec<Shelf> {
     made_for_you.truncate(SHELF);
 
     vec![
-        Shelf::new("jump_back_in", jump_back_in(recents, &by_id)),
         Shelf::new("for_you", for_you(inputs.for_you)),
+        Shelf::new("jump_back_in", jump_back_in(recents, &by_id)),
         Shelf::new(
             "recently_added",
             recently_added

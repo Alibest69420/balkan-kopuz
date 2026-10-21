@@ -199,7 +199,7 @@ pub struct Facet {
 #[serde(default)]
 pub struct Nav {
     pub position: NavPosition,
-    /// Route names in the order they are drawn; unknown names are ignored, missing ones appended.
+    /// Route names in the order they are drawn; unknown names are ignored, missing ones placed by their neighbours.
     pub order: Vec<String>,
     pub hidden: Vec<String>,
     pub start: String,
@@ -246,21 +246,20 @@ pub trait Ordered {
 
     fn lists(&mut self) -> (&mut Vec<String>, &mut Vec<String>);
 
-    /// The visible names, in order: the saved order first, then anything new, minus hidden.
+    /// The visible names, in order: the saved order with anything new placed by its neighbours, minus hidden.
     fn visible(&self) -> Vec<&str> {
-        let mut names: Vec<&str> = self
+        let mut names: Vec<String> = self
             .order()
             .iter()
-            .map(String::as_str)
-            .filter(|name| Self::KNOWN.contains(name))
+            .filter(|name| Self::KNOWN.contains(&name.as_str()))
+            .cloned()
             .collect();
-        for name in Self::KNOWN {
-            if !names.contains(name) {
-                names.push(name);
-            }
-        }
-        names.retain(|name| self.shows(name));
+        place_missing(&mut names, Self::KNOWN);
         names
+            .iter()
+            .filter(|name| self.shows(name))
+            .filter_map(|name| Self::KNOWN.iter().find(|known| **known == name).copied())
+            .collect()
     }
 
     fn shows(&self, name: &str) -> bool {
@@ -282,12 +281,8 @@ pub trait Ordered {
     /// Move one name a place along the full order rather than the visible one.
     fn step(&mut self, name: &str, delta: isize) {
         let (order, _) = self.lists();
-        // A file written by hand may name only some of them; fill the rest in before moving one.
-        for known in Self::KNOWN {
-            if !order.iter().any(|held| held == known) {
-                order.push(known.to_string());
-            }
-        }
+        // A file written by hand or before a name existed may lack some; fill them in before moving one.
+        place_missing(order, Self::KNOWN);
         let Some(from) = order.iter().position(|held| held == name) else {
             return;
         };
@@ -297,6 +292,27 @@ pub trait Ordered {
         if to < order.len() {
             order.swap(from, to);
         }
+    }
+}
+
+/// Put each known name the order lacks just before its next designed neighbour it holds, else just after its previous one.
+fn place_missing(order: &mut Vec<String>, known: &[&str]) {
+    let at = |order: &[String], name: &str| order.iter().position(|held| held == name);
+    for (index, name) in known.iter().enumerate() {
+        if at(order, name).is_some() {
+            continue;
+        }
+        let slot = known[index + 1..]
+            .iter()
+            .find_map(|next| at(order, next))
+            .or_else(|| {
+                known[..index]
+                    .iter()
+                    .rev()
+                    .find_map(|previous| at(order, previous).map(|found| found + 1))
+            })
+            .unwrap_or(order.len());
+        order.insert(slot, name.to_string());
     }
 }
 
@@ -548,8 +564,8 @@ impl Default for Home {
 
 /// The home shelves, in their designed order.
 pub const SHELVES: &[&str] = &[
-    "jump_back_in",
     "for_you",
+    "jump_back_in",
     "recently_added",
     "made_for_you",
     "top_artists",
@@ -1145,8 +1161,92 @@ mod tests {
     #[test]
     fn moving_a_shelf_changes_what_the_page_draws() {
         let mut home = Home::default();
-        home.step("for_you", -1);
-        assert_eq!(&home.visible()[..2], &["for_you", "jump_back_in"]);
+        home.step("jump_back_in", -1);
+        assert_eq!(&home.visible()[..2], &["jump_back_in", "for_you"]);
+    }
+
+    #[test]
+    fn for_you_leads_a_fresh_home() {
+        assert_eq!(
+            &Home::default().visible()[..2],
+            &["for_you", "jump_back_in"]
+        );
+    }
+
+    fn saved(names: &[&str]) -> Home {
+        Home {
+            order: names.iter().map(|name| name.to_string()).collect(),
+            hidden: Vec::new(),
+        }
+    }
+
+    // The order a person saved before for_you existed, with their own moves in it.
+    const BEFORE_FOR_YOU: &[&str] = &[
+        "recently_added",
+        "jump_back_in",
+        "made_for_you",
+        "your_playlists",
+        "top_artists",
+        "recently_played",
+    ];
+
+    #[test]
+    fn a_shelf_new_to_a_saved_order_lands_by_its_designed_neighbour() {
+        let home = saved(BEFORE_FOR_YOU);
+        assert_eq!(
+            home.visible(),
+            &[
+                "recently_added",
+                "for_you",
+                "jump_back_in",
+                "made_for_you",
+                "your_playlists",
+                "top_artists",
+                "recently_played",
+            ]
+        );
+    }
+
+    #[test]
+    fn moving_a_shelf_in_an_old_order_keeps_the_new_one_by_its_neighbour() {
+        let mut home = saved(BEFORE_FOR_YOU);
+        home.step("recently_played", -1);
+        assert_eq!(
+            home.order,
+            [
+                "recently_added",
+                "for_you",
+                "jump_back_in",
+                "made_for_you",
+                "your_playlists",
+                "recently_played",
+                "top_artists",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_new_shelf_never_unhides_or_moves_the_ones_placed_by_hand() {
+        let mut home = saved(BEFORE_FOR_YOU);
+        home.hidden.push("jump_back_in".into());
+        let visible = home.visible();
+        assert!(!visible.contains(&"jump_back_in"));
+        assert_eq!(&visible[..2], &["recently_added", "for_you"]);
+        assert_eq!(visible.last(), Some(&"recently_played"));
+    }
+
+    #[test]
+    fn a_new_last_name_follows_its_previous_neighbour() {
+        let mut order = vec!["library".to_string(), "home".to_string()];
+        place_missing(&mut order, &["library", "home", "later"]);
+        assert_eq!(order, ["library", "home", "later"]);
+    }
+
+    #[test]
+    fn a_hidden_new_shelf_stays_hidden() {
+        let mut home = saved(BEFORE_FOR_YOU);
+        home.hidden.push("for_you".into());
+        assert!(!home.visible().contains(&"for_you"));
     }
 
     #[test]
