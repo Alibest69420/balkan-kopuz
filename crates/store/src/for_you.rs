@@ -17,13 +17,15 @@ pub enum ForYouState {
     /// The source has no likes or no track radio, so the row is hidden.
     Unavailable,
     Failed(ApiError),
+    /// The daemon went away before the mix came, so there is nothing to wait for.
+    Disconnected,
 }
 
 impl ForYouState {
     /// Whether Home draws the row at all.
     pub fn is_shown(&self) -> bool {
         match self {
-            Self::Unavailable => false,
+            Self::Unavailable | Self::Disconnected => false,
             Self::Mix(tracks) => !tracks.is_empty(),
             Self::Idle | Self::Loading | Self::Failed(_) => true,
         }
@@ -59,6 +61,16 @@ impl Machine {
         true
     }
 
+    /// The daemon dropped: a mix still on its way never arrives, so stop waiting for it.
+    fn disconnect(&mut self) -> bool {
+        if !matches!(self.state, ForYouState::Idle | ForYouState::Loading) {
+            return false;
+        }
+        self.generation += 1;
+        self.state = ForYouState::Disconnected;
+        true
+    }
+
     fn reset(&mut self) {
         self.generation += 1;
         self.state = ForYouState::Idle;
@@ -68,7 +80,7 @@ impl Machine {
 pub struct ForYouModel {
     machine: Machine,
     _fetch: Option<Task<()>>,
-    _subscription: Subscription,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl ForYouModel {
@@ -78,15 +90,27 @@ impl ForYouModel {
 
     pub(crate) fn new(cx: &mut Context<Self>) -> Self {
         let invalidation = Invalidation::global(cx);
-        let subscription = cx.subscribe(&invalidation, |this, _, event: &TablesChanged, cx| {
-            if event.is_all() {
-                this.reset(cx);
-            }
-        });
+        let connection = Link::connection(cx);
+        let subscriptions = vec![
+            cx.subscribe(&invalidation, |this, _, event: &TablesChanged, cx| {
+                if event.is_all() {
+                    this.reset(cx);
+                }
+            }),
+            cx.observe(&connection, |this, connection, cx| {
+                let connected = connection.read(cx).is_connected();
+                if !connected && this.machine.disconnect() {
+                    this._fetch = None;
+                    crate::notify(cx);
+                } else if connected && this.machine.state == ForYouState::Disconnected {
+                    this.reset(cx);
+                }
+            }),
+        ];
         Self {
             machine: Machine::default(),
             _fetch: None,
-            _subscription: subscription,
+            _subscriptions: subscriptions,
         }
     }
 
@@ -131,6 +155,10 @@ impl ForYouModel {
 
     fn reset(&mut self, cx: &mut Context<Self>) {
         self.machine.reset();
+        // Nobody can ask while the daemon is gone, so an idle row would pulse forever.
+        if !Link::connection(cx).read(cx).is_connected() {
+            self.machine.disconnect();
+        }
         self._fetch = None;
         crate::notify(cx);
     }
@@ -235,6 +263,25 @@ mod tests {
         machine.settle(first, Err(error()));
         let second = machine.begin();
         machine.settle(second, Ok(ForYou::Mix(vec![track("a")])));
+        assert_eq!(machine.state, ForYouState::Mix(vec![track("a")]));
+    }
+
+    #[test]
+    fn a_lost_daemon_stops_the_placeholder_and_drops_the_answer_in_flight() {
+        let mut machine = Machine::default();
+        let generation = machine.begin();
+        assert!(machine.disconnect());
+        assert_eq!(machine.state, ForYouState::Disconnected);
+        assert!(!machine.state.is_shown());
+        assert!(!machine.settle(generation, Ok(ForYou::Mix(vec![track("a")]))));
+    }
+
+    #[test]
+    fn a_lost_daemon_keeps_a_mix_already_shown() {
+        let mut machine = Machine::default();
+        let generation = machine.begin();
+        machine.settle(generation, Ok(ForYou::Mix(vec![track("a")])));
+        assert!(!machine.disconnect());
         assert_eq!(machine.state, ForYouState::Mix(vec![track("a")]));
     }
 
