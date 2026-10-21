@@ -1061,3 +1061,4 @@ image_copied = Görsel kopyalandı
 image_saved = Görsel kaydedildi
 image_copy_failed = Görsel kopyalanamadı: { $error }
 image_save_failed = Görsel kaydedilemedi: { $error }
+for_you = Senin için

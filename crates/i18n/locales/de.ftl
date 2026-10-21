@@ -1069,3 +1069,4 @@ image_copied = Bild kopiert
 image_saved = Bild gespeichert
 image_copy_failed = Das Bild konnte nicht kopiert werden: { $error }
 image_save_failed = Das Bild konnte nicht gespeichert werden: { $error }
+for_you = Für dich

@@ -1101,3 +1101,4 @@ image_copied = Image copied
 image_saved = Image saved
 image_copy_failed = Couldn't copy the image: { $error }
 image_save_failed = Couldn't save the image: { $error }
+for_you = For you
