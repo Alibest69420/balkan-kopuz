@@ -2,9 +2,10 @@
 
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use api::{ArtworkData, ArtworkRequest, ArtworkTarget, NoticeLevel};
-use gpui_kit::{App, ClipboardItem, Image, ImageFormat, SharedString};
+use gpui_kit::{App, ClipboardEntry, ClipboardItem, Image, ImageFormat, SharedString};
 use link::Link;
 
 use crate::{Notice, Notices};
@@ -108,6 +109,7 @@ pub enum PictureError {
     Decode(image::ImageError),
     Prompt(String),
     Write(std::io::Error),
+    NotTaken,
 }
 
 impl PictureError {
@@ -117,6 +119,7 @@ impl PictureError {
             Self::Decode(error) => error.to_string().into(),
             Self::Prompt(error) => error.clone().into(),
             Self::Write(error) => error.to_string().into(),
+            Self::NotTaken => "the clipboard did not take the image".into(),
         };
         let message = i18n::t_with(key, &[("error", detail.to_string().into())]);
         match self {
@@ -157,16 +160,34 @@ pub fn copy_picture(target: ArtworkTarget, cx: &mut App) {
             Ok(data) => executor.spawn(async move { as_png(data) }).await,
             Err(error) => Err(error),
         };
-        cx.update(|cx| match png {
-            Ok(png) => {
-                let image = Image::from_bytes(ImageFormat::Png, png);
-                cx.write_to_clipboard(ClipboardItem::new_image(&image));
-                Notices::info(i18n::t("image_copied"), cx);
+        let image = match png {
+            Ok(png) => Image::from_bytes(ImageFormat::Png, png),
+            Err(error) => {
+                cx.update(|cx| Notices::push(error.notice("image_copy_failed"), cx));
+                return;
             }
-            Err(error) => Notices::push(error.notice("image_copy_failed"), cx),
+        };
+        cx.update(|cx| cx.write_to_clipboard(ClipboardItem::new_image(&image)));
+        cx.background_executor().timer(CLIPBOARD_SETTLE).await;
+        cx.update(|cx| match holds(cx.read_from_clipboard(), &image) {
+            true => Notices::info(i18n::t("image_copied"), cx),
+            false => Notices::push(PictureError::NotTaken.notice("image_copy_failed"), cx),
         });
     })
     .detach();
+}
+
+/// Wayland makes a new selection current only after a compositor round trip, so it is read back after this.
+const CLIPBOARD_SETTLE: Duration = Duration::from_millis(250);
+
+/// Whether the clipboard serves `image`; the write itself reports nothing, and drops it without a focused window.
+fn holds(item: Option<ClipboardItem>, image: &Image) -> bool {
+    item.is_some_and(|item| {
+        item.entries().iter().any(|entry| match entry {
+            ClipboardEntry::Image(held) => held.format == image.format && held.bytes == image.bytes,
+            _ => false,
+        })
+    })
 }
 
 /// `~/Pictures`, or home when there is none.
@@ -318,6 +339,16 @@ mod tests {
         assert_eq!(extension("image/x-unknown", JPEG), "jpg");
         assert_eq!(extension("", b"GIF89a"), "gif");
         assert_eq!(extension("", b"nothing at all"), "jpg");
+    }
+
+    #[test]
+    fn only_the_same_image_counts_as_copied() {
+        let image = Image::from_bytes(ImageFormat::Png, PNG.to_vec());
+        assert!(holds(Some(ClipboardItem::new_image(&image)), &image));
+        assert!(!holds(None, &image));
+        assert!(!holds(Some(ClipboardItem::new_string("x".into())), &image));
+        let other = Image::from_bytes(ImageFormat::Jpeg, PNG.to_vec());
+        assert!(!holds(Some(ClipboardItem::new_image(&other)), &image));
     }
 
     #[test]
