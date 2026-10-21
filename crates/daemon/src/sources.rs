@@ -165,6 +165,7 @@ fn capabilities(source: &dyn server::source::MediaSource) -> SourceCapabilities 
         stream_quality: caps.stream_quality,
         explicit_flags: caps.explicit_flags,
         watch_history: caps.watch_history,
+        complete_play_history: caps.complete_play_history,
         sync: caps.sync,
         downloads: caps.downloads,
         uploads: caps.uploads,

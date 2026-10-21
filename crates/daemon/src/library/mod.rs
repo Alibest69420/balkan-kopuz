@@ -552,6 +552,8 @@ mod jobs;
 mod lyrics_cache;
 mod reads;
 
+pub(crate) use reads::album_info;
+
 #[async_trait::async_trait]
 impl QueueMaterializer for LibraryService {
     async fn materialize(&self, context: &QueueContext) -> Result<Vec<Track>, ApiError> {

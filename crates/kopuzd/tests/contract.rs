@@ -2939,6 +2939,71 @@ async fn for_you_without_track_radio_hides_the_row_on_both_transports() {
     assert_eq!(pair.wire.refresh_for_you().await, Ok(hidden));
 }
 
+/// A folder library's Discover rows agree on both transports and hold until a refresh, even past a play.
+#[tokio::test]
+async fn discover_rows_agree_across_transports_and_hold_until_refreshed() {
+    let pair = spawn_pair().await;
+    let local = config::Source::default();
+    let names: Vec<String> = (0..30).map(|n| format!("al-{n}")).collect();
+    let tracks: Vec<Track> = names
+        .iter()
+        .map(|name| Track {
+            album_id: name.clone(),
+            ..track(&format!("/lib/{name}.flac"))
+        })
+        .collect();
+    pair.database.upsert_tracks(&local, &tracks).await.unwrap();
+    let albums: Vec<reader::Album> = names
+        .iter()
+        .map(|name| reader::Album {
+            id: name.clone(),
+            title: name.clone(),
+            artist: "Ada".into(),
+            genre: String::new(),
+            year: 0,
+            cover_path: None,
+            manual_cover: false,
+            artist_id: None,
+            artist_key: None,
+        })
+        .collect();
+    pair.database.upsert_albums(&local, &albums).await.unwrap();
+    let active = pair
+        .wire
+        .sources()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|source| source.active)
+        .expect("an active source");
+    assert!(active.capabilities.complete_play_history);
+
+    let first = pair.local.discover_rows().await.unwrap();
+    assert_eq!(pair.wire.discover_rows().await, Ok(first.clone()));
+    assert!(first.mixes.is_empty());
+    assert!(!first.never_played.is_empty());
+    let picked = first.never_played[0].id.clone();
+    pair.database
+        .bump_listen_count(&local, &format!("/lib/{picked}.flac"))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        pair.wire.discover_rows().await,
+        Ok(first),
+        "held until refreshed"
+    );
+    let refreshed = pair.wire.refresh_discover_rows().await.unwrap();
+    assert!(
+        refreshed
+            .never_played
+            .iter()
+            .all(|album| album.id != picked),
+        "a played album leaves the row once it is picked again"
+    );
+    assert_eq!(pair.local.discover_rows().await, Ok(refreshed));
+}
+
 /// An unsaved draft is probed alike on both transports: folders counted, a server asked once, a streaming service left alone.
 #[tokio::test]
 async fn a_draft_probe_agrees_across_transports() {

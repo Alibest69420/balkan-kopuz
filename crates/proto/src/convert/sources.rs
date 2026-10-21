@@ -30,6 +30,7 @@ pub fn capabilities_to_proto(value: &api::SourceCapabilities) -> SourceCapabilit
         stream_quality: value.stream_quality,
         explicit_flags: value.explicit_flags,
         watch_history: value.watch_history,
+        complete_play_history: value.complete_play_history,
         playlists: match value.playlists {
             PlaylistCapability::None => crate::PlaylistCapability::None,
             PlaylistCapability::AddRemove => crate::PlaylistCapability::AddRemove,
@@ -128,6 +129,7 @@ pub fn capabilities_from_proto(value: Option<&SourceCapabilities>) -> api::Sourc
         stream_quality: value.stream_quality,
         explicit_flags: value.explicit_flags,
         watch_history: value.watch_history,
+        complete_play_history: value.complete_play_history,
         playlists: match crate::PlaylistCapability::try_from(value.playlists) {
             Ok(crate::PlaylistCapability::AddRemove) => api::PlaylistCapability::AddRemove,
             Ok(crate::PlaylistCapability::Reorder) => api::PlaylistCapability::Reorder,
@@ -508,6 +510,7 @@ mod tests {
                 stream_quality: true,
                 explicit_flags: true,
                 watch_history: true,
+                complete_play_history: true,
                 playlists: api::PlaylistCapability::Reorder,
                 artists: api::ArtistPresentation::Library,
                 albums: api::AlbumPresentation::Standard,

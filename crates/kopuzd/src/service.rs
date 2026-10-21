@@ -526,6 +526,22 @@ impl Kopuz for KopuzGrpc {
         Ok(Response::new(convert::for_you_to_proto(&mix)))
     }
 
+    async fn get_discover_rows(
+        &self,
+        _request: Request<proto::GetDiscoverRowsRequest>,
+    ) -> Result<Response<proto::DiscoverRows>, Status> {
+        let rows = self.0.api.discover_rows().await.map_err(failed)?;
+        Ok(Response::new(convert::discover_rows_to_proto(&rows)))
+    }
+
+    async fn refresh_discover_rows(
+        &self,
+        _request: Request<proto::RefreshDiscoverRowsRequest>,
+    ) -> Result<Response<proto::DiscoverRows>, Status> {
+        let rows = self.0.api.refresh_discover_rows().await.map_err(failed)?;
+        Ok(Response::new(convert::discover_rows_to_proto(&rows)))
+    }
+
     async fn get_radio_stations(
         &self,
         _: Request<proto::GetRadioStationsRequest>,

@@ -102,6 +102,8 @@ pub struct SourceCapabilities {
     pub explicit_flags: bool,
     /// It keeps a watch history, which `pause_watch_history` stops feeding.
     pub watch_history: bool,
+    /// Every play of its tracks goes through kopuz, so kopuz's play counts are its whole listening history.
+    pub complete_play_history: bool,
     pub playlists: PlaylistCapability,
     pub artists: ArtistPresentation,
     pub albums: AlbumPresentation,

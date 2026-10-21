@@ -349,6 +349,34 @@ pub fn for_you_from_proto(value: &ForYou) -> api::ForYou {
     }
 }
 
+pub fn discover_rows_to_proto(value: &api::DiscoverRows) -> DiscoverRows {
+    DiscoverRows {
+        mixes: value.mixes.iter().map(catalog_item_to_proto).collect(),
+        never_played: value.never_played.iter().map(album_info_to_proto).collect(),
+        forgotten_favorites: value
+            .forgotten_favorites
+            .iter()
+            .map(track_info_to_proto)
+            .collect(),
+    }
+}
+
+pub fn discover_rows_from_proto(value: &DiscoverRows) -> api::DiscoverRows {
+    api::DiscoverRows {
+        mixes: value.mixes.iter().map(catalog_item_from_proto).collect(),
+        never_played: value
+            .never_played
+            .iter()
+            .map(album_info_from_proto)
+            .collect(),
+        forgotten_favorites: value
+            .forgotten_favorites
+            .iter()
+            .map(track_info_from_proto)
+            .collect(),
+    }
+}
+
 pub fn radio_station_to_proto(value: &api::RadioStationInfo) -> RadioStationInfo {
     RadioStationInfo {
         id: value.id.clone(),
@@ -613,6 +641,36 @@ mod tests {
             api::ForYou::Unavailable(api::ForYouUnavailable::NoLikes),
         ] {
             assert_eq!(value, for_you_from_proto(&for_you_to_proto(&value)));
+        }
+    }
+
+    #[test]
+    fn discover_rows_round_trip() {
+        let track = super::super::fixtures::sample_state()
+            .track
+            .expect("the sample state plays a track");
+        let rows = api::DiscoverRows {
+            mixes: vec![api::CatalogItem {
+                kind: api::CatalogItemKind::Playlist,
+                id: "RDTMAK5uy_mix".into(),
+                title: "My Supermix".into(),
+                subtitle: Some("Ada, Boris".into()),
+                ..Default::default()
+            }],
+            never_played: vec![api::AlbumInfo {
+                id: "al-1".into(),
+                title: "Unheard".into(),
+                artist: "Ada".into(),
+                year: 2001,
+                ..Default::default()
+            }],
+            forgotten_favorites: vec![track],
+        };
+        for value in [rows, api::DiscoverRows::default()] {
+            assert_eq!(
+                value,
+                discover_rows_from_proto(&discover_rows_to_proto(&value))
+            );
         }
     }
 }

@@ -6,7 +6,7 @@
 //! is the same call as queueing a library track; the daemon remembers the row
 //! so that key still resolves.
 
-use crate::library::TrackInfo;
+use crate::library::{AlbumInfo, TrackInfo};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum CatalogItemKind {
@@ -197,6 +197,17 @@ pub enum ForYou {
     Mix(Vec<TrackInfo>),
     /// There is nothing to mix from, so a frontend hides the row.
     Unavailable(ForYouUnavailable),
+}
+
+/// The active source's Discover rows; a row the source cannot fill is empty.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct DiscoverRows {
+    /// The mixes the source made for this account, as playlist tiles.
+    pub mixes: Vec<CatalogItem>,
+    /// Albums with no play, offered only where [`crate::SourceCapabilities::complete_play_history`] holds.
+    pub never_played: Vec<AlbumInfo>,
+    /// Liked or much-played tracks not played for a while, likewise.
+    pub forgotten_favorites: Vec<TrackInfo>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

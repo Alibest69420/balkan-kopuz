@@ -57,6 +57,8 @@ service Kopuz {
   rpc GetCatalogDetail(CatalogDetailRequest) returns (CatalogDetail);
   rpc GetForYou(GetForYouRequest) returns (ForYou);
   rpc RefreshForYou(RefreshForYouRequest) returns (ForYou);
+  rpc GetDiscoverRows(GetDiscoverRowsRequest) returns (DiscoverRows);
+  rpc RefreshDiscoverRows(RefreshDiscoverRowsRequest) returns (DiscoverRows);
   rpc GetRadioStations(GetRadioStationsRequest) returns (RadioStationList);
   rpc SearchRadio(SearchRadioRequest) returns (RadioStationList);
   rpc PinRadioStation(PinRadioStationRequest) returns (Unit);
@@ -908,6 +910,8 @@ message SourceCapabilities {
   bool explicit_flags = 29;
   // It keeps a watch history of the account's plays.
   bool watch_history = 30;
+  // Every play of its tracks goes through kopuz, so kopuz's play counts are its whole listening history.
+  bool complete_play_history = 33;
 }
 
 message SearchFilter {
@@ -1420,6 +1424,17 @@ message ForYou {
     TrackList mix = 1;
     ForYouUnavailable unavailable = 2;
   }
+}
+
+message GetDiscoverRowsRequest {}
+message RefreshDiscoverRowsRequest {}
+
+// The active source's Discover rows; a row the source cannot fill is empty.
+message DiscoverRows {
+  repeated CatalogItem mixes = 1;
+  // Only where SourceCapabilities.complete_play_history holds.
+  repeated AlbumInfo never_played = 2;
+  repeated TrackInfo forgotten_favorites = 3;
 }
 
 // ---------------- radio ----------------

@@ -492,6 +492,16 @@ impl api::LibraryApi for LocalApi {
             .await
     }
 
+    async fn discover_rows(&self) -> Result<api::DiscoverRows, ApiError> {
+        self.recovering(|| async move { self.catalog()?.discover_rows().await })
+            .await
+    }
+
+    async fn refresh_discover_rows(&self) -> Result<api::DiscoverRows, ApiError> {
+        self.recovering(|| async move { self.catalog()?.refresh_discover_rows().await })
+            .await
+    }
+
     async fn radio_stations(&self) -> Result<Vec<api::RadioStationInfo>, ApiError> {
         Ok(self.radio()?.stations().await)
     }

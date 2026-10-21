@@ -548,6 +548,24 @@ impl api::LibraryApi for GrpcApi {
         Ok(convert::for_you_from_proto(mix.get_ref()))
     }
 
+    async fn discover_rows(&self) -> Result<api::DiscoverRows, ApiError> {
+        let rows = self
+            .client()
+            .get_discover_rows(Request::new(proto::GetDiscoverRowsRequest {}))
+            .await
+            .map_err(wire_error)?;
+        Ok(convert::discover_rows_from_proto(rows.get_ref()))
+    }
+
+    async fn refresh_discover_rows(&self) -> Result<api::DiscoverRows, ApiError> {
+        let rows = self
+            .client()
+            .refresh_discover_rows(Request::new(proto::RefreshDiscoverRowsRequest {}))
+            .await
+            .map_err(wire_error)?;
+        Ok(convert::discover_rows_from_proto(rows.get_ref()))
+    }
+
     async fn radio_stations(&self) -> Result<Vec<api::RadioStationInfo>, ApiError> {
         let list = self
             .client()

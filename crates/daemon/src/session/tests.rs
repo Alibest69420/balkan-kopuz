@@ -4270,6 +4270,7 @@ impl server::source::MediaSource for RadioSource {
             stream_quality: false,
             explicit_flags: true,
             watch_history: false,
+            complete_play_history: false,
             accounts: false,
             music_videos: false,
             library_actions: server::source::LibraryActions::NONE,

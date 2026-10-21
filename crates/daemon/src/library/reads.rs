@@ -28,7 +28,7 @@ fn window<T: Clone>(rows: &[T], page: Page) -> (u32, Vec<T>) {
 }
 
 /// An album row as the wire carries it, keyed to the artist it bills.
-fn album_info(album: &Album) -> AlbumInfo {
+pub(crate) fn album_info(album: &Album) -> AlbumInfo {
     AlbumInfo {
         id: album.id.clone(),
         title: album.title.clone(),
