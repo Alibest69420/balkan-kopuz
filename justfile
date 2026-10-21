@@ -9,6 +9,8 @@ daemon_dir := env_var_or_default("KOPUZ_DAEMON_DIR", `
     if [ -n "$patch" ]; then (cd "$patch" && pwd); else echo "$PWD/../kopuz"; fi
 `)
 socket := env_var_or_default("KOPUZ_SOCKET", env_var("XDG_RUNTIME_DIR") / "kopuzd-dev.sock")
+# Where kopuzd listens by default, so `app` finds a daemon started anywhere else.
+shared_socket := env_var_or_default("KOPUZ_SOCKET", env_var("XDG_RUNTIME_DIR") / "kopuz" / "kopuzd.sock")
 
 _default:
     @just --list
@@ -88,16 +90,15 @@ daemon profile="debug":
     #!/usr/bin/env bash
     set -euo pipefail
     cd {{ daemon_dir }} && {{ nix }} cargo build -p kopuz-kopuzd {{ if profile == "release" { "--release" } else { "" } }}
-    export KOPUZ_SOCKET={{ socket }}
-    rm -f "$KOPUZ_SOCKET"
-    exec {{ nix }} {{ daemon_dir }}/target/{{ profile }}/kopuzd --socket "$KOPUZ_SOCKET"
+    # kopuzd reclaims a stale socket itself and refuses a live one, so nothing is removed here.
+    exec {{ nix }} {{ daemon_dir }}/target/{{ profile }}/kopuzd --socket "{{ shared_socket }}"
 
-# The frontend on its own, against a daemon already listening; `just daemon` starts one.
+# The frontend on its own, against a daemon already listening: this repo's `just daemon`, kopuz's, or a service.
 app profile="debug" *args:
     #!/usr/bin/env bash
     set -euo pipefail
     {{ nix }} cargo build {{ if profile == "release" { "--release" } else { "" } }}
-    export KOPUZ_SOCKET={{ socket }}
+    export KOPUZ_SOCKET={{ shared_socket }}
     # Uncoupled on purpose, so this only ever reports a daemon it did not start rather than starting one.
     [ -S "$KOPUZ_SOCKET" ] || { echo "nothing listening on $KOPUZ_SOCKET; start one with 'just daemon'"; exit 1; }
     exec {{ nix }} ./target/{{ profile }}/kopuz-gpui {{ args }}
