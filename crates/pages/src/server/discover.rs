@@ -911,8 +911,6 @@ pub fn DiscoverArtistPage(
     on_open_artist: EventHandler<String>,
 ) -> Element {
     let api = hooks::use_api();
-    let ctrl = use_context::<hooks::use_player_controller::PlayerController>();
-    let now_playing = use_context::<DiscoverNowPlaying>().0;
     let mut artist = use_signal(|| None::<api::CatalogDetail>);
     let mut loading = use_signal(|| true);
     let mut error = use_signal(|| None::<String>);
@@ -976,9 +974,10 @@ pub fn DiscoverArtistPage(
     }
 
     rsx! {
-        div { class: "max-w-[1600px] mx-auto",
+        div { class: "relative max-w-[1600px] mx-auto",
+            // Over the banner rather than above it, so the banner starts at the top.
             button {
-                class: "inline-flex items-center gap-2 text-white/70 hover:text-white text-sm cursor-pointer mt-6 ml-6 md:ml-10 mb-2 group",
+                class: "absolute top-4 left-4 md:left-6 z-10 w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center text-white/80 hover:text-white hover:bg-black/60 transition-colors cursor-pointer group",
                 onclick: move |_| on_back.call(()),
                 i { class: "fa-solid fa-chevron-left text-xs transition-transform group-hover:-translate-x-0.5" }
             }
@@ -988,14 +987,21 @@ pub fn DiscoverArtistPage(
                     i { class: "fa-solid fa-arrows-rotate fa-spin text-2xl text-white/60" }
                 }
             } else if let Some(err) = error.read().clone() {
-                div { class: "py-12 px-6 md:px-10 text-rose-400 text-sm", "{err}" }
+                div { class: "pt-20 pb-12 px-6 md:px-10 text-rose-400 text-sm", "{err}" }
             } else if let Some(detail) = artist.read().clone() {
                 {
                     let banner = hooks::artwork::url(detail.artwork.as_ref(), hooks::artwork::Size::Thumb);
                     let banner_style = banner
                         .map(|url| format!("background-image: linear-gradient(to bottom, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.95) 100%), url('{url}'); background-size: cover; background-position: center; min-height: 360px;"))
                         .unwrap_or_else(|| "min-height: 280px;".to_string());
-                    let shuffle_id = detail.playback_id.clone();
+                    let shuffle = detail
+                        .shuffle_radio
+                        .clone()
+                        .and_then(components::playback::radio_actions::playlist_radio_handler);
+                    let radio = detail
+                        .mix_radio
+                        .clone()
+                        .and_then(components::playback::radio_actions::playlist_radio_handler);
                     let share_url = detail.web_url.clone();
                     rsx! {
                         div {
@@ -1018,19 +1024,20 @@ pub fn DiscoverArtistPage(
                                     p { class: "text-sm text-white/60 max-w-3xl line-clamp-3", "{description}" }
                                 }
                                 div { class: "flex items-center gap-3 mt-2",
-                                    if let Some(id) = shuffle_id {
+                                    if let Some(shuffle) = shuffle {
                                         button {
                                             class: "inline-flex items-center gap-2 bg-white text-black px-6 py-2.5 rounded-full font-bold hover:scale-105 active:scale-95 transition-transform cursor-pointer",
-                                            onclick: move |_| {
-                                                play_catalog(
-                                                    CatalogItemKind::Playlist,
-                                                    id.clone(),
-                                                    ctrl,
-                                                    now_playing,
-                                                );
-                                            },
+                                            onclick: move |_| shuffle.call(()),
                                             i { class: "fa-solid fa-shuffle text-[11px]" }
                                             span { class: "text-sm", "{i18n::t(\"shuffle\")}" }
+                                        }
+                                    }
+                                    if let Some(radio) = radio {
+                                        button {
+                                            class: "app-button-outlined inline-flex items-center gap-2 px-5 py-2.5 rounded-full border border-white/20 text-white/70 hover:text-white hover:border-white/40 hover:bg-white/10 transition-colors active:scale-95 cursor-pointer",
+                                            onclick: move |_| radio.call(()),
+                                            i { class: "{components::playback::radio_actions::RADIO_ICON} text-[11px]" }
+                                            span { class: "text-sm", "{components::playback::radio_actions::radio_label()}" }
                                         }
                                     }
                                     components::catalog_actions::CatalogActionButtons {

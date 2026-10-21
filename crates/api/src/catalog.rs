@@ -169,6 +169,9 @@ pub struct CatalogDetail {
     pub release_kind: Option<ReleaseKind>,
     /// For an artist; `subtitle` carries its subscribers.
     pub monthly_listeners: Option<String>,
+    /// For an artist, `QueueContext::PlaylistRadio` ids of its Shuffle and Mix.
+    pub shuffle_radio: Option<String>,
+    pub mix_radio: Option<String>,
     pub owner: Option<String>,
     /// As the source wrote it ("6.9M views").
     pub plays: Option<String>,
