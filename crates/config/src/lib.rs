@@ -1181,6 +1181,10 @@ pub struct System {
     #[serde(default)]
     #[garde(skip)]
     pub minimize_to_tray: bool,
+    /// Asked after a networked source stops answering, to tell a dead connection from a dead server; empty skips the check.
+    #[serde(default = "default_connectivity_check_urls")]
+    #[garde(inner(custom(http_url)))]
+    pub connectivity_check_urls: Vec<String>,
 }
 
 impl Default for System {
@@ -1189,7 +1193,31 @@ impl Default for System {
             tracing_enabled: false,
             auto_check_updates: default_auto_check_updates(),
             minimize_to_tray: false,
+            connectivity_check_urls: default_connectivity_check_urls(),
         }
+    }
+}
+
+/// Cloudflare's captive-portal check answers 204, Mozilla's answers `success`; plain HTTP on purpose, so a portal can show itself.
+pub const DEFAULT_CONNECTIVITY_CHECK_URLS: [&str; 2] = [
+    "http://cp.cloudflare.com/generate_204",
+    "http://detectportal.firefox.com/success.txt",
+];
+
+fn default_connectivity_check_urls() -> Vec<String> {
+    DEFAULT_CONNECTIVITY_CHECK_URLS
+        .iter()
+        .map(|url| url.to_string())
+        .collect()
+}
+
+fn http_url(value: &str, _: &()) -> garde::Result {
+    let rest = value
+        .strip_prefix("http://")
+        .or_else(|| value.strip_prefix("https://"));
+    match rest {
+        Some(host) if !host.is_empty() && !host.starts_with('/') => Ok(()),
+        _ => Err(garde::Error::new("not an http(s) address")),
     }
 }
 

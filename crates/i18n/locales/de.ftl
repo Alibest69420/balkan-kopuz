@@ -1101,3 +1101,5 @@ onboarding_step = Schritt { $current } von { $total }
 daemon_down_title = Kopuz braucht seinen Hintergrunddienst
 daemon_down_hint = Wenn er nicht startet, führe systemctl --user enable --now kopuzd in einem Terminal aus.
 retry = Erneut versuchen
+connectivity_check_urls = Verbindungsprüfung
+connectivity_check_urls_description = Adressen, die abgefragt werden, wenn eine Quelle nicht mehr antwortet, um eine getrennte Verbindung von einem ausgefallenen Server zu unterscheiden. Leer lassen, um die Prüfung zu überspringen.

@@ -429,6 +429,9 @@ pub fn config_to_proto(value: &config::Settings) -> Config {
         tracing_enabled: system.tracing_enabled,
         auto_check_updates: system.auto_check_updates,
         minimize_to_tray: system.minimize_to_tray,
+        connectivity_check_urls: Some(StringList {
+            values: system.connectivity_check_urls.clone(),
+        }),
         show_source_toggle: ui.show_source_toggle,
         show_row_images: ui.show_row_images,
         volume_scroll_step: playback.volume_scroll_step,
@@ -561,6 +564,10 @@ pub fn config_from_proto(value: &Config) -> config::Settings {
             tracing_enabled: value.tracing_enabled,
             auto_check_updates: value.auto_check_updates,
             minimize_to_tray: value.minimize_to_tray,
+            connectivity_check_urls: match &value.connectivity_check_urls {
+                Some(list) => list.values.clone(),
+                None => config::System::default().connectivity_check_urls,
+            },
         },
     }
 }
@@ -607,6 +614,22 @@ mod tests {
         let restored = config_from_proto(&Config::default()).playback;
         assert_eq!(restored.stream_quality, config::StreamQuality::High);
         assert!(!restored.autoplay_radio && !restored.skip_explicit);
+    }
+
+    #[test]
+    fn connectivity_checks_survive_the_wire_and_an_older_peer_keeps_the_defaults() {
+        for urls in [Vec::new(), vec!["https://check.example/up".to_string()]] {
+            let mut original = config::Settings::default();
+            original.system.connectivity_check_urls = urls.clone();
+            let bytes = config_to_proto(&original).encode_to_vec();
+            let restored = config_from_proto(&Config::decode(bytes.as_slice()).unwrap());
+            assert_eq!(restored.system.connectivity_check_urls, urls);
+        }
+        let older = config_from_proto(&Config::default());
+        assert_eq!(
+            older.system.connectivity_check_urls,
+            config::DEFAULT_CONNECTIVITY_CHECK_URLS
+        );
     }
 
     /// Every setting is on the wire now, the daemon-owned ones included, so every sample edit survives the round trip.

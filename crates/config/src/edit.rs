@@ -139,6 +139,7 @@ pub enum SystemEdit {
     TracingEnabled(bool),
     AutoCheckUpdates(bool),
     MinimizeToTray(bool),
+    ConnectivityCheckUrls(Vec<String>),
 }
 
 /// One change to one setting.
@@ -465,6 +466,7 @@ impl System {
             SystemEdit::TracingEnabled(value) => self.tracing_enabled = value,
             SystemEdit::AutoCheckUpdates(value) => self.auto_check_updates = value,
             SystemEdit::MinimizeToTray(value) => self.minimize_to_tray = value,
+            SystemEdit::ConnectivityCheckUrls(value) => self.connectivity_check_urls = value,
         }
     }
 }
@@ -568,6 +570,9 @@ pub fn edit_samples() -> Vec<SettingsEdit> {
         SettingsEdit::System(SystemEdit::TracingEnabled(true)),
         SettingsEdit::System(SystemEdit::AutoCheckUpdates(false)),
         SettingsEdit::System(SystemEdit::MinimizeToTray(true)),
+        SettingsEdit::System(SystemEdit::ConnectivityCheckUrls(vec![
+            "https://check.example/up".into(),
+        ])),
     ]
 }
 
@@ -702,6 +707,10 @@ mod tests {
             SettingsEdit::Library(LibraryEdit::SyncIntervalMinutes(
                 crate::MAX_SYNC_INTERVAL_MINUTES + 1,
             )),
+            SettingsEdit::System(SystemEdit::ConnectivityCheckUrls(vec![
+                "cp.cloudflare.com".into(),
+            ])),
+            SettingsEdit::System(SystemEdit::ConnectivityCheckUrls(vec!["https://".into()])),
         ] {
             let mut settings = Settings::default();
             assert!(settings.try_apply(edit.clone()).is_err(), "{edit:?}");

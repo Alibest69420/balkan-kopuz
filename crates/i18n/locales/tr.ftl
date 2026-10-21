@@ -1089,3 +1089,5 @@ onboarding_step = Adım { $current } / { $total }
 daemon_down_title = Kopuz'un arka plan hizmetine ihtiyacı var
 daemon_down_hint = Başlamazsa bir terminalde systemctl --user enable --now kopuzd komutunu çalıştırın.
 retry = Yeniden dene
+connectivity_check_urls = Bağlantı denetimi
+connectivity_check_urls_description = Bir kaynak yanıt vermediğinde bağlantının mı koptuğunu yoksa sunucunun mu çöktüğünü anlamak için sorulan adresler. Denetimi atlamak için boş bırakın.

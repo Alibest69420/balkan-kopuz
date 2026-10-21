@@ -1100,3 +1100,5 @@ onboarding_step = Step { $current } of { $total }
 daemon_down_title = Kopuz needs its background service
 daemon_down_hint = If it doesn't start, run systemctl --user enable --now kopuzd in a terminal.
 retry = Retry
+connectivity_check_urls = Connectivity checks
+connectivity_check_urls_description = Addresses asked when a source stops answering, to tell a dropped connection from a server that is down. Leave empty to skip the check.
