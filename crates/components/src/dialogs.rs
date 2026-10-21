@@ -35,6 +35,8 @@ pub enum ConfirmKind {
     Discard,
     /// Remove something for good; the description should name what goes.
     Delete,
+    /// Empty something that refills, such as a cache; the description should say how much goes.
+    Clear,
 }
 
 impl ConfirmKind {
@@ -42,6 +44,7 @@ impl ConfirmKind {
         match self {
             ConfirmKind::Discard => t("discard_changes"),
             ConfirmKind::Delete => t("delete"),
+            ConfirmKind::Clear => t("clear"),
         }
     }
 }

@@ -4,6 +4,7 @@ pub mod add_source;
 pub mod folders;
 mod integrations;
 mod login;
+mod offline_cache;
 mod registries;
 mod schedule;
 mod sources;
@@ -17,6 +18,7 @@ use gpui_kit::{
 };
 
 use integrations::Integrations;
+use offline_cache::OfflineCache;
 use registries::RadioRegistries;
 use sources::Sources;
 
@@ -32,6 +34,7 @@ pub struct SourceSettings {
     sources: Entity<Sources>,
     registries: Entity<RadioRegistries>,
     integrations: Entity<Integrations>,
+    offline_cache: Entity<OfflineCache>,
     section: Option<SharedString>,
 }
 
@@ -41,6 +44,7 @@ impl SourceSettings {
             sources: cx.new(|cx| Sources::new(window, cx)),
             registries: cx.new(|cx| RadioRegistries::new(window, cx)),
             integrations: cx.new(|cx| Integrations::new(window, cx)),
+            offline_cache: cx.new(|cx| OfflineCache::new(window, cx)),
             section: None,
         }
     }
@@ -71,6 +75,9 @@ impl Render for SourceSettings {
             })
             .when(self.shows("library"), |panel| {
                 panel.child(schedule::settings(cx))
+            })
+            .when(self.shows("library"), |panel| {
+                panel.child(self.offline_cache.clone())
             })
             .when(self.shows("library"), |panel| {
                 panel.child(self.registries.clone())

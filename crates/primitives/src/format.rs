@@ -46,9 +46,32 @@ pub fn total_duration(ms: u64) -> SharedString {
     }
 }
 
+/// A size in decimal units, the way the daemon's caps are set: "500 MB", "1.5 GB".
+pub fn bytes(bytes: u64) -> SharedString {
+    const GB: u64 = 1_000_000_000;
+    const MB: u64 = 1_000_000;
+    if bytes < GB {
+        return format!("{} MB", (bytes + MB / 2) / MB).into();
+    }
+    let tenths = (bytes + GB / 20) / (GB / 10);
+    match tenths % 10 {
+        0 => format!("{} GB", tenths / 10).into(),
+        rest => format!("{}.{rest} GB", tenths / 10).into(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_size_reads_in_the_largest_unit_it_fills() {
+        assert_eq!(bytes(0), "0 MB");
+        assert_eq!(bytes(499_600_000), "500 MB");
+        assert_eq!(bytes(5_000_000_000), "5 GB");
+        assert_eq!(bytes(1_540_000_000), "1.5 GB");
+        assert_eq!(bytes(1_000_000_000_000), "1000 GB");
+    }
 
     #[test]
     fn an_unknown_length_reads_blank() {
