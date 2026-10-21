@@ -698,6 +698,8 @@ pub struct Layout {
     pub skin: String,
     /// Command id to keystroke, overriding what the registry binds by default.
     pub shortcuts: BTreeMap<String, String>,
+    /// The after-setup tips card was closed, so it never shows again.
+    pub first_use_hint_dismissed: bool,
     /// The sorts and view modes every Kopuz frontend keeps, under the same keys the daemon seeded.
     #[serde(flatten)]
     pub ui: config::UiPrefs,
@@ -722,6 +724,7 @@ impl Default for Layout {
             motion: Motion::default(),
             skin: "normal".into(),
             shortcuts: BTreeMap::new(),
+            first_use_hint_dismissed: false,
             ui: config::UiPrefs::default(),
         }
     }

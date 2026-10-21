@@ -12,6 +12,8 @@ use gpui_kit::{
     ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _, Styled,
     Subscription, Window, div, px,
 };
+mod hint;
+
 use status::{ConnectionBanner, Toasts};
 use store::{JobsModel, PlayerModel};
 
@@ -52,6 +54,8 @@ impl Overlays {
             cx.observe(&jobs, |_, _, cx| cx.notify()),
             cx.observe(&player, |_, _, cx| cx.notify()),
             cx.observe(&banner, |_, _, cx| cx.notify()),
+            cx.observe(&store::SetupModel::global(cx), |_, _, cx| cx.notify()),
+            cx.observe(&store::LayoutModel::global(cx), |_, _, cx| cx.notify()),
         ];
         Self {
             dismissed_error: None,
@@ -202,7 +206,11 @@ impl Render for Overlays {
             .cloned();
         let error = self.playback_error(cx);
         let offline = ConnectionBanner::is_offline(cx);
-        if scan.is_none() && error.is_none() && !offline {
+        let tips = match offline {
+            true => None,
+            false => hint::card(window, cx),
+        };
+        if scan.is_none() && error.is_none() && !offline && tips.is_none() {
             return div().into_any_element();
         }
 
@@ -228,6 +236,7 @@ impl Render for Overlays {
                     .children(scan)
                     .children(error),
             )
+            .children(tips)
             .into_any_element()
     }
 }
