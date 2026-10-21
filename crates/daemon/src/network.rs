@@ -90,6 +90,22 @@ pub fn is_local(source: &config::Source, server_url: Option<&str>) -> bool {
     }
 }
 
+/// Whether the active source is across the internet, so offline mode keeps its listings and playback to the copies here.
+pub fn needs_internet(sources: &server::sources::Sources) -> bool {
+    let url = sources.server.as_ref().map(|server| server.url.as_str());
+    !is_local(&sources.active, url)
+}
+
+/// Whether the active source's songs go into the offline cache: across the internet, and played by the engine rather than an integration; never a folder library, an SMB share or a server on this network.
+pub fn cacheable(sources: &server::sources::Sources) -> bool {
+    let service = sources.server.as_ref().map(|server| server.service);
+    needs_internet(sources)
+        && !matches!(
+            service,
+            Some(config::MusicService::Smb | config::MusicService::Spotify)
+        )
+}
+
 fn local_host(host: &str) -> bool {
     let host = host.trim_start_matches('[').trim_end_matches(']');
     match host.parse::<IpAddr>() {
@@ -232,6 +248,44 @@ mod tests {
             assert!(!server(url), "{url} is not local");
         }
         assert!(!is_local(&config::Source::Server("s".into()), None));
+    }
+
+    fn active(url: &str, service: config::MusicService) -> server::sources::Sources {
+        server::sources::Sources {
+            active: config::Source::Server("s".into()),
+            server: Some(config::MusicServer::new_with_service(
+                "S".into(),
+                url.into(),
+                service,
+            )),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn only_songs_from_across_the_internet_are_cached() {
+        use config::MusicService::*;
+        assert!(cacheable(&active("https://music.youtube.com", YtMusic)));
+        assert!(cacheable(&active("https://jelly.example.com", Jellyfin)));
+        assert!(cacheable(&active(
+            "https://listener.clippsly.app",
+            Clippsly
+        )));
+        assert!(
+            !cacheable(&server::sources::Sources::default()),
+            "a folder library"
+        );
+        assert!(
+            !cacheable(&active("http://192.168.1.9:8096", Jellyfin)),
+            "on this network"
+        );
+        assert!(!cacheable(&active("smb://nas.example.org/music", Smb)));
+        assert!(
+            !cacheable(&active("a-spotify-client-id", Spotify)),
+            "an integration plays it"
+        );
+        assert!(needs_internet(&active("a-spotify-client-id", Spotify)));
+        assert!(!needs_internet(&server::sources::Sources::default()));
     }
 
     fn urls(n: usize) -> Vec<String> {

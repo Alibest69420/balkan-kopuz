@@ -4334,3 +4334,67 @@ async fn upcoming_edits_agree_across_transports() {
         assert_eq!((local.rev, wire.rev), (rev, rev));
     }
 }
+
+/// The offline cache's status and its clearing answer alike on both transports, and neither touches a download.
+#[tokio::test]
+async fn the_offline_cache_answers_alike_on_both_transports() {
+    let pair = spawn_pair().await;
+    let local = pair.local.offline_cache_status().await.expect("local");
+    assert_eq!(pair.wire.offline_cache_status().await, Ok(local));
+    assert_eq!(local.used_bytes, 0);
+    assert_eq!(local.max_bytes, config::DEFAULT_OFFLINE_CACHE_MAX_BYTES);
+
+    pair.wire.clear_offline_cache().await.expect("wire clear");
+    pair.local.clear_offline_cache().await.expect("local clear");
+    assert_eq!(pair.wire.offline_cache_status().await, Ok(local));
+}
+
+/// The `offline` filter rides the wire and keeps to rows with a copy, a downloaded one included.
+#[tokio::test]
+async fn the_offline_filter_agrees_on_both_transports() {
+    let pair = spawn_pair().await;
+    let copy = pair._dir.path().join("seed-0.flac");
+    std::fs::write(&copy, b"audio").expect("a copy");
+    pair.database
+        .set_offline_track("/lib/seed-0.flac", Some(&copy.to_string_lossy()))
+        .await
+        .expect("registered");
+    let everything = Page {
+        offset: 0,
+        limit: 100,
+    };
+    for offline in [Some(true), Some(false)] {
+        let filter = TrackFilter {
+            offline,
+            ..Default::default()
+        };
+        let local = pair
+            .local
+            .tracks(filter.clone(), everything)
+            .await
+            .expect("local");
+        let wire = pair.wire.tracks(filter, everything).await.expect("wire");
+        assert_eq!(local, wire, "{offline:?}");
+        let keys: Vec<&str> = wire.items.iter().map(|row| row.key.as_str()).collect();
+        match offline {
+            Some(true) => assert_eq!(keys, ["/lib/seed-0.flac"]),
+            _ => assert_eq!(keys, ["/lib/seed-1.flac"]),
+        }
+    }
+    let albums = api::AlbumQuery {
+        offline: Some(true),
+        ..Default::default()
+    };
+    assert_eq!(
+        pair.local.albums(albums.clone(), everything).await,
+        pair.wire.albums(albums, everything).await
+    );
+    let artists = api::ArtistQuery {
+        offline: Some(true),
+        ..Default::default()
+    };
+    assert_eq!(
+        pair.local.artists(artists.clone(), everything).await,
+        pair.wire.artists(artists, everything).await
+    );
+}

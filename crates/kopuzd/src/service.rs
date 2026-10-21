@@ -1221,6 +1221,24 @@ impl Kopuz for KopuzGrpc {
         Ok(Response::new(proto::RemoveDownloadResponse {}))
     }
 
+    async fn get_offline_cache_status(
+        &self,
+        _: Request<proto::GetOfflineCacheStatusRequest>,
+    ) -> Result<Response<proto::OfflineCacheStatus>, Status> {
+        let status = self.0.api.offline_cache_status().await.map_err(failed)?;
+        Ok(Response::new(convert::offline_cache_status_to_proto(
+            &status,
+        )))
+    }
+
+    async fn clear_offline_cache(
+        &self,
+        _: Request<proto::ClearOfflineCacheRequest>,
+    ) -> Result<Response<proto::Unit>, Status> {
+        self.0.api.clear_offline_cache().await.map_err(failed)?;
+        Ok(Response::new(proto::Unit {}))
+    }
+
     /// An edit this build cannot read is answered invalid in its place; the readable ones still apply.
     async fn edit_config(
         &self,

@@ -115,6 +115,8 @@ service Kopuz {
   rpc ClearDownloaderHistory(ClearDownloaderHistoryRequest) returns (Unit);
   rpc GetDownloadStatuses(GetDownloadStatusesRequest) returns (DownloadStatusList);
   rpc RemoveDownload(TrackRef) returns (RemoveDownloadResponse);
+  rpc GetOfflineCacheStatus(GetOfflineCacheStatusRequest) returns (OfflineCacheStatus);
+  rpc ClearOfflineCache(ClearOfflineCacheRequest) returns (Unit);
   rpc EditConfig(EditConfigRequest) returns (EditReport);
   rpc PreviewEqualizer(EqualizerSettings) returns (Unit);
   rpc PreviewReplayGain(ReplayGainSettings) returns (Unit);
@@ -564,6 +566,8 @@ message TrackFilter {
   optional uint32 year_to = 11;
   // Runs the whole ordering backwards.
   bool reverse = 12;
+  // Only tracks with (true) or without (false) a downloaded or a cached copy.
+  optional bool offline = 13;
 }
 
 message AlbumOrder {
@@ -583,6 +587,8 @@ message AlbumQuery {
   optional bool downloaded = 7;
   // Absent lists every album; present and empty lists none.
   AlbumIds ids = 8;
+  // Only albums with (true) or without (false) a track that plays offline, downloaded or cached.
+  optional bool offline = 9;
 }
 
 message AlbumIds {
@@ -603,6 +609,8 @@ message ArtistQuery {
   optional string search = 1;
   repeated ArtistOrder sort = 2;
   optional bool downloaded = 3;
+  // Only artists with (true) or without (false) a track that plays offline, downloaded or cached.
+  optional bool offline = 4;
 }
 
 message ArtistsRequest {
@@ -1603,6 +1611,8 @@ message TrackInfo {
   // How often it was played or watched, as the source wrote it ("1.2B plays").
   optional string plays = 25;
   optional TrackCounterpart counterpart = 26;
+  // Kept from its own stream for offline listening, evicted when the cache needs room; a download is `offline` instead.
+  bool cached = 27;
 }
 
 // Which cut of a recording a row is, for a source that has both.
@@ -1794,6 +1804,18 @@ message DownloadItemStatus {
 
 message DownloadStatusList {
   repeated DownloadItemStatus items = 1;
+}
+
+message GetOfflineCacheStatusRequest {}
+message ClearOfflineCacheRequest {}
+
+// Songs kept from their own stream, least recently played evicted first past the cap; downloads never count.
+message OfflineCacheStatus {
+  // Off stops adding songs; the ones held stay and still play.
+  bool enabled = 1;
+  uint64 max_bytes = 2;
+  uint64 used_bytes = 3;
+  uint32 tracks = 4;
 }
 
 message DownloadList {

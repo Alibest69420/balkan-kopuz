@@ -72,6 +72,16 @@ pub struct NetworkStatus {
     pub left_source: Option<String>,
 }
 
+/// The offline playback cache: songs kept from their own stream, least recently played evicted first past the cap; downloads are apart and never count.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct OfflineCacheStatus {
+    /// Off stops adding songs; the ones it holds stay and still play.
+    pub enabled: bool,
+    pub max_bytes: u64,
+    pub used_bytes: u64,
+    pub tracks: u32,
+}
+
 /// One event on the daemon's Subscribe stream (`proto/kopuz.proto` carries the
 /// wire shape). The variant names are the event identities. Clients
 /// must ignore unknown event types.

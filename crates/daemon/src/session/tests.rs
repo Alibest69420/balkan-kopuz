@@ -5331,3 +5331,92 @@ async fn a_queued_station_survives_a_restart_without_the_registry() {
         serde_json::from_str(&resaved.stations["radio:searched:main"]).expect("record");
     assert_eq!(record.streams[0].url, "https://radio.example.test/main.mp3");
 }
+
+/// Records what a prefetch asked for, and answers with a few bytes.
+#[derive(Default)]
+struct AskedFor(Mutex<Vec<String>>);
+
+#[async_trait::async_trait]
+impl crate::offline_cache::Fetch for AskedFor {
+    async fn fetch(
+        &self,
+        request: &crate::offline_cache::PrefetchRequest,
+    ) -> Result<server::stream::stream_buffer::Captured, String> {
+        self.0.lock().expect("asked").push(request.item_id.clone());
+        Ok(server::stream::stream_buffer::Captured {
+            bytes: b"audio".to_vec(),
+            content_type: Some("audio/webm".into()),
+        })
+    }
+}
+
+async fn cached_harness(
+    fetcher: Arc<dyn crate::offline_cache::Fetch>,
+) -> (Harness, crate::OfflineIndex, tempfile::TempDir) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db = db::init(&dir.path().join("cache.db")).await.expect("db");
+    let cache = crate::offline_cache::OfflineCache::load_with(
+        &db,
+        dir.path().join("cache"),
+        &config::Settings::default(),
+        fetcher,
+    )
+    .await
+    .expect("cache");
+    let offline = crate::OfflineIndex::default().with_cache(cache);
+    let mut services = PlaybackServices {
+        offline: offline.clone(),
+        ..Default::default()
+    };
+    services.settings.playback.crossfade_seconds = 0;
+    let harness = spawn_harness(
+        services,
+        Arc::new(|track| Some(wav_factory(track.duration.min(6)))),
+    );
+    harness
+        .api
+        .session
+        .set_sources(active_on(config::Source::Server("yt".into())));
+    (harness, offline, dir)
+}
+
+#[tokio::test]
+async fn the_song_after_this_one_in_shuffled_play_order_is_fetched_ahead() {
+    let fetcher = Arc::new(AskedFor::default());
+    let (harness, offline, _dir) = cached_harness(fetcher.clone()).await;
+    let keys = ["ytm-a", "ytm-b", "ytm-c", "ytm-d", "ytm-e", "ytm-f"];
+    harness
+        .api
+        .set_queue(SetQueueRequest {
+            shuffle: Some(true),
+            ..replace(&keys)
+        })
+        .await
+        .expect("queue");
+    wait_committed(&harness.api).await;
+    let snapshot = harness.api.queue_snapshot().await.expect("snapshot");
+    assert!(snapshot.shuffle);
+    let position = snapshot.position.expect("a position") as usize;
+    let next = snapshot.items[position + 1].key.clone();
+
+    let changed = offline.cache().changed();
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while !offline.cache().contains(&next) {
+            changed.notified().await;
+        }
+    })
+    .await
+    .expect("the next song is kept");
+
+    assert_eq!(
+        *fetcher.0.lock().expect("asked"),
+        std::slice::from_ref(&next)
+    );
+    let current = &snapshot.items[position].key;
+    assert!(
+        !offline.cache().contains(current),
+        "nothing fetched it twice"
+    );
+    let rows = harness.api.queue_snapshot().await.expect("snapshot");
+    assert!(rows.items[position + 1].cached, "its row says so");
+}

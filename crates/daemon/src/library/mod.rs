@@ -107,6 +107,7 @@ fn album_query(source: config::Source, query: api::AlbumQuery) -> db::AlbumQuery
         year_to: query.year_to,
         artist_key: query.artist_key,
         downloaded: query.downloaded,
+        offline: query.offline,
         ids: query.ids,
         sort: query.sort,
     }
@@ -117,6 +118,7 @@ fn artist_query(source: config::Source, query: api::ArtistQuery) -> db::ArtistQu
         source,
         search: query.search.unwrap_or_default(),
         downloaded: query.downloaded,
+        offline: query.offline,
         sort: query.sort,
     }
 }
@@ -317,6 +319,7 @@ impl LibraryService {
             genre: filter.genre,
             favorite: filter.favorite,
             downloaded: filter.downloaded,
+            offline: filter.offline,
             year_from: filter.year_from,
             year_to: filter.year_to,
             reverse: filter.reverse,

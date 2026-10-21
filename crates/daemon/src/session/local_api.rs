@@ -877,6 +877,14 @@ impl api::JobApi for LocalApi {
         }
     }
 
+    async fn offline_cache_status(&self) -> Result<api::OfflineCacheStatus, ApiError> {
+        Ok(self.session.offline().cache().status())
+    }
+
+    async fn clear_offline_cache(&self) -> Result<(), ApiError> {
+        self.session.offline().cache().clear().await
+    }
+
     async fn jobs(&self) -> Result<Vec<api::JobStatus>, ApiError> {
         match &self.jobs {
             Some(runner) => Ok(runner.list()),

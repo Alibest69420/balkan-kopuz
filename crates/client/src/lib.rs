@@ -959,6 +959,23 @@ impl api::JobApi for GrpcApi {
             .collect())
     }
 
+    async fn offline_cache_status(&self) -> Result<api::OfflineCacheStatus, ApiError> {
+        let status = self
+            .client()
+            .get_offline_cache_status(Request::new(proto::GetOfflineCacheStatusRequest {}))
+            .await
+            .map_err(wire_error)?;
+        Ok(convert::offline_cache_status_from_proto(status.get_ref()))
+    }
+
+    async fn clear_offline_cache(&self) -> Result<(), ApiError> {
+        self.client()
+            .clear_offline_cache(Request::new(proto::ClearOfflineCacheRequest {}))
+            .await
+            .map_err(wire_error)?;
+        Ok(())
+    }
+
     async fn download_url(&self, url: String, format: String) -> Result<JobRef, ApiError> {
         let job = self
             .client()

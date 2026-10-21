@@ -121,6 +121,8 @@ pub struct TrackFilter {
     pub favorite: Option<bool>,
     /// Restrict to tracks with a downloaded copy (`Some(true)`) or without one (`Some(false)`).
     pub downloaded: Option<bool>,
+    /// Restrict to tracks with a downloaded or a cached copy (`Some(true)`), or with neither (`Some(false)`).
+    pub offline: Option<bool>,
     /// Inclusive bounds on the year of the track's album; a track whose album has no year matches neither.
     pub year_from: Option<u16>,
     pub year_to: Option<u16>,
@@ -160,6 +162,8 @@ pub struct AlbumQuery {
     pub ids: Option<Vec<String>>,
     /// Only those with a downloaded track (`Some(true)`), or only those with none.
     pub downloaded: Option<bool>,
+    /// Only those with a downloaded or cached track (`Some(true)`), or only those with neither.
+    pub offline: Option<bool>,
     /// The first criterion decides, the rest break ties; artist then title settle what is left.
     pub sort: Vec<config::SortCriterion<config::AlbumSortField>>,
 }
@@ -171,6 +175,8 @@ pub struct ArtistQuery {
     pub search: String,
     /// Only those with a downloaded track (`Some(true)`), or only those with none.
     pub downloaded: Option<bool>,
+    /// Only those with a downloaded or cached track (`Some(true)`), or only those with neither.
+    pub offline: Option<bool>,
     /// The first criterion decides, the rest break ties; name then key settle what is left.
     pub sort: Vec<config::SortCriterion<config::ArtistSortField>>,
 }
@@ -225,6 +231,22 @@ pub struct ArtistRow {
     pub tracks: u32,
     /// The albums billed to this artist.
     pub albums: u32,
+}
+
+/// One track kept from its own stream for offline listening; a download is an `offline_tracks` row instead.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CachedTrackRow {
+    /// The item id, as `offline_tracks` keys a download.
+    pub track_key: String,
+    /// The source it was streamed from.
+    pub source: String,
+    pub path: String,
+    pub size: u64,
+    pub content_type: String,
+    /// Unix seconds.
+    pub cached_at: i64,
+    /// Unix seconds; eviction goes oldest first.
+    pub last_played_at: i64,
 }
 
 /// One track's play count, and when it was last played.
@@ -483,6 +505,9 @@ pub trait ReadStore: Send + Sync {
     /// Every downloaded copy, item id to file path.
     async fn offline_tracks(&self) -> Result<std::collections::HashMap<String, String>, DbError>;
 
+    /// Every cached copy, least recently played first.
+    async fn offline_cache(&self) -> Result<Vec<CachedTrackRow>, DbError>;
+
     /// The pinned stations' manifests, in pin order.
     async fn pinned_stations(&self) -> Result<Vec<String>, DbError>;
 
@@ -688,6 +713,15 @@ pub trait Storage: ReadStore {
 
     /// Register (`Some`) or forget (`None`) one track's downloaded copy.
     async fn set_offline_track(&self, id: &str, path: Option<&str>) -> Result<(), DbError>;
+
+    /// Register a cached copy, replacing one already kept under its key.
+    async fn put_offline_cache(&self, row: &CachedTrackRow) -> Result<(), DbError>;
+
+    /// Stamp a cached copy as played at `at`, Unix seconds.
+    async fn touch_offline_cache(&self, track_key: &str, at: i64) -> Result<(), DbError>;
+
+    /// Forget these cached copies; their files are the caller's.
+    async fn remove_offline_cache(&self, track_keys: &[String]) -> Result<(), DbError>;
 
     /// Replace `source`'s stored queue, rows and all.
     async fn save_queue(&self, source: &Source, snap: &QueueSnapshot) -> Result<(), DbError>;

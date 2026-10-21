@@ -190,6 +190,18 @@ fn bind_scalar_args<'q, O>(
     query
 }
 
+/// Whether the track keyed by `key` has a downloaded or a cached copy (`true`), or neither.
+fn plays_offline(key: &str, offline: bool) -> String {
+    let copy = format!(
+        "(EXISTS (SELECT 1 FROM offline_tracks o WHERE o.item_id = {key}) \
+          OR EXISTS (SELECT 1 FROM offline_cache oc WHERE oc.track_key = {key}))"
+    );
+    match offline {
+        true => copy,
+        false => format!("NOT {copy}"),
+    }
+}
+
 /// WHERE clause + ordered bind values for a filter (after the `source = ?1` bind).
 fn filter_clauses(filter: &TrackFilter) -> Clauses {
     let mut c = Clauses::default();
@@ -228,6 +240,10 @@ fn filter_clauses(filter: &TrackFilter) -> Clauses {
         c.sql.push_str(&format!(
             " AND {exists} (SELECT 1 FROM offline_tracks o WHERE o.item_id = t.track_key)"
         ));
+    }
+    if let Some(offline) = filter.offline {
+        c.sql
+            .push_str(&format!(" AND {}", plays_offline("t.track_key", offline)));
     }
     // A subquery rather than the album join, so the count query needs no join.
     let years = c.year_range("y.year", filter.year_from, filter.year_to);
@@ -573,6 +589,15 @@ pub async fn artists_page(
                WHERE dc.source = ?1 AND dc.artist_pk = ar.id)"
         ));
     }
+    if let Some(offline) = query.offline {
+        let exists = if offline { "EXISTS" } else { "NOT EXISTS" };
+        c.sql.push_str(&format!(
+            " AND {exists} (SELECT 1 FROM artist_credit_rows fc \
+                JOIN tracks ft ON ft.rowid_pk = fc.track_pk \
+               WHERE fc.source = ?1 AND fc.artist_pk = ar.id AND {})",
+            plays_offline("ft.track_key", true)
+        ));
+    }
     let src = query.source.as_str();
     let from = "FROM artist_credit_rows cr JOIN artists ar ON ar.id = cr.artist_pk";
 
@@ -847,6 +872,14 @@ pub async fn albums_page(
             " AND {exists} (SELECT 1 FROM tracks dt \
                 JOIN offline_tracks o ON o.item_id = dt.track_key \
                WHERE dt.source = al.source AND dt.source_album_id = al.source_album_id)"
+        ));
+    }
+    if let Some(offline) = query.offline {
+        let exists = if offline { "EXISTS" } else { "NOT EXISTS" };
+        c.sql.push_str(&format!(
+            " AND {exists} (SELECT 1 FROM tracks ft \
+               WHERE ft.source = al.source AND ft.source_album_id = al.source_album_id AND {})",
+            plays_offline("ft.track_key", true)
         ));
     }
     if let Some(ids) = &query.ids {

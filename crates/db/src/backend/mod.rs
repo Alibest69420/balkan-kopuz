@@ -16,6 +16,7 @@ mod collation;
 mod dump;
 mod frontend_prefs;
 mod migrations;
+mod offline_cache;
 mod queries;
 mod rows;
 mod scrobble;
@@ -435,6 +436,10 @@ impl ReadStore for Native {
         cfg_store::offline_tracks(&self.pool()).await
     }
 
+    async fn offline_cache(&self) -> Result<Vec<crate::CachedTrackRow>, DbError> {
+        offline_cache::all(&self.pool()).await
+    }
+
     async fn pinned_stations(&self) -> Result<Vec<String>, DbError> {
         cfg_store::pinned_stations(&self.pool()).await
     }
@@ -678,6 +683,18 @@ impl Storage for Native {
 
     async fn set_offline_track(&self, id: &str, path: Option<&str>) -> Result<(), DbError> {
         writes::set_offline_track(&self.pool(), id, path).await
+    }
+
+    async fn put_offline_cache(&self, row: &crate::CachedTrackRow) -> Result<(), DbError> {
+        offline_cache::put(&self.pool(), row).await
+    }
+
+    async fn touch_offline_cache(&self, track_key: &str, at: i64) -> Result<(), DbError> {
+        offline_cache::touch(&self.pool(), track_key, at).await
+    }
+
+    async fn remove_offline_cache(&self, track_keys: &[String]) -> Result<(), DbError> {
+        offline_cache::remove(&self.pool(), track_keys).await
     }
 
     async fn save_queue(

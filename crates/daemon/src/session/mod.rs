@@ -1445,6 +1445,42 @@ impl Session {
         Ok((kept, start))
     }
 
+    /// Keep the song after this one in the offline cache ahead of time, in play order, so shuffle's.
+    pub(super) fn prefetch_next(&mut self) {
+        let cache = self.offline.cache().clone();
+        if !cache.enabled() || self.external.is_some() || !crate::network::cacheable(&self.sources)
+        {
+            return;
+        }
+        let skip = self.settings.playback.skip_explicit;
+        let NextOutcome::Play(idx) = self.model.peek_next_where(playable(skip)) else {
+            return;
+        };
+        if idx == self.model.current_position() {
+            return;
+        }
+        let Some(track) = self.model.track_at(idx) else {
+            return;
+        };
+        if self.sink_for(track).is_some() {
+            return;
+        }
+        let uid = track.id.uid();
+        let item_ref = PlaybackItemRef::parse(&uid);
+        let Some(item_id) = item_ref.primary_id().filter(|_| item_ref.is_server()) else {
+            return;
+        };
+        if self.offline.has_copy(item_id) {
+            return;
+        }
+        cache.prefetch(crate::offline_cache::PrefetchRequest {
+            item_id: item_id.to_string(),
+            source_id: self.sources.active.as_str().to_string(),
+            source: self.active_source.clone(),
+            quality: self.settings.playback.stream_quality,
+        });
+    }
+
     /// The mix is a network round trip, so it is fetched off the actor and
     /// lands as a command.
     fn start_autoplay(&mut self) {
@@ -1741,6 +1777,7 @@ impl Session {
                 _ => {}
             }
         }
+        self.offline.cache().set_limits(&settings);
         self.settings = settings;
         if skip_explicit_changed {
             // A gapless switch armed before the change may target a track it now skips.

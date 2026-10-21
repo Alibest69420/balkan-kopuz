@@ -15,6 +15,24 @@ pub fn network_status_from_proto(value: &NetworkStatus) -> api::NetworkStatus {
     }
 }
 
+pub fn offline_cache_status_to_proto(value: &api::OfflineCacheStatus) -> OfflineCacheStatus {
+    OfflineCacheStatus {
+        enabled: value.enabled,
+        max_bytes: value.max_bytes,
+        used_bytes: value.used_bytes,
+        tracks: value.tracks,
+    }
+}
+
+pub fn offline_cache_status_from_proto(value: &OfflineCacheStatus) -> api::OfflineCacheStatus {
+    api::OfflineCacheStatus {
+        enabled: value.enabled,
+        max_bytes: value.max_bytes,
+        used_bytes: value.used_bytes,
+        tracks: value.tracks,
+    }
+}
+
 pub fn event_to_proto(value: &api::ApiEvent) -> Event {
     let kind = match value {
         api::ApiEvent::PlayerState(state) => event::Kind::PlayerState(player_state_to_proto(state)),
@@ -244,6 +262,20 @@ mod tests {
             let back = event_from_proto(&event_to_proto(&event)).expect("event survives");
             assert_eq!(event, back);
         }
+    }
+
+    #[test]
+    fn the_offline_cache_status_round_trips() {
+        let status = api::OfflineCacheStatus {
+            enabled: true,
+            max_bytes: 5_000_000_000,
+            used_bytes: 123_456_789,
+            tracks: 42,
+        };
+        assert_eq!(
+            offline_cache_status_from_proto(&offline_cache_status_to_proto(&status)),
+            status
+        );
     }
 
     #[test]

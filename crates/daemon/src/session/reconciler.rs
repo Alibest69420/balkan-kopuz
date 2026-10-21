@@ -129,6 +129,7 @@ impl Session {
                 self.phase = ApiPhase::Playing;
                 self.maybe_record_recent();
                 let _ = self.arm_gapless_now();
+                self.prefetch_next();
                 self.publish(state_tx, false);
                 self.publish_position_anchor(state_tx, Some(token), None, true);
             }

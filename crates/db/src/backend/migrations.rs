@@ -2026,6 +2026,7 @@ mod row_fill_tests {
             "ALTER TABLE tracks DROP COLUMN explicit",
             "ALTER TABLE tracks DROP COLUMN plays",
             "ALTER TABLE listen_counts DROP COLUMN last_played_at",
+            "DROP TABLE offline_cache",
             "DELETE FROM _sqlx_migrations WHERE version >= 20260930000000",
         ] {
             sqlx::query(sql).execute(&pool).await.unwrap();
@@ -2771,7 +2772,7 @@ mod last_played_tests {
         super::run_migrations(&pool, None).await.unwrap();
         for sql in [
             "ALTER TABLE listen_counts DROP COLUMN last_played_at",
-            "DELETE FROM _sqlx_migrations WHERE version >= 20261021000000",
+            "DELETE FROM _sqlx_migrations WHERE version = 20261021000000",
             "INSERT INTO listen_counts (source, track_key, count) VALUES \
                ('local', '/recent.flac', 3), ('local', '/old.flac', 7), ('srv', '/recent.flac', 2)",
             "INSERT INTO recently_played (source, track_key, played_at) VALUES ('local', '/recent.flac', 1)",

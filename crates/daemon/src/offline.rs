@@ -1,4 +1,4 @@
-//! An in-memory mirror of the `offline_tracks` table, so wire rows and playback never wait on the database.
+//! What plays without the internet: an in-memory mirror of the `offline_tracks` downloads, and the offline playback cache beside it.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -6,6 +6,8 @@ use std::sync::{Arc, RwLock};
 
 use api::ApiError;
 use tokio::sync::{Mutex, Notify};
+
+use crate::offline_cache::OfflineCache;
 
 #[derive(Clone, Default)]
 pub struct OfflineIndex {
@@ -15,6 +17,8 @@ pub struct OfflineIndex {
     /// Where a copy found missing is unregistered; an index built without one only forgets it in memory.
     db: Option<db::Db>,
     pruned: Arc<Notify>,
+    /// A separate store: its songs are evicted and counted against its cap, downloads never.
+    cache: OfflineCache,
 }
 
 impl OfflineIndex {
@@ -41,6 +45,20 @@ impl OfflineIndex {
             db: Some(db.clone()),
             ..Self::default()
         })
+    }
+
+    pub fn with_cache(mut self, cache: OfflineCache) -> Self {
+        self.cache = cache;
+        self
+    }
+
+    pub fn cache(&self) -> &OfflineCache {
+        &self.cache
+    }
+
+    /// Whether `item_id` has a downloaded or a cached copy.
+    pub fn has_copy(&self, item_id: &str) -> bool {
+        self.read().contains_key(item_id) || self.cache.contains(item_id)
     }
 
     /// The registered copy of `item_id`, whether or not the file is still there.

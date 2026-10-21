@@ -32,7 +32,10 @@ pub use catalog::{
     ReleaseKind, ShelfLayout,
 };
 pub use error::{ApiError, ErrorBody, ErrorCode, ErrorReason};
-pub use events::{ApiEvent, JobKind, JobProgress, NetworkStatus, NoticeLevel, SourceState, Table};
+pub use events::{
+    ApiEvent, JobKind, JobProgress, NetworkStatus, NoticeLevel, OfflineCacheStatus, SourceState,
+    Table,
+};
 pub use jobs::{
     DownloadCandidate, DownloadHistoryEntry, DownloadItemState, DownloadItemStatus, DownloadState,
 };
@@ -424,6 +427,12 @@ pub trait JobApi: Send + Sync {
 
     /// Per-item state for the downloads a batch is working through.
     async fn download_statuses(&self) -> Result<Vec<DownloadItemStatus>, ApiError>;
+
+    /// The songs kept from their own stream for offline listening; a download of one moves it out of the cache.
+    async fn offline_cache_status(&self) -> Result<OfflineCacheStatus, ApiError>;
+
+    /// Delete every cached song; downloads stay.
+    async fn clear_offline_cache(&self) -> Result<(), ApiError>;
 
     /// Fetch a URL to a file. What tool does it, and every option it is given
     /// beyond the format, is the daemon's; progress arrives as job events and

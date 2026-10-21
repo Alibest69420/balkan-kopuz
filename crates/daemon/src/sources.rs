@@ -801,6 +801,7 @@ impl SourceService {
             config::Source::Server(_) => self.delete_server(id).await,
         }?;
         self.forget_left_source(Some(id));
+        self.session.offline().cache().forget_source(id).await;
         Ok(())
     }
 
