@@ -939,6 +939,8 @@ message ServiceInfo {
   string accent = 4;
   bool experimental = 5;
   repeated FieldSpec fields = 6;
+  // One plain line on what it plays from, for a picker.
+  Text summary = 7;
 }
 
 // Which service a configured source speaks: what to call it, how to draw it.

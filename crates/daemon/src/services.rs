@@ -93,6 +93,7 @@ pub fn all() -> Vec<ServiceInfo> {
         .map(|service| ServiceInfo {
             id: service.id().to_string(),
             name: name(*service),
+            summary: Text::key(summary(*service)),
             icon: icon(*service),
             accent: accent(*service).to_string(),
             experimental: matches!(service, MusicService::Spotify),
@@ -108,6 +109,7 @@ pub fn folders() -> ServiceInfo {
     ServiceInfo {
         id: FOLDERS.to_string(),
         name: Text::key("remote_music_folders"),
+        summary: Text::key("service_summary_folders"),
         icon: Icon::Class("fa-solid fa-folder-tree".into()),
         accent: "#6366f1".to_string(),
         experimental: false,
@@ -186,6 +188,22 @@ fn name(service: MusicService) -> Text {
         MusicService::Subsonic => Text::key("subsonic"),
         MusicService::Custom => Text::key("custom_manual"),
         other => Text::literal(other.display_name()),
+    }
+}
+
+/// The i18n key of the line a service picker shows under its name.
+fn summary(service: MusicService) -> &'static str {
+    match service {
+        MusicService::Jellyfin => "service_summary_jellyfin",
+        MusicService::Subsonic => "service_summary_subsonic",
+        MusicService::Custom => "service_summary_custom",
+        MusicService::YtMusic => "service_summary_ytmusic",
+        MusicService::SoundCloud => "service_summary_soundcloud",
+        MusicService::AppleMusic => "service_summary_applemusic",
+        MusicService::Spotify => "service_summary_spotify",
+        MusicService::Nextcloud => "service_summary_nextcloud",
+        MusicService::Clippsly => "service_summary_clippsly",
+        MusicService::Smb => "service_summary_smb",
     }
 }
 
@@ -825,6 +843,29 @@ pub async fn probe_server(client: &reqwest::Client, url: &str) -> ServerProbe {
         Err(error) => {
             tracing::debug!(error = %error.without_url(), "a server draft did not answer");
             ServerProbe::Unreachable
+        }
+    }
+}
+
+#[cfg(test)]
+mod summary_tests {
+    use super::*;
+
+    #[test]
+    fn every_service_says_what_it_is_in_the_baseline_locale() {
+        let baseline = include_str!("../../i18n/locales/en.ftl");
+        let services = all();
+        assert_eq!(services.len(), MusicService::ALL.len() + 1, "folders too");
+        for service in services {
+            let Text::Key(key) = &service.summary else {
+                panic!("{} has no summary key", service.id);
+            };
+            assert!(
+                baseline
+                    .lines()
+                    .any(|line| line.starts_with(&format!("{key} = "))),
+                "{key} is missing from en.ftl"
+            );
         }
     }
 }

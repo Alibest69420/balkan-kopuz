@@ -183,6 +183,7 @@ pub fn service_info_to_proto(value: &api::ServiceInfo) -> ServiceInfo {
     ServiceInfo {
         id: value.id.clone(),
         name: Some(text_to_proto(&value.name)),
+        summary: Some(text_to_proto(&value.summary)),
         icon: Some(icon_to_proto(&value.icon)),
         accent: value.accent.clone(),
         experimental: value.experimental,
@@ -194,6 +195,11 @@ pub fn service_info_from_proto(value: &ServiceInfo) -> api::ServiceInfo {
     api::ServiceInfo {
         id: value.id.clone(),
         name: value.name.as_ref().map(text_from_proto).unwrap_or_default(),
+        summary: value
+            .summary
+            .as_ref()
+            .map(text_from_proto)
+            .unwrap_or_default(),
         icon: value.icon.as_ref().map(icon_from_proto).unwrap_or_default(),
         accent: value.accent.clone(),
         experimental: value.experimental,
@@ -546,6 +552,7 @@ mod tests {
         let service = api::ServiceInfo {
             id: "jellyfin".into(),
             name: api::Text::literal("Jellyfin"),
+            summary: api::Text::key("service_summary_jellyfin"),
             icon: api::Icon::Svg("M0 0h24v24H0z".into()),
             accent: "#aa5cc3".into(),
             experimental: false,

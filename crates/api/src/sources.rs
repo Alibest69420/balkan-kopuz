@@ -129,6 +129,8 @@ pub enum SignInKind {
 pub struct ServiceInfo {
     pub id: String,
     pub name: Text,
+    /// One plain line on what it plays from, for a picker.
+    pub summary: Text,
     pub icon: Icon,
     /// A colour to tint its rows with.
     pub accent: String,
