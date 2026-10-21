@@ -314,3 +314,24 @@ fn config_value(name: &str, colors: &Colors, mode: ThemeMode) -> serde_json::Val
     root.insert("colors".into(), serde_json::Value::Object(map));
     serde_json::Value::Object(root)
 }
+
+/// The default theme's colours, for a screen drawn before the user's own theme is known.
+#[derive(Debug, Clone, Copy)]
+pub struct Startup {
+    pub background: gpui_kit::Hsla,
+    pub text: gpui_kit::Hsla,
+    pub muted: gpui_kit::Hsla,
+    pub accent: gpui_kit::Hsla,
+}
+
+pub fn startup() -> Startup {
+    let fallback = gpui_kit::Hsla::default();
+    let default = palette("default");
+    let pick = |color: Option<&str>| color.and_then(parse).unwrap_or(fallback);
+    Startup {
+        background: pick(default.map(|palette| palette.bg)),
+        text: pick(default.map(|palette| palette.text)),
+        muted: pick(default.map(|palette| palette.text_muted)),
+        accent: pick(default.map(|palette| palette.accent)),
+    }
+}

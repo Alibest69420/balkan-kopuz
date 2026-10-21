@@ -82,6 +82,7 @@ pub static MALLOC_CONF: &[u8] = b"background_thread:true,dirty_decay_ms:5000,muz
 fn main() -> anyhow::Result<()> {
     // Held until main returns: dropping it is what flushes the chrome trace.
     let _profile = profile::init();
+    let started = std::time::Instant::now();
 
     let address = daemon_address()?;
 
@@ -137,7 +138,7 @@ fn main() -> anyhow::Result<()> {
                 if let Some(ready) = ready {
                     futures::future::select(Box::pin(ready), Box::pin(timer)).await;
                 }
-                cx.update(open_main_window);
+                cx.update(|cx| open_main_window(started, cx));
             })
             .detach();
         });
@@ -147,7 +148,7 @@ fn main() -> anyhow::Result<()> {
 /// How long the window waits for the daemon to say where it was left before opening anyway.
 const PREFS_WAIT: Duration = Duration::from_millis(1500);
 
-fn open_main_window(cx: &mut App) {
+fn open_main_window(started: std::time::Instant, cx: &mut App) {
     // After the preferences load, since the registry reads the saved keystroke overrides.
     commands::keymap(cx);
     let options = WindowOptions {
@@ -164,7 +165,7 @@ fn open_main_window(cx: &mut App) {
         ..Default::default()
     };
     cx.open_window(options, |window, cx| {
-        let shell = cx.new(|cx| Shell::new(window, cx));
+        let shell = cx.new(|cx| Shell::new(started, window, cx));
         cx.new(|cx| Root::new(shell, window, cx))
     })
     .expect("failed to open the main window");

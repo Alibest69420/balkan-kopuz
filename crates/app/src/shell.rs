@@ -77,6 +77,8 @@ pub struct Shell {
     mini_player: Entity<now_playing::NowPlaying>,
     overlays: Entity<overlays::Overlays>,
     first_run: Entity<onboarding::FirstRun>,
+    // Up until the daemon first answers and setup's state is read; never again after.
+    loader: Option<Entity<status::Loader>>,
     debug_overlay: Entity<debug_overlay::DebugOverlay>,
     // The theme these were applied for, so config edits reapply only on a change.
     applied_theme: AppliedTheme,
@@ -103,19 +105,21 @@ impl Shell {
         })
     }
 
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(started: std::time::Instant, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let connection = link::Link::connection(cx);
         let navigator = Navigator::global(cx);
         let chrome = Chrome::global(cx);
         let config = ConfigModel::global(cx);
         let sources = SourcesModel::global(cx);
         let first_run = cx.new(|cx| onboarding::FirstRun::new(window, cx));
+        let booted = connection.read(cx).is_connected()
+            && store::SetupModel::global(cx).read(cx).is_decided();
 
         let subscriptions = vec![
             // Unmounted, the guide's own notify has no ancestor to dirty, so it would never appear.
             cx.observe(&first_run, |_, _, cx| cx.notify()),
-            cx.observe(&store::SetupModel::global(cx), |_, _, cx| cx.notify()),
-            cx.observe(&connection, |_, _, cx| cx.notify()),
+            cx.observe(&store::SetupModel::global(cx), |this, _, cx| this.boot(cx)),
+            cx.observe(&connection, |this, _, cx| this.boot(cx)),
             cx.observe(&navigator, |_, _, cx| cx.notify()),
             cx.observe(&chrome, |_, _, cx| cx.notify()),
             cx.observe_in(&config, window, |this, _, window, cx| {
@@ -153,11 +157,24 @@ impl Shell {
             mini_player: cx.new(|cx| now_playing::NowPlaying::mini(window, cx)),
             overlays: cx.new(|cx| overlays::Overlays::new(window, cx)),
             first_run,
+            // The window often opens after both answers are in, when no observer would fire again.
+            loader: (!booted).then(|| cx.new(|cx| status::Loader::new(started, cx))),
             debug_overlay: cx.new(|cx| debug_overlay::DebugOverlay::new(window, cx)),
             applied_theme,
             _heartbeat: Self::heartbeat(window, cx),
             _subscriptions: subscriptions,
         }
+    }
+
+    /// The first answer is in: the loader goes for good, and a later disconnect is the banner's.
+    fn boot(&mut self, cx: &mut Context<Self>) {
+        let connected = self.connection.read(cx).is_connected();
+        let decided = store::SetupModel::global(cx).read(cx).is_decided();
+        if self.loader.is_some() && connected && decided {
+            self.loader = None;
+            status::release_logo(cx);
+        }
+        cx.notify();
     }
 
     pub fn toggle_playback(&mut self, cx: &mut Context<Self>) {
@@ -199,6 +216,13 @@ impl Shell {
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _rebuild = profile::Rebuild::new();
+        if let Some(loader) = self.loader.clone() {
+            return div()
+                .size_full()
+                .child(loader)
+                .children(Root::render_notification_layer(window, cx))
+                .into_any_element();
+        }
         let connected = self.connection.read(cx).is_connected();
         let chrome = Chrome::global(cx).read(cx);
         // The sheet is a full-window overlay, not a body state: its hero cover flies out of the

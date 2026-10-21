@@ -121,12 +121,8 @@ impl Render for ConnectionBanner {
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.starting = true;
                             cx.notify();
-                            let socket = match link::Link::global(cx).address() {
-                                link::Address::Socket(path) => Some(path.clone()),
-                                link::Address::Tcp(_) => None,
-                            };
                             // Only logging this made users press again, spawning another daemon each time.
-                            if let Err(error) = link::spawn_daemon(socket) {
+                            if let Err(error) = crate::spawn_daemon(cx) {
                                 tracing::error!(%error, "could not start the daemon");
                                 this.starting = false;
                                 store::Notices::error(error.to_string(), cx);

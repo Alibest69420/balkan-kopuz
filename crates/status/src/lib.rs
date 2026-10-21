@@ -4,6 +4,8 @@ mod activity;
 mod banner;
 mod centre;
 mod downloads;
+mod loader;
+mod logo;
 mod settings;
 mod startup;
 mod toasts;
@@ -21,6 +23,8 @@ use gpui_kit::{
 use store::{DownloadsModel, ItemState, JobsModel, Navigator, Notices};
 
 pub use banner::ConnectionBanner;
+pub use loader::Loader;
+pub use logo::release as release_logo;
 pub use settings::register as register_settings;
 pub use startup::StartupError;
 pub use toasts::Toasts;
@@ -38,6 +42,15 @@ const POPOVER_WIDTH: Pixels = px(320.);
 /// A list inside a popover scrolls rather than growing past the window.
 pub(crate) const LIST_HEIGHT: Pixels = px(260.);
 const BADGE: Pixels = px(14.);
+
+/// Start `kopuzd` on the socket this app attaches to; the supervisor picks it up on its next probe.
+pub(crate) fn spawn_daemon(cx: &App) -> std::io::Result<()> {
+    let socket = match link::Link::global(cx).address() {
+        link::Address::Socket(path) => Some(path.clone()),
+        link::Address::Tcp(_) => None,
+    };
+    link::spawn_daemon(socket)
+}
 
 /// Which popover of the three is showing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
