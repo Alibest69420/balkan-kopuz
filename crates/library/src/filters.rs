@@ -61,6 +61,7 @@ impl Filters {
             favorite: self.favorites.then_some(true),
             sort: sort.to_track_sort(),
             downloaded: self.downloaded.then_some(true),
+            offline: None,
             year_from: self.years.map(|(from, _)| from),
             year_to: self.years.map(|(_, to)| to),
             reverse: sort.reverses(),
@@ -77,6 +78,7 @@ impl Filters {
             artist_key: None,
             ids: None,
             downloaded: None,
+            offline: None,
             sort: album_sort_field(&sort.field)
                 .map(|field| SortCriterion::new(field, sort.direction()))
                 .into_iter()
@@ -89,6 +91,7 @@ impl Filters {
         ArtistQuery {
             search: non_empty(&self.search),
             downloaded: None,
+            offline: None,
             sort: artist_sort_field(&sort.field)
                 .map(|field| SortCriterion::new(field, sort.direction()))
                 .into_iter()
