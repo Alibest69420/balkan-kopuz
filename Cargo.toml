@@ -1,5 +1,6 @@
 [workspace]
 members = ["crates/*"]
+exclude = ["vendor/*"]
 resolver = "3"
 
 [workspace.package]
@@ -48,3 +49,6 @@ opt-level = 2
 strip = "symbols"
 lto = "thin"
 codegen-units = 1
+
+[patch.crates-io]
+gpui-pre-linux = { path = "vendor/gpui-pre-linux" }

@@ -19,7 +19,6 @@
 // https://freedesktop.org/wiki/ClipboardManager/
 
 use std::{
-    borrow::Cow,
     cell::RefCell,
     collections::{HashMap, hash_map::Entry},
     sync::{
@@ -47,7 +46,7 @@ use x11rb::{
     wrapper::ConnectionExt as _,
 };
 
-use gpui::{ClipboardItem, Image, ImageFormat, hash};
+use gpui::{ClipboardEntry, ClipboardItem, Image, ImageFormat, hash};
 use strum::IntoEnumIterator;
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -977,16 +976,35 @@ impl Clipboard {
         Ok(Self { inner: ctx })
     }
 
-    pub(crate) fn set_text(
+    /// Serves each image under its own mime type, plus the text unless the item holds only images.
+    pub(crate) fn set_item(
         &self,
-        message: Cow<'_, str>,
+        item: &ClipboardItem,
         selection: ClipboardKind,
         wait: WaitConfig,
     ) -> Result<()> {
-        let data = vec![ClipboardData {
-            bytes: message.into_owned().into_bytes(),
-            format: self.inner.atoms.UTF8_STRING,
-        }];
+        let mut data: Vec<ClipboardData> = Vec::new();
+        for entry in item.entries() {
+            if let ClipboardEntry::Image(image) = entry {
+                let format = self.image_format_atom(image.format);
+                if data.iter().all(|data| data.format != format) {
+                    data.push(ClipboardData {
+                        bytes: image.bytes.clone(),
+                        format,
+                    });
+                }
+            }
+        }
+        let text = item.text();
+        if data.is_empty() || text.is_some() {
+            data.insert(
+                0,
+                ClipboardData {
+                    bytes: text.unwrap_or_default().into_bytes(),
+                    format: self.inner.atoms.UTF8_STRING,
+                },
+            );
+        }
         self.inner.write(data, selection, wait)
     }
 
@@ -1014,7 +1032,7 @@ impl Clipboard {
         let format = self.image_format_atom(image.format);
         let data = vec![ClipboardData {
             bytes: image.bytes,
-            format: self.inner.atoms.PNG__MIME,
+            format,
         }];
         self.inner.write(data, selection, wait)
     }

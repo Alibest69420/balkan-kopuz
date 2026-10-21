@@ -24,6 +24,37 @@ pub(crate) const FILE_LIST_MIME_TYPE: &str = "text/uri-list";
 /// Text mime types that we'll accept from other programs.
 pub(crate) const ALLOWED_TEXT_MIME_TYPES: [&str; 2] = ["text/plain;charset=utf-8", "UTF8_STRING"];
 
+/// Mime types we'll offer for `item`: each image's own type, plus text unless it holds only images.
+pub(crate) fn offered_mime_types(item: &ClipboardItem) -> Vec<&'static str> {
+    let mut mime_types = Vec::new();
+    for entry in item.entries() {
+        if let ClipboardEntry::Image(image) = entry {
+            let mime_type = image.format.mime_type();
+            if !mime_types.contains(&mime_type) {
+                mime_types.push(mime_type);
+            }
+        }
+    }
+    if mime_types.is_empty() || item.text().is_some() {
+        mime_types.extend(TEXT_MIME_TYPES);
+    }
+    mime_types
+}
+
+/// The bytes to send for `mime_type`: a matching image's, otherwise the text.
+fn bytes_for_mime_type(item: &ClipboardItem, mime_type: &str) -> Option<Vec<u8>> {
+    let image = ImageFormat::from_mime_type(mime_type).and_then(|format| {
+        item.entries().iter().find_map(|entry| match entry {
+            ClipboardEntry::Image(image) if image.format == format => Some(image),
+            _ => None,
+        })
+    });
+    match image {
+        Some(image) => Some(image.bytes.clone()),
+        None => item.text().map(String::into_bytes),
+    }
+}
+
 pub(crate) struct Clipboard {
     connection: Connection,
     loop_handle: LoopHandle<'static, WaylandClientStatePtr>,
@@ -180,19 +211,23 @@ impl Clipboard {
         self.self_mime.clone()
     }
 
-    pub fn send(&self, _mime_type: String, fd: OwnedFd) {
-        if let Some(text) = self.contents.as_ref().and_then(|contents| contents.text()) {
-            self.send_bytes(fd, text.as_bytes().to_owned());
+    pub fn send(&self, mime_type: String, fd: OwnedFd) {
+        if let Some(bytes) = self
+            .contents
+            .as_ref()
+            .and_then(|contents| bytes_for_mime_type(contents, &mime_type))
+        {
+            self.send_bytes(fd, bytes);
         }
     }
 
-    pub fn send_primary(&self, _mime_type: String, fd: OwnedFd) {
-        if let Some(text) = self
+    pub fn send_primary(&self, mime_type: String, fd: OwnedFd) {
+        if let Some(bytes) = self
             .primary_contents
             .as_ref()
-            .and_then(|contents| contents.text())
+            .and_then(|contents| bytes_for_mime_type(contents, &mime_type))
         {
-            self.send_bytes(fd, text.as_bytes().to_owned());
+            self.send_bytes(fd, bytes);
         }
     }
 
