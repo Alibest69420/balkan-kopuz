@@ -1,3 +1,4 @@
+mod args;
 mod backdrop;
 mod router;
 mod shell;
@@ -85,6 +86,7 @@ fn main() -> anyhow::Result<()> {
     let started = std::time::Instant::now();
 
     let address = daemon_address()?;
+    let args = args::Args::parse(std::env::args_os().skip(1));
 
     gpui_kit::application()
         .with_assets(gpui_kit::assets::AllAssets)
@@ -115,6 +117,10 @@ fn main() -> anyhow::Result<()> {
                 return;
             }
             store::init(cx);
+            if args.offline {
+                store::SourcesModel::global(cx)
+                    .update(cx, |sources, cx| sources.offline_on_connect(cx));
+            }
             metadata_dialog::register(cx);
             settings_sources::register(cx);
             settings_interface::init(cx);
