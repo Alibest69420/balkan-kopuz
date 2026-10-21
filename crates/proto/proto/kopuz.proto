@@ -124,6 +124,7 @@ service Kopuz {
   rpc SelectSource(SourceId) returns (SourceInfo);
   rpc SetSourceSettings(SetSourceSettingsRequest) returns (SourceInfo);
   rpc CheckSourceDraft(SourceDraft) returns (DraftCheck);
+  rpc ProbeSourceDraft(SourceDraft) returns (DraftProbe);
   rpc UpsertSource(SourceDraft) returns (SourceInfo);
   rpc DeleteSource(SourceId) returns (Unit);
   rpc ProvisionCredentials(CredentialProvision) returns (SourceInfo);
@@ -1008,6 +1009,42 @@ message SourceDraft {
 message DraftCheck {
   SignInKind sign_in = 1;
   repeated Problem problems = 2;
+}
+
+// What trying an unsaved draft found; nothing is stored.
+message DraftProbe {
+  oneof outcome {
+    FolderProbeList folders = 1;
+    ServerProbe server = 2;
+    // There is nothing to reach before it is signed in, as with a streaming service.
+    Unit not_probeable = 3;
+  }
+}
+
+// One per folder, in the order the draft lists them.
+message FolderProbeList {
+  repeated FolderProbe folders = 1;
+}
+
+message FolderProbe {
+  string path = 1;
+  bool exists = 2;
+  bool readable = 3;
+  // Audio files under it by the scanner's file-type rule.
+  uint32 audio_files = 4;
+  // The count stopped early, so there are at least audio_files.
+  bool at_least = 5;
+}
+
+// What one request to a server draft's address answered.
+message ServerProbe {
+  oneof outcome {
+    Unit reachable = 1;
+    // The name did not resolve, the connection failed or it timed out.
+    Unit unreachable = 2;
+    // An answer that is not a success.
+    uint32 status = 3;
+  }
 }
 
 message SetSourceSettingsRequest {

@@ -929,6 +929,13 @@ impl api::SourceApi for LocalApi {
         self.sources()?.check_source_draft(draft).await
     }
 
+    async fn probe_source_draft(
+        &self,
+        draft: api::SourceDraft,
+    ) -> Result<api::DraftProbe, ApiError> {
+        self.sources()?.probe_source_draft(draft).await
+    }
+
     async fn set_source_settings(
         &self,
         id: String,

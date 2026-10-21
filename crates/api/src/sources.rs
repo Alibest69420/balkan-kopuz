@@ -220,6 +220,39 @@ pub struct DraftCheck {
     pub problems: Vec<Problem>,
 }
 
+/// What trying an unsaved draft found; nothing is stored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DraftProbe {
+    /// One per folder, in the order the draft lists them.
+    Folders(Vec<FolderProbe>),
+    Server(ServerProbe),
+    /// There is nothing to reach before it is signed in, as with a streaming service.
+    NotProbeable,
+}
+
+/// One folder of a folder-source draft.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FolderProbe {
+    pub path: String,
+    pub exists: bool,
+    pub readable: bool,
+    /// Audio files under it by the scanner's file-type rule; no tags are read.
+    pub audio_files: u32,
+    /// The count stopped early, at its cap or its time limit, so there are at least `audio_files`.
+    pub at_least: bool,
+}
+
+/// What one request to a server draft's address answered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServerProbe {
+    /// A success status.
+    Reachable,
+    /// No answer: the name did not resolve, the connection failed or it timed out.
+    Unreachable,
+    /// An answer that is not a success, such as 401 or 502.
+    Status(u16),
+}
+
 /// Write-only: a secret a client obtained out of band. No response ever
 /// contains these values.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

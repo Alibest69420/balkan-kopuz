@@ -65,10 +65,10 @@ pub use schema::{
 };
 pub use sources::{
     AlbumPresentation, ArtistPresentation, BrowserProfile, BrowserSession, CheckOutcome, CheckStep,
-    ConnectKind, ConnectionCheck, CredentialProvision, DraftCheck, FavoritesSyncMode,
-    IntegrationInfo, PageEntry, PlaylistCapability, SearchFilter, ServiceInfo, ServiceRef,
-    SignInKind, SourceAccount, SourceCapabilities, SourceDraft, SourceFolderEntry, SourceInfo,
-    SourceLoginRequest,
+    ConnectKind, ConnectionCheck, CredentialProvision, DraftCheck, DraftProbe, FavoritesSyncMode,
+    FolderProbe, IntegrationInfo, PageEntry, PlaylistCapability, SearchFilter, ServerProbe,
+    ServiceInfo, ServiceRef, SignInKind, SourceAccount, SourceCapabilities, SourceDraft,
+    SourceFolderEntry, SourceInfo, SourceLoginRequest,
 };
 
 pub use config::store::{LockSource, SettingLock};
@@ -468,6 +468,9 @@ pub trait SourceApi: Send + Sync {
     /// What a draft would do if it were saved, and what is wrong with it.
     /// Cheap enough to call as a form is typed into.
     async fn check_source_draft(&self, draft: SourceDraft) -> Result<DraftCheck, ApiError>;
+
+    /// Try a draft before it is saved: count a folder source's audio files, or send one request to a server's address; stores nothing.
+    async fn probe_source_draft(&self, draft: SourceDraft) -> Result<DraftProbe, ApiError>;
 
     /// Answer a source's own options, a folder source's folders included.
     /// Absent keys are left alone, and an empty secret is not a request to

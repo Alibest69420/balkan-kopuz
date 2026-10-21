@@ -233,6 +233,62 @@ pub fn draft_check_from_proto(value: &DraftCheck) -> api::DraftCheck {
     }
 }
 
+pub fn draft_probe_to_proto(value: &api::DraftProbe) -> DraftProbe {
+    let outcome = match value {
+        api::DraftProbe::Folders(folders) => draft_probe::Outcome::Folders(FolderProbeList {
+            folders: folders
+                .iter()
+                .map(|folder| FolderProbe {
+                    path: folder.path.clone(),
+                    exists: folder.exists,
+                    readable: folder.readable,
+                    audio_files: folder.audio_files,
+                    at_least: folder.at_least,
+                })
+                .collect(),
+        }),
+        api::DraftProbe::Server(probe) => draft_probe::Outcome::Server(ServerProbe {
+            outcome: Some(match probe {
+                api::ServerProbe::Reachable => server_probe::Outcome::Reachable(Unit {}),
+                api::ServerProbe::Unreachable => server_probe::Outcome::Unreachable(Unit {}),
+                api::ServerProbe::Status(status) => {
+                    server_probe::Outcome::Status(u32::from(*status))
+                }
+            }),
+        }),
+        api::DraftProbe::NotProbeable => draft_probe::Outcome::NotProbeable(Unit {}),
+    };
+    DraftProbe {
+        outcome: Some(outcome),
+    }
+}
+
+/// An outcome this build cannot read proves nothing was reached.
+pub fn draft_probe_from_proto(value: &DraftProbe) -> api::DraftProbe {
+    match &value.outcome {
+        Some(draft_probe::Outcome::Folders(list)) => api::DraftProbe::Folders(
+            list.folders
+                .iter()
+                .map(|folder| api::FolderProbe {
+                    path: folder.path.clone(),
+                    exists: folder.exists,
+                    readable: folder.readable,
+                    audio_files: folder.audio_files,
+                    at_least: folder.at_least,
+                })
+                .collect(),
+        ),
+        Some(draft_probe::Outcome::Server(probe)) => api::DraftProbe::Server(match probe.outcome {
+            Some(server_probe::Outcome::Reachable(_)) => api::ServerProbe::Reachable,
+            Some(server_probe::Outcome::Status(status)) => {
+                api::ServerProbe::Status(u16::try_from(status).unwrap_or(u16::MAX))
+            }
+            Some(server_probe::Outcome::Unreachable(_)) | None => api::ServerProbe::Unreachable,
+        }),
+        Some(draft_probe::Outcome::NotProbeable(_)) | None => api::DraftProbe::NotProbeable,
+    }
+}
+
 pub fn source_info_to_proto(value: &api::SourceInfo) -> SourceInfo {
     SourceInfo {
         id: value.id.clone(),
@@ -525,6 +581,37 @@ mod tests {
             problems: vec![api::Problem::on("url", api::Text::key("error-url-empty"))],
         };
         assert_eq!(check, draft_check_from_proto(&draft_check_to_proto(&check)));
+    }
+
+    #[test]
+    fn every_draft_probe_round_trips() {
+        let folders = vec![
+            api::FolderProbe {
+                path: "/music".into(),
+                exists: true,
+                readable: true,
+                audio_files: 10_000,
+                at_least: true,
+            },
+            api::FolderProbe {
+                path: "/gone".into(),
+                ..Default::default()
+            },
+        ];
+        for probe in [
+            api::DraftProbe::Folders(folders),
+            api::DraftProbe::Folders(Vec::new()),
+            api::DraftProbe::Server(api::ServerProbe::Reachable),
+            api::DraftProbe::Server(api::ServerProbe::Unreachable),
+            api::DraftProbe::Server(api::ServerProbe::Status(401)),
+            api::DraftProbe::NotProbeable,
+        ] {
+            assert_eq!(probe, draft_probe_from_proto(&draft_probe_to_proto(&probe)));
+        }
+        assert_eq!(
+            draft_probe_from_proto(&DraftProbe::default()),
+            api::DraftProbe::NotProbeable
+        );
     }
 
     /// A sign-in kind this build cannot name is one it cannot drive: treat it

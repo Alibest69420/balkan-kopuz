@@ -1367,6 +1367,18 @@ impl api::SourceApi for GrpcApi {
         Ok(convert::draft_check_from_proto(check.get_ref()))
     }
 
+    async fn probe_source_draft(
+        &self,
+        draft: api::SourceDraft,
+    ) -> Result<api::DraftProbe, ApiError> {
+        let probe = self
+            .client()
+            .probe_source_draft(Request::new(convert::source_draft_to_proto(&draft)))
+            .await
+            .map_err(wire_error)?;
+        Ok(convert::draft_probe_from_proto(probe.get_ref()))
+    }
+
     async fn set_source_settings(
         &self,
         id: String,

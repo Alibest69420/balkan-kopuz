@@ -711,6 +711,37 @@ impl SourceService {
         })
     }
 
+    pub async fn probe_source_draft(
+        &self,
+        draft: SourceDraft,
+    ) -> Result<api::DraftProbe, ApiError> {
+        use crate::services::{PROBE_FILE_CAP, PROBE_WALK_BUDGET, ProbeTarget};
+        match crate::services::probe_target(&draft)? {
+            ProbeTarget::Folders(paths) => {
+                let walk = move || {
+                    paths
+                        .iter()
+                        .map(|path| {
+                            let deadline = std::time::Instant::now() + PROBE_WALK_BUDGET;
+                            crate::services::probe_folder(path, PROBE_FILE_CAP, deadline)
+                        })
+                        .collect()
+                };
+                let probes = self.runtime.spawn_blocking(walk).await.map_err(|error| {
+                    ApiError::internal(format!("a folder probe stopped: {error}"))
+                })?;
+                Ok(api::DraftProbe::Folders(probes))
+            }
+            ProbeTarget::Server(url) => {
+                let client = crate::services::probe_client()?;
+                Ok(api::DraftProbe::Server(
+                    crate::services::probe_server(&client, &url).await,
+                ))
+            }
+            ProbeTarget::Nothing => Ok(api::DraftProbe::NotProbeable),
+        }
+    }
+
     pub async fn upsert_source(&self, draft: SourceDraft) -> Result<SourceInfo, ApiError> {
         if draft.service == crate::services::FOLDERS {
             return self.upsert_folder_source(draft).await;

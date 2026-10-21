@@ -2939,6 +2939,96 @@ async fn for_you_without_track_radio_hides_the_row_on_both_transports() {
     assert_eq!(pair.wire.refresh_for_you().await, Ok(hidden));
 }
 
+/// An unsaved draft is probed alike on both transports: folders counted, a server asked once, a streaming service left alone.
+#[tokio::test]
+async fn a_draft_probe_agrees_across_transports() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let pair = spawn_pair().await;
+    let music = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir_all(music.path().join("album")).expect("mkdir");
+    std::fs::write(music.path().join("album/one.flac"), b"").expect("write");
+    std::fs::write(music.path().join("two.mp3"), b"").expect("write");
+    let missing = music.path().join("missing").to_string_lossy().into_owned();
+    let folders = api::SourceDraft {
+        name: "Mine".into(),
+        service: "folders".into(),
+        values: vec![api::FieldValue::new(
+            "directories",
+            api::encode_directories(&[
+                music.path().to_string_lossy().into_owned(),
+                missing.clone(),
+            ]),
+        )],
+        ..Default::default()
+    };
+    let expected = api::DraftProbe::Folders(vec![
+        api::FolderProbe {
+            path: music.path().to_string_lossy().into_owned(),
+            exists: true,
+            readable: true,
+            audio_files: 2,
+            at_least: false,
+        },
+        api::FolderProbe {
+            path: missing,
+            ..Default::default()
+        },
+    ]);
+    assert_eq!(
+        pair.local.probe_source_draft(folders.clone()).await,
+        Ok(expected.clone())
+    );
+    assert_eq!(pair.wire.probe_source_draft(folders).await, Ok(expected));
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            let mut buffer = [0u8; 1024];
+            let _ = socket.read(&mut buffer).await;
+            let _ = socket
+                .write_all(
+                    b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                )
+                .await;
+        }
+    });
+    let server = api::SourceDraft {
+        name: "Jelly".into(),
+        service: "jellyfin".into(),
+        values: vec![api::FieldValue::new("url", &address)],
+        ..Default::default()
+    };
+    let answered = api::DraftProbe::Server(api::ServerProbe::Status(404));
+    assert_eq!(
+        pair.local.probe_source_draft(server.clone()).await,
+        Ok(answered.clone())
+    );
+    assert_eq!(pair.wire.probe_source_draft(server).await, Ok(answered));
+
+    let streaming = api::SourceDraft {
+        name: "YT".into(),
+        service: "ytmusic".into(),
+        ..Default::default()
+    };
+    assert_eq!(
+        pair.wire.probe_source_draft(streaming).await,
+        Ok(api::DraftProbe::NotProbeable)
+    );
+    let bad = api::SourceDraft {
+        name: "Jelly".into(),
+        service: "jellyfin".into(),
+        values: vec![api::FieldValue::new("url", "jelly.local")],
+        ..Default::default()
+    };
+    let refused = pair
+        .wire
+        .probe_source_draft(bad)
+        .await
+        .expect_err("not an address");
+    assert_eq!(refused.reason, Some(api::ErrorReason::InvalidServerUrl));
+}
+
 /// Opening a page the source does not have fails the same way on both transports.
 #[tokio::test]
 async fn catalog_pages_agree_across_transports() {

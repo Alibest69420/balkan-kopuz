@@ -1509,6 +1509,19 @@ impl Kopuz for KopuzGrpc {
         Ok(Response::new(convert::draft_check_to_proto(&check)))
     }
 
+    async fn probe_source_draft(
+        &self,
+        request: Request<proto::SourceDraft>,
+    ) -> Result<Response<proto::DraftProbe>, Status> {
+        let probe = self
+            .0
+            .api
+            .probe_source_draft(convert::source_draft_from_proto(request.get_ref()))
+            .await
+            .map_err(failed)?;
+        Ok(Response::new(convert::draft_probe_to_proto(&probe)))
+    }
+
     async fn upsert_source(
         &self,
         request: Request<proto::SourceDraft>,
