@@ -249,7 +249,7 @@ impl RenderOnce for QueueRow {
                 row.child(track_row::thumb(
                     self.artwork.as_ref(),
                     spot,
-                    0.,
+                    None,
                     window,
                     cx,
                 ))

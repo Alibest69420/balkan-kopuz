@@ -53,6 +53,7 @@ pub struct TrackRow {
     lead: Option<SharedString>,
     cover: bool,
     stored: bool,
+    cached: bool,
     playing: bool,
     selected: bool,
     picking: bool,
@@ -83,6 +84,7 @@ impl TrackRow {
             lead: None,
             cover: true,
             stored: false,
+            cached: track.cached,
             playing: false,
             selected: false,
             picking: false,
@@ -199,13 +201,23 @@ impl RenderOnce for TrackRow {
             window,
             cx,
         );
-        let badge = motion::amount(
+        let mark = CopyMark::of(self.stored, self.cached);
+        let opacity = motion::amount(
             motion::row_id("track-row-badge", slot),
-            if self.stored && !self.playing { 1. } else { 0. },
+            if mark.is_some() && !self.playing {
+                1.
+            } else {
+                0.
+            },
             motion::FAST,
             window,
             cx,
         );
+        let badge = mark.map(|mark| Badge {
+            id: motion::row_id("track-row-mark", slot),
+            mark,
+            opacity,
+        });
         let picture = Picture::new(
             self.artwork.as_ref().filter(|_| self.cover),
             Pictured::Track {
@@ -305,11 +317,53 @@ impl RenderOnce for TrackRow {
     }
 }
 
-/// A row's cover, with the corner mark a downloaded track wears at `badge` opacity.
+/// Which copy a row's corner mark says the track has; a download outranks a cached copy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CopyMark {
+    Downloaded,
+    Cached,
+}
+
+impl CopyMark {
+    /// The mark a track wears, if any: a download wins over the cache.
+    pub fn of(stored: bool, cached: bool) -> Option<Self> {
+        match (stored, cached) {
+            (true, _) => Some(Self::Downloaded),
+            (false, true) => Some(Self::Cached),
+            (false, false) => None,
+        }
+    }
+
+    fn glyph(self) -> &'static str {
+        match self {
+            Self::Downloaded => icons::CHECK,
+            Self::Cached => icons::HARD_DRIVE,
+        }
+    }
+
+    fn label(self) -> SharedString {
+        crate::format::t(match self {
+            Self::Downloaded => "offline_mark",
+            Self::Cached => "cached_mark",
+        })
+    }
+}
+
+/// A corner mark as drawn: which, how faded in, and the id its tooltip hangs off.
+pub struct Badge {
+    pub id: ElementId,
+    pub mark: CopyMark,
+    pub opacity: f32,
+}
+
+/// `bg-black/60` behind the cached mark: quieter than a download's accent, legible on any cover.
+const CACHED_FILL: f32 = 0.60;
+
+/// A row's cover, with the corner mark saying it has a downloaded or cached copy.
 pub fn thumb(
     artwork: Option<&ArtworkRef>,
     spot: Option<Spot>,
-    badge: f32,
+    badge: Option<Badge>,
     window: &Window,
     cx: &App,
 ) -> Div {
@@ -322,21 +376,28 @@ pub fn thumb(
                 .rounded(style::thumb_radius())
                 .spot(spot),
         )
-        .when(badge > 0., |thumb| {
+        .when_some(badge.filter(|badge| badge.opacity > 0.), |thumb, badge| {
+            let fill = match badge.mark {
+                CopyMark::Downloaded => cx.theme().primary,
+                CopyMark::Cached => style::black(CACHED_FILL, cx),
+            };
+            let label = badge.mark.label();
             thumb.child(
                 div()
+                    .id(badge.id)
                     .absolute()
                     .bottom_0()
                     .right_0()
                     .size_3()
-                    .opacity(badge)
+                    .opacity(badge.opacity)
                     .flex()
                     .items_center()
                     .justify_center()
                     .rounded_tl(style::radius(cx))
-                    .bg(cx.theme().primary)
+                    .bg(fill)
+                    .tooltip(move |window, cx| Tooltip::new(label.clone()).build(window, cx))
                     .child(
-                        icons::icon(icons::CHECK)
+                        icons::icon(badge.mark.glyph())
                             .size(px(6.))
                             .text_color(cx.theme().foreground),
                     ),
@@ -384,4 +445,17 @@ fn link(
 
 fn dim(cell: Div, cx: &App) -> Div {
     cell.text_xs().text_color(style::white(style::TEXT_DIM, cx))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CopyMark;
+
+    #[test]
+    fn a_download_outranks_a_cached_copy() {
+        assert_eq!(CopyMark::of(true, true), Some(CopyMark::Downloaded));
+        assert_eq!(CopyMark::of(true, false), Some(CopyMark::Downloaded));
+        assert_eq!(CopyMark::of(false, true), Some(CopyMark::Cached));
+        assert_eq!(CopyMark::of(false, false), None);
+    }
 }
