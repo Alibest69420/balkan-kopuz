@@ -210,7 +210,7 @@ impl Render for Overlays {
             .cloned();
         let error = self.playback_error(cx);
         let offline = ConnectionBanner::is_offline(cx);
-        let network = !offline && NetworkBanner::is_showing(cx);
+        let network = !offline && self.network.read(cx).is_showing(cx);
         let tips = match offline {
             true => None,
             false => hint::card(window, cx),

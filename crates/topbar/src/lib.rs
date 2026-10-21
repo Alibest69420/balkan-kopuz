@@ -1,6 +1,7 @@
 //! The navigation bar: history, the destination tabs, the palette field and the right-hand cluster.
 
 mod bounds;
+mod offline;
 mod settings;
 mod switcher;
 mod tabs;
@@ -203,6 +204,7 @@ impl TopBar {
             .on_click(|_, _, cx| {
                 Navigator::navigate(Route::Settings { section: None }, cx);
             });
+        let offline = offline::indicator(compact, cx);
         let source = div().when(!compact, |slot| slot.w(px(180.))).child(
             SourceSwitcher::new(sources, status)
                 .collapsed(compact)
@@ -215,6 +217,7 @@ impl TopBar {
                 .flex_shrink_0()
                 .items_center()
                 .children(self.activity.clone())
+                .children(offline)
                 .when(show_source_toggle, |cluster| cluster.child(source))
                 .child(settings)
                 .into_any_element(),
@@ -227,6 +230,7 @@ impl TopBar {
                         .items_center()
                         .justify_between()
                         .children(self.activity.clone())
+                        .children(offline)
                         .child(settings),
                 )
                 .when(show_source_toggle, |cluster| {

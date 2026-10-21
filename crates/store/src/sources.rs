@@ -224,8 +224,13 @@ impl SourcesModel {
             let result = call.await;
             this.update(cx, |this, cx| match result {
                 Ok(status) => {
+                    let said = match status.offline_mode.is_on() {
+                        true => "offline_mode_on",
+                        false => "offline_mode_off",
+                    };
                     this.network = status;
                     crate::notify(cx);
+                    Notices::info(i18n::t(said), cx);
                 }
                 Err(error) => Notices::failed(&error, cx),
             })

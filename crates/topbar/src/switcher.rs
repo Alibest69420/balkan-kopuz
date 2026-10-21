@@ -107,7 +107,7 @@ fn build(sources: &[SourceInfo], count: usize, mut menu: PopupMenu, cx: &App) ->
     for source in sources {
         menu = menu.item(row(source, cx));
     }
-    menu.separator().item(
+    crate::offline::item(menu.separator(), cx).item(
         PopupMenuItem::new(t("manage_sources"))
             .icon(Icon::default().path(MANAGE_ICON).size(GLYPH))
             .on_click(|_, _, cx| {

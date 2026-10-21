@@ -57,6 +57,8 @@ pub const SERVER: &str = "icons/server.svg";
 pub const CLOUD: &str = "icons/cloud.svg";
 pub const HARD_DRIVE: &str = "icons/hard-drive.svg";
 pub const WIFI_OFF: &str = "icons/wifi-off.svg";
+pub const CLOUD_OFF: &str = "icons/cloud-off.svg";
+pub const WIFI: &str = "icons/wifi.svg";
 pub const FOLDER_TREE: &str = "icons/folder-tree.svg";
 
 /// An icon by path, e.g. `icon(icons::PLAY)`; the active skin may swap what it draws.
