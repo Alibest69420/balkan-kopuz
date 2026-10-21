@@ -130,6 +130,7 @@ fn CatalogPageView(
 ) -> Element {
     let api = hooks::use_api();
     let caps = hooks::sources::use_capabilities();
+    let cache = hooks::catalog_cache::use_catalog_cache();
     let mut detail = use_signal(|| None::<CatalogDetail>);
     let mut error = use_signal(|| None::<String>);
     let mut loading_more = use_signal(|| None::<Loading>);
@@ -145,21 +146,33 @@ fn CatalogPageView(
             *generation += 1;
             *generation
         });
-        detail.set(None);
+        let cached = cache.get(kind, &id);
+        let fresh = cached.as_ref().is_some_and(|cached| cached.fresh);
+        detail.set(cached.map(|cached| cached.detail));
         error.set(None);
         loading_more.set(None);
+        if fresh {
+            return;
+        }
         let span = tracing::info_span!("catalog.page", id = %id);
         let api = api.clone();
         spawn(
             async move {
                 let result = api
-                    .catalog_detail(CatalogDetailRequest::new(kind, id))
+                    .catalog_detail(CatalogDetailRequest::new(kind, id.clone()))
                     .await;
                 if *fetch_gen.peek() != my_gen {
                     return;
                 }
                 match result {
-                    Ok(answer) => detail.set(Some(answer)),
+                    Ok(answer) => {
+                        cache.put(kind, &id, answer.clone());
+                        detail.set(Some(answer));
+                    }
+                    // A stale copy on screen beats an error over it.
+                    Err(failure) if detail.peek().is_some() => {
+                        tracing::warn!(error = %failure, "catalog page refresh failed");
+                    }
                     Err(failure) => error.set(Some(failure_text(&failure))),
                 }
             }
@@ -192,7 +205,7 @@ fn CatalogPageView(
             async move {
                 let request = CatalogDetailRequest {
                     kind,
-                    id,
+                    id: id.clone(),
                     continuation: Some(token),
                 };
                 let result = api.catalog_detail(request).await;
@@ -203,6 +216,7 @@ fn CatalogPageView(
                     Ok(answer) => {
                         if let Some(current) = detail.write().as_mut() {
                             extend(current, target, answer);
+                            cache.update(kind, &id, current.clone());
                         }
                     }
                     Err(failure) => {

@@ -33,6 +33,17 @@ pub(crate) fn failure_text(error: &api::ApiError) -> String {
     )
 }
 
+/// The feed's cache id; no catalog page has an empty one.
+const FEED: &str = "";
+
+fn feed_detail(shelves: &[CatalogShelf], continuation: &Option<String>) -> api::CatalogDetail {
+    api::CatalogDetail {
+        shelves: shelves.to_vec(),
+        continuation: continuation.clone(),
+        ..api::CatalogDetail::default()
+    }
+}
+
 fn keys_of(tracks: &[TrackInfo]) -> Vec<String> {
     tracks.iter().map(|track| track.key.clone()).collect()
 }
@@ -47,6 +58,7 @@ pub fn CatalogFeed(
 ) -> Element {
     let api = hooks::use_api();
     let caps = hooks::sources::use_capabilities();
+    let cache = hooks::catalog_cache::use_catalog_cache();
     let mut shelves = use_signal(Vec::<CatalogShelf>::new);
     let mut continuation = use_signal(|| None::<String>);
     let mut loading_more = use_signal(|| false);
@@ -63,15 +75,32 @@ pub fn CatalogFeed(
         if !shelves.peek().is_empty() {
             return;
         }
+        if let Some(cached) = cache.get(CatalogItemKind::Page, FEED) {
+            shelves.set(cached.detail.shelves);
+            continuation.set(cached.detail.continuation);
+            initial_loading.set(false);
+            if cached.fresh {
+                return;
+            }
+        }
         let home_span = tracing::info_span!("discover.load_home");
         let api = api.clone();
         spawn(
             async move {
                 match api.catalog(None).await {
                     Ok(page) => {
-                        shelves.write().extend(page.shelves);
+                        cache.put(
+                            CatalogItemKind::Page,
+                            FEED,
+                            feed_detail(&page.shelves, &page.continuation),
+                        );
+                        shelves.set(page.shelves);
                         continuation.set(page.continuation);
                         error.set(None);
+                    }
+                    // A stale copy on screen beats an error over it.
+                    Err(failure) if !shelves.peek().is_empty() => {
+                        tracing::warn!(error = %failure, "catalog feed refresh failed");
                     }
                     Err(failure) => error.set(Some(failure_text(&failure))),
                 }
@@ -97,6 +126,11 @@ pub fn CatalogFeed(
                     Ok(page) => {
                         shelves.write().extend(page.shelves);
                         continuation.set(page.continuation);
+                        cache.update(
+                            CatalogItemKind::Page,
+                            FEED,
+                            feed_detail(&shelves.peek(), &continuation.peek()),
+                        );
                     }
                     Err(failure) => error.set(Some(failure_text(&failure))),
                 }
