@@ -993,7 +993,7 @@ fn forgotten_keys(likes: &[(String, i64)], plays: &[db::PlayRecord], cutoff: i64
     forgotten
 }
 
-/// Radios from up to [`FOR_YOU_SEEDS`] random likes, the top [`FOR_YOU_PER_RADIO`] of each bar the seed, without repeats, shuffled.
+/// Radios from up to [`FOR_YOU_SEEDS`] random likes, the top [`FOR_YOU_PER_RADIO`] of each that are not liked, without repeats, shuffled.
 async fn mix_for_you<F, Fut>(
     mut likes: Vec<String>,
     radio: F,
@@ -1002,6 +1002,7 @@ where
     F: Fn(String) -> Fut,
     Fut: Future<Output = Result<Vec<reader::Track>, ApiError>>,
 {
+    let liked: HashSet<String> = likes.iter().cloned().collect();
     likes.shuffle(&mut rand::rng());
     likes.truncate(FOR_YOU_SEEDS);
     let radios = futures_util::future::join_all(likes.iter().cloned().map(radio)).await;
@@ -1015,7 +1016,7 @@ where
                 answered = true;
                 let top = songs
                     .into_iter()
-                    .filter(|track| track.id.key() != seed.as_str())
+                    .filter(|track| !liked.contains(track.id.key().as_ref()))
                     .take(FOR_YOU_PER_RADIO);
                 tracks.extend(top.filter(|track| seen.insert(track.id.key().into_owned())));
             }
@@ -1230,6 +1231,24 @@ mod tests {
 
             assert_eq!(FOR_YOU_PER_RADIO, 3);
             assert_eq!(sorted(&mix), ["r1", "r2", "r3"]);
+        }
+
+        #[tokio::test]
+        async fn liked_tracks_are_left_out_and_the_walk_goes_past_them() {
+            let (radio, _) = radios(&[("a", &["b", "r1", "a", "b", "r2", "r3", "r4"])]);
+
+            let mix = mix_for_you(likes(&["a", "b"]), radio).await.unwrap();
+
+            assert_eq!(sorted(&mix), ["r1", "r2", "r3"]);
+        }
+
+        #[tokio::test]
+        async fn a_radio_of_only_liked_tracks_adds_none() {
+            let (radio, _) = radios(&[("a", &["a", "b", "c"]), ("b", &["a", "c"]), ("c", &["b"])]);
+
+            let mix = mix_for_you(likes(&["a", "b", "c"]), radio).await.unwrap();
+
+            assert!(mix.is_empty(), "{:?}", sorted(&mix));
         }
 
         #[tokio::test]
