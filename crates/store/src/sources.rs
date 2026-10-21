@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use api::{ApiEvent, NetworkStatus, SourceCapabilities, SourceInfo, SourceState, Table};
+use api::{
+    ApiEvent, NetworkStatus, OfflineMode, SourceCapabilities, SourceInfo, SourceState, Table,
+};
 use gpui_kit::{App, Context, Entity, Subscription, Task, Window};
 use link::Link;
 
@@ -27,6 +29,35 @@ impl SourceStatus {
     }
 }
 
+/// What the app says about the internet, if anything, given the daemon's network status.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NetworkNotice {
+    /// Only sources on this machine or its network work until the connection is back.
+    Down,
+    /// The connection is back, and `source` is the one to offer going back to.
+    BackOnline { source: String },
+}
+
+impl NetworkNotice {
+    /// Down while the checks fail; once they pass, the source the daemon left, or the one offline mode held.
+    pub fn of(status: &NetworkStatus, active: Option<&str>) -> Option<Self> {
+        if status.internet_down {
+            return Some(Self::Down);
+        }
+        if let Some(left) = &status.left_source {
+            return Some(Self::BackOnline {
+                source: left.clone(),
+            });
+        }
+        match status.offline_mode {
+            OfflineMode::Automatic => active.map(|source| Self::BackOnline {
+                source: source.to_string(),
+            }),
+            OfflineMode::Off | OfflineMode::Requested => None,
+        }
+    }
+}
+
 /// Configured sources and the active one's capabilities, which gate every affordance.
 pub struct SourcesModel {
     sources: Vec<SourceInfo>,
@@ -35,6 +66,8 @@ pub struct SourcesModel {
     loaded: bool,
     /// Whether the daemon reaches the internet, which decides what a remote source can do.
     network: NetworkStatus,
+    /// `--offline` asked for offline mode before the daemon answered.
+    offline_on_connect: bool,
     _network: Option<Task<()>>,
     _fetch: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
@@ -65,7 +98,10 @@ impl SourcesModel {
                     // Answers may have been lost; the refetch the resync starts is trusted over them.
                     ApiEvent::Resync => {
                         this.heard.clear();
-                        this.read_network(cx);
+                        match std::mem::take(&mut this.offline_on_connect) {
+                            true => this.set_offline(true, cx),
+                            false => this.read_network(cx),
+                        }
                     }
                     ApiEvent::NetworkStatus(status) => {
                         this.network = status.clone();
@@ -80,6 +116,7 @@ impl SourcesModel {
             heard: HashMap::new(),
             loaded: false,
             network: NetworkStatus::default(),
+            offline_on_connect: false,
             _network: None,
             _fetch: None,
             _subscriptions: subscriptions,
@@ -113,6 +150,17 @@ impl SourcesModel {
 
     pub fn network(&self) -> &NetworkStatus {
         &self.network
+    }
+
+    /// What the app should say about the internet now.
+    pub fn network_notice(&self) -> Option<NetworkNotice> {
+        let active = self.active().map(|source| source.id.as_str());
+        NetworkNotice::of(&self.network, active)
+    }
+
+    /// The internet is down and `source` needs it; the daemon would refuse switching to it.
+    pub fn cut_off(&self, source: &SourceInfo) -> bool {
+        cut_off(&self.network, source)
     }
 
     fn read_network(&mut self, cx: &mut Context<Self>) {
@@ -167,5 +215,123 @@ impl SourcesModel {
             .ok();
         })
         .detach();
+    }
+
+    /// Enter offline mode, or leave it however it was entered.
+    pub fn set_offline(&mut self, on: bool, cx: &mut Context<Self>) {
+        let call = Link::global(cx).call(move |api| async move { api.set_offline(on).await });
+        cx.spawn(async move |this, cx| {
+            let result = call.await;
+            this.update(cx, |this, cx| match result {
+                Ok(status) => {
+                    this.network = status;
+                    crate::notify(cx);
+                }
+                Err(error) => Notices::failed(&error, cx),
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Ask for offline mode as soon as the daemon answers, as `--offline` does.
+    pub fn offline_on_connect(&mut self, cx: &mut Context<Self>) {
+        match Link::connection(cx).read(cx).is_connected() {
+            true => self.set_offline(true, cx),
+            false => self.offline_on_connect = true,
+        }
+    }
+
+    /// Leave offline mode and go back to `source`, unless it is the active one already.
+    pub fn back_online(&mut self, source: String, window: &mut Window, cx: &mut Context<Self>) {
+        let leave = self.network.offline_mode.is_on();
+        let switch = self.active().is_none_or(|active| active.id != source);
+        let call = Link::global(cx).call(move |api| async move {
+            if leave {
+                api.set_offline(false).await?;
+            }
+            Ok(())
+        });
+        cx.spawn_in(window, async move |this, cx| {
+            let result = call.await;
+            this.update_in(cx, |this, window, cx| match result {
+                Ok(()) if switch => this.switch(source, window, cx),
+                Ok(()) => this.read_network(cx),
+                Err(error) => Notices::failed(&error, cx),
+            })
+            .ok();
+        })
+        .detach();
+    }
+}
+
+/// Whether the internet being down leaves `source` out of reach; the daemon checks a server's address, which a frontend is not given.
+pub fn cut_off(status: &NetworkStatus, source: &SourceInfo) -> bool {
+    status.internet_down && source.needs_network && !source.active
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn status(down: bool, left: Option<&str>, mode: OfflineMode) -> NetworkStatus {
+        NetworkStatus {
+            internet_down: down,
+            left_source: left.map(str::to_string),
+            offline_mode: mode,
+        }
+    }
+
+    fn back(source: &str) -> Option<NetworkNotice> {
+        Some(NetworkNotice::BackOnline {
+            source: source.into(),
+        })
+    }
+
+    #[test]
+    fn a_down_internet_is_said_whatever_else_holds() {
+        for mode in [
+            OfflineMode::Off,
+            OfflineMode::Automatic,
+            OfflineMode::Requested,
+        ] {
+            for left in [None, Some("yt")] {
+                assert_eq!(
+                    NetworkNotice::of(&status(true, left, mode), Some("local")),
+                    Some(NetworkNotice::Down)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn once_back_it_offers_the_source_left_or_the_one_offline_mode_held() {
+        let of = |left, mode| NetworkNotice::of(&status(false, left, mode), Some("yt"));
+        assert_eq!(of(Some("sc"), OfflineMode::Off), back("sc"));
+        assert_eq!(of(Some("sc"), OfflineMode::Automatic), back("sc"));
+        assert_eq!(of(None, OfflineMode::Automatic), back("yt"));
+    }
+
+    #[test]
+    fn nothing_is_said_when_online_or_offline_by_request() {
+        let of = |mode, active| NetworkNotice::of(&status(false, None, mode), active);
+        assert_eq!(of(OfflineMode::Off, Some("yt")), None);
+        assert_eq!(of(OfflineMode::Requested, Some("yt")), None);
+        assert_eq!(of(OfflineMode::Automatic, None), None);
+    }
+
+    #[test]
+    fn only_a_networked_source_that_is_not_active_is_cut_off() {
+        let source = |needs_network, active| SourceInfo {
+            needs_network,
+            active,
+            ..SourceInfo::default()
+        };
+        let down = status(true, None, OfflineMode::Off);
+        let up = status(false, None, OfflineMode::Off);
+        assert!(cut_off(&down, &source(true, false)));
+        assert!(!cut_off(&down, &source(true, true)));
+        assert!(!cut_off(&down, &source(false, false)));
+        assert!(!cut_off(&up, &source(true, false)));
     }
 }
