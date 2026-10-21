@@ -6,7 +6,7 @@ use components::{CatalogPageRef, NavigationController};
 use dioxus::prelude::*;
 use tracing::Instrument;
 
-use super::discover::{DiscoverNowPlaying, DiscoverPage, ShelfRow, failure_text, play_catalog};
+use super::discover::{CatalogFeed, DiscoverNowPlaying, ShelfRow, failure_text, play_catalog};
 
 fn entry_page(entry: &PageEntry) -> CatalogPageRef {
     CatalogPageRef {
@@ -16,9 +16,9 @@ fn entry_page(entry: &PageEntry) -> CatalogPageRef {
     }
 }
 
-/// The first page the source declares, or the plain feed when it declares none.
+/// The first page the source declares, or the plain feed when it declares none, as Home's catalog section.
 #[component]
-pub fn Discover(
+pub fn CatalogHome(
     on_select_album: EventHandler<String>,
     on_select_playlist: EventHandler<(CatalogItemKind, String, String)>,
     on_open_artist: EventHandler<String>,
@@ -27,7 +27,7 @@ pub fn Discover(
     let first = caps().pages.first().map(entry_page);
     match first {
         None => rsx! {
-            DiscoverPage { on_select_album, on_select_playlist, on_open_artist }
+            CatalogFeed { on_select_album, on_select_playlist, on_open_artist }
         },
         // A keyed list of one, so a different page remounts instead of keeping the old state.
         Some(page) => rsx! {
@@ -39,9 +39,45 @@ pub fn Discover(
                     on_select_playlist,
                     on_open_artist,
                     on_back: None,
+                    embedded: true,
                 }
             }
         },
+    }
+}
+
+/// The catalog pages after the one Home leads with.
+fn discover_pages(caps: &api::SourceCapabilities) -> Vec<PageEntry> {
+    caps.pages.iter().skip(1).cloned().collect()
+}
+
+/// The first of the source's pages Home does not show.
+#[component]
+pub fn Discover(
+    on_select_album: EventHandler<String>,
+    on_select_playlist: EventHandler<(CatalogItemKind, String, String)>,
+    on_open_artist: EventHandler<String>,
+) -> Element {
+    let caps = hooks::sources::use_capabilities();
+    let Some(page) = discover_pages(&caps()).first().map(entry_page) else {
+        return rsx! {
+            div { class: "flex items-center justify-center h-full text-white/60 p-12",
+                p { "{i18n::t(\"catalog_page_empty\")}" }
+            }
+        };
+    };
+    rsx! {
+        // A keyed list of one, so a different page remounts instead of keeping the old state.
+        for page in std::iter::once(page) {
+            CatalogPageView {
+                key: "{page.id}",
+                page,
+                on_select_album,
+                on_select_playlist,
+                on_open_artist,
+                on_back: None,
+            }
+        }
     }
 }
 
@@ -88,6 +124,9 @@ fn CatalogPageView(
     on_open_artist: EventHandler<String>,
     /// Absent on a page the source lists, which sits under the page row instead.
     on_back: Option<EventHandler<()>>,
+    /// Rendered inside Home, which owns the padding and the page row.
+    #[props(default)]
+    embedded: bool,
 ) -> Element {
     let api = hooks::use_api();
     let caps = hooks::sources::use_capabilities();
@@ -207,7 +246,7 @@ fn CatalogPageView(
         },
     );
 
-    let pages = caps().pages.clone();
+    let pages = discover_pages(&caps());
     let listed = pages.iter().any(|entry| entry.id == page.id);
     let loaded = detail.read().clone();
     let auto_shelf = match scroll_target() {
@@ -217,8 +256,8 @@ fn CatalogPageView(
     let in_flight = *loading_more.read();
 
     rsx! {
-        div { class: "p-6 md:p-10 max-w-[1600px] mx-auto",
-            if listed {
+        div { class: if embedded { "" } else { "p-6 md:p-10 max-w-[1600px] mx-auto" },
+            if listed && !embedded {
                 h1 { class: "text-3xl md:text-4xl font-black text-white mb-4", "{i18n::t(\"discover\")}" }
                 PageTabs { pages: pages.clone(), active: page.id.clone() }
                 div { class: "h-px bg-white/10 mt-4 mb-8" }

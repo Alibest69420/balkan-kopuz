@@ -1669,6 +1669,12 @@ fn App() -> Element {
                                     selected_playlist_id.set(Some(id));
                                     current_route.set(Route::Playlists);
                                 },
+                                on_select_catalog: move |(kind, id, title): (api::CatalogItemKind, String, String)| {
+                                    discover_selected_playlist_kind.set(kind);
+                                    discover_selected_playlist_id.set(Some(id));
+                                    discover_selected_playlist_title.set(Some(title));
+                                    current_route.set(Route::DiscoverPlaylist);
+                                },
                                 on_open_artist: move |artist: String| nav_ctrl.open_artist(artist),
                             }
                         },

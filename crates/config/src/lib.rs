@@ -784,6 +784,7 @@ pub struct HomeSection {
 }
 
 pub const HOME_SECTION_KEYS: &[&str] = &[
+    "catalog",
     "hero",
     "continue_listening",
     "listen_now",
@@ -802,6 +803,29 @@ pub fn default_home_sections() -> Vec<HomeSection> {
             enabled: true,
         })
         .collect()
+}
+
+/// Home for a source with a catalog: its own feed already covers what the library shelves would repeat.
+pub const CATALOG_HOME_SECTION_KEYS: &[&str] = &["catalog", "playlists"];
+
+pub fn default_catalog_home_sections() -> Vec<HomeSection> {
+    let mut sections: Vec<HomeSection> = CATALOG_HOME_SECTION_KEYS
+        .iter()
+        .map(|k| HomeSection {
+            key: (*k).to_string(),
+            enabled: true,
+        })
+        .collect();
+    sections.extend(
+        HOME_SECTION_KEYS
+            .iter()
+            .filter(|k| !CATALOG_HOME_SECTION_KEYS.contains(k))
+            .map(|k| HomeSection {
+                key: (*k).to_string(),
+                enabled: false,
+            }),
+    );
+    sections
 }
 
 /// Every setting, grouped by topic; each section is flattened, so the stored keys stay top-level.

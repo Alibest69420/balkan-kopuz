@@ -37,9 +37,10 @@ fn keys_of(tracks: &[TrackInfo]) -> Vec<String> {
     tracks.iter().map(|track| track.key.clone()).collect()
 }
 
+/// The source's feed for one that lists no catalog pages, as Home's catalog section.
 #[component]
 #[tracing::instrument(name = "render.discover_home", skip_all)]
-pub fn DiscoverPage(
+pub fn CatalogFeed(
     on_select_album: EventHandler<String>,
     on_select_playlist: EventHandler<(CatalogItemKind, String, String)>,
     on_open_artist: EventHandler<String>,
@@ -111,19 +112,8 @@ pub fn DiscoverPage(
         load_more,
     );
 
-    if !caps().discover {
-        return rsx! {
-            div { class: "flex items-center justify-center h-full text-white/60 p-12 text-center",
-                p { "{i18n::t(\"discover_unsupported\")}" }
-            }
-        };
-    }
-
     rsx! {
-        div { class: "p-6 md:p-10 max-w-[1600px] mx-auto",
-            h1 { class: "text-3xl md:text-4xl font-black text-white mb-2", "{i18n::t(\"discover\")}" }
-            div { class: "h-px bg-white/10 mb-8" }
-
+        div {
             if *initial_loading.read() {
                 div { class: "flex justify-center py-24",
                     i { class: "fa-solid fa-arrows-rotate fa-spin text-2xl text-white/60" }
