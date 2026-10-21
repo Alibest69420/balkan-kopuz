@@ -432,8 +432,9 @@ pub fn add_fields(service: MusicService) -> Vec<FieldSpec> {
                 ..note_field()
             },
         ],
-        MusicService::Jellyfin | MusicService::Subsonic | MusicService::Custom => {
-            vec![url_field("server_url_placeholder")]
+        MusicService::Jellyfin => vec![url_field("server_url_placeholder")],
+        MusicService::Subsonic | MusicService::Custom => {
+            vec![url_field("subsonic_url_placeholder")]
         }
     };
     #[cfg(target_os = "android")]
