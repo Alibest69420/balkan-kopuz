@@ -58,6 +58,20 @@ pub fn start() -> Result<&'static Core, String> {
                         return;
                     }
                 }
+                #[cfg(target_os = "linux")]
+                {
+                    let endpoint = match crate::video_http::start().await {
+                        Ok(endpoint) => endpoint,
+                        Err(error) => {
+                            let _ = ready_tx.send(Err(format!("video server: {error}")));
+                            return;
+                        }
+                    };
+                    if let Err(error) = utils::set_video_endpoint(endpoint) {
+                        let _ = ready_tx.send(Err(error));
+                        return;
+                    }
+                }
                 let _ = CORE.set(core);
                 let _ = ready_tx.send(Ok(()));
                 let Some(core) = CORE.get() else {

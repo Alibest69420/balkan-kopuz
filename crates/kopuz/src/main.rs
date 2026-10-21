@@ -39,6 +39,8 @@ mod static_assets;
 #[cfg(not(target_os = "android"))]
 mod ui_profile;
 mod updates;
+#[cfg(target_os = "linux")]
+mod video_http;
 #[cfg(target_os = "windows")]
 mod windows_titlebar;
 
