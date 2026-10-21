@@ -445,6 +445,7 @@ fn App() -> Element {
     // Capabilities of the active source — drives source-agnostic routing (e.g.
     // which artist view to render) without hardcoding services in the router.
     let active_caps = hooks::sources::use_capabilities_provider();
+    hooks::catalog_cache::use_catalog_cache_provider();
     // The PoToken minter isn't armed here: it's a headless deno_core runtime that
     // self-starts on the first `mint_content_pot` (only when YT demands a pot).
     let mut initial_load_done = use_signal(|| false);
@@ -1668,6 +1669,12 @@ fn App() -> Element {
                                 on_select_playlist: move |id: String| {
                                     selected_playlist_id.set(Some(id));
                                     current_route.set(Route::Playlists);
+                                },
+                                on_select_catalog: move |(kind, id, title): (api::CatalogItemKind, String, String)| {
+                                    discover_selected_playlist_kind.set(kind);
+                                    discover_selected_playlist_id.set(Some(id));
+                                    discover_selected_playlist_title.set(Some(title));
+                                    current_route.set(Route::DiscoverPlaylist);
                                 },
                                 on_open_artist: move |artist: String| nav_ctrl.open_artist(artist),
                             }
