@@ -38,12 +38,13 @@ pub fn Album(
     mut current_queue_index: Signal<usize>,
 ) -> Element {
     let nav_ctrl = use_context::<components::NavigationController>();
+    let ui_style = crate::layout::use_ui_style();
 
     let open_album_menu = use_signal(|| None::<String>);
 
     rsx! {
         div {
-            class: if cfg!(target_os = "android") { "px-4 pt-2 absolute inset-0 flex flex-col" } else { "px-8 pt-8 absolute inset-0 flex flex-col" },
+            class: crate::layout::page_container_class(&ui_style),
 
             if album_id.read().is_empty() {
                 div { class: "flex-1 min-h-0 flex flex-col",

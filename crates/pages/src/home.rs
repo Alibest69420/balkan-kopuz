@@ -19,13 +19,14 @@ pub fn Home(
     let catalog = has_catalog(&caps.read());
 
     rsx! {
+        div { class: "{crate::layout::page_inset_class(&settings.read().ui.ui_style)} w-full",
         div {
             class: if cfg!(target_os = "android") {
-                "px-4 pt-2 pb-6 space-y-8 w-full"
+                "{crate::layout::PAGE_CONTENT} pb-6 space-y-8"
             } else if is_vaxry {
-                "px-6 pt-4 pb-24 w-full"
+                "{crate::layout::PAGE_CONTENT} pb-24"
             } else {
-                "p-8 space-y-12 pb-32 animate-fade-in w-full"
+                "{crate::layout::PAGE_CONTENT} space-y-12 pb-32 animate-fade-in"
             },
 
             div { class: "flex items-center justify-between mb-4",
@@ -73,6 +74,7 @@ pub fn Home(
                 on_select_catalog,
                 on_open_artist,
             }
+        }
         }
     }
 }

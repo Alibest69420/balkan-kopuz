@@ -128,6 +128,8 @@ fn CatalogPageView(
     #[props(default)]
     embedded: bool,
 ) -> Element {
+    let ui_style = crate::layout::use_ui_style();
+    let inset = crate::layout::page_inset_class(&ui_style);
     let api = hooks::use_api();
     let caps = hooks::sources::use_capabilities();
     let cache = hooks::catalog_cache::use_catalog_cache();
@@ -270,94 +272,96 @@ fn CatalogPageView(
     let in_flight = *loading_more.read();
 
     rsx! {
-        div { class: if embedded { "" } else { "p-6 md:p-10 max-w-[1600px] mx-auto" },
-            if listed && !embedded {
-                h1 { class: "text-3xl md:text-4xl font-black text-white mb-4", "{i18n::t(\"discover\")}" }
-                PageTabs { pages: pages.clone(), active: page.id.clone() }
-                div { class: "h-px bg-white/10 mt-4 mb-8" }
-            } else if let Some(back) = on_back {
-                components::back_button::BackButton { on_click: move |_| back.call(()) }
-            }
+        div { class: if embedded { "" } else { "{inset} pb-10" },
+            div { class: crate::layout::PAGE_CONTENT,
+                if listed && !embedded {
+                    h1 { class: "text-3xl md:text-4xl font-black text-white mb-4", "{i18n::t(\"discover\")}" }
+                    PageTabs { pages: pages.clone(), active: page.id.clone() }
+                    div { class: "h-px bg-white/10 mt-4 mb-8" }
+                } else if let Some(back) = on_back {
+                    components::back_button::BackButton { on_click: move |_| back.call(()) }
+                }
 
-            if let Some(err) = error.read().clone() {
-                div { class: "py-12 text-rose-400 text-sm", "{err}" }
-            } else if let Some(loaded) = loaded {
-                if !listed {
-                    PageHeader { detail: loaded.clone(), fallback: page.title.clone() }
-                }
-                if !loaded.chips.is_empty() {
-                    Chips {
-                        chips: match picked.read().clone() {
-                            Some(on) => loaded
-                                .chips
-                                .iter()
-                                .cloned()
-                                .map(|chip| CatalogChip {
-                                    selected: on.as_deref() == Some(chip.id.as_str()),
-                                    ..chip
-                                })
-                                .collect(),
-                            None => loaded.chips.clone(),
-                        },
-                        on_pick: move |chip: CatalogChip| {
-                            if chip.selected {
-                                picked.set(Some(None));
-                                showing.set(page.id.clone());
-                            } else {
-                                picked.set(Some(Some(chip.id.clone())));
-                                showing.set(chip.id);
-                            }
-                        },
+                if let Some(err) = error.read().clone() {
+                    div { class: "py-12 text-rose-400 text-sm", "{err}" }
+                } else if let Some(loaded) = loaded {
+                    if !listed {
+                        PageHeader { detail: loaded.clone(), fallback: page.title.clone() }
                     }
-                }
-                if !loaded.tracks.is_empty() {
-                    ShelfRow {
-                        shelf: tracks_shelf(&loaded),
-                        scroll_id: "catalog-page-tracks".to_string(),
-                        on_select_album,
-                        on_select_playlist,
-                        on_open_artist,
-                    }
-                }
-                for (idx, shelf) in loaded.shelves.iter().enumerate() {
-                    ShelfRow {
-                        key: "{idx}",
-                        shelf: shelf.clone(),
-                        scroll_id: format!("catalog-page-shelf-{idx}"),
-                        on_select_album,
-                        on_select_playlist,
-                        on_open_artist,
-                        on_more: match (&shelf.continuation, auto_shelf) {
-                            (Some(token), auto) if auto != Some(idx) => {
-                                let token = token.clone();
-                                {
-                                    let mut load_more = load_more;
-                                    Some(EventHandler::new(move |_| load_more(Loading::Shelf(idx), token.clone())))
+                    if !loaded.chips.is_empty() {
+                        Chips {
+                            chips: match picked.read().clone() {
+                                Some(on) => loaded
+                                    .chips
+                                    .iter()
+                                    .cloned()
+                                    .map(|chip| CatalogChip {
+                                        selected: on.as_deref() == Some(chip.id.as_str()),
+                                        ..chip
+                                    })
+                                    .collect(),
+                                None => loaded.chips.clone(),
+                            },
+                            on_pick: move |chip: CatalogChip| {
+                                if chip.selected {
+                                    picked.set(Some(None));
+                                    showing.set(page.id.clone());
+                                } else {
+                                    picked.set(Some(Some(chip.id.clone())));
+                                    showing.set(chip.id);
                                 }
-                            }
-                            _ => None,
-                        },
-                        more_loading: in_flight == Some(Loading::Shelf(idx)),
+                            },
+                        }
+                    }
+                    if !loaded.tracks.is_empty() {
+                        ShelfRow {
+                            shelf: tracks_shelf(&loaded),
+                            scroll_id: "catalog-page-tracks".to_string(),
+                            on_select_album,
+                            on_select_playlist,
+                            on_open_artist,
+                        }
+                    }
+                    for (idx, shelf) in loaded.shelves.iter().enumerate() {
+                        ShelfRow {
+                            key: "{idx}",
+                            shelf: shelf.clone(),
+                            scroll_id: format!("catalog-page-shelf-{idx}"),
+                            on_select_album,
+                            on_select_playlist,
+                            on_open_artist,
+                            on_more: match (&shelf.continuation, auto_shelf) {
+                                (Some(token), auto) if auto != Some(idx) => {
+                                    let token = token.clone();
+                                    {
+                                        let mut load_more = load_more;
+                                        Some(EventHandler::new(move |_| load_more(Loading::Shelf(idx), token.clone())))
+                                    }
+                                }
+                                _ => None,
+                            },
+                            more_loading: in_flight == Some(Loading::Shelf(idx)),
+                        }
+                    }
+                    if loaded.tracks.is_empty() && loaded.shelves.is_empty() {
+                        div { class: "py-24 flex flex-col items-center justify-center text-slate-600",
+                            i { class: "fa-regular fa-folder-open text-4xl mb-4" }
+                            p { class: "text-lg", "{i18n::t(\"catalog_page_empty\")}" }
+                        }
+                    }
+                } else {
+                    div { class: "flex justify-center py-24",
+                        i { class: "fa-solid fa-arrows-rotate fa-spin text-2xl text-white/60" }
                     }
                 }
-                if loaded.tracks.is_empty() && loaded.shelves.is_empty() {
-                    div { class: "py-24 flex flex-col items-center justify-center text-slate-600",
-                        i { class: "fa-regular fa-folder-open text-4xl mb-4" }
-                        p { class: "text-lg", "{i18n::t(\"catalog_page_empty\")}" }
+
+                div { id: "catalog-page-sentinel", class: "h-8" }
+
+                if in_flight.is_some() && in_flight == scroll_target().map(|(target, _)| target) {
+                    div { class: "flex items-center justify-center gap-3 py-6 text-white/50 text-xs",
+                        i { class: "fa-solid fa-arrows-rotate fa-spin" }
+                        span { "{i18n::t(\"discover_more_loading\")}" }
                     }
-                }
-            } else {
-                div { class: "flex justify-center py-24",
-                    i { class: "fa-solid fa-arrows-rotate fa-spin text-2xl text-white/60" }
-                }
-            }
-
-            div { id: "catalog-page-sentinel", class: "h-8" }
-
-            if in_flight.is_some() && in_flight == scroll_target().map(|(target, _)| target) {
-                div { class: "flex items-center justify-center gap-3 py-6 text-white/50 text-xs",
-                    i { class: "fa-solid fa-arrows-rotate fa-spin" }
-                    span { "{i18n::t(\"discover_more_loading\")}" }
                 }
             }
         }
@@ -473,6 +477,8 @@ fn Chips(chips: Vec<CatalogChip>, on_pick: EventHandler<CatalogChip>) -> Element
 
 #[component]
 fn PageHeader(detail: CatalogDetail, fallback: String) -> Element {
+    let ui_style = crate::layout::use_ui_style();
+    let inline = crate::layout::page_inline_class(&ui_style);
     let mut actions = use_signal(|| detail.actions.clone());
     let ctrl = use_context::<hooks::use_player_controller::PlayerController>();
     let now_playing = use_context::<DiscoverNowPlaying>().0;
@@ -527,7 +533,7 @@ fn PageHeader(detail: CatalogDetail, fallback: String) -> Element {
                 div {
                     class: "relative overflow-hidden rounded-xl flex flex-col justify-end mb-12",
                     style: "{banner_style}",
-                    div { class: "px-6 md:px-10 pt-16 pb-10 flex flex-col gap-4",
+                    div { class: "{inline} pt-16 pb-10 flex flex-col gap-4",
                         h1 { class: "text-4xl md:text-6xl font-black text-white break-words drop-shadow-lg text-balance", "{title}" }
                         if let Some(subtitle) = detail.subtitle.clone() {
                             p { class: "text-sm text-white/70", "{subtitle}" }

@@ -758,6 +758,8 @@ pub fn DiscoverPlaylistDetail(
     selected_playlist_kind: Signal<CatalogItemKind>,
     on_back: EventHandler<()>,
 ) -> Element {
+    let ui_style = crate::layout::use_ui_style();
+    let inset = crate::layout::page_inset_class(&ui_style);
     let api = hooks::use_api();
     let mut tracks = use_signal(Vec::<TrackInfo>::new);
     let mut artwork = use_signal(|| None::<api::ArtworkRef>);
@@ -838,19 +840,23 @@ pub fn DiscoverPlaylistDetail(
     // to the shared track list so a catalog list looks like every other one.
     if *loading.read() {
         return rsx! {
-            div { class: "p-6 md:p-10 max-w-[1600px] mx-auto",
-                BackButton { on_back }
-                div { class: "flex justify-center py-24",
-                    i { class: "fa-solid fa-arrows-rotate fa-spin text-2xl text-white/60" }
+            div { class: "{inset} pb-10",
+                div { class: crate::layout::PAGE_CONTENT,
+                    BackButton { on_back }
+                    div { class: "flex justify-center py-24",
+                        i { class: "fa-solid fa-arrows-rotate fa-spin text-2xl text-white/60" }
+                    }
                 }
             }
         };
     }
     if let Some(err) = error.read().clone() {
         return rsx! {
-            div { class: "p-6 md:p-10 max-w-[1600px] mx-auto",
-                BackButton { on_back }
-                div { class: "py-12 text-rose-400 text-sm", "{err}" }
+            div { class: "{inset} pb-10",
+                div { class: crate::layout::PAGE_CONTENT,
+                    BackButton { on_back }
+                    div { class: "py-12 text-rose-400 text-sm", "{err}" }
+                }
             }
         };
     }
@@ -934,6 +940,8 @@ pub fn DiscoverArtistPage(
     on_select_playlist: EventHandler<(CatalogItemKind, String, String)>,
     on_open_artist: EventHandler<String>,
 ) -> Element {
+    let ui_style = crate::layout::use_ui_style();
+    let inline = crate::layout::page_inline_class(&ui_style);
     let api = hooks::use_api();
     let mut artist = use_signal(|| None::<api::CatalogDetail>);
     let mut loading = use_signal(|| true);
@@ -1011,7 +1019,7 @@ pub fn DiscoverArtistPage(
                     i { class: "fa-solid fa-arrows-rotate fa-spin text-2xl text-white/60" }
                 }
             } else if let Some(err) = error.read().clone() {
-                div { class: "pt-20 pb-12 px-6 md:px-10 text-rose-400 text-sm", "{err}" }
+                div { class: "pt-20 pb-12 {inline} text-rose-400 text-sm", "{err}" }
             } else if let Some(detail) = artist.read().clone() {
                 {
                     let banner = hooks::artwork::url(detail.artwork.as_ref(), hooks::artwork::Size::Thumb);
@@ -1031,7 +1039,7 @@ pub fn DiscoverArtistPage(
                         div {
                             class: "relative overflow-hidden flex flex-col justify-end",
                             style: "{banner_style}",
-                            div { class: "px-6 md:px-10 pt-16 pb-10 flex flex-col gap-4",
+                            div { class: "{inline} pt-16 pb-10 flex flex-col gap-4",
                                 h1 { class: "text-4xl md:text-6xl font-black text-white break-words drop-shadow-lg", "{detail.title}" }
                                 {
                                     let counts: Vec<String> = [detail.monthly_listeners.clone(), detail.subtitle.clone()]
@@ -1078,7 +1086,7 @@ pub fn DiscoverArtistPage(
                                 }
                             }
                         }
-                        div { class: "px-6 md:px-10 pt-8",
+                        div { class: "{inline} pt-8",
                             for (idx, shelf) in detail.shelves.iter().enumerate() {
                                 ShelfRow {
                                     key: "{idx}",
