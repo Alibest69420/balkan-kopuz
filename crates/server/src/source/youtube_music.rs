@@ -386,10 +386,11 @@ impl MediaSource for YtSource {
                 "a page is opened by its id".into(),
             ));
         }
-        Ok(match continuation {
-            Some(token) => self.client.browse_continuation(token).await?,
-            None => self.client.browse_page(id).await?,
-        })
+        match continuation {
+            Some(token) => self.client.browse_continuation(token).await,
+            None => self.client.browse_page(id).await,
+        }
+        .map_err(session_error)
     }
 
     fn search_filters(&self) -> Vec<SearchFilterEntry> {
@@ -834,6 +835,15 @@ impl MediaSource for YtSource {
     ) -> Result<FavoritesPage, SourceError> {
         let (tracks, next) = self.client.liked_songs_page(cursor.as_deref()).await?;
         Ok(FavoritesPage { tracks, next })
+    }
+}
+
+/// A signed-out answer is an expired session, which the daemon recovers and retries.
+fn session_error(error: String) -> SourceError {
+    if error == innertube::SIGNED_OUT {
+        SourceError::Auth
+    } else {
+        SourceError::Backend(error)
     }
 }
 
