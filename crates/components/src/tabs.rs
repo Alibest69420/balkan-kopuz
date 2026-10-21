@@ -189,6 +189,7 @@ impl TabStrip {
             Bar::Pill => style::radius_lg(),
             Bar::Rule => style::radius_md(),
         };
+        let thickness = self.bar.thickness(self.along);
         let select = self.select.clone();
         // The tab carries no padding of its own: an absolute probe measures against the content box.
         let frame: Div = div().flex().relative().flex_none().bg(wash).text_color(ink);
@@ -230,6 +231,18 @@ impl TabStrip {
                         row.child(div().flex_1().min_w_0().truncate().child(label))
                     }),
             )
+            .when(vertical && active, |frame| {
+                frame.child(
+                    div()
+                        .absolute()
+                        .left(-thickness)
+                        .top(px(6.))
+                        .h(px(20.))
+                        .w(thickness)
+                        .rounded_full()
+                        .bg(ink),
+                )
+            })
             .when(tab.ringed, |frame| frame.child(focus::ring(radius, cx)))
             .into_any_element()
     }
@@ -357,13 +370,7 @@ impl TabStrip {
             Along::Column => h_flex()
                 .w_full()
                 .items_start()
-                .child(
-                    v_flex()
-                        .flex_none()
-                        .w(thickness)
-                        .child(div().flex_none().h(start))
-                        .child(mark.h(extent).w_full()),
-                )
+                .child(v_flex().flex_none().w(thickness))
                 .child(gap(v_flex().w_full()).child(origin).children(tabs))
                 .into_any_element(),
             Along::Row => {

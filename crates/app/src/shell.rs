@@ -235,12 +235,14 @@ impl Render for Shell {
         } else {
             v_flex()
                 .size_full()
+                .w_full()
                 .children(bar.clone().filter(|_| !nav_left))
                 .when(show_player_bar && player_at_top, |body| {
                     body.child(self.player_bar.clone())
                 })
                 .child(
                     h_flex()
+                        .w_full()
                         .flex_1()
                         .min_h_0()
                         .items_stretch()
@@ -255,6 +257,7 @@ impl Render for Shell {
                         })
                         .child(
                             div()
+                                .h_full()
                                 .flex_1()
                                 .min_w_0()
                                 .relative()

@@ -193,35 +193,47 @@ impl TopBar {
         let sources = SourcesModel::global(cx).read(cx).sources().to_vec();
         let status = SourcesModel::global(cx).read(cx).active_status();
         let compact = self.compact && self.position == NavPosition::Top;
-        h_flex()
-            .gap_1()
-            .flex_shrink_0()
-            .items_center()
-            .children(self.activity.clone())
-            .when(
-                ConfigModel::global(cx)
-                    .read(cx)
-                    .config()
-                    .ui
-                    .show_source_toggle,
-                |cluster| {
-                    cluster.child(
-                        div().when(!compact, |slot| slot.w(px(180.))).child(
-                            SourceSwitcher::new(sources, status)
-                                .collapsed(compact)
-                                .bare(true),
-                        ),
-                    )
-                },
-            )
-            .child(
-                chrome_button("nav-settings", icons::SETTINGS, cx)
-                    .tooltip(commands::tooltip("app.settings", t("settings"), cx))
-                    .on_click(|_, _, cx| {
-                        Navigator::navigate(Route::Settings { section: None }, cx);
-                    }),
-            )
-            .into_any_element()
+        let show_source_toggle = ConfigModel::global(cx)
+            .read(cx)
+            .config()
+            .ui
+            .show_source_toggle;
+        let settings = chrome_button("nav-settings", icons::SETTINGS, cx)
+            .tooltip(commands::tooltip("app.settings", t("settings"), cx))
+            .on_click(|_, _, cx| {
+                Navigator::navigate(Route::Settings { section: None }, cx);
+            });
+        let source = div().when(!compact, |slot| slot.w(px(180.))).child(
+            SourceSwitcher::new(sources, status)
+                .collapsed(compact)
+                .bare(true),
+        );
+
+        match self.position {
+            NavPosition::Top => h_flex()
+                .gap_1()
+                .flex_shrink_0()
+                .items_center()
+                .children(self.activity.clone())
+                .when(show_source_toggle, |cluster| cluster.child(source))
+                .child(settings)
+                .into_any_element(),
+            NavPosition::Left => v_flex()
+                .w_full()
+                .gap_2()
+                .child(
+                    h_flex()
+                        .w_full()
+                        .items_center()
+                        .justify_between()
+                        .children(self.activity.clone())
+                        .child(settings),
+                )
+                .when(show_source_toggle, |cluster| {
+                    cluster.child(div().w_full().child(source))
+                })
+                .into_any_element(),
+        }
     }
 }
 

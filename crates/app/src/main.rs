@@ -11,6 +11,9 @@ use gpui_kit::{
 };
 use shell::{Back, Escape, Forward, QuickSearch, Shell, TogglePlayback, TogglePlaylistsPanel};
 
+/// Keep the saved window large enough for the navigation rail and a useful page area.
+const MAIN_WINDOW_MIN_SIZE: gpui_kit::Size<gpui_kit::Pixels> = size(px(720.), px(480.));
+
 /// The bindings whose handlers live here or on the list; `commands::keymap` binds the registry's.
 fn keymap(cx: &mut App) {
     cx.bind_keys([
@@ -151,6 +154,7 @@ fn open_main_window(cx: &mut App) {
         window_bounds: Some(topbar::saved_bounds(cx).unwrap_or_else(|| {
             WindowBounds::Windowed(Bounds::centered(None, size(px(1350.), px(800.)), cx))
         })),
+        window_min_size: Some(MAIN_WINDOW_MIN_SIZE),
         window_background: gpui_kit::WindowBackgroundAppearance::Opaque,
         app_id: Some("kopuz-gpui".into()),
         titlebar: Some(TitlebarOptions {
