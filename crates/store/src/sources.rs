@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use api::{
     ApiEvent, NetworkStatus, OfflineMode, SourceCapabilities, SourceInfo, SourceState, Table,
 };
-use gpui_kit::{App, Context, Entity, Subscription, Task, Window};
+use gpui_kit::{App, Context, Entity, EventEmitter, Subscription, Task, Window};
 use link::Link;
 
 use crate::config::ConfigModel;
@@ -72,6 +72,11 @@ pub struct SourcesModel {
     _fetch: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
+
+/// A switch of source or of offline mode was asked for: what is on screen is about to stop being true.
+pub struct SwitchStarted;
+
+impl EventEmitter<SwitchStarted> for SourcesModel {}
 
 impl SourcesModel {
     pub fn global(cx: &App) -> Entity<Self> {
@@ -214,6 +219,9 @@ impl SourcesModel {
 
     /// Make `id` active, and start whichever sign-in the daemon says it still needs.
     pub fn switch(&mut self, id: String, window: &mut Window, cx: &mut Context<Self>) {
+        if self.active().is_none_or(|source| source.id != id) {
+            cx.emit(SwitchStarted);
+        }
         let call = Link::global(cx).call(move |api| async move { api.switch_source(id).await });
         cx.spawn_in(window, async move |this, cx| {
             let result = call.await;
@@ -232,6 +240,11 @@ impl SourcesModel {
 
     /// Enter offline mode, or leave it however it was entered.
     pub fn set_offline(&mut self, on: bool, cx: &mut Context<Self>) {
+        // Only a source that needs the internet reads differently in offline mode.
+        let remote = self.active().is_some_and(|source| !source.works_offline);
+        if remote && on != self.network.offline_mode.is_on() {
+            cx.emit(SwitchStarted);
+        }
         let call = Link::global(cx).call(move |api| async move { api.set_offline(on).await });
         cx.spawn(async move |this, cx| {
             let result = call.await;

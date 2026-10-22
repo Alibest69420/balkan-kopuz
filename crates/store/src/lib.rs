@@ -11,6 +11,7 @@ mod config;
 mod downloads;
 mod favorites;
 mod for_you;
+mod freeze;
 mod invalidation;
 mod jobs;
 pub mod layout;
@@ -42,6 +43,7 @@ pub use config::{ConfigModel, lock_cause};
 pub use downloads::{BatchFinished, DownloadItem, DownloadsModel, ItemState, Offline};
 pub use favorites::FavoritesModel;
 pub use for_you::{ForYouModel, ForYouState};
+pub use freeze::Freeze;
 pub use invalidation::{Invalidation, TablesChanged};
 pub use jobs::{Finished, JobEvent, JobsModel, kind_key, kind_label};
 pub use layout::{Layout, LayoutModel};
@@ -64,7 +66,7 @@ pub use setup::{Decision, SetupModel};
 pub use signin::{
     browser as browser_sign_in, is_waiting_for_browser, register_password_form, start_sign_in,
 };
-pub use sources::{NetworkNotice, SourceStatus, SourcesModel};
+pub use sources::{NetworkNotice, SourceStatus, SourcesModel, SwitchStarted};
 pub use target::{Kind, RowEdit, RowScope, Target, TrackActions};
 
 /// `cx.notify()`, counted: a shared model's notify dirties every ancestor, so the profiler wants it.
