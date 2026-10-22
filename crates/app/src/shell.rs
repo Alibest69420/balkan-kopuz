@@ -18,6 +18,9 @@ const TOAST_GAP: gpui_kit::Pixels = gpui_kit::px(16.);
 /// Material's surface-container-low: the text colour at 4% over the window.
 const PANE_TINT: f32 = 0.04;
 
+/// How dark the scrim under a dialog gets.
+const MODAL_SCRIM: f32 = 0.8;
+
 /// Toasts rise from the bottom edge, so they clear the player bar only while it sits there.
 fn place_toasts(cx: &mut gpui_kit::App) {
     let at_top = ConfigModel::global(cx)
@@ -110,6 +113,8 @@ pub struct Shell {
     page_key: String,
     page_fade: motion::Fade,
     dock_fade: motion::Fade,
+    // The modal scrim, fading in under a dialog and out after it closes.
+    scrim_fade: motion::Fade,
     // What the active source answers to, so only a real change throws the pages away.
     source: SourceIdentity,
     // The page drawn last, and the one a source switch is handing over from.
@@ -217,6 +222,7 @@ impl Shell {
             page_key: String::new(),
             page_fade: motion::Fade::hidden(),
             dock_fade: motion::Fade::hidden(),
+            scrim_fade: motion::Fade::hidden(),
             source: SourceIdentity::of(sources.read(cx)),
             shown: None,
             handover: None,
@@ -321,6 +327,24 @@ impl Shell {
             .into_any_element()
     }
 
+    /// `bg-black/80` under the dialogs, black being the theme's background, fading rather than cutting in and out.
+    fn dialog_scrim(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<gpui_kit::AnyElement> {
+        use gpui_kit::component::WindowExt as _;
+        let open = window.has_active_dialog(cx);
+        let shown = self.scrim_fade.sample(open, motion::FAST, window, cx);
+        (shown > 0.).then(|| {
+            div()
+                .absolute()
+                .inset_0()
+                .bg(cx.theme().background.opacity(MODAL_SCRIM * shown))
+                .into_any_element()
+        })
+    }
+
     /// The guide alone: no bars, panels or player, and no "Shell" context, so no shortcut navigates away.
     fn render_first_run(
         &mut self,
@@ -340,6 +364,7 @@ impl Shell {
                     .child(self.first_run.clone())
                     .child(self.overlays.clone()),
             )
+            .children(self.dialog_scrim(window, cx))
             .children(Root::render_dialog_layer(window, cx))
             .children(Root::render_sheet_layer(window, cx))
             .children(Root::render_notification_layer(window, cx))
@@ -527,6 +552,7 @@ impl Render for Shell {
             .when(quick_search_open && !compact, |shell| {
                 shell.child(self.quick_search.clone())
             })
+            .children(self.dialog_scrim(window, cx))
             .children(Root::render_dialog_layer(window, cx))
             .children(Root::render_sheet_layer(window, cx))
             .children(Root::render_notification_layer(window, cx))

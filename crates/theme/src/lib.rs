@@ -343,8 +343,8 @@ fn config_value(name: &str, colors: &Colors, mode: ThemeMode) -> serde_json::Val
     set("drag.border", &colors.accent);
     set("drop_target.background", &colors.accent_deep);
     set("caret", &colors.accent);
-    // `bg-black/80` behind every modal, black being the theme's background; an opaque token hid the app.
-    set("overlay", &alpha(&colors.bg, 0.8));
+    // The shell paints the modal scrim itself so it can fade; the library's own would cut in.
+    set("overlay", &alpha(&colors.bg, 0.));
     set("button.background", &raised);
     set("button.foreground", &colors.text);
     set("button.hover.background", &hover);
