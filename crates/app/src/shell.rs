@@ -186,7 +186,13 @@ impl Shell {
                 let now = SourceIdentity::of(sources.read(cx));
                 if now != this.source {
                     this.source = now;
-                    this.handover = this.shown.clone().map(crate::handover::Handover::new);
+                    // A second change mid-handover would hand over from the half-loaded page, so the first one is kept.
+                    match this.handover.as_mut() {
+                        Some(handover) => handover.restart(),
+                        None => {
+                            this.handover = this.shown.clone().map(crate::handover::Handover::new)
+                        }
+                    }
                     this.router.clear();
                 }
                 cx.notify();

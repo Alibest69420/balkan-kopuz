@@ -37,6 +37,12 @@ impl Handover {
         }
     }
 
+    /// Wait afresh for the page that replaces the replacement, still handing over from the original.
+    pub fn restart(&mut self) {
+        self.since = Instant::now();
+        self.arriving = Fade::hidden();
+    }
+
     /// This frame; `None` once the new page is fully in and the old one can go.
     pub fn frame(&mut self, window: &mut Window, cx: &App) -> Option<Frame> {
         let landed = ready(self.since.elapsed(), store::FirstRead::in_flight(cx));
