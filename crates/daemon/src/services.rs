@@ -196,6 +196,7 @@ fn icon(service: MusicService) -> Icon {
         MusicService::Nextcloud => Icon::Svg(NEXTCLOUD_MARK.into()),
         MusicService::Clippsly => Icon::Class("fa-solid fa-cloud".into()),
         MusicService::Smb => Icon::Class("fa-solid fa-server".into()),
+        MusicService::Dlna => Icon::Class("fa-solid fa-network-wired".into()),
     }
 }
 
@@ -210,6 +211,7 @@ fn accent(service: MusicService) -> &'static str {
         MusicService::Nextcloud => "#0082c9",
         MusicService::Clippsly => "#8064e9",
         MusicService::Smb => "#6366f1",
+        MusicService::Dlna => "#14b8a6",
     }
 }
 
@@ -408,6 +410,19 @@ pub fn add_fields(service: MusicService) -> Vec<FieldSpec> {
                 ..note_field()
             },
         ],
+        // Optional: with no address the first server that answers discovery is used.
+        MusicService::Dlna => vec![
+            FieldSpec {
+                label: Text::key("dlna_server"),
+                kind: FieldKind::Text,
+                required: false,
+                ..url_field("dlna_url_placeholder")
+            },
+            FieldSpec {
+                help: Some(Text::key("dlna_help")),
+                ..note_field()
+            },
+        ],
         MusicService::Jellyfin | MusicService::Subsonic | MusicService::Custom => {
             vec![url_field("server_url_placeholder")]
         }
@@ -535,7 +550,7 @@ pub fn sign_in(server: &ServerView<'_>, authenticated: bool) -> SignInKind {
 }
 
 fn draft_sign_in(service: MusicService, anonymous: bool) -> SignInKind {
-    if anonymous {
+    if anonymous || !service.signs_in() {
         SignInKind::None
     } else if service.uses_browser_signin() {
         SignInKind::Browser
@@ -580,7 +595,10 @@ pub fn check(service: MusicService, draft: &SourceDraft) -> (SignInKind, Vec<For
                 problems.push(FormProblem::on(TOKEN, ErrorReason::AppleMusicTokenRequired));
             }
         }
-        MusicService::YtMusic | MusicService::SoundCloud | MusicService::Clippsly => {}
+        MusicService::YtMusic
+        | MusicService::SoundCloud
+        | MusicService::Clippsly
+        | MusicService::Dlna => {}
         MusicService::Smb => {
             if server::smb::Location::parse(value(URL)).is_err() {
                 problems.push(FormProblem::on(URL, ErrorReason::InvalidSmbUrl));
@@ -746,5 +764,29 @@ mod webview_tests {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod form_tests {
+    use super::*;
+
+    #[test]
+    fn a_dlna_draft_needs_no_sign_in_and_no_address() {
+        let draft = SourceDraft {
+            id: None,
+            name: "NAS".into(),
+            service: MusicService::Dlna.id().into(),
+            values: Vec::new(),
+            secrets: Vec::new(),
+        };
+        let (sign_in, problems) = check(MusicService::Dlna, &draft);
+        assert_eq!(sign_in, SignInKind::None);
+        assert!(problems.is_empty());
+        assert!(
+            add_fields(MusicService::Dlna)
+                .iter()
+                .all(|field| !field.required)
+        );
     }
 }

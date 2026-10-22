@@ -115,14 +115,16 @@ impl TrackId {
             ("nextcloud", config::MusicService::Nextcloud),
             ("clippsly", config::MusicService::Clippsly),
             ("smb", config::MusicService::Smb),
+            ("dlna", config::MusicService::Dlna),
         ] {
             if let Some(rest) = s.strip_prefix(prefix).and_then(|r| r.strip_prefix(':')) {
-                let item_id = if svc == config::MusicService::Smb {
-                    rest
-                } else {
-                    rest.split(':').next().unwrap_or("")
-                }
-                .to_string();
+                let item_id =
+                    if matches!(svc, config::MusicService::Smb | config::MusicService::Dlna) {
+                        rest
+                    } else {
+                        rest.split(':').next().unwrap_or("")
+                    }
+                    .to_string();
                 return TrackId::Server {
                     service: svc,
                     item_id,
@@ -145,6 +147,7 @@ fn service_prefix(s: config::MusicService) -> &'static str {
         config::MusicService::Nextcloud => "nextcloud",
         config::MusicService::Clippsly => "clippsly",
         config::MusicService::Smb => "smb",
+        config::MusicService::Dlna => "dlna",
     }
 }
 
@@ -356,7 +359,7 @@ impl CoverRef {
             // Their item identity is irrelevant to cover resolution.
             // Nextcloud too: an img tag won't send the Basic auth its previews
             // need, so the sync caches art to disk and the ref carries a path.
-            "ytmusic" | "soundcloud" | "applemusic" | "nextcloud" | "clippsly" | "smb" => {
+            "ytmusic" | "soundcloud" | "applemusic" | "nextcloud" | "clippsly" | "smb" | "dlna" => {
                 value.map_or(Self::None, Self::parse)
             }
             _ => Self::None,
@@ -395,7 +398,8 @@ impl CoverRef {
             | MusicService::Spotify
             | MusicService::Nextcloud
             | MusicService::Clippsly
-            | MusicService::Smb => cover.map_or(Self::None, Self::parse),
+            | MusicService::Smb
+            | MusicService::Dlna => cover.map_or(Self::None, Self::parse),
         }
     }
 
@@ -448,7 +452,8 @@ impl CoverRef {
             | MusicService::Spotify
             | MusicService::Nextcloud
             | MusicService::Clippsly
-            | MusicService::Smb => track.cover.as_deref().map_or(Self::None, Self::parse),
+            | MusicService::Smb
+            | MusicService::Dlna => track.cover.as_deref().map_or(Self::None, Self::parse),
         }
     }
 

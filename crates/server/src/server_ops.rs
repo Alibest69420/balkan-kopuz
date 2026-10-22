@@ -21,7 +21,9 @@ impl ServerConn {
     /// The active server's connection params, or `None` without a token (anonymous YouTube Music runs on none and ignores a leftover one), or without a `user_id` for a service that signs requests with one.
     pub fn resolve(sources: &crate::sources::Sources) -> Option<Self> {
         let server = sources.server.as_ref()?;
-        let token = if server.service == MusicService::YtMusic && server.yt_anonymous {
+        let token = if (server.service == MusicService::YtMusic && server.yt_anonymous)
+            || !server.service.signs_in()
+        {
             String::new()
         } else {
             server.access_token.clone()?
@@ -30,7 +32,8 @@ impl ServerConn {
             MusicService::YtMusic
             | MusicService::AppleMusic
             | MusicService::Spotify
-            | MusicService::Clippsly => server.user_id.clone().unwrap_or_default(),
+            | MusicService::Clippsly
+            | MusicService::Dlna => server.user_id.clone().unwrap_or_default(),
             _ => server.user_id.clone()?,
         };
         Some(Self {
@@ -113,5 +116,13 @@ mod tests {
         let yt = ServerConn::resolve(&cfg("YtMusic", Some("cookie"), None)).unwrap();
         assert_eq!(yt.token, "cookie");
         assert!(yt.user_id.is_empty());
+    }
+
+    #[test]
+    fn a_dlna_server_resolves_with_no_credentials() {
+        let conn = ServerConn::resolve(&cfg("Dlna", None, None)).unwrap();
+        assert_eq!(conn.service, MusicService::Dlna);
+        assert!(conn.token.is_empty());
+        assert!(conn.user_id.is_empty());
     }
 }

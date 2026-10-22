@@ -21,9 +21,10 @@ impl<'a> PlaybackItemRef<'a> {
         let mut parts = value.split(':');
         let scheme = parts.next().unwrap_or_default();
         match scheme {
-            "smb" => Self::Server {
+            // Both name items by strings that may hold a colon themselves.
+            "smb" | "dlna" => Self::Server {
                 service: scheme,
-                item_id: value.strip_prefix("smb:").unwrap_or_default(),
+                item_id: value.split_once(':').map_or("", |(_, item)| item),
                 extra: None,
             },
             "radio" => Self::Radio {
@@ -155,6 +156,18 @@ mod tests {
                 }
             );
         }
+    }
+
+    #[test]
+    fn dlna_object_ids_keep_their_colons() {
+        assert_eq!(
+            PlaybackItemRef::parse("dlna:music:1$4:22"),
+            PlaybackItemRef::Server {
+                service: "dlna",
+                item_id: "music:1$4:22",
+                extra: None,
+            }
+        );
     }
 
     #[test]

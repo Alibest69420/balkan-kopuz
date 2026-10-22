@@ -1021,6 +1021,9 @@ cloud_storage_loading = Loading storage usage…
 smb_url_placeholder = smb://nas/Music
 smb_help = Connect to an SMB 2/3 share or subfolder, then sign in with your NAS account. Domain accounts can use DOMAIN\username. Files are read without mounting the share.
 invalid_smb_url = Enter smb://host/share or smb://host/share/folder, without credentials in the URL.
+dlna_server = Server
+dlna_url_placeholder = Empty, a server name, or http://nas:8200/rootDesc.xml
+dlna_help = Play from a DLNA / UPnP media server on your network, such as MiniDLNA, a NAS media server or Plex. Leave the server empty to use the first one that answers, or enter its name, its address or its description URL. No sign-in is needed, and the library is read-only.
 
 browser_sessions_heading = ஏற்கெனவே உள்நுழைந்துள்ளீர்கள்
 browser_sessions_checking = உங்கள் உலாவிகளைச் சரிபார்க்கிறது…

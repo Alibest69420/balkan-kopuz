@@ -35,6 +35,7 @@ use crate::sources::Sources;
 mod apple_music;
 pub mod capabilities;
 mod clippsly;
+mod dlna;
 mod jellyfin;
 mod local;
 mod nextcloud;
@@ -48,6 +49,7 @@ mod types;
 mod youtube_music;
 use apple_music::AppleMusicSource;
 use clippsly::ClippslySource;
+use dlna::DlnaSource;
 use jellyfin::JellyfinSource;
 use local::LocalSource;
 use nextcloud::NextcloudSource;
@@ -1000,6 +1002,7 @@ fn remote_source(db: Db, source: Source, conn: &ServerConn) -> Box<dyn MediaSour
         MusicService::Nextcloud => Box::new(NextcloudSource::new(db, source, conn)),
         MusicService::Clippsly => Box::new(ClippslySource::new(db, source, conn)),
         MusicService::Smb => Box::new(SmbSource::new(db, source, conn)),
+        MusicService::Dlna => Box::new(DlnaSource::new(db, source, conn)),
     }
 }
 

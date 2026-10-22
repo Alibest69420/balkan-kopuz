@@ -137,6 +137,7 @@ pub enum MusicService {
     Nextcloud,
     Clippsly,
     Smb,
+    Dlna,
 }
 
 impl MusicService {
@@ -151,6 +152,7 @@ impl MusicService {
         MusicService::Nextcloud,
         MusicService::Clippsly,
         MusicService::Smb,
+        MusicService::Dlna,
     ];
 
     /// The stable slug a client names a service by. Unlike the enum, this
@@ -167,6 +169,7 @@ impl MusicService {
             Self::Nextcloud => "nextcloud",
             Self::Clippsly => "clippsly",
             Self::Smb => "smb",
+            Self::Dlna => "dlna",
         }
     }
 
@@ -186,6 +189,7 @@ impl MusicService {
             Self::Nextcloud => "Nextcloud",
             Self::Clippsly => "Clippsly",
             Self::Smb => "SMB / NAS",
+            Self::Dlna => "DLNA / UPnP",
         }
     }
 
@@ -196,6 +200,11 @@ impl MusicService {
             self,
             Self::YtMusic | Self::AppleMusic | Self::SoundCloud | Self::Spotify
         )
+    }
+
+    /// Backends with no account at all: a DLNA server serves anyone on its LAN.
+    pub fn signs_in(&self) -> bool {
+        !matches!(self, Self::Dlna)
     }
 }
 

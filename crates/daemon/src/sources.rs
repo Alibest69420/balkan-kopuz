@@ -470,7 +470,9 @@ impl SourceService {
                 info.service = crate::services::service_ref(server.service);
                 // An anonymous source needs no token to be usable, which is
                 // why this is not simply "has a token".
-                info.authenticated = server.access_token.is_some() || server.yt_anonymous;
+                info.authenticated = server.access_token.is_some()
+                    || server.yt_anonymous
+                    || !server.service.signs_in();
                 info.sign_in = crate::services::sign_in(&view, info.authenticated);
                 // What signing in again takes, for credentials that went stale.
                 info.reauth = crate::services::sign_in(&view, false);

@@ -6,6 +6,7 @@ pub mod applemusic;
 pub mod clippsly;
 pub mod cookies;
 pub mod cover;
+pub mod dlna;
 pub mod download_queue;
 pub mod jellyfin;
 pub mod lyrics;

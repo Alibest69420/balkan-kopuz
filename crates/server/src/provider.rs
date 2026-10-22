@@ -88,9 +88,8 @@ impl ProviderClient {
             MusicService::YtMusic
             | MusicService::SoundCloud
             | MusicService::AppleMusic
-            | MusicService::Spotify => {
-                Err(SourceError::unsupported("username and password sign-in"))
-            }
+            | MusicService::Spotify
+            | MusicService::Dlna => Err(SourceError::unsupported("username and password sign-in")),
         }
     }
 
