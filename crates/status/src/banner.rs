@@ -15,10 +15,12 @@ const GLYPH: Pixels = px(12.);
 const FILL: f32 = 0.15;
 const EDGE: f32 = 0.20;
 
-/// The reconnect strip. It renders nothing while the daemon is answering.
+/// The reconnect strip. It renders nothing until the daemon has first gone missing.
 pub struct ConnectionBanner {
     // Cleared by the next status change, so the button cannot be pressed into spawning daemons.
     starting: bool,
+    // The last thing said while offline, kept up while the strip fades out after a reconnect.
+    last: Option<(ConnectionStatus, u32)>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -27,6 +29,7 @@ impl ConnectionBanner {
         let connection = link::Link::connection(cx);
         Self {
             starting: false,
+            last: None,
             _subscriptions: vec![cx.observe(&connection, |this: &mut Self, _, cx| {
                 this.starting = false;
                 cx.notify();
@@ -64,9 +67,12 @@ impl Render for ConnectionBanner {
             let connection = connection.read(cx);
             (connection.status().clone(), connection.attempts())
         };
-        if status == ConnectionStatus::Connected {
-            return div().into_any_element();
+        if status != ConnectionStatus::Connected {
+            self.last = Some((status, attempts));
         }
+        let Some((status, attempts)) = self.last.clone() else {
+            return div().into_any_element();
+        };
         let reason = match &status {
             ConnectionStatus::Unreachable(error) => Some(store::human(error)),
             _ => None,
