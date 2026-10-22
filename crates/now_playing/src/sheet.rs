@@ -101,7 +101,7 @@ impl NowPlaying {
             window.request_animation_frame();
         }
         let swap = self.swap.frame(
-            components::cover::is_ready(artwork.as_ref(), true, cx),
+            components::cover::is_ready(artwork.as_ref(), false, cx),
             window,
             cx,
         );
@@ -372,13 +372,25 @@ impl NowPlaying {
                 .shadow_lg()
                 .children(leaving)
                 .child(
-                    div().opacity(swap.cover).child(
-                        Cover::new(artwork.as_ref())
-                            .size(side)
-                            .rounded(radius)
-                            .hq(true)
-                            .spot(picture.as_ref().map(Picture::spot)),
-                    ),
+                    div()
+                        .relative()
+                        .opacity(swap.cover)
+                        // The bar's thumbnail is already decoded, so it holds the place while the full picture fades in.
+                        .child(
+                            div().absolute().top_0().left_0().child(
+                                Cover::new(artwork.as_ref())
+                                    .size(side)
+                                    .hq(false)
+                                    .rounded(radius),
+                            ),
+                        )
+                        .child(
+                            Cover::new(artwork.as_ref())
+                                .size(side)
+                                .rounded(radius)
+                                .hq(true)
+                                .spot(picture.as_ref().map(Picture::spot)),
+                        ),
                 )
                 .with_context_menu(menus::pictured(menu, picture)),
         )
