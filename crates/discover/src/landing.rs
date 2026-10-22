@@ -363,7 +363,7 @@ fn placeholder_row(name: &str, title: SharedString) -> AnyElement {
 
 fn pulsing(prefix: &SharedString, slot: usize, cx: &App) -> AnyElement {
     div()
-        .child(skeleton::tile(TILE, false, cx))
+        .child(skeleton::shelf_tile(TILE, cx))
         .with_animation(
             SharedString::from(format!("{prefix}-{slot}")),
             Animation::new(Duration::from_millis(1100))

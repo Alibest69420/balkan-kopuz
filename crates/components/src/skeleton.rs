@@ -162,3 +162,41 @@ pub fn reveal(
         .child(div().w_full().opacity(shown).child(content))
         .into_any_element()
 }
+
+/// A placeholder laid out as an unframed `Tile` is, its lines holding real blank text, so the tile that replaces it is no taller.
+pub fn shelf_tile(width: Pixels, cx: &App) -> impl IntoElement {
+    let cover = width - px(32.);
+    let line = |text_sm: bool, bar_width: Pixels, bar_height: Pixels| {
+        div()
+            .relative()
+            .w_full()
+            .when(text_sm, |line| line.text_sm())
+            .text_color(gpui_kit::transparent_black())
+            .child("\u{a0}")
+            .child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .flex()
+                    .items_center()
+                    .child(bar(bar_width, bar_height, cx)),
+            )
+    };
+    v_flex()
+        .w(width)
+        .gap_4()
+        .child(
+            div()
+                .size(width)
+                .p_4()
+                .child(div().size(cover).bg(ink(cx)).rounded(style::radius_xl())),
+        )
+        .child(
+            v_flex()
+                .w_full()
+                .px_1()
+                .gap_1()
+                .child(line(false, cover * 0.7, px(10.)))
+                .child(line(true, cover * 0.45, px(8.))),
+        )
+}

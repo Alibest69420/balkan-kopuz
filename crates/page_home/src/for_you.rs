@@ -70,7 +70,7 @@ fn placeholder(title: SharedString, with_refresh: bool, cx: &App) -> AnyElement 
 
 fn pulsing(slot: usize, cx: &App) -> AnyElement {
     div()
-        .child(skeleton::tile(TILE, false, cx))
+        .child(skeleton::shelf_tile(TILE, cx))
         .with_animation(
             SharedString::from(format!("for-you-pulse-{slot}")),
             Animation::new(Duration::from_millis(1100))
