@@ -62,6 +62,17 @@ impl EmptyState {
         state
     }
 
+    /// Offline mode keeps a remote library to the songs with a copy here, and there are none; the button leaves offline mode.
+    pub fn offline() -> Self {
+        Self::new(t("library_empty_offline"))
+            .icon(icons::CLOUD_OFF)
+            .detail(t("library_empty_offline_detail"))
+            .action(t("offline_mode_turn_off"), |_, _, cx| {
+                store::SourcesModel::global(cx)
+                    .update(cx, |sources, cx| sources.set_offline(false, cx))
+            })
+    }
+
     pub fn detail(mut self, detail: impl Into<SharedString>) -> Self {
         self.detail = Some(detail.into());
         self

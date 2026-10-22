@@ -163,6 +163,12 @@ impl SourcesModel {
         cut_off(&self.network, source)
     }
 
+    /// Offline mode on a source across the internet, whose listings the daemon keeps to the songs with a copy here.
+    pub fn offline_reads(&self) -> bool {
+        self.network.offline_mode.is_on()
+            && self.active().is_some_and(|source| !source.works_offline)
+    }
+
     fn read_network(&mut self, cx: &mut Context<Self>) {
         let call = Link::global(cx).call(|api| async move { api.network_status().await });
         self._network = Some(cx.spawn(async move |this, cx| {
