@@ -28,7 +28,7 @@ enum Blocker {
 }
 
 fn blocker(source: &SourceInfo, internet_down: bool) -> Option<Blocker> {
-    if internet_down && source.needs_network {
+    if internet_down && !source.works_offline {
         return Some(Blocker::NetworkDown);
     }
     match source.state {
@@ -218,11 +218,11 @@ impl FirstRun {
 mod tests {
     use super::*;
 
-    fn source(state: Option<SourceState>, needs_network: bool) -> SourceInfo {
+    fn source(state: Option<SourceState>, works_offline: bool) -> SourceInfo {
         SourceInfo {
             authenticated: true,
             state,
-            needs_network,
+            works_offline,
             detail: Some("http://nas:4533".into()),
             ..Default::default()
         }
@@ -231,7 +231,7 @@ mod tests {
     #[test]
     fn an_offline_server_names_its_address() {
         assert_eq!(
-            blocker(&source(Some(SourceState::Offline), true), false),
+            blocker(&source(Some(SourceState::Offline), false), false),
             Some(Blocker::Unreachable("http://nas:4533".into()))
         );
     }
@@ -239,23 +239,23 @@ mod tests {
     #[test]
     fn a_dead_internet_outranks_the_server_it_cut_off() {
         assert_eq!(
-            blocker(&source(Some(SourceState::Offline), true), true),
+            blocker(&source(Some(SourceState::Offline), false), true),
             Some(Blocker::NetworkDown)
         );
-        assert_eq!(blocker(&source(None, false), true), None);
+        assert_eq!(blocker(&source(None, true), true), None);
     }
 
     #[test]
     fn an_expired_sign_in_asks_for_another() {
         assert_eq!(
-            blocker(&source(Some(SourceState::AuthExpired), true), false),
+            blocker(&source(Some(SourceState::AuthExpired), false), false),
             Some(Blocker::SignedOut)
         );
     }
 
     #[test]
     fn a_source_never_signed_in_waits_for_it() {
-        let mut waiting = source(None, true);
+        let mut waiting = source(None, false);
         waiting.authenticated = false;
         assert_eq!(blocker(&waiting, false), Some(Blocker::WaitingSignIn));
     }

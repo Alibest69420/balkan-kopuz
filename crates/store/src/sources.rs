@@ -270,9 +270,9 @@ impl SourcesModel {
     }
 }
 
-/// Whether the internet being down leaves `source` out of reach; the daemon checks a server's address, which a frontend is not given.
+/// Whether the internet being down leaves `source` out of reach; a folder or a loopback or LAN server is not.
 pub fn cut_off(status: &NetworkStatus, source: &SourceInfo) -> bool {
-    status.internet_down && source.needs_network && !source.active
+    status.internet_down && !source.works_offline && !source.active
 }
 
 #[cfg(test)]
@@ -326,17 +326,18 @@ mod tests {
     }
 
     #[test]
-    fn only_a_networked_source_that_is_not_active_is_cut_off() {
-        let source = |needs_network, active| SourceInfo {
-            needs_network,
+    fn only_a_source_across_the_internet_that_is_not_active_is_cut_off() {
+        let source = |works_offline, active| SourceInfo {
+            needs_network: true,
+            works_offline,
             active,
             ..SourceInfo::default()
         };
         let down = status(true, None, OfflineMode::Off);
         let up = status(false, None, OfflineMode::Off);
-        assert!(cut_off(&down, &source(true, false)));
-        assert!(!cut_off(&down, &source(true, true)));
-        assert!(!cut_off(&down, &source(false, false)));
-        assert!(!cut_off(&up, &source(true, false)));
+        assert!(cut_off(&down, &source(false, false)));
+        assert!(!cut_off(&down, &source(false, true)));
+        assert!(!cut_off(&down, &source(true, false)));
+        assert!(!cut_off(&up, &source(false, false)));
     }
 }
