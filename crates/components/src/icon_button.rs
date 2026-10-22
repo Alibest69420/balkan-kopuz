@@ -103,6 +103,7 @@ pub struct IconButton {
     host: Option<Host>,
     // Width and corner as shares of the height, for a button that is not a circle.
     shape: Option<skin::PlayShape>,
+    swap: Option<(&'static str, f32)>,
 }
 
 impl IconButton {
@@ -124,6 +125,7 @@ impl IconButton {
             click: None,
             host: None,
             shape: None,
+            swap: None,
         }
     }
 
@@ -164,6 +166,12 @@ impl IconButton {
     /// The colour a lit glyph takes in place of the theme's primary, such as the cover-tinted accent.
     pub fn accent(mut self, accent: Hsla) -> Self {
         self.accent = Some(accent);
+        self
+    }
+
+    /// The glyph it is changing from, `shown` of the way to its own, the two crossfading in place.
+    pub fn swap_from(mut self, from: &'static str, shown: f32) -> Self {
+        self.swap = (shown < 1.).then_some((from, shown));
         self
     }
 
@@ -264,6 +272,10 @@ impl RenderOnce for IconButton {
             )
         });
         let glyph = self.glyph.unwrap_or(self.size * 0.36);
+        let arriving = match self.swap {
+            Some((_, shown)) => ink.opacity(ink.a * shown),
+            None => ink,
+        };
         // A host wraps the button in a div that shrinks to it, so the button carries the frame's size itself.
         let inner = self.size - if edge.is_some() { RING * 2. } else { px(0.) };
         let stop = self.stop;
@@ -273,7 +285,7 @@ impl RenderOnce for IconButton {
         };
         let inner_width = inner + (width - self.size);
         let button = Button::new(SharedString::from(format!("{id}-button")))
-            .custom(style::bare_button(ink, cx))
+            .custom(style::bare_button(arriving, cx))
             .icon(icons::icon(self.icon))
             .with_size(glyph / 0.75)
             .size(inner)
@@ -304,6 +316,21 @@ impl RenderOnce for IconButton {
             .when_some(edge, |frame, edge| frame.border_1().border_color(edge))
             .when(self.disabled, |frame| frame.opacity(DISABLED))
             .when(self.shadow, |frame| frame.shadow_md())
+            .when_some(self.swap, |frame, (from, shown)| {
+                frame.relative().child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            icons::icon(from)
+                                .size(glyph)
+                                .text_color(ink.opacity(ink.a * (1. - shown))),
+                        ),
+                )
+            })
     }
 }
 

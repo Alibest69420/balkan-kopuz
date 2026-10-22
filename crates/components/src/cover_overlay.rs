@@ -52,6 +52,7 @@ pub struct CoverOverlay {
     wash: Option<Hsla>,
     playing: bool,
     play: Option<PlayPauseButton>,
+    play_shown: f32,
     corner: Option<AnyElement>,
 }
 
@@ -64,6 +65,7 @@ impl CoverOverlay {
             wash: None,
             playing: false,
             play: None,
+            play_shown: 1.,
             corner: None,
         }
     }
@@ -91,6 +93,12 @@ impl CoverOverlay {
         self
     }
 
+    /// How far the play button has faded in.
+    pub fn play_shown(mut self, shown: f32) -> Self {
+        self.play_shown = shown;
+        self
+    }
+
     /// A control in the top corner, whose press is never a click on the card under it.
     pub fn corner(mut self, corner: Option<AnyElement>) -> Self {
         self.corner = corner;
@@ -110,7 +118,14 @@ impl RenderOnce for CoverOverlay {
             })
             .when(self.playing, |cover| cover.child(playing_badge(cx)))
             .when_some(self.play, |cover, play| {
-                cover.child(div().absolute().right_2().bottom_2().child(play))
+                cover.child(
+                    div()
+                        .absolute()
+                        .right_2()
+                        .bottom_2()
+                        .opacity(self.play_shown)
+                        .child(play),
+                )
             })
             .when_some(self.corner, |cover, corner| {
                 cover.child(

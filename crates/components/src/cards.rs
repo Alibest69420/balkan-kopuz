@@ -29,6 +29,7 @@ const HOVER: u64 = 1;
 const WASH: u64 = 2;
 const COVER: u64 = 3;
 const TITLE: u64 = 4;
+const PLAY: u64 = 5;
 
 /// What a click on a card or row does.
 pub type OnClick = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
@@ -230,15 +231,19 @@ impl RenderOnce for Tile {
             window,
             cx,
         );
-        // Only the card under the pointer or the keyboard builds its button; the rest are art and lines.
-        let play = self
-            .play
-            .filter(|_| hovered || focused)
-            .map(|(state, click)| {
-                PlayPauseButton::new(format!("{id}-play"))
-                    .cover(state)
-                    .on_click(move |event, window, cx| click(event, window, cx))
-            });
+        let play_shown = motion::amount(
+            motion::channel(&id, PLAY),
+            if hovered || focused { 1. } else { 0. },
+            motion::FAST,
+            window,
+            cx,
+        );
+        // Only a card under the pointer or the keyboard, or still fading its button out, builds one.
+        let play = self.play.filter(|_| play_shown > 0.).map(|(state, click)| {
+            PlayPauseButton::new(format!("{id}-play"))
+                .cover(state)
+                .on_click(move |event, window, cx| click(event, window, cx))
+        });
         let click = self.click.clone();
         let opens = self.click;
 
@@ -260,6 +265,7 @@ impl RenderOnce for Tile {
         .wash((!framed).then_some(wash))
         .playing(self.playing)
         .play(play)
+        .play_shown(play_shown)
         .corner(self.corner.filter(|_| hovered || focused));
 
         let lines = v_flex()

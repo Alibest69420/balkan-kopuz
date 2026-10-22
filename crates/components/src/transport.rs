@@ -19,6 +19,9 @@ use crate::menu_button::{MenuButton, MenuVariant};
 use crate::menus::Menu;
 use crate::{icons, motion, style};
 
+/// The channel the play button keeps its glyph swap under.
+const GLYPH_SWAP: u64 = 30;
+
 // Lucide names the shared icon set has no constant for yet.
 const TIMER: &str = "icons/timer.svg";
 const GAUGE: &str = "icons/gauge.svg";
@@ -157,12 +160,40 @@ impl PlayPauseButton {
     }
 }
 
+/// Which glyph a play button last drew, and its crossfade to the one it draws now.
+struct GlyphSwap {
+    playing: bool,
+    fade: motion::Fade,
+}
+
+/// How far the play/pause glyph is through a swap: `Some(shown)` while it crossfades.
+fn glyph_swap(id: &SharedString, playing: bool, window: &mut Window, cx: &mut App) -> Option<f32> {
+    let state = window.use_keyed_state(motion::channel(id, GLYPH_SWAP), cx, |_, _| GlyphSwap {
+        playing,
+        fade: motion::Fade::shown(),
+    });
+    let (swap, shown) = state.update(cx, |swap, cx| {
+        if swap.playing != playing {
+            swap.playing = playing;
+            swap.fade = motion::Fade::hidden();
+        }
+        let shown = swap.fade.sample(true, motion::GLYPH, window, cx);
+        (shown < 1., shown)
+    });
+    swap.then_some(shown)
+}
+
 impl RenderOnce for PlayPauseButton {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let glyph = match self.playing {
             true => icons::PAUSE,
             false => icons::PLAY,
         };
+        let was = match self.playing {
+            true => icons::PLAY,
+            false => icons::PAUSE,
+        };
+        let swap = glyph_swap(&self.id, self.playing, window, cx);
         let word = t(if self.playing { "pause" } else { "play" });
         let click = self.click;
         if self.pill {
@@ -188,6 +219,7 @@ impl RenderOnce for PlayPauseButton {
         }
         if self.floating {
             return IconButton::new(self.id, glyph)
+                .when_some(swap, |button, shown| button.swap_from(was, shown))
                 .size(self.size)
                 .glyph(self.glyph)
                 .tone(IconTone::Accent)
@@ -202,6 +234,7 @@ impl RenderOnce for PlayPauseButton {
         // A skin that squares the play button fills it, as Material's filled icon button is.
         let shape = style::chrome().play_shape;
         IconButton::new(self.id, glyph)
+            .when_some(swap, |button, shown| button.swap_from(was, shown))
             .size(self.size)
             .glyph(self.glyph)
             .tone(match shape {
