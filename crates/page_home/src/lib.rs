@@ -65,6 +65,8 @@ pub struct Home {
     // The catalog section, and the source and page it was built for.
     catalog: Option<(String, AnyView)>,
     seed: u64,
+    // The For you row's fade over its placeholder, kept here so a revisit finds it already in.
+    for_you: components::motion::Fade,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -162,6 +164,7 @@ impl Home {
             page: ScrollHandle::default(),
             catalog: None,
             seed: seed(),
+            for_you: components::motion::Fade::hidden(),
             _subscriptions: subscriptions,
         }
     }
@@ -179,10 +182,7 @@ impl Home {
             });
         }
         let for_you = ForYouModel::global(cx);
-        let for_you = match for_you.read(cx).state() {
-            ForYouState::Mix(tracks) => tracks.as_slice(),
-            _ => &[],
-        };
+        let for_you = for_you.read(cx).shown_mix().unwrap_or(&[]);
         self.shelves = data::build(data::Inputs {
             albums: self.albums.read(cx).value(),
             recently_added: self.recently_added.read(cx).value(),
@@ -206,8 +206,7 @@ impl Home {
     fn drawn(&self, cx: &Context<Self>) -> Vec<Drawn> {
         let sources = SourcesModel::global(cx).read(cx);
         // The mix is radio from the source, which offline mode never reaches.
-        let for_you =
-            ForYouModel::global(cx).read(cx).state().is_shown() && !sources.offline_reads();
+        let for_you = ForYouModel::global(cx).read(cx).is_shown() && !sources.offline_reads();
         let catalog = sources.has_catalog();
         let layout = store::layout(cx);
         let names = match catalog {
@@ -282,7 +281,9 @@ impl Render for Home {
             // A ranking is a list and a shelf is a row; `Form` is what says which a name gets.
             rows.push(match shelf.form {
                 data::Form::Ranked => ranked::ranked(shelf, cx),
-                _ if shelf.name == "for_you" => for_you::row(shelf, &handle, cx),
+                _ if shelf.name == "for_you" => {
+                    for_you::row(shelf, &handle, &mut self.for_you, window, cx)
+                }
                 _ => shelf::shelf(shelf, &handle),
             });
         }

@@ -37,6 +37,8 @@ impl ForYouState {
 struct Machine {
     state: ForYouState,
     generation: u64,
+    // The last mix shown, kept on screen through a resync or a lost daemon rather than collapsing the row.
+    held: Vec<TrackInfo>,
 }
 
 impl Machine {
@@ -52,7 +54,10 @@ impl Machine {
             return false;
         }
         self.state = match result {
-            Ok(ForYou::Mix(tracks)) => ForYouState::Mix(tracks),
+            Ok(ForYou::Mix(tracks)) => {
+                self.held = tracks.clone();
+                ForYouState::Mix(tracks)
+            }
             Ok(ForYou::Unavailable(_)) => ForYouState::Unavailable,
             // A daemon from before For you answers every ask this way.
             Err(error) if error.code == ErrorCode::Unsupported => ForYouState::Unavailable,
@@ -71,6 +76,24 @@ impl Machine {
         true
     }
 
+    /// The mix to draw: the one in, or the last one while another is on its way or the daemon is gone.
+    fn shown_mix(&self) -> Option<&[TrackInfo]> {
+        match &self.state {
+            ForYouState::Mix(tracks) => Some(tracks),
+            ForYouState::Idle | ForYouState::Loading | ForYouState::Disconnected
+                if !self.held.is_empty() =>
+            {
+                Some(&self.held)
+            }
+            _ => None,
+        }
+    }
+
+    /// A refresh or another source: the held mix is no answer to either.
+    fn forget(&mut self) {
+        self.held.clear();
+    }
+
     fn reset(&mut self) {
         self.generation += 1;
         self.state = ForYouState::Idle;
@@ -79,6 +102,8 @@ impl Machine {
 
 pub struct ForYouModel {
     machine: Machine,
+    // The source the held mix came from, so a switch drops it.
+    source: Option<String>,
     _fetch: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
@@ -109,9 +134,20 @@ impl ForYouModel {
         ];
         Self {
             machine: Machine::default(),
+            source: None,
             _fetch: None,
             _subscriptions: subscriptions,
         }
+    }
+
+    /// The mix the row draws, held over a reload; `None` while there is none to show.
+    pub fn shown_mix(&self) -> Option<&[TrackInfo]> {
+        self.machine.shown_mix()
+    }
+
+    /// Whether Home draws the row at all.
+    pub fn is_shown(&self) -> bool {
+        self.machine.state.is_shown() || self.shown_mix().is_some()
     }
 
     pub fn state(&self) -> &ForYouState {
@@ -127,10 +163,15 @@ impl ForYouModel {
 
     /// Throw the mix away and have the daemon build another.
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
+        self.machine.forget();
         self.fetch(true, cx);
     }
 
     fn fetch(&mut self, fresh: bool, cx: &mut Context<Self>) {
+        self.source = crate::SourcesModel::global(cx)
+            .read(cx)
+            .active()
+            .map(|source| source.id.clone());
         let generation = self.machine.begin();
         let call = Link::global(cx).call(move |api| async move {
             match fresh {
@@ -156,6 +197,14 @@ impl ForYouModel {
     }
 
     fn reset(&mut self, cx: &mut Context<Self>) {
+        let active = crate::SourcesModel::global(cx)
+            .read(cx)
+            .active()
+            .map(|source| source.id.clone());
+        if active != self.source {
+            self.source = active;
+            self.machine.forget();
+        }
         self.machine.reset();
         // Nobody can ask while the daemon is gone, so an idle row would pulse forever.
         if !Link::connection(cx).read(cx).is_connected() {
@@ -295,5 +344,35 @@ mod tests {
         assert_eq!(machine.state, ForYouState::Idle);
         assert!(!machine.settle(generation, Ok(ForYou::Mix(vec![track("a")]))));
         assert_eq!(machine.state, ForYouState::Idle);
+    }
+
+    #[test]
+    fn a_reload_or_a_lost_daemon_keeps_the_last_mix_on_screen() {
+        let mut machine = Machine::default();
+        let generation = machine.begin();
+        machine.settle(generation, Ok(ForYou::Mix(vec![track("a")])));
+        machine.reset();
+        assert_eq!(machine.shown_mix(), Some(&[track("a")][..]));
+        machine.begin();
+        assert_eq!(machine.shown_mix(), Some(&[track("a")][..]));
+        assert!(machine.disconnect());
+        assert_eq!(machine.shown_mix(), Some(&[track("a")][..]));
+    }
+
+    #[test]
+    fn a_refresh_or_a_new_source_lets_the_mix_go() {
+        let mut machine = Machine::default();
+        let generation = machine.begin();
+        machine.settle(generation, Ok(ForYou::Mix(vec![track("a")])));
+        machine.forget();
+        machine.begin();
+        assert_eq!(machine.shown_mix(), None);
+    }
+
+    #[test]
+    fn nothing_held_until_a_mix_has_come() {
+        let mut machine = Machine::default();
+        machine.begin();
+        assert_eq!(machine.shown_mix(), None);
     }
 }
