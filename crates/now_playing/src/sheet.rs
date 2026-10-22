@@ -21,6 +21,7 @@ use store::{Chrome, ConfigModel, actions};
 
 use crate::NowPlaying;
 use crate::meta::{cover_size, playing_from, track_picture, track_target};
+use crate::swap::SwapFrame;
 
 // The column the title, the clocks and the transport share, and the panel beside them.
 // A cover never takes more of the stage's width than this, so a narrow window keeps its edges.
@@ -88,13 +89,18 @@ impl NowPlaying {
         let track = self.track(cx);
         let artwork = track.as_ref().and_then(|track| track.artwork.clone());
         let entered = motion::enter("sheet-enter", motion::SLOW, window, cx);
+        let swap = self.swap.frame(
+            components::cover::is_ready(artwork.as_ref(), true, cx),
+            window,
+            cx,
+        );
         let owner = cx.entity().downgrade();
         let showing = self.tab;
         let config = ConfigModel::global(cx).read(cx).config();
         let use_bar = config.ui.fullscreen_use_player_bar;
         let bar_at_top = config.ui.player_bar_position == config::PlayerBarPosition::Top;
 
-        let stage = self.stage(window, cx);
+        let stage = self.stage(&swap, window, cx);
         let panel = v_flex()
             .h_full()
             .w(relative(PANEL))
@@ -163,13 +169,13 @@ impl NowPlaying {
                         body.children(self.sheet_bar.clone())
                     }),
             )
-            .children(self.flying_cover(window, cx))
+            .children(self.flying_cover(&swap, window, cx))
             .focus_trap("now-playing-focus", &self.sheet_focus.handle)
             .into_any_element()
     }
 
     /// The left half: the cover's landing place, the title, the transport and the clocks.
-    fn stage(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn stage(&self, swap: &SwapFrame, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let use_bar = ConfigModel::global(cx)
             .read(cx)
             .config()
@@ -220,7 +226,7 @@ impl NowPlaying {
                             .ok();
                     }),
             )
-            .children(track.map(|track| self.title_block(&track, window, cx)))
+            .children(track.map(|track| self.title_block(&track, swap, window, cx)))
             .when(!use_bar, |stage| {
                 stage.child(
                     v_flex()
@@ -251,6 +257,7 @@ impl NowPlaying {
     fn title_block(
         &self,
         track: &api::TrackInfo,
+        swap: &SwapFrame,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
@@ -269,18 +276,32 @@ impl NowPlaying {
             .max_w(rems(COLUMN))
             .items_center()
             .gap_1()
-            .child(
-                NowPlayingMeta::new("sheet", track)
-                    .layout(MetaLayout::Hero)
-                    .origin(playing_from(cx))
-                    .on_before_navigate(close_sheet),
-            )
+            .child({
+                let origin = playing_from(cx);
+                let meta = |id: &'static str, track: &api::TrackInfo| {
+                    NowPlayingMeta::new(id, track)
+                        .layout(MetaLayout::Hero)
+                        .origin(origin.clone())
+                        .on_before_navigate(close_sheet)
+                };
+                match swap.leaving.as_ref() {
+                    Some(old) if swap.title < 1. => crate::meta::crossfade(
+                        meta("sheet-leaving", old),
+                        meta("sheet", track),
+                        swap.title,
+                    )
+                    .w_full()
+                    .into_any_element(),
+                    _ => meta("sheet", track).into_any_element(),
+                }
+            })
             .child(div().pt_2().child(marks))
     }
 
     /// The cover itself, drawn once, travelling between the bar's slot and the hero's.
     fn flying_cover(
         &self,
+        swap: &SwapFrame,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<impl IntoElement + use<>> {
@@ -309,6 +330,18 @@ impl NowPlaying {
                 / f32::from(cover_size(store::layout(cx).player.size.scale(), cx)).max(1.))
             .clamp(0.4, 1.);
 
+        let leaving = swap
+            .leaving
+            .as_ref()
+            .filter(|_| swap.cover < 1.)
+            .map(|old| {
+                div().absolute().top_0().left_0().child(
+                    Cover::new(old.artwork.as_ref())
+                        .size(side)
+                        .rounded(radius)
+                        .hq(true),
+                )
+            });
         Some(
             div()
                 .id("sheet-cover")
@@ -317,12 +350,15 @@ impl NowPlaying {
                 .top(top)
                 .size(side)
                 .shadow_lg()
+                .children(leaving)
                 .child(
-                    Cover::new(artwork.as_ref())
-                        .size(side)
-                        .rounded(radius)
-                        .hq(true)
-                        .spot(picture.as_ref().map(Picture::spot)),
+                    div().opacity(swap.cover).child(
+                        Cover::new(artwork.as_ref())
+                            .size(side)
+                            .rounded(radius)
+                            .hq(true)
+                            .spot(picture.as_ref().map(Picture::spot)),
+                    ),
                 )
                 .with_context_menu(menus::pictured(menu, picture)),
         )

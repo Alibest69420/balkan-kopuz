@@ -73,8 +73,8 @@ pub fn layer(
     ambient(window, cx)
 }
 
-/// Slow on purpose: light that changes quickly reads as a fault, not as a new song.
-const CROSSFADE: Duration = Duration::from_millis(1_200);
+/// The accent's own ease, so the light and the tint it casts land together.
+const CROSSFADE: Duration = theme::ACCENT_TWEEN;
 
 /// The field that is up, the one it is fading from, and a count that keys each change's own fade.
 #[derive(Default)]

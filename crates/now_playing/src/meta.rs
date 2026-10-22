@@ -66,8 +66,8 @@ pub(crate) fn playing_from(cx: &App) -> Option<(SharedString, Route)> {
 impl NowPlaying {
     /// The block on the left of the bar: cover, title, artist, where it all came from, and the marks.
     pub(crate) fn track_meta(
-        &self,
-        window: &Window,
+        &mut self,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let track = self.track(cx);
@@ -76,6 +76,41 @@ impl NowPlaying {
         let scale = self.scale(cx);
         let size = cover_size(scale, cx);
         let origin = playing_from(cx);
+        let artwork = track.as_ref().and_then(|track| track.artwork.as_ref());
+        let swap = self
+            .swap
+            .frame(components::cover::is_ready(artwork, false, cx), window, cx);
+        let cover = |artwork: Option<&api::ArtworkRef>| {
+            Cover::new(artwork)
+                .size(size)
+                .rounded(style::thumb_radius())
+        };
+        let meta = |id: &'static str, track: &api::TrackInfo| {
+            NowPlayingMeta::new(id, track)
+                .layout(MetaLayout::Bar)
+                .scale(scale)
+                .origin(origin.clone())
+        };
+        let leaving_cover = swap
+            .leaving
+            .as_ref()
+            .filter(|_| swap.cover < 1.)
+            .map(|old| {
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .child(cover(old.artwork.as_ref()))
+            });
+        let title = match (track.as_ref(), swap.leaving.as_ref()) {
+            (Some(track), Some(old)) if swap.title < 1. => Some(
+                crossfade(meta("bar-leaving", old), meta("bar", track), swap.title)
+                    .min_w_0()
+                    .into_any_element(),
+            ),
+            (Some(track), _) => Some(meta("bar", track).into_any_element()),
+            (None, _) => None,
+        };
         let marks = self
             .marks(
                 "meta",
@@ -100,24 +135,20 @@ impl NowPlaying {
                 div()
                     .flex_shrink_0()
                     .id("bar-cover")
+                    .relative()
                     .on_prepaint(|bounds, _, cx| crate::remember_cover_slot(bounds, cx))
                     .cursor_pointer()
                     .on_click(|_, _, cx| {
                         Chrome::global(cx).update(cx, |chrome, cx| chrome.set_sheet(true, cx))
                     })
+                    .children(leaving_cover)
                     .child(
-                        Cover::new(track.as_ref().and_then(|track| track.artwork.as_ref()))
-                            .size(size)
-                            .rounded(style::thumb_radius())
-                            .spot(picture.as_ref().map(Picture::spot)),
+                        div()
+                            .opacity(swap.cover)
+                            .child(cover(artwork).spot(picture.as_ref().map(Picture::spot))),
                     ),
             )
-            .children(track.as_ref().map(|track| {
-                NowPlayingMeta::new("bar", track)
-                    .layout(MetaLayout::Bar)
-                    .scale(scale)
-                    .origin(origin)
-            }))
+            .children(title)
             .child(marks);
 
         block.with_context_menu(menus::pictured(target.map(menus::menu_for), picture))
@@ -197,4 +228,34 @@ pub(crate) fn track_picture(track: &api::TrackInfo) -> Option<Picture> {
             title: track.title.clone().into(),
         },
     )
+}
+
+/// `leaving` fading out where it stood while `arriving` fades in over it, `shown` of the way in.
+pub(crate) fn crossfade(
+    leaving: impl IntoElement,
+    arriving: impl IntoElement,
+    shown: f32,
+) -> gpui_kit::Div {
+    div()
+        .relative()
+        .flex()
+        .child(
+            div()
+                .absolute()
+                .top_0()
+                .bottom_0()
+                .left_0()
+                .right_0()
+                .flex()
+                .opacity(1. - shown)
+                .child(leaving),
+        )
+        .child(
+            div()
+                .flex()
+                .min_w_0()
+                .w_full()
+                .opacity(shown)
+                .child(arriving),
+        )
 }

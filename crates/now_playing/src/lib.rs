@@ -10,6 +10,7 @@ mod queue_view;
 mod seek;
 mod settings;
 mod sheet;
+mod swap;
 mod transport;
 mod volume;
 mod window;
@@ -80,6 +81,8 @@ pub struct NowPlaying {
     /// Where the sheet and its hero cover landed last frame, so the cover can travel into it.
     root: Option<Bounds<Pixels>>,
     hero: Option<Bounds<Pixels>>,
+    /// The track this surface last drew, and the one still fading out under it.
+    swap: swap::TrackSwap,
     devices_open: bool,
     devices: Vec<api::ExternalDevice>,
     queue: Option<Entity<QueueView>>,
@@ -173,6 +176,11 @@ impl NowPlaying {
             panel_width: None,
             root: None,
             hero: None,
+            swap: {
+                let mut swap = swap::TrackSwap::default();
+                swap.follow(PlayerModel::global(cx).read(cx).track());
+                swap
+            },
             devices_open: false,
             devices: Vec::new(),
             queue: holds_tabs.then(|| cx.new(|cx| QueueView::new(window, cx))),
@@ -186,6 +194,8 @@ impl NowPlaying {
 
     /// Carry the daemon's level into the slider the pointer is not holding.
     fn sync(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let playing = PlayerModel::global(cx).read(cx).track().cloned();
+        self.swap.follow(playing.as_ref());
         if !self.volume_held {
             let shown = to_ui(PlayerModel::global(cx).read(cx).volume());
             self.volume
