@@ -82,6 +82,7 @@ pub struct Shell {
     debug_overlay: Entity<debug_overlay::DebugOverlay>,
     // The theme these were applied for, so config edits reapply only on a change.
     applied_theme: AppliedTheme,
+    system_artwork: Option<api::ArtworkRef>,
     // On its own timer: GPUI only renders on a change, and an idle app is when covers want releasing.
     _heartbeat: Task<()>,
     _subscriptions: Vec<Subscription>,
@@ -122,6 +123,20 @@ impl Shell {
             cx.observe(&connection, |this, _, cx| this.boot(cx)),
             cx.observe(&navigator, |_, _, cx| cx.notify()),
             cx.observe(&chrome, |_, _, cx| cx.notify()),
+            // System colors follows the cover; the player ticks constantly, so only a new cover redraws.
+            cx.observe(&PlayerModel::global(cx), |this, player, cx| {
+                if this.applied_theme.0 != theme::SYSTEM {
+                    return;
+                }
+                let artwork = player
+                    .read(cx)
+                    .track()
+                    .and_then(|track| track.artwork.clone());
+                if artwork != this.system_artwork {
+                    this.system_artwork = artwork;
+                    cx.notify();
+                }
+            }),
             cx.observe_in(&config, window, |this, _, window, cx| {
                 follow_config(&mut this.applied_theme, window, cx);
                 cx.notify();
@@ -161,6 +176,7 @@ impl Shell {
             loader: (!booted).then(|| cx.new(|cx| status::Loader::new(started, cx))),
             debug_overlay: cx.new(|cx| debug_overlay::DebugOverlay::new(window, cx)),
             applied_theme,
+            system_artwork: None,
             _heartbeat: Self::heartbeat(window, cx),
             _subscriptions: subscriptions,
         }
@@ -241,6 +257,10 @@ impl Shell {
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _rebuild = profile::Rebuild::new();
+        // System colors follows the playing cover, which changes without the config changing.
+        if self.applied_theme.0 == theme::SYSTEM {
+            theme::follow_system(window, cx);
+        }
         if let Some(loader) = self.loader.clone() {
             return div()
                 .size_full()

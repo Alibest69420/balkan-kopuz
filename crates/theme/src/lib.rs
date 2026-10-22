@@ -3,6 +3,7 @@
 mod accent;
 mod contrast;
 mod palettes;
+mod system;
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -16,6 +17,7 @@ pub use accent::{
 };
 pub use contrast::{AA, AA_LARGE, contrast, luminance, readable, readable_at, readable_on};
 pub use palettes::{BUILT_IN, palette};
+pub use system::{SYSTEM, system_colors};
 
 /// A built-in Kopuz theme: the same thirteen colors the themes and the editor use.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -193,8 +195,59 @@ pub fn apply_config(config: &Ui, window: Option<&mut Window>, cx: &mut App) {
         apply(name, &colors, window, cx);
         return;
     }
+    // Built from the playing cover, which is only readable mid-render: the shell's frame calls `follow_system`.
+    if name == SYSTEM {
+        reset_system(cx);
+        if let Some(window) = window {
+            window.refresh();
+        }
+        return;
+    }
     // "album-art" and "live" recolor the default from a picture; until that lands they are it.
     apply_named("default", window, cx);
+}
+
+/// What System colors was last built from: the cover's swatches and the appearance.
+#[derive(Default)]
+struct SystemSeed(Option<(Option<store::Swatches>, bool)>);
+
+impl gpui_kit::Global for SystemSeed {}
+
+/// Rebuild System colors when the playing cover's colours or the window's appearance change; call it from a render.
+pub fn follow_system(window: &mut Window, cx: &mut App) {
+    let artwork = store::PlayerModel::global(cx)
+        .read(cx)
+        .track()
+        .and_then(|track| track.artwork.clone());
+    // A cover still being read keeps the scheme it has rather than flashing the default.
+    let swatches = match &artwork {
+        Some(artwork) => match store::palette::of(artwork, window, cx) {
+            Some(swatches) => Some(swatches),
+            None if cx
+                .try_global::<SystemSeed>()
+                .is_some_and(|seed| seed.0.is_some()) =>
+            {
+                return;
+            }
+            None => None,
+        },
+        None => None,
+    };
+    let dark = matches!(
+        window.appearance(),
+        gpui_kit::WindowAppearance::Dark | gpui_kit::WindowAppearance::VibrantDark
+    );
+    let seed = Some((swatches, dark));
+    if cx.default_global::<SystemSeed>().0 == seed {
+        return;
+    }
+    cx.global_mut::<SystemSeed>().0 = seed;
+    apply(SYSTEM, &system_colors(swatches, dark), Some(window), cx);
+}
+
+/// Forget what System colors was built from, so the next follow rebuilds it.
+pub fn reset_system(cx: &mut App) {
+    cx.default_global::<SystemSeed>().0 = None;
 }
 
 /// `#rrggbb` at `a`, which the component theme parses as 8-digit hex.

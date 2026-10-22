@@ -390,6 +390,7 @@ impl AppearanceSettings {
             .iter()
             .map(|palette| (palette.name.to_string(), theme_label(palette.name)))
             .collect();
+        options.push((theme::SYSTEM.to_string(), t("system_colors")));
         let mut custom: Vec<(String, SharedString)> = cfg
             .ui
             .custom_themes
