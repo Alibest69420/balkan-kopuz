@@ -57,7 +57,7 @@ pub use picture::{PictureError, Pictured, copy_picture, extension, file_name, sa
 pub use player::{PlayerModel, Playhead};
 pub use playing::Playing;
 pub use playlists::PlaylistsModel;
-pub use query::Query;
+pub use query::{FirstRead, Query};
 pub use queue::{QueueModel, QueueSummary};
 pub use settings_filter::SettingsFilter;
 pub use setup::{Decision, SetupModel};

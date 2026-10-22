@@ -114,8 +114,10 @@ impl Landing {
                 false => api.discover_rows().await,
             }
         });
+        let first = store::FirstRead::begin(cx);
         self._rows = Some(cx.spawn(async move |this, cx| {
             let result = call.await;
+            let _first = first;
             this.update(cx, |this, cx| {
                 if this.generation != generation {
                     return;
@@ -156,8 +158,10 @@ impl Landing {
                     api.catalog_detail(api::CatalogDetailRequest::page(id))
                         .await
                 });
+                let first = store::FirstRead::begin(cx);
                 cx.spawn(async move |this, cx| {
                     let result = call.await;
+                    let _first = first;
                     this.update(cx, |this, cx| {
                         if this.generation != generation {
                             return;

@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::future::Future;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -5,7 +6,7 @@ use std::sync::Arc;
 use api::{ApiError, KopuzApi, Table};
 use futures::FutureExt as _;
 use futures::future::BoxFuture;
-use gpui_kit::{Context, Subscription, Task};
+use gpui_kit::{App, Context, Subscription, Task};
 use link::Link;
 
 use crate::invalidation::{Invalidation, TablesChanged};
@@ -94,6 +95,8 @@ impl<T: Send + 'static> Query<T> {
         let generation = self.generation;
         let fetch = self.fetch.clone();
         let call = Link::global(cx).call(move |api| fetch(api));
+        // A held value is already something to show, so only a first read is waited on.
+        let first = self.value.is_none().then(|| FirstRead::begin(cx));
         self.loading = true;
         // A value already on screen makes this notify a whole-window rebuild for nothing.
         if self.value.is_none() {
@@ -101,6 +104,7 @@ impl<T: Send + 'static> Query<T> {
         }
         self._task = Some(cx.spawn(async move |this, cx| {
             let result = call.await;
+            let _first = first;
             this.update(cx, |this, cx| {
                 if this.generation != generation {
                     return;
@@ -174,4 +178,53 @@ where
     Fut: Future<Output = Result<T, ApiError>> + Send + 'static,
 {
     Rc::new(move |api| fetch(api).boxed())
+}
+
+/// First reads still in flight, so the shell can hold a page up until the one replacing it has something to show.
+#[derive(Default)]
+struct FirstReads(Rc<Cell<usize>>);
+
+impl gpui_kit::Global for FirstReads {}
+
+/// One first read in flight; dropping it, landed or abandoned, counts it out.
+pub struct FirstRead(Rc<Cell<usize>>);
+
+impl FirstRead {
+    pub fn begin(cx: &mut App) -> Self {
+        Self::counting(cx.default_global::<FirstReads>().0.clone())
+    }
+
+    fn counting(count: Rc<Cell<usize>>) -> Self {
+        count.set(count.get() + 1);
+        Self(count)
+    }
+
+    /// How many are in flight now.
+    pub fn in_flight(cx: &App) -> usize {
+        cx.try_global::<FirstReads>()
+            .map_or(0, |reads| reads.0.get())
+    }
+}
+
+impl Drop for FirstRead {
+    fn drop(&mut self) {
+        self.0.set(self.0.get().saturating_sub(1));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_first_read_counts_until_it_is_dropped() {
+        let count = Rc::new(Cell::new(0));
+        let one = FirstRead::counting(count.clone());
+        let two = FirstRead::counting(count.clone());
+        assert_eq!(count.get(), 2);
+        drop(one);
+        assert_eq!(count.get(), 1);
+        drop(two);
+        assert_eq!(count.get(), 0);
+    }
 }

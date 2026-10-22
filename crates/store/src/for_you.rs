@@ -138,9 +138,11 @@ impl ForYouModel {
                 false => api.for_you().await,
             }
         });
+        let first = crate::FirstRead::begin(cx);
         crate::notify(cx);
         self._fetch = Some(cx.spawn(async move |this, cx| {
             let result = call.await;
+            let _first = first;
             this.update(cx, |this, cx| {
                 if let Err(error) = &result {
                     tracing::debug!(%error, "for you failed");

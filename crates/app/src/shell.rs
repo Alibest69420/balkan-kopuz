@@ -57,6 +57,24 @@ fn follow_config(applied: &mut AppliedTheme, window: &mut Window, cx: &mut gpui_
     place_toasts(cx);
 }
 
+/// What a page's contents depend on in the source list; a probe's answer changes none of it.
+#[derive(Debug, Clone, PartialEq, Default)]
+struct SourceIdentity {
+    active: Option<String>,
+    capabilities: api::SourceCapabilities,
+    offline_reads: bool,
+}
+
+impl SourceIdentity {
+    fn of(sources: &SourcesModel) -> Self {
+        Self {
+            active: sources.active().map(|source| source.id.clone()),
+            capabilities: sources.capabilities(),
+            offline_reads: sources.offline_reads(),
+        }
+    }
+}
+
 actions!(
     kopuz,
     [
@@ -91,6 +109,11 @@ pub struct Shell {
     // The route last drawn and the incoming page's fade, kept here so a cached page fades like a new one.
     page_key: String,
     page_fade: motion::Fade,
+    // What the active source answers to, so only a real change throws the pages away.
+    source: SourceIdentity,
+    // The page drawn last, and the one a source switch is handing over from.
+    shown: Option<gpui_kit::AnyView>,
+    handover: Option<crate::handover::Handover>,
     // On its own timer: GPUI only renders on a change, and an idle app is when covers want releasing.
     _heartbeat: Task<()>,
     _subscriptions: Vec<Subscription>,
@@ -151,9 +174,14 @@ impl Shell {
             }),
             // The skin sizes the player bar, which the toasts have to clear.
             cx.observe(&store::LayoutModel::global(cx), |_, _, cx| place_toasts(cx)),
-            // A source switch makes every page's contents wrong, so none are kept.
-            cx.observe(&sources, |this, _, cx| {
-                this.router.clear();
+            // A source switch makes every page's contents wrong, so none are kept; the shown one is held.
+            cx.observe(&sources, |this, sources, cx| {
+                let now = SourceIdentity::of(sources.read(cx));
+                if now != this.source {
+                    this.source = now;
+                    this.handover = this.shown.clone().map(crate::handover::Handover::new);
+                    this.router.clear();
+                }
                 cx.notify();
             }),
         ];
@@ -187,6 +215,9 @@ impl Shell {
             system_artwork: None,
             page_key: String::new(),
             page_fade: motion::Fade::hidden(),
+            source: SourceIdentity::of(sources.read(cx)),
+            shown: None,
+            handover: None,
             _heartbeat: Self::heartbeat(window, cx),
             _subscriptions: subscriptions,
         }
@@ -236,6 +267,34 @@ impl Shell {
 
     pub fn go_back(&mut self, cx: &mut Context<Self>) {
         Navigator::global(cx).update(cx, |navigator, cx| navigator.go_back(cx));
+    }
+
+    /// Across a source switch, the old page over the new one until the new one has something to show.
+    fn handover_layer(
+        &mut self,
+        page: gpui_kit::AnyElement,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> gpui_kit::AnyElement {
+        let Some(handover) = self.handover.as_mut() else {
+            return page;
+        };
+        let Some(frame) = handover.frame(window, cx) else {
+            self.handover = None;
+            return page;
+        };
+        div()
+            .size_full()
+            .relative()
+            .child(div().size_full().opacity(frame.arriving).child(page))
+            .children(frame.leaving.map(|leaving| {
+                div()
+                    .absolute()
+                    .inset_0()
+                    .opacity(1. - frame.arriving)
+                    .child(leaving)
+            }))
+            .into_any_element()
     }
 
     /// The routed page, fading and rising into place whenever the route changes; the page it replaces just goes.
@@ -333,7 +392,9 @@ impl Render for Shell {
             == config::PlayerBarPosition::Top;
         let route = Navigator::global(cx).read(cx).current().clone();
         let page = self.router.page(&route, window, cx);
+        self.shown = Some(page.clone());
         let page = self.page_layer(route.key(), page, window, cx);
+        let page = self.handover_layer(page, window, cx);
         // A skin with rounded panes sets the page and the side panel apart as tonal cards.
         let skin = components::style::chrome();
         let paned = skin.pane_radius > px(0.);
