@@ -1,6 +1,5 @@
 //! One line of synced lyrics: its colouring, its karaoke fill or interlude bar, and the seek its click asks for.
 
-use std::ops::Range;
 use std::rc::Rc;
 
 use gpui_kit::base::StyledExt as _;
@@ -11,7 +10,7 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled as _, Window, div, px, relative, rems,
 };
 
-use crate::{KaraokeText, icons, motion};
+use crate::{KaraokeText, Syllable, icons, motion};
 
 // A background line is quieter than a main one even once it is lit.
 const BACKGROUND_ALPHA: f32 = 0.7;
@@ -19,6 +18,8 @@ const INTERLUDE_BAR: gpui_kit::Pixels = px(72.);
 // `text-white/40` unsung, `text-white/60` under the pointer: a line the voice has left.
 const DIM: f32 = 0.4;
 const DIM_HOVER: f32 = 0.6;
+// What a lit line's words wear before the voice reaches them: the Dioxus wipe's unsung 45%.
+const UNSUNG: f32 = 0.45;
 // A background line is quieter still: `text-white/25`, lit at `text-white/70`.
 const BACKGROUND_DIM: f32 = 0.25;
 // `min(100%, 20rem)`, and `min(90%, 18rem)` once a duet pushes the lines to the edges.
@@ -32,8 +33,8 @@ type Seek = Rc<dyn Fn(u64, &mut Window, &mut App)>;
 /// What a line shows besides its words.
 enum Body {
     Words,
-    /// Per-syllable fills, each a byte range of the text and how far through it the voice is.
-    Karaoke(Vec<(Range<usize>, f32)>),
+    /// Per-syllable fills and glows over the line's text.
+    Karaoke(Vec<Syllable>),
     /// An instrumental stretch: a bar that fills over it, 0..1.
     Interlude(f32),
 }
@@ -108,7 +109,7 @@ impl LyricLine {
     }
 
     /// Light the line's syllables by the given fills; only a lit line is drawn with them.
-    pub fn karaoke(mut self, fills: Vec<(Range<usize>, f32)>) -> Self {
+    pub fn karaoke(mut self, fills: Vec<Syllable>) -> Self {
         self.body = Body::Karaoke(fills);
         self
     }
@@ -198,7 +199,7 @@ impl RenderOnce for LyricLine {
                 .child(KaraokeText::new(
                     self.text,
                     sung.alpha(tint),
-                    sung.alpha(DIM * tint),
+                    sung.alpha(UNSUNG * tint),
                     fills,
                 ))
                 .into_any_element(),

@@ -104,7 +104,7 @@ pub use header::{
 pub use heading::{Heading, SectionHeading};
 pub use icon_button::{FollowButton, IconButton, IconTone};
 pub use job::{JobLayout, JobLine, JobStop, ProgressBar};
-pub use karaoke::KaraokeText;
+pub use karaoke::{KaraokeText, Syllable};
 pub use keycap::{KeyHint, Keycap};
 pub use link::{Link, Tone, heading_link};
 pub use lyric_line::LyricLine;

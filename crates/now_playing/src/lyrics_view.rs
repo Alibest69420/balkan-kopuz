@@ -29,6 +29,7 @@ const INTERLUDE_MIN: f64 = 5.0;
 const LINE_ASSUMED_MAX: f64 = 7.0;
 // A chunk runs until the next one starts, which over a pause is far longer than the syllable.
 const MAX_WIPE: f64 = 1.2;
+const GLOW_DECAY: f64 = 0.6;
 const BACKGROUND_ALPHA: f32 = 0.7;
 const SLIDE_MS: f64 = 720.0;
 // Past this the list has moved under us (a remount or a resize), so re-park rather than wait.
@@ -255,6 +256,18 @@ fn chunk_fill(chunk: &Chunk, time: f64) -> f32 {
         0.0
     };
     fill.clamp(0.0, 1.0) as f32
+}
+
+/// Lit while the syllable is being sung, then settling over [`GLOW_DECAY`].
+fn chunk_glow(chunk: &Chunk, time: f64) -> f32 {
+    let glow = if time < chunk.start {
+        0.0
+    } else if time <= chunk.end {
+        1.0
+    } else {
+        1.0 - (time - chunk.end) / GLOW_DECAY
+    };
+    glow.clamp(0.0, 1.0) as f32
 }
 
 enum Lyrics {
@@ -565,7 +578,11 @@ impl Render for LineClock {
             let fills = line
                 .chunks
                 .iter()
-                .map(|chunk| (chunk.range.clone(), chunk_fill(chunk, time)))
+                .map(|chunk| components::Syllable {
+                    range: chunk.range.clone(),
+                    fill: chunk_fill(chunk, time),
+                    glow: chunk_glow(chunk, time),
+                })
                 .collect();
             row = row.karaoke(fills);
             // A frame request re-renders only this line, and only while a syllable is filling.
@@ -789,6 +806,9 @@ mod tests {
         assert_eq!(chunk_fill(&chunk, 0.5), 0.0);
         assert_eq!(chunk_fill(&chunk, 1.25), 0.5);
         assert_eq!(chunk_fill(&chunk, 9.0), 1.0);
+        assert_eq!(chunk_glow(&chunk, 0.5), 0.0);
+        assert_eq!(chunk_glow(&chunk, chunk.end), 1.0);
+        assert_eq!(chunk_glow(&chunk, chunk.end + GLOW_DECAY), 0.0);
     }
 
     #[test]
