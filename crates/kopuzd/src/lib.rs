@@ -9,7 +9,9 @@
 //! not exist. Its 0600 mode is the access control, so the channel carries no
 //! credentials; the pipe carries a DACL that draws the same line (see
 //! `proto::pipe`). A daemon started with `--listen` also serves plain
-//! HTTP/2 on whatever address it is given, with no credentials either.
+//! HTTP/2 on whatever address it is given, with no credentials either, and
+//! one started with `--mpd` serves MPD clients on that address (see the `mpd`
+//! crate).
 //! Reflection is on:
 //!
 //! ```sh
@@ -35,6 +37,10 @@ pub struct ServeArgs {
     pub socket: Option<PathBuf>,
     /// A TCP address to serve on as well.
     pub listen: Option<std::net::SocketAddr>,
+    /// A TCP address to serve MPD clients on.
+    pub mpd: Option<std::net::SocketAddr>,
+    /// What MPD clients must send with `password`; none means no password.
+    pub mpd_password: Option<String>,
     pub db_path: Option<String>,
     pub identity: Option<identity::AppIdentity>,
 }
@@ -99,6 +105,17 @@ async fn serve_tcp_if(
     }
 }
 
+async fn serve_mpd_if(
+    mpd: Option<tokio::net::TcpListener>,
+    api: Arc<dyn api::KopuzApi>,
+    options: mpd::Options,
+) -> std::io::Result<()> {
+    match mpd {
+        Some(listener) => mpd::serve(listener, api, options).await,
+        None => std::future::pending().await,
+    }
+}
+
 async fn terminate_signal() {
     #[cfg(unix)]
     {
@@ -132,9 +149,21 @@ pub async fn run(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>> {
         Some(address) => Some(bind_tcp(address).await?),
         None => None,
     };
+    let mpd = match args.mpd {
+        Some(address) => {
+            let listener = tokio::net::TcpListener::bind(address).await?;
+            tracing::info!(bound = %listener.local_addr()?, "kopuzd serving mpd");
+            Some(listener)
+        }
+        None => None,
+    };
+    let mpd_options = mpd::Options {
+        password: args.mpd_password.clone(),
+    };
     let result = tokio::select! {
         served = serve(listener, state(&core)) => served.map_err(Into::into),
         served = serve_tcp_if(tcp, state(&core)) => served.map_err(Into::into),
+        served = serve_mpd_if(mpd, core.api.clone(), mpd_options) => served.map_err(Into::into),
         signal = tokio::signal::ctrl_c() => {
             signal?;
             tracing::info!("shutting down");

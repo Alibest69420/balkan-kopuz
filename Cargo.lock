@@ -4795,6 +4795,7 @@ dependencies = [
  "kopuz-ctl",
  "kopuz-daemon",
  "kopuz-db",
+ "kopuz-mpd",
  "kopuz-player",
  "kopuz-proto",
  "kopuz-radio",
@@ -4811,6 +4812,16 @@ dependencies = [
  "tracing-subscriber",
  "windows 0.62.2",
  "windows-registry",
+]
+
+[[package]]
+name = "kopuz-mpd"
+version = "0.22.0"
+dependencies = [
+ "futures-util",
+ "kopuz-api",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

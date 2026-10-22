@@ -25,7 +25,7 @@ Two deployment shapes serve the same API:
   the app itself.
 
 `kopuzd` flags: `--socket <path>`, `--listen <ip>:<port>`,
-`--db-path <file>`.
+`--mpd <ip>:<port>` (see [MPD clients](mpd.md)), `--db-path <file>`.
 
 Exclusive ownership is enforced with a lock file beside the database, so a
 second process pointed at the same library fails to start with a readable

@@ -1,5 +1,5 @@
 //! Headless Kopuz daemon: a core from `daemon::boot`, served on a socket
-//! and, with `--listen`, on a TCP port.
+//! and, with `--listen`, on a TCP port; with `--mpd`, to MPD clients too.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -12,6 +12,9 @@ usage: kopuzd [options]
 
   --socket <path>        socket (named pipe on Windows) to serve on
   --listen <ip>:<port>   also serve on a TCP port
+  --mpd <ip>:<port>      also speak the MPD protocol on a TCP port, for
+                         MPD clients; set $KOPUZ_MPD_PASSWORD to require
+                         that password from them
   --db-path <file>       library database to open
   --app-id <id>          AppUserModelID the Windows media flyout and
                          notifications show this process as; defaults to
@@ -24,7 +27,10 @@ fn parse_args(
     argv: impl IntoIterator<Item = String>,
     env_app_id: Option<String>,
 ) -> Result<ServeArgs, String> {
-    let mut args = ServeArgs::default();
+    let mut args = ServeArgs {
+        mpd_password: std::env::var("KOPUZ_MPD_PASSWORD").ok(),
+        ..ServeArgs::default()
+    };
     let mut app_id = None;
     let mut app_name = None;
     let mut app_icon = None;
@@ -46,6 +52,14 @@ fn parse_args(
                     address
                         .parse()
                         .map_err(|error| format!("--listen {address}: {error}"))?,
+                );
+            }
+            "--mpd" => {
+                let address = iter.next().ok_or("--mpd requires an <ip>:<port>")?;
+                args.mpd = Some(
+                    address
+                        .parse()
+                        .map_err(|error| format!("--mpd {address}: {error}"))?,
                 );
             }
             "--db-path" => {
@@ -160,6 +174,14 @@ mod tests {
         assert!(parse(&["--app-name"], None).is_err());
         assert!(parse(&["--app-name", "Kopuz"], None).is_err());
         assert!(parse(&["--app-icon", "icon.ico"], None).is_err());
+    }
+
+    #[test]
+    fn mpd_takes_an_address() {
+        let args = parse(&["--mpd", "127.0.0.1:6600"], None).unwrap();
+        assert_eq!(args.mpd, Some("127.0.0.1:6600".parse().unwrap()));
+        assert!(parse(&["--mpd"], None).is_err());
+        assert!(parse(&["--mpd", "6600"], None).is_err());
     }
 
     #[test]

@@ -1,0 +1,22 @@
+[package]
+name = "kopuz-mpd"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+
+[lib]
+name = "mpd"
+
+[lints]
+workspace = true
+
+[dependencies]
+api = { workspace = true }
+tokio = { workspace = true, features = ["net", "io-util", "sync", "rt", "macros"] }
+tracing = { workspace = true }
+futures-util = { workspace = true }
