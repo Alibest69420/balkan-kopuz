@@ -29,6 +29,7 @@ pub mod karaoke;
 pub mod keycap;
 pub mod lead;
 pub mod link;
+pub mod logo;
 pub mod lyric_line;
 pub mod menu_button;
 pub mod menus;

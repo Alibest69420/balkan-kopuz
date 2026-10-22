@@ -8,14 +8,13 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, ClickEvent, FocusHandle, FontWeight, Hsla, InteractiveElement as _,
     IntoElement, ParentElement, RenderOnce, SharedString, StatefulInteractiveElement as _, Styled,
-    Window, div, px, rems,
+    Window, div, px, rems, svg,
 };
 
 use crate::format::t;
-use crate::{SectionHeading, focus, icons, motion, style};
+use crate::{SectionHeading, focus, icons, logo, motion, style};
 
 /// Lucide paths this flow needs that `icons` has no name for yet.
-const SPARKLES: &str = "icons/sparkles.svg";
 const ARROW_LEFT: &str = "icons/arrow-left.svg";
 
 /// `bg-white/8` over `bg-white/5`, the lift a choice card takes under the pointer.
@@ -24,6 +23,8 @@ const CARD_HOVER: f32 = 0.08;
 const BADGE_BG: f32 = 0.15;
 /// How far a step's body rises as it fades in.
 const RISE: f32 = 8.;
+/// The Kopuz mark's width in a step's header badge.
+const MARK_WIDTH: f32 = 26.;
 
 /// The "1 Source · 2 Connect · 3 Scan" rail; each step is lit while it is the one being answered.
 #[derive(IntoElement)]
@@ -243,9 +244,11 @@ impl RenderOnce for StepFrame {
                             .rounded(style::radius_xl())
                             .bg(style::accent(BADGE_BG, cx))
                             .child(
-                                icons::icon(SPARKLES)
-                                    .size(px(18.))
-                                    .text_color(cx.theme().primary),
+                                svg()
+                                    .w(px(MARK_WIDTH))
+                                    .h(px(MARK_WIDTH / logo::aspect(logo::BOLD)))
+                                    .text_color(cx.theme().primary)
+                                    .data(logo::BOLD_SVG.as_bytes()),
                             ),
                     )
                     .child(SectionHeading::new(self.title))
