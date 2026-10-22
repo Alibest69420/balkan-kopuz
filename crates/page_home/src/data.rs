@@ -344,7 +344,6 @@ fn top_artists(
     plays: Option<&HashMap<String, u64>>,
     artists: Option<&ArtistPage>,
 ) -> Vec<Tile> {
-    // TODO(offline): offline mode draws these from the downloaded tracks instead.
     let (Some(played), Some(plays)) = (played, plays) else {
         return Vec::new();
     };

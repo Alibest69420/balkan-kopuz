@@ -23,7 +23,7 @@ use gpui_kit::{
     Subscription, Window,
 };
 use store::layout::Ordered as _;
-use store::{ForYouModel, ForYouState, PlaylistsModel, Query, SourcesModel};
+use store::{DownloadsModel, ForYouModel, ForYouState, PlaylistsModel, Query, SourcesModel};
 
 use data::{RECENT_TRACKS_WINDOW, RECENTLY_ADDED_WINDOW, Shelf};
 
@@ -119,6 +119,7 @@ impl Home {
             cx.observe(&PlaylistsModel::global(cx), |this, _, cx| this.rebuild(cx)),
             cx.observe(&SourcesModel::global(cx), |this, _, cx| this.rebuild(cx)),
             cx.observe(&ForYouModel::global(cx), |this, _, cx| this.rebuild(cx)),
+            cx.observe(&DownloadsModel::global(cx), |this, _, cx| this.rebuild(cx)),
         ];
 
         Self {
@@ -141,7 +142,17 @@ impl Home {
     }
 
     fn rebuild(&mut self, cx: &mut Context<Self>) {
-        let playlists = PlaylistsModel::global(cx).read(cx).playlists().to_vec();
+        let mut playlists = PlaylistsModel::global(cx).read(cx).playlists().to_vec();
+        if SourcesModel::global(cx).read(cx).offline_reads() {
+            let downloads = DownloadsModel::global(cx);
+            let downloads = downloads.read(cx);
+            playlists.retain(|playlist| {
+                playlist
+                    .track_keys
+                    .iter()
+                    .any(|key| downloads.is_stored(key))
+            });
+        }
         let for_you = ForYouModel::global(cx);
         let for_you = match for_you.read(cx).state() {
             ForYouState::Mix(tracks) => tracks.as_slice(),
@@ -168,7 +179,9 @@ impl Home {
 
     /// The shelves the layout asks for, in its order, skipping the ones with nothing in them.
     fn drawn(&self, cx: &Context<Self>) -> Vec<usize> {
-        let for_you = ForYouModel::global(cx).read(cx).state().is_shown();
+        // The mix is radio from the source, which offline mode never reaches.
+        let for_you = ForYouModel::global(cx).read(cx).state().is_shown()
+            && !SourcesModel::global(cx).read(cx).offline_reads();
         store::layout(cx)
             .home
             .visible()
@@ -211,7 +224,10 @@ impl Render for Home {
             cx.defer(move |cx| model.update(cx, |model, cx| model.ensure(cx)));
         }
         // Nothing to show is only worth saying once the library has actually answered.
-        let bare = banner.is_none() && rows.is_empty() && self.albums.read(cx).is_settled();
+        let settled = rows.is_empty() && self.albums.read(cx).is_settled();
+        let offline = SourcesModel::global(cx).read(cx).offline_reads();
+        // The queue to resume is not a library, so offline it does not hide that nothing else plays.
+        let bare = settled && (offline || banner.is_none());
         v_flex()
             .id("home")
             .size_full()
@@ -223,7 +239,8 @@ impl Render for Home {
             .child(heading(cx))
             .children(banner)
             .children(rows)
-            .when(bare, |page| {
+            .when(bare && offline, |page| page.child(EmptyState::offline()))
+            .when(bare && !offline, |page| {
                 page.child(
                     EmptyState::new(t("no_albums_found"))
                         .icon(icons::DISC)
