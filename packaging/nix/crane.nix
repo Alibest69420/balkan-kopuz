@@ -112,6 +112,7 @@ let
             # build.rs embeds Android configuration even for desktop builds.
             (s + /android-src)
             (s + /shared)
+            (s + /daemon)
             (s + /crates)
             (s + /data)
             (s + /packaging/systemd)

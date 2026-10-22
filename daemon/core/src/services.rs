@@ -857,7 +857,7 @@ mod summary_tests {
 
     #[test]
     fn every_service_says_what_it_is_in_the_baseline_locale() {
-        let baseline = include_str!("../../i18n/locales/en.ftl");
+        let baseline = include_str!("../../../crates/i18n/locales/en.ftl");
         let services = all();
         assert_eq!(
             services.len(),
