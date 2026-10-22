@@ -104,6 +104,15 @@ pub fn list_row() -> Pixels {
     skin::metrics().list_row
 }
 
+/// The corner of a square chrome button `size` across.
+pub fn icon_corner(size: Pixels) -> Pixels {
+    match skin::material() {
+        // Material's standard icon button is a circle.
+        true => size / 2.,
+        false => size / 4.,
+    }
+}
+
 /// The chrome's proportions, so a bar never states its own height.
 pub fn chrome() -> skin::Chrome {
     skin::chrome()

@@ -14,7 +14,12 @@ use gpui_kit::{
 use store::JobsModel;
 
 use crate::format::{t, t_with};
-use crate::{Badge, BadgeTone, Chip, ChipTone, style};
+use crate::{Badge, BadgeTone, Chip, ChipTone, skin, style};
+
+/// Material's linear progress indicator: 4dp tall.
+const M3_PROGRESS: Pixels = px(4.);
+/// Material's secondary container, as the accent's tonal wash.
+const M3_CONTAINER: f32 = 0.24;
 /// How far along a job is, or nothing while it cannot say.
 pub fn fraction(progress: &JobProgress) -> Option<f32> {
     let total = progress.total.filter(|total| *total > 0)?;
@@ -52,14 +57,28 @@ impl ProgressBar {
 
 impl RenderOnce for ProgressBar {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        Progress::new(self.id)
+        // Material's linear progress: 4dp, fully rounded, primary on its tonal container.
+        let material = skin::material();
+        let bar = Progress::new(self.id)
             .xsmall()
-            .h(self.height)
+            .h(match material {
+                true => M3_PROGRESS,
+                false => self.height,
+            })
             .map(|bar| match self.fraction {
                 Some(fraction) => bar.value(fraction * 100.),
                 None => bar.loading(true),
             })
-            .color(cx.theme().primary)
+            .color(cx.theme().primary);
+        div()
+            .w_full()
+            .when(material, |track| {
+                track
+                    .rounded_full()
+                    .overflow_hidden()
+                    .bg(cx.theme().primary.opacity(M3_CONTAINER))
+            })
+            .child(bar)
     }
 }
 

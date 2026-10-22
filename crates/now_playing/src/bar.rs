@@ -5,7 +5,7 @@ use components::{IconButton, TransportMetrics, icons, lit_accent, style};
 use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, Context, IntoElement, ParentElement as _, Pixels, Styled, Window, px,
+    AnyElement, App, Context, IntoElement, ParentElement as _, Pixels, Styled, Window, div, px,
     relative, rems,
 };
 use store::{Chrome, ConfigModel, SidePanel};
@@ -14,6 +14,8 @@ use crate::NowPlaying;
 
 const UTILITY_GLYPH: Pixels = px(12.);
 const TRANSPORT_WIDTH: Pixels = px(640.);
+/// Material's surface-container: the text colour at 7% over the window.
+const FLOATING_TINT: f32 = 0.07;
 
 /// What the right end still affords; the title pays, so the least useful goes first as it narrows.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -68,17 +70,26 @@ impl NowPlaying {
             SCRIM_PLAIN
         };
 
-        h_flex()
+        let skin = style::chrome();
+        let floating = skin.pane_radius > px(0.);
+        let bar = h_flex()
             .w_full()
-            .h(style::chrome().player_height * scale)
+            .h(skin.player_height * scale)
             .flex_shrink_0()
             // `px-4` and `gap-4`, at the bar's scale.
             .px(rems(scale))
             .gap(rems(scale))
             .justify_between()
-            .border_t_1()
-            .border_color(style::white(style::BORDER_SOFT, cx))
-            .bg(style::black(scrim, cx))
+            // A skin with rounded panes floats the bar as one more card: Material's surface container.
+            .when(floating, |bar| {
+                bar.rounded(skin.pane_radius)
+                    .bg(style::white(FLOATING_TINT, cx))
+            })
+            .when(!floating, |bar| {
+                bar.border_t_1()
+                    .border_color(style::white(style::BORDER_SOFT, cx))
+                    .bg(style::black(scrim, cx))
+            })
             .child(self.track_meta(window, cx))
             .child(
                 v_flex()
@@ -94,8 +105,17 @@ impl NowPlaying {
                     .child(self.transport(TransportMetrics::COMPACT.scaled(scale), true, cx))
                     .children(self.seek.clone()),
             )
-            .child(self.utilities(window, cx))
-            .into_any_element()
+            .child(self.utilities(window, cx));
+        match floating {
+            true => div()
+                .w_full()
+                .flex_shrink_0()
+                .py(skin.pane_gap)
+                .px(skin.pane_gap * 1.5)
+                .child(bar)
+                .into_any_element(),
+            false => bar.into_any_element(),
+        }
     }
 
     /// The right end of the bar: level, the two panels, where else it can play, and the two sizes.

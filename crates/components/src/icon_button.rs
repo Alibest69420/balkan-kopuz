@@ -10,7 +10,7 @@ use gpui_kit::{
     SharedString, Styled as _, Window, div, px,
 };
 
-use crate::{focus, hover, icons, motion, style};
+use crate::{focus, hover, icons, motion, skin, style};
 
 const HOVER: u64 = 1;
 const WASH: u64 = 2;
@@ -101,6 +101,8 @@ pub struct IconButton {
     tooltip: Option<SharedString>,
     click: Option<OnClick>,
     host: Option<Host>,
+    // Width and corner as shares of the height, for a button that is not a circle.
+    shape: Option<skin::PlayShape>,
 }
 
 impl IconButton {
@@ -121,7 +123,14 @@ impl IconButton {
             tooltip: None,
             click: None,
             host: None,
+            shape: None,
         }
+    }
+
+    /// A rounded rectangle `size` tall rather than a circle.
+    pub fn shape(mut self, shape: Option<skin::PlayShape>) -> Self {
+        self.shape = shape;
+        self
     }
 
     /// The circle's diameter; the glyph follows at about a third of it unless set.
@@ -258,12 +267,18 @@ impl RenderOnce for IconButton {
         // A host wraps the button in a div that shrinks to it, so the button carries the frame's size itself.
         let inner = self.size - if edge.is_some() { RING * 2. } else { px(0.) };
         let stop = self.stop;
+        let (width, corner) = match self.shape {
+            Some(shape) => (self.size * shape.width, self.size * shape.corner),
+            None => (self.size, self.size / 2.),
+        };
+        let inner_width = inner + (width - self.size);
         let button = Button::new(SharedString::from(format!("{id}-button")))
             .custom(style::bare_button(ink, cx))
             .icon(icons::icon(self.icon))
             .with_size(glyph / 0.75)
             .size(inner)
-            .rounded(self.size / 2.)
+            .w(inner_width)
+            .rounded(corner)
             .disabled(self.disabled)
             .loading(self.loading)
             .when_some(self.tooltip, |button, tip| button.tooltip(tip))
@@ -282,8 +297,9 @@ impl RenderOnce for IconButton {
         };
         hover::framed(&id, pointer, control)
             .flex_shrink_0()
-            .size(self.size)
-            .rounded_full()
+            .h(self.size)
+            .w(width)
+            .rounded(corner)
             .bg(fill)
             .when_some(edge, |frame, edge| frame.border_1().border_color(edge))
             .when(self.disabled, |frame| frame.opacity(DISABLED))

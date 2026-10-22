@@ -199,12 +199,20 @@ impl RenderOnce for PlayPauseButton {
                 })
                 .into_any_element();
         }
+        // A skin that squares the play button fills it, as Material's filled icon button is.
+        let shape = style::chrome().play_shape;
         IconButton::new(self.id, glyph)
             .size(self.size)
             .glyph(self.glyph)
-            .tone(IconTone::Quiet)
-            .lit(true)
-            .accent(cx.theme().foreground)
+            .tone(match shape {
+                Some(_) => IconTone::Accent,
+                None => IconTone::Quiet,
+            })
+            .shape(shape)
+            .lit(shape.is_none())
+            .when(shape.is_none(), |button| {
+                button.accent(cx.theme().foreground)
+            })
             .disabled(self.disabled)
             .stop_propagation(self.stop)
             .tooltip(word)

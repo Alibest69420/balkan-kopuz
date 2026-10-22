@@ -17,7 +17,7 @@ use store::layout::Ordered;
 use store::{Layout, LayoutModel, SettingsFilter};
 
 use crate::format::t;
-use crate::{icons, motion, style};
+use crate::{ThinSlider, icons, motion, skin, style};
 
 /// Mark one row by its title; the next jump, or typing in the filter, replaces it.
 pub fn set_highlight(title: Option<SharedString>, cx: &mut App) {
@@ -227,7 +227,16 @@ impl Lockable for SliderRow {
 
 impl RenderOnce for SliderRow {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let value = self.state.read(cx).value().end();
+        let (value, filled) = {
+            let state = self.state.read(cx);
+            let value = state.value().end();
+            let span = state.max_value() - state.min_value();
+            let filled = match span > 0. {
+                true => (value - state.min_value()) / span,
+                false => 0.,
+            };
+            (value, filled)
+        };
         let fill = self.fill;
         h_flex()
             .gap_3()
@@ -242,7 +251,20 @@ impl RenderOnce for SliderRow {
                         true => track.flex_1(),
                         false => track.w(slider_width()),
                     })
-                    .child(Slider::new(&self.state).disabled(self.locked)),
+                    .map(|track| match skin::material() {
+                        true => track.child(
+                            ThinSlider::new(
+                                SharedString::from(format!(
+                                    "setting-slider-{}",
+                                    self.state.entity_id()
+                                )),
+                                &self.state,
+                            )
+                            .filled(filled)
+                            .disabled(self.locked),
+                        ),
+                        false => track.child(Slider::new(&self.state).disabled(self.locked)),
+                    }),
             )
             .when_some(self.readout, |row, format| {
                 row.child(

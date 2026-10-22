@@ -89,6 +89,19 @@ pub struct Chrome {
     pub round_button: Pixels,
     /// The smaller round button a list's own toolbar uses.
     pub tool_button: Pixels,
+    /// The corner the page, the side panel and the player bar round to as cards of their own; zero leaves them flush.
+    pub pane_radius: Pixels,
+    /// The space between those cards and around the window's edge.
+    pub pane_gap: Pixels,
+    /// The play button as a rounded rectangle, or `None` for the round one.
+    pub play_shape: Option<PlayShape>,
+}
+
+/// A play button wider than it is tall, both measured against its height.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PlayShape {
+    pub width: f32,
+    pub corner: f32,
 }
 
 impl Default for Chrome {
@@ -102,8 +115,20 @@ impl Default for Chrome {
             button: px(30.),
             round_button: px(36.),
             tool_button: px(28.),
+            pane_radius: px(0.),
+            pane_gap: px(0.),
+            play_shape: None,
         }
     }
+}
+
+/// How controls are drawn where a shape is more than a number: a slider's handle, a segment's outline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Controls {
+    #[default]
+    Kopuz,
+    /// The Material 3 baseline: tracked sliders with a bar handle, outlined segments, pill buttons.
+    Material,
 }
 
 /// One skin. Everything but the name has a default, so a skin states only what it changes.
@@ -120,6 +145,15 @@ pub trait Skin {
 
     fn chrome(&self) -> Chrome {
         Chrome::default()
+    }
+
+    fn controls(&self) -> Controls {
+        Controls::Kopuz
+    }
+
+    /// The face this skin is drawn in, used when the system has it and nothing else is chosen.
+    fn font(&self) -> Option<&'static str> {
+        None
     }
 
     /// Asset paths this skin swaps, as `(shipped path, replacement)`; read once on a skin change.
@@ -141,8 +175,71 @@ impl Skin for Normal {
     }
 }
 
+/// Material 3 as the Dioxus app draws it: the baseline spec's shape scale, tonal cards and a squared play button.
+pub struct Material3;
+
+impl Skin for Material3 {
+    fn id(&self) -> &'static str {
+        "material3"
+    }
+
+    fn title(&self) -> &'static str {
+        "ui_material3"
+    }
+
+    // Extra small 4, small 8, medium 12, large 16 and extra large 28.
+    fn metrics(&self) -> Metrics {
+        Metrics {
+            radius: rems(0.25),
+            radius_md: rems(0.5),
+            radius_lg: rems(0.75),
+            radius_xl: rems(1.),
+            radius_2xl: rems(1.75),
+            thumb_radius: px(8.),
+            cover_radius: px(12.),
+            row_height: rems(3.5),
+            row_cover: rems(2.5),
+            icon_button: rems(2.5),
+            compact_row: px(40.),
+            comfortable_row: px(56.),
+            media_row: px(64.),
+            list_row: px(40.),
+        }
+    }
+
+    fn chrome(&self) -> Chrome {
+        Chrome {
+            bar_height: px(64.),
+            rail_width: px(220.),
+            search_height: px(40.),
+            player_height: px(104.),
+            tab_height: px(32.),
+            button: px(40.),
+            round_button: px(40.),
+            tool_button: px(32.),
+            pane_radius: px(28.),
+            pane_gap: px(8.),
+            // The medium filled icon button: 56 by 48 with the large corner.
+            play_shape: Some(PlayShape {
+                width: 56. / 48.,
+                corner: 16. / 48.,
+            }),
+        }
+    }
+
+    fn font(&self) -> Option<&'static str> {
+        Some("Roboto")
+    }
+
+    fn controls(&self) -> Controls {
+        Controls::Material
+    }
+}
+
 thread_local! {
-    static SKINS: RefCell<Vec<Box<dyn Skin>>> = RefCell::new(vec![Box::new(Normal)]);
+    static SKINS: RefCell<Vec<Box<dyn Skin>>> = RefCell::new(vec![Box::new(Normal), Box::new(Material3)]);
+    static FONT: Cell<Option<&'static str>> = const { Cell::new(None) };
+    static CONTROLS: Cell<Controls> = const { Cell::new(Controls::Kopuz) };
     static ACTIVE: Cell<&'static str> = const { Cell::new("normal") };
     static METRICS: Cell<Metrics> = Cell::new(Metrics::default());
     static CHROME: Cell<Chrome> = Cell::new(Chrome::default());
@@ -175,11 +272,27 @@ pub fn select(id: &str) {
             .iter()
             .find(|skin| skin.id() == id)
             .or_else(|| skins.iter().find(|skin| skin.id() == "normal"));
-        let (chosen, metrics, chrome, assets) = match skin {
-            Some(skin) => (skin.id(), skin.metrics(), skin.chrome(), skin.assets()),
-            None => ("normal", Metrics::default(), Chrome::default(), Vec::new()),
+        let (chosen, metrics, chrome, assets, font, controls) = match skin {
+            Some(skin) => (
+                skin.id(),
+                skin.metrics(),
+                skin.chrome(),
+                skin.assets(),
+                skin.font(),
+                skin.controls(),
+            ),
+            None => (
+                "normal",
+                Metrics::default(),
+                Chrome::default(),
+                Vec::new(),
+                None,
+                Controls::Kopuz,
+            ),
         };
         ACTIVE.set(chosen);
+        FONT.set(font);
+        CONTROLS.set(controls);
         METRICS.set(metrics);
         CHROME.set(chrome);
         ASSETS.with_borrow_mut(|held| *held = assets.into_iter().collect());
@@ -194,6 +307,21 @@ pub fn metrics() -> Metrics {
 /// The active skin's chrome proportions.
 pub fn chrome() -> Chrome {
     CHROME.get()
+}
+
+/// How the active skin draws its controls.
+pub fn controls() -> Controls {
+    CONTROLS.get()
+}
+
+/// Whether controls are drawn to the Material 3 baseline.
+pub fn material() -> bool {
+    controls() == Controls::Material
+}
+
+/// The active skin's own face, if it has one.
+pub fn font() -> Option<&'static str> {
+    FONT.get()
 }
 
 /// What the active skin draws instead of `path`, if it swaps it at all.

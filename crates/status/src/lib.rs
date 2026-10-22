@@ -182,7 +182,7 @@ impl StatusCluster {
             .custom(style::quiet_button(style::slate_400(cx), cx))
             .with_size(GLYPH * (4. / 3.))
             .size(style::chrome().button)
-            .rounded(style::chrome().button / 4.)
+            .rounded(style::icon_corner(style::chrome().button))
             .icon(icons::icon(glyph))
             .tooltip(tip)
     }

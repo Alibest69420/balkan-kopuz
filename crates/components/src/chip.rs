@@ -8,11 +8,11 @@ use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu};
 use gpui_kit::component::{Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, ClickEvent, Context, ElementId, FontWeight, Hsla, IntoElement, ParentElement as _,
-    RenderOnce, SharedString, Styled as _, Window, div,
+    App, ClickEvent, Context, ElementId, FontWeight, Hsla, IntoElement, ParentElement as _, Pixels,
+    RenderOnce, SharedString, Styled as _, Window, div, px,
 };
 
-use crate::{focus, icons, style};
+use crate::{focus, icons, skin, style};
 
 /// How large a chip or badge is drawn.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -62,6 +62,31 @@ impl ChipTone {
                 style::white(style::TEXT_SECONDARY, cx),
             ),
         }
+    }
+}
+
+/// Material's small corner, which every chip takes.
+const M3_CHIP_RADIUS: Pixels = px(8.);
+/// Material's outline-variant: the text colour at 18% over the surface.
+const M3_OUTLINE_VARIANT: f32 = 0.18;
+/// Material's secondary container, as the accent's tonal wash.
+const M3_CONTAINER: f32 = 0.24;
+
+/// A Material chip's fill, hover and label: clear and outlined until picked, then the tonal container.
+fn material_colours(tone: ChipTone, selected: bool, cx: &App) -> (Hsla, Hsla, Hsla) {
+    let accent = cx.theme().primary;
+    match (tone, selected) {
+        (ChipTone::Ink(ink), _) => (ink.opacity(style::HOVER), ink.opacity(style::ACTIVE), ink),
+        (_, true) => (
+            accent.opacity(M3_CONTAINER),
+            accent.opacity(M3_CONTAINER + style::HOVER),
+            cx.theme().foreground,
+        ),
+        (_, false) => (
+            gpui_kit::transparent_black(),
+            style::white(style::HOVER, cx),
+            style::white(style::TEXT_SECONDARY, cx),
+        ),
     }
 }
 
@@ -165,12 +190,21 @@ impl Chip {
 
 impl RenderOnce for Chip {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let (fill, hover, ink) = self.tone.colours(self.selected, cx);
+        let material = skin::material();
+        let (fill, hover, ink) = match material {
+            true => material_colours(self.tone, self.selected, cx),
+            false => self.tone.colours(self.selected, cx),
+        };
         let radius = match (self.pill, self.size) {
             (true, _) => cx.theme().radius_full(),
+            // Material's chips take the small corner whatever their size.
+            (false, _) if material => M3_CHIP_RADIUS,
             (false, ChipSize::Small) => style::to_px(style::radius(cx), window),
             (false, ChipSize::Medium) => style::to_px(style::radius_lg(), window),
         };
+        // An unpicked Material chip is outlined; a picked one is filled and leads with a check.
+        let outlined = material && !self.selected && !matches!(self.tone, ChipTone::Ink(_));
+        let checked = material && self.selected && self.icon.is_none();
         let stop = self.stop;
         let button = Button::new(self.id)
             .custom(style::button(fill, hover, ink, cx))
@@ -179,10 +213,16 @@ impl RenderOnce for Chip {
             .tab_stop(self.focusable)
             .rounded(radius)
             .text_xs()
-            .map(|chip| match self.size {
-                ChipSize::Small => chip.h_5().px_2(),
-                ChipSize::Medium => chip.h_7().px_3(),
+            .map(|chip| match (self.size, material) {
+                (ChipSize::Small, _) => chip.h_5().px_2(),
+                (ChipSize::Medium, false) => chip.h_7().px_3(),
+                (ChipSize::Medium, true) => chip.h_8().px_4(),
             })
+            .when(outlined, |chip| {
+                chip.border_1()
+                    .border_color(style::white(M3_OUTLINE_VARIANT, cx))
+            })
+            .when(checked, |chip| chip.icon(icons::icon(icons::CHECK)))
             .when_some(self.icon, |chip, icon| chip.icon(icons::icon(icon)))
             .when_some(self.label, |chip, label| chip.label(label))
             .when_some(self.click, |chip, click| {

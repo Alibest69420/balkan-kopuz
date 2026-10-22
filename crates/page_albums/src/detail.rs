@@ -10,9 +10,9 @@ use components::format::{t, t_with};
 use components::{
     DetailActions, DetailHeader, EditableCover, EmptyState, HeaderLayout, Heading, IconButton,
     IconTone, Link, Loading, Look, Picture, SectionHeading, Tone, TrackActions, TrackList,
-    TrackListEvent, TrackListOptions, TrackSection, icons, menus,
+    TrackListEvent, TrackListOptions, TrackSection, icons, menus, style,
 };
-use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
+use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
@@ -374,7 +374,7 @@ impl AlbumDetail {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let radius = cx.theme().radius * 3.;
+        let radius = style::thumb_radius() * 3.;
         let select_all = IconButton::new("album-select-all", icons::CHECK)
             .size(HERO_SECONDARY)
             .tone(IconTone::Outline)
@@ -417,7 +417,7 @@ impl AlbumDetail {
         &self,
         view: RemoteView,
         _: &mut Window,
-        cx: &mut Context<Self>,
+        _: &mut Context<Self>,
     ) -> AnyElement {
         let cover = AlbumInfo {
             id: view.id.clone(),
@@ -428,7 +428,7 @@ impl AlbumDetail {
         };
         let browse_id = view.browse_id.clone();
         let first_key = self.rows.first().map(|row| row.key.clone());
-        let radius = cx.theme().radius * 2.;
+        let radius = style::thumb_radius() * 2.;
         let picture = picture(&cover);
         let spot = picture.as_ref().map(Picture::spot);
         let mut header = DetailHeader::new(view.title.clone())

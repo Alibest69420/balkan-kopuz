@@ -13,7 +13,7 @@ use gpui_kit::{
 use store::Target;
 
 use crate::reorder::ReorderDropZones;
-use crate::{focus, icons, menus, motion, style};
+use crate::{focus, icons, menus, motion, skin, style};
 
 const WASH: u64 = 2;
 
@@ -154,7 +154,11 @@ impl RenderOnce for NavListRow {
             .h(style::list_row())
             .px_2()
             .gap_2()
-            .rounded(style::radius_lg())
+            // Material's navigation items are full pills.
+            .map(|row| match skin::material() {
+                true => row.rounded_full().px_4(),
+                false => row.rounded(style::radius_lg()),
+            })
             .cursor_pointer()
             .bg(wash)
             .text_color(ink)

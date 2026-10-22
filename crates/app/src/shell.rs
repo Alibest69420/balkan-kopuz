@@ -4,7 +4,7 @@ use gpui_kit::component::{ActiveTheme as _, Root, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled,
-    Subscription, Task, Window, div,
+    Subscription, Task, Window, div, px,
 };
 use gpui_kit::{FocusHandle, InteractiveElement as _, actions};
 use link::Connection;
@@ -14,6 +14,8 @@ use crate::router::Router;
 
 /// The gap a toast keeps above whatever runs along the window's bottom edge.
 const TOAST_GAP: gpui_kit::Pixels = gpui_kit::px(16.);
+/// Material's surface-container-low: the text colour at 4% over the window.
+const PANE_TINT: f32 = 0.04;
 
 /// Toasts rise from the bottom edge, so they clear the player bar only while it sits there.
 fn place_toasts(cx: &mut gpui_kit::App) {
@@ -25,7 +27,9 @@ fn place_toasts(cx: &mut gpui_kit::App) {
         == config::PlayerBarPosition::Top;
     let clearance = match at_top {
         true => TOAST_GAP,
-        false => now_playing::bar_height(cx) + TOAST_GAP,
+        false => {
+            now_playing::bar_height(cx) + components::style::chrome().pane_gap * 2. + TOAST_GAP
+        }
     };
     theme::place_toasts(clearance, cx);
 }
@@ -301,6 +305,16 @@ impl Render for Shell {
             == config::PlayerBarPosition::Top;
         let route = Navigator::global(cx).read(cx).current().clone();
         let page = self.router.page(&route, window, cx);
+        // A skin with rounded panes sets the page and the side panel apart as tonal cards.
+        let skin = components::style::chrome();
+        let paned = skin.pane_radius > px(0.);
+        let card = |pane: gpui_kit::Div| match paned {
+            true => pane
+                .rounded(skin.pane_radius)
+                .overflow_hidden()
+                .bg(components::style::white(PANE_TINT, cx)),
+            false => pane,
+        };
 
         // Compact swaps the body and nothing else. It used to return early, above the key context
         // and the dialog, sheet and notification layers, so the mini player had no shortcuts, no
@@ -322,6 +336,12 @@ impl Render for Shell {
                         .flex_1()
                         .min_h_0()
                         .items_stretch()
+                        .when(paned, |body| {
+                            body.gap(skin.pane_gap)
+                                .pt(skin.pane_gap)
+                                .pr(skin.pane_gap * 1.5)
+                                .when(!nav_left, |body| body.pl(skin.pane_gap * 1.5))
+                        })
                         .children(bar.filter(|_| nav_left))
                         .when(playlists_open, |body| {
                             body.child(
@@ -332,7 +352,7 @@ impl Render for Shell {
                             )
                         })
                         .child(
-                            div()
+                            card(div())
                                 .h_full()
                                 .flex_1()
                                 .min_w_0()
@@ -344,7 +364,7 @@ impl Render for Shell {
                                 .child(self.debug_overlay.clone()),
                         )
                         .when(panel_open && connected, |body| {
-                            body.child(div().w(panel_width).child(self.side_panel.clone()))
+                            body.child(card(div()).w(panel_width).child(self.side_panel.clone()))
                         }),
                 )
                 .when(show_player_bar && !player_at_top, |window_body| {

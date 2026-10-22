@@ -12,12 +12,14 @@ use gpui_kit::{
     Window, div, px,
 };
 
-use crate::{focus, icons, style};
+use crate::{focus, icons, skin, style};
 
 type OnOpen = Rc<dyn Fn(&mut Window, &mut App)>;
 
 /// The widest a trigger in the chrome grows.
 const FIELD_MAX: Pixels = px(440.);
+/// Material's surface-container-high: the text colour at 10% over the surface.
+const M3_SEARCH_FILL: f32 = 0.10;
 
 /// A text box that filters, with the search glyph and whatever narrows it before the caret.
 #[derive(IntoElement)]
@@ -149,10 +151,15 @@ impl RenderOnce for SearchTrigger {
         .relative()
         .gap_2()
         .items_center()
-        .rounded(style::radius_lg())
-        .border_1()
-        .border_color(style::white(edge, cx))
-        .bg(style::white(style::RAISED, cx))
+        // Material's search bar: a full pill on surface-container-high, with no outline.
+        .map(|trigger| match skin::material() {
+            true => trigger.rounded_full().bg(style::white(M3_SEARCH_FILL, cx)),
+            false => trigger
+                .rounded(style::radius_lg())
+                .border_1()
+                .border_color(style::white(edge, cx))
+                .bg(style::white(style::RAISED, cx)),
+        })
         .cursor_pointer()
         .hover(|trigger| trigger.bg(style::white(style::HOVER, cx)))
         .text_color(style::white(ink, cx))

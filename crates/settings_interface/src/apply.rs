@@ -3,7 +3,7 @@
 use std::cell::RefCell;
 
 use gpui_kit::component::Theme;
-use gpui_kit::{App, Global, Pixels, SharedString};
+use gpui_kit::{App, Global, Pixels, SharedString, px};
 use store::LayoutModel;
 use store::layout::SCALE_RANGE;
 
@@ -36,13 +36,19 @@ pub(super) fn resolve(cx: &mut App) {
 fn skin(cx: &mut App) {
     components::skin::select(&store::layout(cx).skin);
     let metrics = components::skin::metrics();
+    // The kit rounds buttons, fields and the switch by `radius` and dialogs by `radius_lg`.
+    let (radius, radius_lg) = match components::skin::material() {
+        // Half a 40px button is a full pill; dialogs take Material's extra-large 28.
+        true => (px(20.), px(28.)),
+        false => (metrics.thumb_radius, metrics.cover_radius),
+    };
     let theme = Theme::global(cx);
-    if theme.radius == metrics.thumb_radius && theme.radius_lg == metrics.cover_radius {
+    if theme.radius == radius && theme.radius_lg == radius_lg {
         return;
     }
     let theme = Theme::global_mut(cx);
-    theme.radius = metrics.thumb_radius;
-    theme.radius_lg = metrics.cover_radius;
+    theme.radius = radius;
+    theme.radius_lg = radius_lg;
     cx.refresh_windows();
 }
 
@@ -73,6 +79,7 @@ fn apply(cx: &mut App) {
         base_size * scale,
         font.map(SharedString::from)
             .or_else(|| super::font::family(cx))
+            .or_else(|| skin_font(cx))
             .unwrap_or(base_family),
     );
     *applied.wrote.borrow_mut() = Some(wanted.clone());
@@ -83,4 +90,14 @@ fn apply(cx: &mut App) {
     theme.font_size = wanted.0;
     theme.font_family = wanted.1;
     cx.refresh_windows();
+}
+
+/// The skin's face, where the system has it; a missing one would draw in GPUI's fallback rather than the theme's.
+fn skin_font(cx: &App) -> Option<SharedString> {
+    let wanted = components::skin::font()?;
+    cx.text_system()
+        .all_font_names()
+        .iter()
+        .any(|name| name == wanted)
+        .then(|| SharedString::new_static(wanted))
 }

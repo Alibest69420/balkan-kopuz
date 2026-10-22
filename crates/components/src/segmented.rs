@@ -6,11 +6,11 @@ use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
+    AnyElement, App, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Pixels,
     RenderOnce, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
 
-use crate::{focus, icons, motion, style};
+use crate::{focus, icons, motion, skin, style};
 
 const ROOT: u64 = 0;
 const HOVER: u64 = 1;
@@ -21,6 +21,13 @@ const INK: u64 = 3;
 const IDLE: f32 = 0.40;
 /// `hover:text-white/80` on that same segment.
 const HOT: f32 = 0.80;
+
+/// Material's segmented button: 40dp, full shape, outlined.
+const M3_HEIGHT: Pixels = px(40.);
+/// Material's outline: the text colour at 45% over the surface.
+const M3_OUTLINE: f32 = 0.45;
+/// Material's secondary container, as the accent's tonal wash.
+const M3_CONTAINER: f32 = 0.24;
 
 /// One choice: a glyph, a label, or both; a glyph alone should carry a tooltip.
 pub struct Segment {
@@ -111,10 +118,12 @@ impl Segmented {
     fn segment_element(
         &self,
         index: usize,
+        count: usize,
         segment: Segment,
         window: &mut Window,
         cx: &mut App,
     ) -> AnyElement {
+        let material = skin::material();
         let key = SharedString::from(format!("{}-{}", self.id, segment.key));
         let active = self.selected == Some(index);
         let (hovered, pointer) = motion::hovered(motion::channel(&key, HOVER), window, cx);
@@ -123,14 +132,13 @@ impl Segmented {
         let lit = hovered || ringed;
         let wash = motion::color(
             motion::channel(&key, WASH),
-            style::white(
-                match (active, lit) {
-                    (true, _) => style::HOVER,
-                    (false, true) => style::RAISED,
-                    (false, false) => 0.,
-                },
-                cx,
-            ),
+            match (material, active, lit) {
+                // Material's picked segment is the secondary container.
+                (true, true, _) => cx.theme().primary.opacity(M3_CONTAINER),
+                (_, true, _) => style::white(style::HOVER, cx),
+                (_, false, true) => style::white(style::RAISED, cx),
+                (_, false, false) => style::white(0., cx),
+            },
             window,
             cx,
         );
@@ -144,7 +152,12 @@ impl Segmented {
             window,
             cx,
         );
-        let height = style::chrome().tab_height;
+        let height = match material {
+            true => M3_HEIGHT,
+            false => style::chrome().tab_height,
+        };
+        let (first, last) = (index == 0, index + 1 == count);
+        let checked = material && active && segment.label.is_some();
         let glyph_only = segment.label.is_none();
         let activate = self.select.clone();
         let click = self.select.clone();
@@ -168,10 +181,21 @@ impl Segmented {
             true => frame.w(height),
             false => frame.px_3(),
         })
-        .rounded(style::thumb_radius())
+        .map(|frame| match material {
+            // The outline is the container's; a segment rounds only the ends it owns.
+            true => frame
+                .when(first, |frame| frame.rounded_l(M3_HEIGHT / 2.))
+                .when(last, |frame| frame.rounded_r(M3_HEIGHT / 2.))
+                .when(!first, |frame| {
+                    frame
+                        .border_l_1()
+                        .border_color(style::white(M3_OUTLINE, cx))
+                })
+                .text_sm(),
+            false => frame.rounded(style::thumb_radius()).text_xs(),
+        })
         .bg(wash)
         .text_color(ink)
-        .text_xs()
         .font_weight(FontWeight::MEDIUM)
         .cursor_pointer()
         .on_hover(motion::track(pointer))
@@ -180,6 +204,9 @@ impl Segmented {
         })
         .when_some(click, |frame, select| {
             frame.on_click(move |_, window, cx| select(&index, window, cx))
+        })
+        .when(checked, |frame| {
+            frame.child(icons::icon(icons::CHECK).size(px(14.)).flex_shrink_0())
         })
         .when_some(segment.icon, |frame, icon| {
             frame.child(icons::icon(icon).size(px(14.)).flex_shrink_0())
@@ -219,11 +246,24 @@ pub fn view_toggle(
 impl RenderOnce for Segmented {
     fn render(mut self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let segments = std::mem::take(&mut self.segments);
+        let count = segments.len();
         let children: Vec<AnyElement> = segments
             .into_iter()
             .enumerate()
-            .map(|(index, segment)| self.segment_element(index, segment, window, cx))
+            .map(|(index, segment)| self.segment_element(index, count, segment, window, cx))
             .collect();
+        if skin::material() {
+            return div()
+                .flex()
+                .flex_none()
+                .items_center()
+                .h(M3_HEIGHT)
+                .rounded(M3_HEIGHT / 2.)
+                .border_1()
+                .border_color(style::white(M3_OUTLINE, cx))
+                .children(children)
+                .into_any_element();
+        }
         let radius = match self.pill {
             true => cx.theme().radius_full(),
             false => style::to_px(style::radius_lg(), window),
@@ -239,5 +279,6 @@ impl RenderOnce for Segmented {
             .border_1()
             .border_color(style::white(style::BORDER_SOFT, cx))
             .children(children)
+            .into_any_element()
     }
 }
