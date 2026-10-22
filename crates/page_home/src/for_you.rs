@@ -51,7 +51,6 @@ pub(crate) fn row(
     }
 }
 
-/// The pulsing row; `refresh` is off for the copy under a fading mix, which carries its own.
 /// The pulsing row; the copy under a fading mix leaves the refresh button to the mix.
 fn placeholder(title: SharedString, with_refresh: bool, cx: &App) -> AnyElement {
     let row = Carousel::new(
