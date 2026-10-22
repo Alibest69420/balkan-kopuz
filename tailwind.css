@@ -6,8 +6,8 @@
 @source "./crates/player/**/*.rs";
 @source "./crates/reader/**/*.rs";
 @source "./crates/server/**/*.rs";
-@source "./crates/utils/**/*.rs";
-@source "./crates/config/**/*.rs";
+@source "./shared/utils/**/*.rs";
+@source "./shared/config/**/*.rs";
 @source "./crates/kopuz_route/**/*.rs";
 
 /* Hover and press feedback should feel immediate; 150ms reads as lag. */
