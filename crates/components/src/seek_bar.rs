@@ -192,7 +192,7 @@ impl RenderOnce for SeekBar {
             .id(self.id.clone())
             .relative()
             .w_full()
-            .h(HIT * scale)
+            .h(ThinSlider::height(HIT * scale))
             .when(live && self.preview, |hit| {
                 hit.on_mouse_move(move |event: &MouseMoveEvent, _, cx| {
                     let bounds = state.read(cx).bounds();

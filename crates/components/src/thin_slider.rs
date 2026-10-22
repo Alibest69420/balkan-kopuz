@@ -104,6 +104,14 @@ impl ThinSlider {
 }
 
 impl ThinSlider {
+    /// How tall the slider stands for a hit area of `hit`: Material's bar handle is taller than any.
+    pub fn height(hit: Pixels) -> Pixels {
+        match skin::material() {
+            true => hit.max(M3_HANDLE.1),
+            false => hit,
+        }
+    }
+
     /// The Material 3 form: fill, gap, bar handle, gap, then the tonal rest with its stop dot.
     fn material(self, fill: Hsla) -> gpui_kit::AnyElement {
         let rest = fill.alpha(fill.a * M3_CONTAINER);
