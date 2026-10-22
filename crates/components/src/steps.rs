@@ -23,8 +23,8 @@ const CARD_HOVER: f32 = 0.08;
 const BADGE_BG: f32 = 0.15;
 /// How far a step's body rises as it fades in.
 const RISE: f32 = 8.;
-/// The Kopuz mark's width in a step's header badge.
-const MARK_WIDTH: f32 = 26.;
+/// The Kopuz mark's width over a step's title.
+const MARK_WIDTH: f32 = 64.;
 
 /// The "1 Source · 2 Connect · 3 Scan" rail; each step is lit while it is the one being answered.
 #[derive(IntoElement)]
@@ -236,20 +236,12 @@ impl RenderOnce for StepFrame {
                     .w_full()
                     .gap_2()
                     .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .size_10()
-                            .rounded(style::radius_xl())
-                            .bg(style::accent(BADGE_BG, cx))
-                            .child(
-                                svg()
-                                    .w(px(MARK_WIDTH))
-                                    .h(px(MARK_WIDTH / logo::aspect(logo::BOLD)))
-                                    .text_color(cx.theme().primary)
-                                    .data(logo::BOLD_SVG.as_bytes()),
-                            ),
+                        svg()
+                            .flex_shrink_0()
+                            .w(px(MARK_WIDTH))
+                            .h(px(MARK_WIDTH / logo::aspect(logo::BOLD)))
+                            .text_color(cx.theme().primary)
+                            .data(logo::BOLD_SVG.as_bytes()),
                     )
                     .child(SectionHeading::new(self.title))
                     .child(

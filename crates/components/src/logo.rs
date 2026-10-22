@@ -49,8 +49,8 @@ const EXTENT: (f32, f32) = (525., 439.);
 
 /// The loader's stroke, drawn at about 120px wide.
 pub const THIN: f32 = 7.;
-/// The step header's stroke, still readable at about 26px wide.
-pub const BOLD: f32 = 32.;
+/// The step header's stroke at about 64px wide: heavy enough to read, light enough to keep the wing's lines apart.
+pub const BOLD: f32 = 12.;
 
 /// The rendered size; the loader draws it at about half this, so a HiDPI screen stays sharp.
 const WIDTH: u32 = 280;
