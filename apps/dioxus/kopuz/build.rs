@@ -292,7 +292,11 @@ fn main() {
         Err(_) => return,
     };
 
-    let android_src = crate_dir.join("..").join("..").join("android-src");
+    let android_src = crate_dir
+        .join("..")
+        .join("..")
+        .join("..")
+        .join("android-src");
 
     println!("cargo:rerun-if-changed={}", android_src.display());
 
@@ -695,7 +699,7 @@ fn patch_manifest(path: &Path) {
             ("launchMode", "singleTask"),
             (
                 "configChanges",
-                include_str!("../../android-src/activity-config-changes.txt").trim(),
+                include_str!("../../../android-src/activity-config-changes.txt").trim(),
             ),
         ] {
             let marker = format!("android:{key}=\"");
