@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use api::{ArtworkRef, ArtworkRequest, ArtworkTarget};
 use gpui_kit::{App, Asset, Image, ImageCacheError, ImageFormat, ImageSource, Window};
@@ -100,13 +101,19 @@ pub fn artwork_source(artwork: &ArtworkRef, hq: bool) -> ImageSource {
             Some(Ok(image)) => {
                 cx.default_global::<Residents>().failed.remove(&key);
                 if let Some(rendered) = image.clone().use_render_image(window, cx) {
-                    Residents::touch(&key, &image, cx);
+                    if Residents::touch(&key, &image, cx) {
+                        // The cover fading this in learns it was drawn on the next frame, so ask for one.
+                        window.request_animation_frame();
+                    }
                     return Some(Ok(rendered));
                 }
                 None
             }
             Some(Err(error)) => {
-                cx.default_global::<Residents>().failed.insert(key.clone());
+                if cx.default_global::<Residents>().failed.insert(key.clone()) {
+                    // The cover's fallback shows once its frame learns the picture failed.
+                    window.request_animation_frame();
+                }
                 Some(Err(error))
             }
             None => None,
@@ -120,6 +127,20 @@ pub fn artwork_source(artwork: &ArtworkRef, hq: bool) -> ImageSource {
         }
         result
     }))
+}
+
+/// Long past any cover's fade-in, after which its arrival is forgotten and it counts as settled.
+const ARRIVAL_KEPT: Duration = Duration::from_secs(2);
+
+/// Where a cover stands in its first appearance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Arrival {
+    /// Nothing drawable yet.
+    Waiting,
+    /// First drawn at this instant.
+    Since(Instant),
+    /// Drawn long enough ago, failed, or standing in for an older version: nothing to fade.
+    Settled,
 }
 
 /// How many decoded covers to keep. A screenful is a few dozen; this is several screens of scrollback.
@@ -144,6 +165,8 @@ pub struct Residents {
     // Per target and size, the version drawn last: what stands in while a newer one loads.
     latest: HashMap<(ArtworkTarget, bool), ArtworkKey>,
     failed: HashSet<ArtworkKey>,
+    // When each cover was first drawn, while that is recent enough to still be fading in.
+    arrived: HashMap<ArtworkKey, Instant>,
     clock: u64,
 }
 
@@ -164,9 +187,18 @@ impl Residents {
         Some((old.clone(), resident.image.clone()))
     }
 
-    fn record(&mut self, key: &ArtworkKey, image: &Arc<Image>) {
+    /// Whether `key` is drawn for the first time, which is when it starts fading in.
+    fn record(&mut self, key: &ArtworkKey, image: &Arc<Image>, now: Instant) -> bool {
         self.clock += 1;
         let clock = self.clock;
+        let first = !self.live.contains_key(key);
+        // A new version takes over from the old one on screen, so it has nothing to fade in from.
+        let replaces = self.previous(key).is_some();
+        if first && !replaces {
+            self.arrived
+                .retain(|_, at| now.saturating_duration_since(*at) < ARRIVAL_KEPT);
+            self.arrived.insert(key.clone(), now);
+        }
         self.live
             .entry(key.clone())
             .and_modify(|resident| resident.used = clock)
@@ -176,6 +208,7 @@ impl Residents {
             });
         self.latest
             .insert((key.target.clone(), key.hq), key.clone());
+        first
     }
 
     fn forget(&mut self, key: &ArtworkKey) -> Option<Resident> {
@@ -183,7 +216,27 @@ impl Residents {
         if self.latest.get(&slot) == Some(key) {
             self.latest.remove(&slot);
         }
+        self.arrived.remove(key);
         self.live.remove(key)
+    }
+
+    fn arrival_of(&self, key: &ArtworkKey) -> Arrival {
+        if let Some(at) = self.arrived.get(key) {
+            return Arrival::Since(*at);
+        }
+        if self.live.contains_key(key) || self.failed.contains(key) || self.previous(key).is_some()
+        {
+            return Arrival::Settled;
+        }
+        Arrival::Waiting
+    }
+
+    /// How far into its first appearance `artwork` is, for a cover that fades in rather than pops.
+    pub fn arrival(artwork: &ArtworkRef, hq: bool, cx: &App) -> Arrival {
+        cx.try_global::<Self>()
+            .map_or(Arrival::Waiting, |residents| {
+                residents.arrival_of(&ArtworkKey::new(artwork, hq))
+            })
     }
 
     pub(crate) fn retry_failed(cx: &mut App) {
@@ -196,9 +249,10 @@ impl Residents {
         }
     }
 
-    /// Records that `key` was drawn this frame.
-    fn touch(key: &ArtworkKey, image: &Arc<Image>, cx: &mut App) {
-        cx.default_global::<Self>().record(key, image);
+    /// Records that `key` was drawn this frame, and says whether it was the first.
+    fn touch(key: &ArtworkKey, image: &Arc<Image>, cx: &mut App) -> bool {
+        cx.default_global::<Self>()
+            .record(key, image, Instant::now())
     }
 
     /// Releases the least recently drawn covers until the budget is met.
@@ -266,7 +320,7 @@ mod tests {
         let old = key("album", 1, false);
         let image = image(1);
         let mut residents = Residents::default();
-        residents.record(&old, &image);
+        residents.record(&old, &image, Instant::now());
         let (previous, fallback) = residents.previous(&key("album", 2, false)).unwrap();
         assert_eq!(previous, old);
         assert!(Arc::ptr_eq(&fallback, &image));
@@ -283,7 +337,11 @@ mod tests {
     fn replacement_uses_the_most_recently_displayed_cover() {
         let mut residents = Residents::default();
         for version in [1, 3, 2] {
-            residents.record(&key("album", version, false), &image(version as u8));
+            residents.record(
+                &key("album", version, false),
+                &image(version as u8),
+                Instant::now(),
+            );
         }
         assert_eq!(
             residents.previous(&key("album", 4, false)).unwrap().0,
@@ -296,8 +354,59 @@ mod tests {
     fn a_released_cover_is_no_stand_in() {
         let mut residents = Residents::default();
         let old = key("album", 1, false);
-        residents.record(&old, &image(1));
+        residents.record(&old, &image(1), Instant::now());
         assert!(residents.forget(&old).is_some());
         assert!(residents.previous(&key("album", 2, false)).is_none());
+    }
+
+    #[test]
+    fn a_cover_drawn_for_the_first_time_arrives_then() {
+        let mut residents = Residents::default();
+        let cover = key("album", 1, false);
+        assert_eq!(residents.arrival_of(&cover), Arrival::Waiting);
+        let now = Instant::now();
+        assert!(residents.record(&cover, &image(1), now));
+        assert_eq!(residents.arrival_of(&cover), Arrival::Since(now));
+        assert!(
+            !residents.record(&cover, &image(1), now),
+            "drawn again is no arrival"
+        );
+        assert_eq!(residents.arrival_of(&cover), Arrival::Since(now));
+    }
+
+    #[test]
+    fn a_new_version_takes_over_without_fading() {
+        let mut residents = Residents::default();
+        residents.record(&key("album", 1, false), &image(1), Instant::now());
+        let newer = key("album", 2, false);
+        assert_eq!(
+            residents.arrival_of(&newer),
+            Arrival::Settled,
+            "the old one stands in"
+        );
+        residents.record(&newer, &image(2), Instant::now());
+        assert_eq!(residents.arrival_of(&newer), Arrival::Settled);
+    }
+
+    #[test]
+    fn old_arrivals_are_forgotten_and_settle() {
+        let mut residents = Residents::default();
+        let start = Instant::now();
+        let first = key("first", 1, false);
+        residents.record(&first, &image(1), start);
+        residents.record(&key("second", 1, false), &image(2), start + ARRIVAL_KEPT);
+        assert_eq!(residents.arrival_of(&first), Arrival::Settled);
+    }
+
+    #[test]
+    fn a_failed_or_released_cover_has_nothing_to_fade() {
+        let mut residents = Residents::default();
+        let broken = key("broken", 1, false);
+        residents.failed.insert(broken.clone());
+        assert_eq!(residents.arrival_of(&broken), Arrival::Settled);
+        let gone = key("gone", 1, false);
+        residents.record(&gone, &image(1), Instant::now());
+        residents.forget(&gone);
+        assert_eq!(residents.arrival_of(&gone), Arrival::Waiting);
     }
 }

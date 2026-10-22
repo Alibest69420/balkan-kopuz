@@ -150,8 +150,10 @@ impl Cover {
             .overflow_hidden()
             .when_some(self.rounded, |frame, radius| frame.rounded(radius))
             .when_some(self.artwork, |frame, artwork| {
+                let shown = arrived(&artwork, hq, window, cx);
                 frame.child(
                     img(store::artwork_source(&artwork, hq))
+                        .opacity(shown)
                         .absolute()
                         .top(relative(bleed))
                         .left(relative(bleed))
@@ -169,6 +171,30 @@ impl Cover {
             })
             .into_any_element()
     }
+}
+
+/// How far `artwork` has faded in: nothing until its picture is first drawn, then up over [`motion::FAST`].
+pub fn arrived(artwork: &ArtworkRef, hq: bool, window: &mut Window, cx: &App) -> f32 {
+    let Some(duration) = motion::live(motion::FAST, cx) else {
+        return 1.;
+    };
+    match store::Residents::arrival(artwork, hq, cx) {
+        store::Arrival::Waiting => 0.,
+        store::Arrival::Settled => 1.,
+        store::Arrival::Since(at) => {
+            let shown = motion::progress(at.elapsed(), duration);
+            if shown < 1. {
+                window.request_animation_frame();
+            }
+            shown
+        }
+    }
+}
+
+/// Whether `artwork` has anything drawable yet, for a caller holding the old cover up until it does.
+pub fn is_ready(artwork: Option<&ArtworkRef>, hq: bool, cx: &App) -> bool {
+    artwork
+        .is_none_or(|artwork| store::Residents::arrival(artwork, hq, cx) != store::Arrival::Waiting)
 }
 
 impl RenderOnce for Cover {
@@ -209,7 +235,9 @@ impl RenderOnce for Cover {
             .map(|frame| match &self.artwork {
                 Some(artwork) => frame.child({
                     let faint = style::white(style::TEXT_FAINT, cx);
+                    let shown = arrived(artwork, self.hq, window, cx);
                     img(store::artwork_source(artwork, self.hq))
+                        .opacity(shown)
                         .size(drawn)
                         .flex_shrink_0()
                         // The frame's mask is a rect, so the picture rounds its own corners.
