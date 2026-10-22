@@ -88,7 +88,18 @@ impl NowPlaying {
         let layout = store::layout(cx).sheet.clone();
         let track = self.track(cx);
         let artwork = track.as_ref().and_then(|track| track.artwork.clone());
-        let entered = motion::enter("sheet-enter", motion::SLOW, window, cx);
+        let open = Chrome::global(cx).read(cx).is_sheet_open();
+        // It grows in over the slower span and folds away over the quicker one.
+        let shown = self.sheet_fade.sample(
+            open,
+            if open { motion::SLOW } else { motion::FAST },
+            window,
+            cx,
+        );
+        if !open && shown <= 0. {
+            // One more frame lets the shell see the fade is over and take the sheet down.
+            window.request_animation_frame();
+        }
         let swap = self.swap.frame(
             components::cover::is_ready(artwork.as_ref(), true, cx),
             window,
@@ -125,7 +136,7 @@ impl NowPlaying {
                     .child(self.tab_body(showing)),
             );
 
-        surface()
+        let sheet = surface()
             .key_context("NowPlaying")
             .on_key_down(
                 cx.listener(|this, event: &gpui_kit::KeyDownEvent, window, cx| {
@@ -137,7 +148,7 @@ impl NowPlaying {
                 }),
             )
             .overflow_hidden()
-            .opacity(entered)
+            .opacity(shown)
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
             .on_prepaint(move |bounds, _, cx| {
@@ -168,9 +179,19 @@ impl NowPlaying {
                     .when(use_bar && !bar_at_top, |body| {
                         body.children(self.sheet_bar.clone())
                     }),
-            )
-            .children(self.flying_cover(&swap, window, cx))
-            .focus_trap("now-playing-focus", &self.sheet_focus.handle)
+            );
+        let flying = self.flying_cover(&swap, open, window, cx);
+        // The cover is outside the fade, so it travels back to the bar whole while the sheet goes.
+        div()
+            .size_full()
+            .relative()
+            .map(|layer| match open {
+                true => {
+                    layer.child(sheet.focus_trap("now-playing-focus", &self.sheet_focus.handle))
+                }
+                false => layer.child(sheet),
+            })
+            .children(flying)
             .into_any_element()
     }
 
@@ -218,7 +239,8 @@ impl NowPlaying {
                     .on_prepaint(move |bounds, _, cx| {
                         owner
                             .update(cx, |this, cx| {
-                                if this.hero != Some(bounds) {
+                                // A closing sheet's cover is headed for the bar, not back to this slot.
+                                if this.sheet_focus.open && this.hero != Some(bounds) {
                                     this.hero = Some(bounds);
                                     cx.notify();
                                 }
@@ -302,6 +324,7 @@ impl NowPlaying {
     fn flying_cover(
         &self,
         swap: &SwapFrame,
+        open: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<impl IntoElement + use<>> {
@@ -322,9 +345,11 @@ impl NowPlaying {
             },
         };
         let local = point(origin.x - root.origin.x, origin.y - root.origin.y);
-        let left = motion::length("sheet-cover-x", local.x, motion::SLOW, window, cx);
-        let top = motion::length("sheet-cover-y", local.y, motion::SLOW, window, cx);
-        let side = motion::length("sheet-cover-size", size, motion::SLOW, window, cx);
+        // Back to the bar as quickly as the sheet fades, out of it as slowly as the sheet grows.
+        let travel = if open { motion::SLOW } else { motion::FAST };
+        let left = motion::length("sheet-cover-x", local.x, travel, window, cx);
+        let top = motion::length("sheet-cover-y", local.y, travel, window, cx);
+        let side = motion::length("sheet-cover-size", size, travel, window, cx);
         let radius = style::to_px(style::radius_xl(), window)
             * (f32::from(side)
                 / f32::from(cover_size(store::layout(cx).player.size.scale(), cx)).max(1.))

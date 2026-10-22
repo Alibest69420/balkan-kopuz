@@ -311,7 +311,7 @@ impl Render for Shell {
         let chrome = Chrome::global(cx).read(cx);
         // The sheet is a full-window overlay, not a body state: its hero cover flies out of the
         // bar's own cover slot, so the bar has to still be there underneath it.
-        let sheet_open = chrome.is_sheet_open();
+        let sheet_open = chrome.is_sheet_open() || self.fullscreen.read(cx).sheet_visible();
         // A disconnect outranks compact: a mini player with nothing behind it would keep showing
         // the last track it saw, with no way to learn the daemon had gone.
         let compact = chrome.is_compact() && connected;

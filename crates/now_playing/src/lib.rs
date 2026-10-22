@@ -83,6 +83,8 @@ pub struct NowPlaying {
     hero: Option<Bounds<Pixels>>,
     /// The track this surface last drew, and the one still fading out under it.
     swap: swap::TrackSwap,
+    /// The sheet's own fade, so it can fold away before the shell takes it down.
+    sheet_fade: components::motion::Fade,
     devices_open: bool,
     devices: Vec<api::ExternalDevice>,
     queue: Option<Entity<QueueView>>,
@@ -147,8 +149,12 @@ impl NowPlaying {
             }),
             cx.observe_in(&Chrome::global(cx), window, |this, chrome, window, cx| {
                 if this.presentation == Presentation::Sheet {
-                    this.sheet_focus
-                        .set_open(chrome.read(cx).is_sheet_open(), window, cx);
+                    let open = chrome.read(cx).is_sheet_open();
+                    // Forgetting the landing makes the cover head for the bar now and fly out of it on every open.
+                    if !open {
+                        this.hero = None;
+                    }
+                    this.sheet_focus.set_open(open, window, cx);
                 }
                 cx.notify();
             }),
@@ -176,6 +182,7 @@ impl NowPlaying {
             panel_width: None,
             root: None,
             hero: None,
+            sheet_fade: components::motion::Fade::hidden(),
             swap: {
                 let mut swap = swap::TrackSwap::default();
                 swap.follow(PlayerModel::global(cx).read(cx).track());
@@ -202,6 +209,11 @@ impl NowPlaying {
                 .update(cx, |state, cx| state.set_value(shown, window, cx));
         }
         cx.notify();
+    }
+
+    /// Whether the sheet is still on screen, opening, open or folding away.
+    pub fn sheet_visible(&self) -> bool {
+        self.sheet_fade.is_visible()
     }
 
     fn track(&self, cx: &App) -> Option<api::TrackInfo> {
