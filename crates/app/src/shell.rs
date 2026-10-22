@@ -211,6 +211,31 @@ impl Shell {
     pub fn go_back(&mut self, cx: &mut Context<Self>) {
         Navigator::global(cx).update(cx, |navigator, cx| navigator.go_back(cx));
     }
+
+    /// The guide alone: no bars, panels or player, and no "Shell" context, so no shortcut navigates away.
+    fn render_first_run(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> gpui_kit::AnyElement {
+        components::focus::watch(div())
+            .size_full()
+            .track_focus(&self.focus)
+            .key_context("FirstRun")
+            .bg(cx.theme().background)
+            .text_color(cx.theme().foreground)
+            .child(
+                div()
+                    .size_full()
+                    .relative()
+                    .child(self.first_run.clone())
+                    .child(self.overlays.clone()),
+            )
+            .children(Root::render_dialog_layer(window, cx))
+            .children(Root::render_sheet_layer(window, cx))
+            .children(Root::render_notification_layer(window, cx))
+            .into_any_element()
+    }
 }
 
 impl Render for Shell {
@@ -223,6 +248,13 @@ impl Render for Shell {
                 .children(Root::render_notification_layer(window, cx))
                 .into_any_element();
         }
+        if store::SetupModel::global(cx).read(cx).showing() {
+            return self.render_first_run(window, cx);
+        }
+        // The guide's focused button leaves with it, and with nothing focused no shortcut fires.
+        if window.focused(cx).is_none() {
+            window.focus(&self.focus, cx);
+        }
         let connected = self.connection.read(cx).is_connected();
         let chrome = Chrome::global(cx).read(cx);
         // The sheet is a full-window overlay, not a body state: its hero cover flies out of the
@@ -231,7 +263,6 @@ impl Render for Shell {
         // A disconnect outranks compact: a mini player with nothing behind it would keep showing
         // the last track it saw, with no way to learn the daemon had gone.
         let compact = chrome.is_compact() && connected;
-        let first_run = store::SetupModel::global(cx).read(cx).showing() && connected;
         let nav_left = store::layout(cx).nav.position == store::layout::NavPosition::Left;
         let bar = Some(self.topbar.clone());
         let playlists = self.playlists_panel.read(cx);
@@ -288,12 +319,7 @@ impl Render for Shell {
                                 .relative()
                                 // A disconnect dims the page and banners over it rather than
                                 // replacing the window, so what was on screen stays on screen.
-                                .map(|content| match first_run {
-                                    true => content.child(self.first_run.clone()),
-                                    false => {
-                                        content.child(topbar::content_frame().h_full().child(page))
-                                    }
-                                })
+                                .child(topbar::content_frame().h_full().child(page))
                                 .child(self.overlays.clone())
                                 .child(self.debug_overlay.clone()),
                         )
