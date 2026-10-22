@@ -1,15 +1,45 @@
 //! Route to page view. Views are cached per route key, so going back restores a page as it was.
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
-use gpui_kit::{AnyView, AppContext as _, Context, Window};
-use store::Route;
+use gpui_kit::{AnyView, App, AppContext as _, Context, Entity, Render, Window};
+use store::{Freeze, Route};
 
 use crate::shell::Shell;
 
+type Freezer = Rc<dyn Fn(&mut App)>;
+
+/// A built page, and how to freeze it if it can be.
+struct Page {
+    view: AnyView,
+    freeze: Option<Freezer>,
+}
+
+impl<T: Render> From<Entity<T>> for Page {
+    fn from(page: Entity<T>) -> Self {
+        Self {
+            view: page.into(),
+            freeze: None,
+        }
+    }
+}
+
+impl Page {
+    fn freezable<T: Render + Freeze>(page: Entity<T>) -> Self {
+        let held = page.clone();
+        Self {
+            view: page.into(),
+            freeze: Some(Rc::new(move |cx: &mut App| {
+                held.update(cx, |page, cx| page.freeze(cx))
+            })),
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct Router {
-    pages: HashMap<String, AnyView>,
+    pages: HashMap<String, Page>,
     // Least recently visited first, so the cache can drop one page instead of all of them.
     order: Vec<String>,
 }
@@ -22,7 +52,7 @@ impl Router {
     pub fn page(&mut self, route: &Route, window: &mut Window, cx: &mut Context<Shell>) -> AnyView {
         let key = route.key();
         if let Some(page) = self.pages.get(&key) {
-            let page = page.clone();
+            let page = page.view.clone();
             self.touch(key);
             return page;
         }
@@ -34,9 +64,22 @@ impl Router {
             self.pages.remove(&oldest);
         }
         let page = build(route, window, cx);
-        self.pages.insert(key.clone(), page.clone());
+        let view = page.view.clone();
+        self.pages.insert(key.clone(), page);
         self.touch(key);
-        page
+        view
+    }
+
+    /// Stop `view` following the app, if it is a page that can, so it can be held over its replacement.
+    pub fn freeze(&self, view: &AnyView, cx: &mut App) {
+        let freeze = self
+            .pages
+            .values()
+            .find(|page| page.view.entity_id() == view.entity_id())
+            .and_then(|page| page.freeze.clone());
+        if let Some(freeze) = freeze {
+            freeze(cx);
+        }
     }
 
     fn touch(&mut self, key: String) {
@@ -51,11 +94,15 @@ impl Router {
     }
 }
 
-fn build(route: &Route, window: &mut Window, cx: &mut Context<Shell>) -> AnyView {
+fn build(route: &Route, window: &mut Window, cx: &mut Context<Shell>) -> Page {
     match route.clone() {
-        Route::Home | Route::Downloader => cx.new(|cx| page_home::Home::new(window, cx)).into(),
+        Route::Home | Route::Downloader => {
+            Page::freezable(cx.new(|cx| page_home::Home::new(window, cx)))
+        }
         // One browsing destination: the landing, genres and results are the same entity.
-        Route::Search | Route::Discover => cx.new(|cx| discover::Discover::new(window, cx)).into(),
+        Route::Search | Route::Discover => {
+            Page::freezable(cx.new(|cx| discover::Discover::new(window, cx)))
+        }
         Route::Genre(name) => cx.new(|cx| discover::Genre::new(name, window, cx)).into(),
         Route::DiscoverPlaylist { id, title } => cx
             .new(|cx| discover::CatalogPlaylist::new(id, title, window, cx))
@@ -74,7 +121,7 @@ fn build(route: &Route, window: &mut Window, cx: &mut Context<Shell>) -> AnyView
         | Route::Artists
         | Route::Playlists
         | Route::Favorites
-        | Route::Activity => cx.new(|cx| library::Library::new(window, cx)).into(),
+        | Route::Activity => Page::freezable(cx.new(|cx| library::Library::new(window, cx))),
         Route::Album(id) => cx
             .new(|cx| page_albums::AlbumDetail::new(id, window, cx))
             .into(),

@@ -181,6 +181,11 @@ impl Shell {
             }),
             // The skin sizes the player bar, which the toasts have to clear.
             cx.observe(&store::LayoutModel::global(cx), |_, _, cx| place_toasts(cx)),
+            // Held from the ask, not the answer: the queue and the mix change before the source list does.
+            cx.subscribe(&sources, |this, _, _: &store::SwitchStarted, cx| {
+                this.hand_over(true, cx);
+                cx.notify();
+            }),
             // A source switch makes every page's contents wrong, so none are kept; the shown one is held.
             cx.observe(&sources, |this, sources, cx| {
                 let now = SourceIdentity::of(sources.read(cx));
@@ -188,12 +193,12 @@ impl Shell {
                     this.source = now;
                     // A second change mid-handover would hand over from the half-loaded page, so the first one is kept.
                     match this.handover.as_mut() {
-                        Some(handover) => handover.restart(),
-                        None => {
-                            this.handover = this.shown.clone().map(crate::handover::Handover::new)
+                        Some(handover) => {
+                            handover.restart();
+                            this.router.clear();
                         }
+                        None => this.hand_over(false, cx),
                     }
-                    this.router.clear();
                 }
                 cx.notify();
             }),
@@ -285,6 +290,18 @@ impl Shell {
         Navigator::global(cx).update(cx, |navigator, cx| navigator.go_back(cx));
     }
 
+    /// Freeze the page on screen and hold it over a fresh one; `awaiting` while the switch is still in flight.
+    fn hand_over(&mut self, awaiting: bool, cx: &mut Context<Self>) {
+        if self.handover.is_some() {
+            return;
+        }
+        if let Some(shown) = self.shown.clone() {
+            self.router.freeze(&shown, cx);
+            self.handover = Some(crate::handover::Handover::new(shown, awaiting));
+        }
+        self.router.clear();
+    }
+
     /// Across a source switch, the old page over the new one until the new one has something to show.
     fn handover_layer(
         &mut self,
@@ -310,6 +327,8 @@ impl Shell {
                     .opacity(1. - frame.arriving)
                     .child(leaving)
             }))
+            // The held page answers for the old source, and the new one is not up yet, so neither takes a click.
+            .child(div().absolute().inset_0().occlude())
             .into_any_element()
     }
 
