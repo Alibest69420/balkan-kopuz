@@ -4,21 +4,22 @@ use components::format::t;
 use components::{Carousel, Heading};
 use gpui_kit::{AnyElement, IntoElement, ScrollHandle, px};
 
-use crate::cards::{GAP, TILE, card};
+use crate::cards::{GAP, Now, TILE, card};
 use crate::data::{Form, Shelf};
 
-pub(crate) fn shelf(shelf: &Shelf, handle: &ScrollHandle) -> AnyElement {
-    carousel(shelf, handle).into_any_element()
+pub(crate) fn shelf(shelf: &Shelf, handle: &ScrollHandle, now: &Now) -> AnyElement {
+    carousel(shelf, handle, now).into_any_element()
 }
 
-pub(crate) fn carousel(shelf: &Shelf, handle: &ScrollHandle) -> Carousel {
+pub(crate) fn carousel(shelf: &Shelf, handle: &ScrollHandle, now: &Now) -> Carousel {
     let tiles = shelf.tiles.clone();
+    let now = now.clone();
     Carousel::new(
         shelf.name,
         t(title(shelf.name)),
         tiles.len(),
         TILE,
-        move |index, _, cx| card(&tiles[index], cx),
+        move |index, _, _| card(&tiles[index], &now),
     )
     .gap(px(GAP))
     .heading(match shelf.form {

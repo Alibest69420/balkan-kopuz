@@ -24,7 +24,7 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled, Subscription, Window,
 };
 use store::layout::Ordered as _;
-use store::{DownloadsModel, ForYouModel, ForYouState, PlaylistsModel, Query, SourcesModel};
+use store::{DownloadsModel, ForYouModel, PlaylistsModel, Query, SourcesModel};
 
 use data::{RECENT_TRACKS_WINDOW, RECENTLY_ADDED_WINDOW, Shelf};
 
@@ -41,6 +41,31 @@ pub fn register_catalog(
     cx: &mut App,
 ) {
     cx.set_global(CatalogBuilder(Rc::new(build)));
+}
+
+/// What the page draws from shared models, read each frame until the page is frozen.
+#[derive(Clone, Default)]
+pub(crate) struct Shared {
+    resume: Option<resume::Resume>,
+    pub(crate) now: cards::Now,
+    pub(crate) for_you: for_you::Status,
+    offline: bool,
+    catalog: bool,
+    settled: bool,
+}
+
+impl Shared {
+    fn read(home: &Home, cx: &App) -> Self {
+        let sources = SourcesModel::global(cx).read(cx);
+        Self {
+            resume: resume::Resume::read(cx),
+            now: cards::Now::read(cx),
+            for_you: for_you::Status::read(cx),
+            offline: sources.offline_reads(),
+            catalog: sources.has_catalog(),
+            settled: home.albums.read(cx).is_settled(),
+        }
+    }
 }
 
 /// One row of the page, top to bottom.
@@ -69,7 +94,17 @@ pub struct Home {
     for_you: components::motion::Fade,
     // The last mix drawn, for the row to fade out once a refresh lets it go.
     for_you_last: Rc<[data::Tile]>,
+    // The last frame's reads of shared models, which a frozen page keeps drawing.
+    shared: Shared,
+    frozen: bool,
     _subscriptions: Vec<Subscription>,
+}
+
+impl store::Freeze for Home {
+    fn freeze(&mut self, _: &mut Context<Self>) {
+        self.frozen = true;
+        self._subscriptions.clear();
+    }
 }
 
 impl Home {
@@ -168,6 +203,8 @@ impl Home {
             seed: seed(),
             for_you: components::motion::Fade::hidden(),
             for_you_last: Rc::from([]),
+            shared: Shared::default(),
+            frozen: false,
             _subscriptions: subscriptions,
         }
     }
@@ -214,10 +251,9 @@ impl Home {
 
     /// The rows the layout asks for, in its order, skipping the shelves with nothing in them.
     fn drawn(&self, cx: &Context<Self>) -> Vec<Drawn> {
-        let sources = SourcesModel::global(cx).read(cx);
         // The mix is radio from the source, which offline mode never reaches.
-        let for_you = ForYouModel::global(cx).read(cx).is_shown() && !sources.offline_reads();
-        let catalog = sources.has_catalog();
+        let for_you = self.shared.for_you.shown && !self.shared.offline;
+        let catalog = self.shared.catalog;
         let layout = store::layout(cx);
         let names = match catalog {
             true => layout.catalog_home.visible(),
@@ -244,6 +280,9 @@ impl Home {
 
     /// The source's own feed, built once per source and first page.
     fn catalog(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyView> {
+        if self.frozen {
+            return self.catalog.as_ref().map(|(_, view)| view.clone());
+        }
         let build = cx.try_global::<CatalogBuilder>()?.0.clone();
         let sources = SourcesModel::global(cx).read(cx);
         let source = sources.active()?.id.clone();
@@ -268,7 +307,11 @@ impl Render for Home {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("home");
         components::scroll::smooth("home-scroll", &self.page, window, cx);
-        let banner = resume::banner(cx);
+        if !self.frozen {
+            self.shared = Shared::read(self, cx);
+        }
+        let shared = self.shared.clone();
+        let banner = shared.resume.as_ref().map(resume::banner);
         let drawn = self.drawn(cx);
         let asks = drawn.iter().any(
             |drawn| matches!(drawn, Drawn::Shelf(index) if self.shelves[*index].name == "for_you"),
@@ -293,23 +336,24 @@ impl Render for Home {
                 data::Form::Ranked => ranked::ranked(shelf, cx),
                 _ if shelf.name == "for_you" => for_you::row(
                     shelf,
+                    &shared,
                     &self.for_you_last,
                     &handle,
                     &mut self.for_you,
                     window,
                     cx,
                 ),
-                _ => shelf::shelf(shelf, &handle),
+                _ => shelf::shelf(shelf, &handle, &shared.now),
             });
         }
         // Asked only once the row is on screen, and outside the frame being drawn.
-        let model = ForYouModel::global(cx);
-        if asks && *model.read(cx).state() == ForYouState::Idle {
+        if asks && !self.frozen && shared.for_you.idle {
+            let model = ForYouModel::global(cx);
             cx.defer(move |cx| model.update(cx, |model, cx| model.ensure(cx)));
         }
         // Nothing to show is only worth saying once the library has actually answered.
-        let settled = rows.is_empty() && self.albums.read(cx).is_settled();
-        let offline = SourcesModel::global(cx).read(cx).offline_reads();
+        let settled = rows.is_empty() && shared.settled;
+        let offline = shared.offline;
         // The queue to resume is not a library, so offline it does not hide that nothing else plays.
         let bare = settled && (offline || banner.is_none());
         v_flex()

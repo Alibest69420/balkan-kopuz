@@ -13,14 +13,41 @@ use gpui_kit::{
 };
 use store::{ForYouModel, ForYouState};
 
+use api::ApiError;
+
 use crate::cards::{GAP, TILE};
 use crate::data::{Shelf, Tile};
 
 /// Enough placeholders to fill a wide window; the daemon's mix is about this long anyway.
 const PLACEHOLDERS: usize = 8;
 
+/// Where the mix stands, as the row draws it.
+#[derive(Clone, Default)]
+pub(crate) struct Status {
+    pub(crate) shown: bool,
+    pub(crate) idle: bool,
+    filled: bool,
+    failed: Option<ApiError>,
+}
+
+impl Status {
+    pub(crate) fn read(cx: &App) -> Self {
+        let model = ForYouModel::global(cx).read(cx);
+        Self {
+            shown: model.is_shown(),
+            idle: *model.state() == ForYouState::Idle,
+            filled: model.shown_mix().is_some(),
+            failed: match model.state() {
+                ForYouState::Failed(error) => Some(error.clone()),
+                _ => None,
+            },
+        }
+    }
+}
+
 pub(crate) fn row(
     shelf: &Shelf,
+    shared: &crate::Shared,
     last: &Rc<[Tile]>,
     handle: &ScrollHandle,
     fade: &mut motion::Fade,
@@ -28,28 +55,27 @@ pub(crate) fn row(
     cx: &App,
 ) -> AnyElement {
     let title = t(crate::shelf::title(shelf.name));
-    let model = ForYouModel::global(cx).read(cx);
-    let filled = model.shown_mix().is_some();
+    let (status, now) = (&shared.for_you, &shared.now);
+    let filled = status.filled;
     let shown = fade.sample(filled, motion::MEDIUM, window, cx);
     if filled {
-        let content = crate::shelf::carousel(shelf, handle).action(refresh(cx));
+        let content = crate::shelf::carousel(shelf, handle, now).action(refresh(cx));
         // The pulsing row stays under the mix while it fades in, so the row never empties.
         let placeholder = (shown < 1.).then(|| placeholder(title.clone(), false, cx));
         return skeleton::reveal(content, placeholder, shown);
     }
-    let failed = matches!(model.state(), ForYouState::Failed(_));
-    if shown > 0. && !failed && !last.is_empty() {
+    if shown > 0. && status.failed.is_none() && !last.is_empty() {
         // A refresh lets the mix go, so it fades out over the pulsing row rather than cutting to it.
         let leaving = Shelf {
             name: shelf.name,
             tiles: last.clone(),
             form: shelf.form,
         };
-        let content = crate::shelf::carousel(&leaving, handle);
+        let content = crate::shelf::carousel(&leaving, handle, now);
         return skeleton::reveal(content, Some(placeholder(title, true, cx)), shown);
     }
-    match model.state() {
-        ForYouState::Failed(error) => v_flex()
+    match &status.failed {
+        Some(error) => v_flex()
             .w_full()
             .gap_4()
             .child(SectionHeading::new(title).trailing(refresh(cx)))
@@ -60,7 +86,7 @@ pub(crate) fn row(
                     .child(store::human(error)),
             )
             .into_any_element(),
-        _ => placeholder(title, true, cx),
+        None => placeholder(title, true, cx),
     }
 }
 

@@ -19,19 +19,36 @@ pub fn failed(
     EmptyState::failed(t("library_read_failed"), retry).detail(store::human(error))
 }
 
+/// What an empty facet says depends on, about the active source.
+#[derive(Clone, Default)]
+pub struct Active {
+    capabilities: api::SourceCapabilities,
+    source: Option<api::SourceInfo>,
+    offline: bool,
+}
+
+impl Active {
+    pub fn read(cx: &App) -> Self {
+        let sources = SourcesModel::global(cx).read(cx);
+        Self {
+            capabilities: sources.capabilities(),
+            source: sources.active().cloned(),
+            offline: sources.offline_reads(),
+        }
+    }
+}
+
 /// A facet with nothing in it: the button is whatever would put something there for this source.
-pub fn empty_library(facet: Facet, cx: &App) -> EmptyState {
-    let sources = SourcesModel::global(cx);
-    let sources = sources.read(cx);
-    let capabilities = sources.capabilities();
-    let source = sources.active().cloned();
+pub fn empty_library(facet: Facet, active: &Active) -> EmptyState {
+    let capabilities = &active.capabilities;
+    let source = active.source.clone();
     let anonymous = source.as_ref().is_some_and(|source| source.anonymous);
     let signed_out = source
         .as_ref()
         .is_some_and(|source| !source.authenticated && !source.anonymous);
 
     // Syncing or signing in cannot fill a library offline mode keeps to its copies here.
-    if sources.offline_reads() {
+    if active.offline {
         return EmptyState::offline();
     }
     if signed_out || anonymous {

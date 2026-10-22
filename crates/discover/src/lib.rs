@@ -230,6 +230,13 @@ impl Discover {
     }
 }
 
+impl store::Freeze for Discover {
+    fn freeze(&mut self, cx: &mut Context<Self>) {
+        self._subscriptions.clear();
+        self.landing.update(cx, |landing, cx| landing.freeze(cx));
+    }
+}
+
 impl Render for Discover {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("discover");

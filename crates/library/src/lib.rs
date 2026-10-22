@@ -167,9 +167,30 @@ pub struct Library {
     type_ahead: String,
     type_ahead_at: Option<Instant>,
 
+    // The last frame's reads of the queries and the source, which a frozen page keeps drawing.
+    shared: Shared,
+    frozen: bool,
+
     _filter_delay: Option<Task<()>>,
     _resolve: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
+}
+
+/// What a frame reads outside the page's own derived state.
+#[derive(Clone, Default)]
+struct Shared {
+    stale: bool,
+    settled: bool,
+    failure: Option<api::ApiError>,
+    active: states::Active,
+}
+
+impl store::Freeze for Library {
+    fn freeze(&mut self, _: &mut Context<Self>) {
+        self.frozen = true;
+        self._subscriptions.clear();
+        self._filter_delay = None;
+    }
 }
 
 impl Focusable for Library {
@@ -301,6 +322,8 @@ impl Library {
             selection: components::selection::Selection::new(),
             type_ahead: String::new(),
             type_ahead_at: None,
+            shared: Shared::default(),
+            frozen: false,
             _filter_delay: None,
             _resolve: None,
             _subscriptions: subscriptions,
@@ -896,7 +919,15 @@ fn window_item<T>(items: &[T], offset: usize, index: usize) -> Option<&T> {
 impl Render for Library {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("library");
-        let dimmed = self.stale(cx);
+        if !self.frozen {
+            self.shared = Shared {
+                stale: self.stale(cx),
+                settled: self.settled(cx),
+                failure: self.failure(cx),
+                active: states::Active::read(cx),
+            };
+        }
+        let dimmed = self.shared.stale;
         let chrome = self.chrome(window, cx);
         let body = self.body(window, cx);
         let bar = self.selection_bar(cx);
@@ -939,7 +970,7 @@ impl Library {
             Facet::Tracks => self.rows.is_empty(),
             _ => self.tiles.is_empty(),
         };
-        if let Some(error) = self.failure(cx)
+        if let Some(error) = self.shared.failure.clone()
             && empty
         {
             let page = cx.entity().downgrade();
@@ -949,7 +980,7 @@ impl Library {
             .into_any_element();
         }
         if self.total() == 0 {
-            if !self.settled(cx) {
+            if !self.shared.settled {
                 return self.skeleton_body(cx);
             }
             if self.filters.is_narrowed() {
@@ -965,7 +996,8 @@ impl Library {
                 })
                 .into_any_element();
             }
-            return states::empty_library(self.filters.facet, cx).into_any_element();
+            return states::empty_library(self.filters.facet, &self.shared.active)
+                .into_any_element();
         }
         match self.filters.facet {
             Facet::Tracks => self.table(window, cx),

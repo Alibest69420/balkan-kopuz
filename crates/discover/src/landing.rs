@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use api::{AlbumInfo, CatalogShelf, DiscoverRows, PageEntry, TrackInfo};
+use api::{AlbumInfo, CatalogShelf, DiscoverRows, PageEntry, SourceCapabilities, TrackInfo};
 use components::format::{t, text};
 use components::{
     Carousel, EmptyState, PageHeader, PlayState, SearchTrigger, Tile, TriggerSize, icons, motion,
@@ -44,6 +44,9 @@ pub struct Landing {
     never_played: ScrollHandle,
     forgotten: ScrollHandle,
     scroll: ScrollHandle,
+    // The source's capabilities as the last frame read them, none before the list loads; frozen pages keep them.
+    caps: Option<SourceCapabilities>,
+    frozen: bool,
     _rows: Option<Task<()>>,
     _pages: Vec<Task<()>>,
     _subscriptions: Vec<Subscription>,
@@ -73,12 +76,22 @@ impl Landing {
             never_played: ScrollHandle::new(),
             forgotten: ScrollHandle::new(),
             scroll: ScrollHandle::new(),
+            caps: None,
+            frozen: false,
             _rows: None,
             _pages: Vec::new(),
             _subscriptions: subscriptions,
         };
         landing.follow_sources(cx);
         landing
+    }
+
+    /// Stop asking and stop following the source, drawing what is held.
+    pub(crate) fn freeze(&mut self, _: &mut Context<Self>) {
+        self.frozen = true;
+        self._subscriptions.clear();
+        self._rows = None;
+        self._pages.clear();
     }
 
     fn follow_sources(&mut self, cx: &mut Context<Self>) {
@@ -280,13 +293,13 @@ impl Render for Landing {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("discover-landing");
         components::scroll::smooth("discover-scroll", &self.scroll, window, cx);
-        let loaded = SourcesModel::global(cx).read(cx).is_loaded();
-        let landing = match loaded {
-            true => {
-                let caps = SourcesModel::global(cx).read(cx).capabilities().clone();
-                rows::landing(&caps, &self.rows, &self.page_rows)
-            }
-            false => rows::Landing::Waiting,
+        if !self.frozen {
+            let sources = SourcesModel::global(cx).read(cx);
+            self.caps = sources.is_loaded().then(|| sources.capabilities());
+        }
+        let landing = match &self.caps {
+            Some(caps) => rows::landing(caps, &self.rows, &self.page_rows),
+            None => rows::Landing::Waiting,
         };
         let body = match landing {
             rows::Landing::Rows(planned) => v_flex()
