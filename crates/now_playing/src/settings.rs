@@ -7,7 +7,7 @@ use gpui_kit::{
     App, AppContext as _, Context, IntoElement, ParentElement as _, Render, Styled, Window,
 };
 use store::LayoutModel;
-use store::layout::{Backdrop, PlayerSize, Section as Group, SheetTab, Side, TileSize};
+use store::layout::{Backdrop, HeroSize, PlayerSize, Section as Group, SheetTab, Side, TileSize};
 
 /// Contribute both sections; call once at startup, after `settings_interface::init`.
 pub fn register(cx: &mut App) {
@@ -198,6 +198,25 @@ impl Render for SheetSettings {
                                 ],
                                 |value, cx| {
                                     LayoutModel::edit(cx, |layout| layout.sheet.backdrop = value)
+                                },
+                            ))
+                            .shown(cx),
+                    )
+                    .children(
+                        SettingRow::new(t("interface_player_cover"))
+                            // TODO(i18n): no key describes the sheet's cover size, nor names an extra-large step.
+                            .description("How large the cover is drawn in the now-playing sheet.")
+                            .control(choice(
+                                "sheet-cover",
+                                &sheet.cover,
+                                vec![
+                                    (HeroSize::Small, t("interface_player_cover_small")),
+                                    (HeroSize::Medium, t("interface_player_cover_medium")),
+                                    (HeroSize::Large, t("interface_player_cover_large")),
+                                    (HeroSize::ExtraLarge, "Extra large".into()),
+                                ],
+                                |value, cx| {
+                                    LayoutModel::edit(cx, |layout| layout.sheet.cover = value)
                                 },
                             ))
                             .shown(cx),

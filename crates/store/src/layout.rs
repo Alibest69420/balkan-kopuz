@@ -408,6 +408,39 @@ pub struct Sheet {
     pub tab: SheetTab,
     pub side: Side,
     pub backdrop: Backdrop,
+    pub cover: HeroSize,
+}
+
+/// How large the now-playing sheet draws its cover.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HeroSize {
+    Small,
+    #[default]
+    Medium,
+    Large,
+    ExtraLarge,
+}
+
+impl HeroSize {
+    /// The cover's side in pixels, before the window's height caps it.
+    pub fn side(self) -> f32 {
+        match self {
+            Self::Small => 320.,
+            Self::Medium => 420.,
+            Self::Large => 540.,
+            Self::ExtraLarge => 680.,
+        }
+    }
+
+    /// The share of the sheet's height the cover may take, so the title and transport still fit under it.
+    pub fn max_height(self) -> f32 {
+        match self {
+            Self::Small | Self::Medium => 0.5,
+            Self::Large => 0.58,
+            Self::ExtraLarge => 0.66,
+        }
+    }
 }
 
 /// The library's per-facet state, keyed by facet name.

@@ -23,14 +23,14 @@ use crate::NowPlaying;
 use crate::meta::{cover_size, playing_from, track_picture, track_target};
 
 // The column the title, the clocks and the transport share, and the panel beside them.
+// A cover never takes more of the stage's width than this, so a narrow window keeps its edges.
+const HERO_WIDTH: f32 = 0.9;
 const COLUMN: f32 = 40.;
 const PANEL: f32 = 0.38;
 const ACTION: Pixels = px(44.);
 const ACTION_GLYPH: Pixels = px(18.);
 const CLOSE: Pixels = px(40.);
 const CLOSE_GLYPH: Pixels = px(22.);
-// The hero cover never grows past this, however tall the window is.
-const HERO_MAX: Pixels = px(420.);
 // `bg-black/72` at the least: the sheet is read over, never a bright wallpaper.
 const SHEET_DARKENING: u8 = 72;
 
@@ -177,6 +177,7 @@ impl NowPlaying {
             .fullscreen_use_player_bar;
         let track = self.track(cx);
         let owner = cx.entity().downgrade();
+        let hero = store::layout(cx).sheet.cover;
 
         v_flex()
             .relative()
@@ -205,8 +206,9 @@ impl NowPlaying {
                 div()
                     .id("sheet-hero-slot")
                     .flex_shrink_0()
-                    .size(HERO_MAX)
-                    .max_h(relative(0.5))
+                    .size(px(hero.side()))
+                    .max_h(relative(hero.max_height()))
+                    .max_w(relative(HERO_WIDTH))
                     .on_prepaint(move |bounds, _, cx| {
                         owner
                             .update(cx, |this, cx| {

@@ -413,12 +413,7 @@ impl AlbumDetail {
             .into_any_element()
     }
 
-    fn remote_detail(
-        &self,
-        view: RemoteView,
-        _: &mut Window,
-        _: &mut Context<Self>,
-    ) -> AnyElement {
+    fn remote_detail(&self, view: RemoteView, _: &mut Window, _: &mut Context<Self>) -> AnyElement {
         let cover = AlbumInfo {
             id: view.id.clone(),
             title: view.title.to_string(),
