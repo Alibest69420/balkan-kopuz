@@ -41,6 +41,8 @@ pub struct Overlays {
     dismissed_error: Option<String>,
     banner: Entity<ConnectionBanner>,
     network: Entity<NetworkBanner>,
+    // The dimmed page and the reconnect strip come and go together, fading rather than cutting.
+    offline_fade: motion::Fade,
     // Held, not drawn: toasts must keep arriving in compact mode, where nothing here renders.
     _toasts: Entity<Toasts>,
     _subscriptions: Vec<Subscription>,
@@ -64,6 +66,7 @@ impl Overlays {
             dismissed_error: None,
             banner,
             network,
+            offline_fade: motion::Fade::hidden(),
             _toasts: cx.new(|cx| Toasts::new(window, cx)),
             _subscriptions: subscriptions,
         }
@@ -209,9 +212,11 @@ impl Render for Overlays {
             .progress(JobKind::Scan)
             .cloned();
         let error = self.playback_error(cx);
-        let offline = ConnectionBanner::is_offline(cx);
-        let network = !offline && self.network.read(cx).is_showing(cx);
-        let tips = match offline {
+        let lost = ConnectionBanner::is_offline(cx);
+        let dimmed = self.offline_fade.sample(lost, motion::MEDIUM, window, cx);
+        let offline = dimmed > 0.;
+        let network = !lost && self.network.read(cx).is_showing(cx);
+        let tips = match lost {
             true => None,
             false => hint::card(window, cx),
         };
@@ -237,13 +242,15 @@ impl Render for Overlays {
                         .absolute()
                         .inset_0()
                         .occlude()
-                        .bg(style::black(OFFLINE_SCRIM, cx)),
+                        .bg(style::black(OFFLINE_SCRIM * dimmed, cx)),
                 )
             })
             .child(
                 v_flex()
                     .w_full()
-                    .when(offline, |column| column.child(self.banner.clone()))
+                    .when(offline, |column| {
+                        column.child(div().w_full().opacity(dimmed).child(self.banner.clone()))
+                    })
                     .children(network)
                     .children(scan)
                     .children(error),
