@@ -112,6 +112,7 @@ pub struct Shell {
     // The route last drawn and the incoming page's fade, kept here so a cached page fades like a new one.
     page_key: String,
     page_fade: motion::Fade,
+    page_leaving: Option<gpui_kit::AnyView>,
     dock_fade: motion::Fade,
     // The modal scrim, fading in under a dialog and out after it closes.
     scrim_fade: motion::Fade,
@@ -221,6 +222,7 @@ impl Shell {
             system_artwork: None,
             page_key: String::new(),
             page_fade: motion::Fade::hidden(),
+            page_leaving: None,
             dock_fade: motion::Fade::hidden(),
             scrim_fade: motion::Fade::hidden(),
             source: SourceIdentity::of(sources.read(cx)),
@@ -305,25 +307,44 @@ impl Shell {
             .into_any_element()
     }
 
-    /// The routed page, fading and rising into place whenever the route changes; the page it replaces just goes.
+    /// The routed page, fading and rising into place over the one it replaces, which fades out under it.
     fn page_layer(
         &mut self,
         key: String,
         page: gpui_kit::AnyView,
+        previous: Option<gpui_kit::AnyView>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> gpui_kit::AnyElement {
         if key != self.page_key {
             self.page_key = key;
             self.page_fade = motion::Fade::hidden();
+            self.page_leaving =
+                previous.filter(|previous| previous.entity_id() != page.entity_id());
         }
         let shown = self.page_fade.sample(true, motion::FAST, window, cx);
+        if shown >= 1. {
+            self.page_leaving = None;
+        }
         div()
             .size_full()
             .relative()
-            .top(motion::RISE * (1. - shown))
-            .opacity(shown)
-            .child(page)
+            // Without the old page under it, the first frame of the fade would be an empty window.
+            .children(self.page_leaving.clone().map(|leaving| {
+                div()
+                    .absolute()
+                    .inset_0()
+                    .opacity(1. - shown)
+                    .child(leaving)
+            }))
+            .child(
+                div()
+                    .size_full()
+                    .relative()
+                    .top(motion::RISE * (1. - shown))
+                    .opacity(shown)
+                    .child(page),
+            )
             .into_any_element()
     }
 
@@ -423,8 +444,8 @@ impl Render for Shell {
             == config::PlayerBarPosition::Top;
         let route = Navigator::global(cx).read(cx).current().clone();
         let page = self.router.page(&route, window, cx);
-        self.shown = Some(page.clone());
-        let page = self.page_layer(route.key(), page, window, cx);
+        let previous = self.shown.replace(page.clone());
+        let page = self.page_layer(route.key(), page, previous, window, cx);
         let page = self.handover_layer(page, window, cx);
         // A skin with rounded panes sets the page and the side panel apart as tonal cards.
         let skin = components::style::chrome();
