@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use api::SourceInfo;
 use components::format::{t, text};
 use components::source_mark::{self, SourceMark};
@@ -9,8 +11,9 @@ use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, Icon, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Anchor, App, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, RenderOnce,
-    SharedString, StatefulInteractiveElement as _, Styled, Window, div, px,
+    Anchor, App, Context, DismissEvent, Div, InteractiveElement as _, IntoElement,
+    ParentElement as _, Pixels, RenderOnce, SharedString, Stateful,
+    StatefulInteractiveElement as _, Styled, WeakEntity, Window, div, px,
 };
 use store::{Navigator, Route, SourceStatus, SourcesModel};
 
@@ -96,17 +99,31 @@ impl RenderOnce for SourceSwitcher {
     }
 }
 
-/// Every source, then the way to manage them; a `PopupMenu` so escape, arrows and enter come free.
-fn build(sources: &[SourceInfo], count: usize, mut menu: PopupMenu, cx: &App) -> PopupMenu {
-    menu = menu
+/// Every source in a list that scrolls on its own, then offline mode and the way to manage them, never scrolled away.
+fn build(
+    sources: &[SourceInfo],
+    count: usize,
+    menu: PopupMenu,
+    cx: &Context<PopupMenu>,
+) -> PopupMenu {
+    let owner = cx.entity().downgrade();
+    let sources: Rc<[SourceInfo]> = sources.into();
+    let menu = menu
         .max_w(POPOVER_WIDTH)
         .min_w(POPOVER_WIDTH)
-        .max_h(ROWS_HEIGHT)
-        .scrollable(true)
-        .label(SharedString::from(format!("{}  {count}", t("sources"))));
-    for source in sources {
-        menu = menu.item(row(source, cx));
-    }
+        .label(SharedString::from(format!("{}  {count}", t("sources"))))
+        .item(
+            PopupMenuItem::element(move |_, cx| {
+                v_flex()
+                    .id("source-rows")
+                    .w_full()
+                    .max_h(ROWS_HEIGHT)
+                    .gap_0p5()
+                    .overflow_y_scroll()
+                    .children(sources.iter().map(|source| row(source, owner.clone(), cx)))
+            })
+            .disabled(true),
+        );
     crate::offline::item(menu.separator(), cx).item(
         PopupMenuItem::new(t("manage_sources"))
             .icon(Icon::default().path(MANAGE_ICON).size(GLYPH))
@@ -121,7 +138,8 @@ fn build(sources: &[SourceInfo], count: usize, mut menu: PopupMenu, cx: &App) ->
     )
 }
 
-fn row(source: &SourceInfo, cx: &App) -> PopupMenuItem {
+/// One source; it answers its own click, since the list it sits in is a single inert menu item.
+fn row(source: &SourceInfo, owner: WeakEntity<PopupMenu>, cx: &App) -> Stateful<Div> {
     let accent = source_mark::accent(Some(&source.service), cx);
     let active = source.active;
     let id = source.id.clone();
@@ -134,56 +152,61 @@ fn row(source: &SourceInfo, cx: &App) -> PopupMenuItem {
     };
     let muted = style::white(style::TEXT_SUBTLE, cx);
     let cut_off = SourcesModel::global(cx).read(cx).cut_off(source);
-    let row_id = SharedString::from(format!("source-row-{}", source.id));
-    PopupMenuItem::element(move |_, _| {
-        h_flex()
-            .id(row_id.clone())
-            .w_full()
-            .gap_2p5()
-            .when(cut_off, |row| {
-                row.opacity(CUT_OFF)
-                    .tooltip(|window, cx| Tooltip::new(t("error_network_down")).build(window, cx))
-            })
-            .child(mark.clone())
-            .child(
-                v_flex()
-                    .flex_1()
-                    .min_w_0()
-                    .gap(SUBLINE_GAP)
-                    .child(
-                        div()
-                            .truncate()
-                            .text_sm()
-                            .map(|line| match active {
-                                true => line.font_semibold(),
-                                false => line.font_medium(),
-                            })
-                            .text_color(ink)
-                            .child(name.clone()),
-                    )
-                    .child(
-                        div()
-                            .truncate()
-                            .text_size(style::text_11())
-                            .text_color(muted)
-                            .child(subline.clone()),
-                    ),
-            )
-            .when(active, |row| {
-                row.child(
-                    Icon::default()
-                        .path(icons::CHECK)
-                        .size(CHECK)
-                        .text_color(accent),
+    let hover = style::white(style::HOVER, cx);
+    h_flex()
+        .id(SharedString::from(format!("source-row-{}", source.id)))
+        .w_full()
+        .px_2()
+        .py_1()
+        .gap_2p5()
+        .rounded(style::radius(cx))
+        .cursor_pointer()
+        .hover(move |row| row.bg(hover))
+        .when(cut_off, |row| {
+            row.opacity(CUT_OFF)
+                .tooltip(|window, cx| Tooltip::new(t("error_network_down")).build(window, cx))
+        })
+        .child(mark)
+        .child(
+            v_flex()
+                .flex_1()
+                .min_w_0()
+                .gap(SUBLINE_GAP)
+                .child(
+                    div()
+                        .truncate()
+                        .text_sm()
+                        .map(|line| match active {
+                            true => line.font_semibold(),
+                            false => line.font_medium(),
+                        })
+                        .text_color(ink)
+                        .child(name),
                 )
-            })
-            .when(cut_off, |row| {
-                row.child(icons::icon(icons::WIFI_OFF).size(CHECK).text_color(muted))
-            })
-    })
-    .on_click(move |_, window, cx| {
-        SourcesModel::global(cx).update(cx, |sources, cx| sources.switch(id.clone(), window, cx));
-    })
+                .child(
+                    div()
+                        .truncate()
+                        .text_size(style::text_11())
+                        .text_color(muted)
+                        .child(subline),
+                ),
+        )
+        .when(active, |row| {
+            row.child(
+                Icon::default()
+                    .path(icons::CHECK)
+                    .size(CHECK)
+                    .text_color(accent),
+            )
+        })
+        .when(cut_off, |row| {
+            row.child(icons::icon(icons::WIFI_OFF).size(CHECK).text_color(muted))
+        })
+        .on_click(move |_, window, cx| {
+            SourcesModel::global(cx)
+                .update(cx, |sources, cx| sources.switch(id.clone(), window, cx));
+            owner.update(cx, |_, cx| cx.emit(DismissEvent)).ok();
+        })
 }
 
 /// The trigger tile: glyph, name, status dot and chevron, on the Button the menu hangs off.
