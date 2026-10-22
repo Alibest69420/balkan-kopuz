@@ -1,8 +1,10 @@
 //! The docked column beside the content: the same queue and lyrics the sheet draws, in a narrower slot.
 
 use components::format::t;
-use components::{DockPanel, Edge, Segment, Segmented, icons};
-use gpui_kit::{AnyElement, Context, IntoElement, Pixels, Window, div, px};
+use components::{DockPanel, Edge, Segment, Segmented, icons, motion};
+use gpui_kit::{
+    AnyElement, Context, IntoElement, ParentElement as _, Pixels, Styled as _, Window, div, px,
+};
 use store::layout::SheetTab;
 use store::{Chrome, SidePanel};
 
@@ -19,19 +21,29 @@ impl NowPlaying {
         self.panel_width.unwrap_or(DEFAULT_WIDTH)
     }
 
-    pub(crate) fn render_panel(&mut self, _: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn render_panel(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         // Devices is the bar's popover; this column only ever shows the queue or the lyrics.
         let showing = match Chrome::global(cx).read(cx).panel() {
             Some(SidePanel::Lyrics) => SheetTab::Lyrics,
             Some(SidePanel::Queue) => SheetTab::Queue,
-            _ => return div().into_any_element(),
+            // A closing column keeps what it showed while the shell fades it out.
+            _ => match self.tab_drawn {
+                Some(tab) => tab,
+                None => return div().into_any_element(),
+            },
         };
         let panel = cx.entity().downgrade();
+        let header = self.tab_strip(showing, false, cx);
+        let body = self.tab_body(showing, window, cx);
 
         DockPanel::new("panel", Edge::Left)
             .width(self.panel_width())
-            .header(self.tab_strip(showing, false, cx))
-            .body(self.tab_body(showing))
+            .header(header)
+            .body(body)
             .on_close(|_, cx| {
                 Chrome::global(cx).update(cx, |chrome, cx| chrome.set_panel(None, cx))
             })
@@ -91,7 +103,45 @@ impl NowPlaying {
         cx.notify();
     }
 
-    pub(crate) fn tab_body(&self, showing: SheetTab) -> AnyElement {
+    /// The tab's body, crossfading from the last one when the tab changes.
+    pub(crate) fn tab_body(
+        &mut self,
+        showing: SheetTab,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        if self.tab_drawn != Some(showing) {
+            self.tab_leaving = self.tab_drawn.replace(showing);
+            self.tab_fade = motion::Fade::hidden();
+        }
+        let shown = self.tab_fade.sample(true, motion::FAST, window, cx);
+        let leaving = self
+            .tab_leaving
+            .filter(|leaving| shown < 1. && *leaving != showing);
+        if leaving.is_none() {
+            self.tab_leaving = None;
+            return self.tab_view(showing);
+        }
+        div()
+            .size_full()
+            .relative()
+            .children(leaving.map(|leaving| {
+                div()
+                    .absolute()
+                    .inset_0()
+                    .opacity(1. - shown)
+                    .child(self.tab_view(leaving))
+            }))
+            .child(
+                div()
+                    .size_full()
+                    .opacity(shown)
+                    .child(self.tab_view(showing)),
+            )
+            .into_any_element()
+    }
+
+    fn tab_view(&self, showing: SheetTab) -> AnyElement {
         match showing {
             SheetTab::Lyrics => self
                 .lyrics

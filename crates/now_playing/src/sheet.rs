@@ -112,6 +112,7 @@ impl NowPlaying {
         let bar_at_top = config.ui.player_bar_position == config::PlayerBarPosition::Top;
 
         let stage = self.stage(&swap, window, cx);
+        let body = self.tab_body(showing, window, cx);
         let panel = v_flex()
             .h_full()
             .w(relative(PANEL))
@@ -128,13 +129,7 @@ impl NowPlaying {
                     .py_3()
                     .child(self.tab_strip(showing, false, cx)),
             )
-            .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .w_full()
-                    .child(self.tab_body(showing)),
-            );
+            .child(div().flex_1().min_h_0().w_full().child(body));
 
         let sheet = surface()
             .key_context("NowPlaying")

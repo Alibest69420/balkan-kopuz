@@ -109,6 +109,7 @@ pub struct Shell {
     // The route last drawn and the incoming page's fade, kept here so a cached page fades like a new one.
     page_key: String,
     page_fade: motion::Fade,
+    dock_fade: motion::Fade,
     // What the active source answers to, so only a real change throws the pages away.
     source: SourceIdentity,
     // The page drawn last, and the one a source switch is handing over from.
@@ -215,6 +216,7 @@ impl Shell {
             system_artwork: None,
             page_key: String::new(),
             page_fade: motion::Fade::hidden(),
+            dock_fade: motion::Fade::hidden(),
             source: SourceIdentity::of(sources.read(cx)),
             shown: None,
             handover: None,
@@ -383,6 +385,9 @@ impl Render for Shell {
         let quick_search_open = chrome.is_quick_search_open();
         // The docked column is drag-resizable, so it owns the slot's width.
         let panel_width = self.side_panel.read(cx).panel_width();
+        let dock = self
+            .dock_fade
+            .sample(panel_open && connected, motion::MEDIUM, window, cx);
         let show_player_bar = connected && !compact;
         let player_at_top = ConfigModel::global(cx)
             .read(cx)
@@ -453,8 +458,21 @@ impl Render for Shell {
                                 .child(self.overlays.clone())
                                 .child(self.debug_overlay.clone()),
                         )
-                        .when(panel_open && connected, |body| {
-                            body.child(card(div()).w(panel_width).child(self.side_panel.clone()))
+                        .when(dock > 0., |body| {
+                            // The column opens out and fades in together, its contents laid out at full width throughout.
+                            body.child(
+                                card(div())
+                                    .flex_shrink_0()
+                                    .overflow_hidden()
+                                    .w(panel_width * dock)
+                                    .opacity(dock)
+                                    .child(
+                                        div()
+                                            .w(panel_width)
+                                            .h_full()
+                                            .child(self.side_panel.clone()),
+                                    ),
+                            )
                         }),
                 )
                 .when(show_player_bar && !player_at_top, |window_body| {

@@ -85,6 +85,10 @@ pub struct NowPlaying {
     swap: swap::TrackSwap,
     /// The sheet's own fade, so it can fold away before the shell takes it down.
     sheet_fade: components::motion::Fade,
+    /// The tab body drawn last and the one it is crossfading from.
+    tab_drawn: Option<SheetTab>,
+    tab_leaving: Option<SheetTab>,
+    tab_fade: components::motion::Fade,
     devices_open: bool,
     devices: Vec<api::ExternalDevice>,
     queue: Option<Entity<QueueView>>,
@@ -183,6 +187,9 @@ impl NowPlaying {
             root: None,
             hero: None,
             sheet_fade: components::motion::Fade::hidden(),
+            tab_drawn: None,
+            tab_leaving: None,
+            tab_fade: components::motion::Fade::shown(),
             swap: {
                 let mut swap = swap::TrackSwap::default();
                 swap.follow(PlayerModel::global(cx).read(cx).track());
