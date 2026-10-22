@@ -153,7 +153,9 @@ fn with_interludes(lines: Vec<Line>) -> Vec<Line> {
             .iter()
             .map(Line::end_estimate)
             .fold(f64::NEG_INFINITY, f64::max)
-            .clamp(lines[current].start, next_start);
+            // Not `clamp`: a provider can send lines out of order, and a reversed range panics.
+            .max(lines[current].start)
+            .min(next_start);
         if next_start - gap_start >= INTERLUDE_MIN {
             gaps.push((next, gap_start, next_start));
         }
@@ -721,6 +723,12 @@ mod tests {
         assert_eq!(lines[0].end, Some(12.0));
         assert_eq!(lines[2].start, 15.0);
         assert_eq!(lines[2].end, Some(40.0));
+    }
+
+    #[test]
+    fn lines_out_of_order_draw_without_an_interlude_between_them() {
+        let lines = with_interludes(vec![line(30.0, Some(33.0)), line(20.0, Some(23.0))]);
+        assert!(lines[1..].iter().all(|line| !line.interlude));
     }
 
     #[test]
