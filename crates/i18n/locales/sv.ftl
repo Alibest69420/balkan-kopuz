@@ -1160,3 +1160,5 @@ source_needs_internet = Needs the internet
 discover_your_mixes = Your mixes
 discover_never_played = Never played
 discover_forgotten_favorites = Forgotten favorites
+library_empty_offline = Nothing is available offline yet
+library_empty_offline_detail = Download songs, or play them while online, to keep them for offline listening.

@@ -1123,3 +1123,5 @@ source_needs_internet = İnternet gerekir
 discover_your_mixes = Mikslerin
 discover_never_played = Hiç dinlenmedi
 discover_forgotten_favorites = Unutulan favoriler
+library_empty_offline = Henüz çevrimdışı kullanılabilen bir şey yok
+library_empty_offline_detail = Şarkıları indir ya da çevrimiçiyken çal, çevrimdışı dinlemek için saklansınlar.
