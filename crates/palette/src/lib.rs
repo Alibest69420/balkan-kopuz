@@ -13,7 +13,6 @@ use std::time::Duration;
 use api::{AlbumPage, ApiError, ArtistPage, KopuzApi, SearchRequest, SearchResults, Table};
 use components::format::{t, t_with};
 use components::{Badge, CommandRow, EmptyState, KeyHint, SearchField, icons, motion, style};
-use gpui_kit::base::motion::{Easing, Presence, Transition};
 use gpui_kit::component::input::{Escape, IndentInline, InputEvent, InputState, MoveDown, MoveUp};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -152,6 +151,8 @@ pub struct Palette {
     keys: Vec<String>,
     selected: usize,
     open: bool,
+    // Its own fade, so it can fold away after the shell stops asking for it.
+    fade: motion::Fade,
     scroll: UniformListScrollHandle,
     // Closing hands focus back, or the shell's keys would have nowhere to dispatch from.
     was_focused: Option<FocusHandle>,
@@ -202,6 +203,7 @@ impl Palette {
             keys: Vec::new(),
             selected: 0,
             open,
+            fade: motion::Fade::hidden(),
             scroll: UniformListScrollHandle::new(),
             was_focused: None,
             _debounce: None,
@@ -269,6 +271,11 @@ impl Palette {
         self.input
             .update(cx, |state, cx| state.set_value(query, window, cx));
         self.typed(cx);
+    }
+
+    /// Whether it is on screen, open or still fading out.
+    pub fn is_visible(&self) -> bool {
+        self.open || self.fade.is_visible()
     }
 
     fn close(&mut self, cx: &mut Context<Self>) {
@@ -911,11 +918,16 @@ impl Render for Palette {
         let count = self.lines.len();
         let height = list_height(count, window);
         components::scroll::smooth_list("palette-list", &self.scroll, window, cx);
-        // The palette is only in the tree while it is open, so its entrance starts from nothing.
-        let revealed = Presence::new("palette", true)
-            .transition(Transition::new(motion::FAST).easing(Easing::EaseOut))
-            .sample(window, cx)
-            .progress;
+        let revealed = self.fade.sample(self.open, motion::FAST, window, cx);
+        if !self.open && revealed <= 0. {
+            // One more frame lets the shell see the fade is over and take the palette down.
+            window.request_animation_frame();
+        }
+        // It rises into place on the way in and only fades on the way out.
+        let rise = match self.open {
+            true => motion::NUDGE * 1.5 * (1. - revealed),
+            false => gpui_kit::px(0.),
+        };
         let narrowed = match self.drill.as_ref() {
             Some(target) => Some(target.label()),
             None if self.mode != Mode::Everything => Some(t(self.mode.label())),
@@ -954,6 +966,8 @@ impl Render for Palette {
             .child(
                 v_flex()
                     .id("palette-panel")
+                    .relative()
+                    .top(rise)
                     .w_full()
                     .max_w(PANEL_WIDTH)
                     .bg(cx.theme().popover)

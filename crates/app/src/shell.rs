@@ -407,7 +407,8 @@ impl Render for Shell {
         let playlists_open = playlists.is_open(cx) && connected;
         let playlists_width = playlists.width();
         let panel_open = chrome.panel().is_some();
-        let quick_search_open = chrome.is_quick_search_open();
+        let quick_search_shown =
+            chrome.is_quick_search_open() || self.quick_search.read(cx).is_visible();
         // The docked column is drag-resizable, so it owns the slot's width.
         let panel_width = self.side_panel.read(cx).panel_width();
         let dock = self
@@ -549,7 +550,7 @@ impl Render for Shell {
             .when(sheet_open && connected && !compact, |shell| {
                 shell.child(div().absolute().inset_0().child(self.fullscreen.clone()))
             })
-            .when(quick_search_open && !compact, |shell| {
+            .when(quick_search_shown && !compact, |shell| {
                 shell.child(self.quick_search.clone())
             })
             .children(self.dialog_scrim(window, cx))
