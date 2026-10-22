@@ -1,5 +1,6 @@
 //! The "For you" row: the mix once it is in, pulsing tiles while it is asked for, and why it failed.
 
+use std::rc::Rc;
 use std::time::Duration;
 
 use components::format::t;
@@ -13,13 +14,14 @@ use gpui_kit::{
 use store::{ForYouModel, ForYouState};
 
 use crate::cards::{GAP, TILE};
-use crate::data::Shelf;
+use crate::data::{Shelf, Tile};
 
 /// Enough placeholders to fill a wide window; the daemon's mix is about this long anyway.
 const PLACEHOLDERS: usize = 8;
 
 pub(crate) fn row(
     shelf: &Shelf,
+    last: &Rc<[Tile]>,
     handle: &ScrollHandle,
     fade: &mut motion::Fade,
     window: &mut Window,
@@ -34,6 +36,17 @@ pub(crate) fn row(
         // The pulsing row stays under the mix while it fades in, so the row never empties.
         let placeholder = (shown < 1.).then(|| placeholder(title.clone(), false, cx));
         return skeleton::reveal(content, placeholder, shown);
+    }
+    let failed = matches!(model.state(), ForYouState::Failed(_));
+    if shown > 0. && !failed && !last.is_empty() {
+        // A refresh lets the mix go, so it fades out over the pulsing row rather than cutting to it.
+        let leaving = Shelf {
+            name: shelf.name,
+            tiles: last.clone(),
+            form: shelf.form,
+        };
+        let content = crate::shelf::carousel(&leaving, handle);
+        return skeleton::reveal(content, Some(placeholder(title, true, cx)), shown);
     }
     match model.state() {
         ForYouState::Failed(error) => v_flex()

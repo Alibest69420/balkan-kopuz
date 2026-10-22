@@ -67,6 +67,8 @@ pub struct Home {
     seed: u64,
     // The For you row's fade over its placeholder, kept here so a revisit finds it already in.
     for_you: components::motion::Fade,
+    // The last mix drawn, for the row to fade out once a refresh lets it go.
+    for_you_last: Rc<[data::Tile]>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -165,6 +167,7 @@ impl Home {
             catalog: None,
             seed: seed(),
             for_you: components::motion::Fade::hidden(),
+            for_you_last: Rc::from([]),
             _subscriptions: subscriptions,
         }
     }
@@ -199,6 +202,13 @@ impl Home {
             for_you,
             seed: self.seed,
         });
+        if let Some(mix) = self
+            .shelves
+            .iter()
+            .find(|shelf| shelf.name == "for_you" && !shelf.tiles.is_empty())
+        {
+            self.for_you_last = mix.tiles.clone();
+        }
         cx.notify();
     }
 
@@ -281,9 +291,14 @@ impl Render for Home {
             // A ranking is a list and a shelf is a row; `Form` is what says which a name gets.
             rows.push(match shelf.form {
                 data::Form::Ranked => ranked::ranked(shelf, cx),
-                _ if shelf.name == "for_you" => {
-                    for_you::row(shelf, &handle, &mut self.for_you, window, cx)
-                }
+                _ if shelf.name == "for_you" => for_you::row(
+                    shelf,
+                    &self.for_you_last,
+                    &handle,
+                    &mut self.for_you,
+                    window,
+                    cx,
+                ),
                 _ => shelf::shelf(shelf, &handle),
             });
         }
