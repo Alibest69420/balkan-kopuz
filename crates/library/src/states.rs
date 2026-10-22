@@ -30,6 +30,12 @@ pub fn empty_library(facet: Facet, cx: &App) -> EmptyState {
         .as_ref()
         .is_some_and(|source| !source.authenticated && !source.anonymous);
 
+    // Offline, a remote library lists only what is downloaded or cached; syncing or signing in cannot fill it.
+    if sources.network().offline_mode.is_on() && !capabilities.scan_folders {
+        return EmptyState::new(t("library_empty_not_synced"))
+            .icon(icons::CLOUD_OFF)
+            .detail(t("offline_mode_on"));
+    }
     if signed_out || anonymous {
         let Some(source) = source else {
             return EmptyState::new(t("no_tracks_found")).icon(icons::LIBRARY);
