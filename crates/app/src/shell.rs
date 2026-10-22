@@ -1,5 +1,6 @@
 //! The window: the top bar, the routed page, the panels, the player bar, and everything over them.
 
+use components::motion;
 use gpui_kit::component::{ActiveTheme as _, Root, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -87,6 +88,9 @@ pub struct Shell {
     // The theme these were applied for, so config edits reapply only on a change.
     applied_theme: AppliedTheme,
     system_artwork: Option<api::ArtworkRef>,
+    // The route last drawn and the incoming page's fade, kept here so a cached page fades like a new one.
+    page_key: String,
+    page_fade: motion::Fade,
     // On its own timer: GPUI only renders on a change, and an idle app is when covers want releasing.
     _heartbeat: Task<()>,
     _subscriptions: Vec<Subscription>,
@@ -181,6 +185,8 @@ impl Shell {
             debug_overlay: cx.new(|cx| debug_overlay::DebugOverlay::new(window, cx)),
             applied_theme,
             system_artwork: None,
+            page_key: String::new(),
+            page_fade: motion::Fade::hidden(),
             _heartbeat: Self::heartbeat(window, cx),
             _subscriptions: subscriptions,
         }
@@ -230,6 +236,28 @@ impl Shell {
 
     pub fn go_back(&mut self, cx: &mut Context<Self>) {
         Navigator::global(cx).update(cx, |navigator, cx| navigator.go_back(cx));
+    }
+
+    /// The routed page, fading and rising into place whenever the route changes; the page it replaces just goes.
+    fn page_layer(
+        &mut self,
+        key: String,
+        page: gpui_kit::AnyView,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> gpui_kit::AnyElement {
+        if key != self.page_key {
+            self.page_key = key;
+            self.page_fade = motion::Fade::hidden();
+        }
+        let shown = self.page_fade.sample(true, motion::FAST, window, cx);
+        div()
+            .size_full()
+            .relative()
+            .top(motion::RISE * (1. - shown))
+            .opacity(shown)
+            .child(page)
+            .into_any_element()
     }
 
     /// The guide alone: no bars, panels or player, and no "Shell" context, so no shortcut navigates away.
@@ -305,6 +333,7 @@ impl Render for Shell {
             == config::PlayerBarPosition::Top;
         let route = Navigator::global(cx).read(cx).current().clone();
         let page = self.router.page(&route, window, cx);
+        let page = self.page_layer(route.key(), page, window, cx);
         // A skin with rounded panes sets the page and the side panel apart as tonal cards.
         let skin = components::style::chrome();
         let paned = skin.pane_radius > px(0.);

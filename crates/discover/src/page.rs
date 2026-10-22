@@ -55,6 +55,8 @@ pub struct CatalogPage {
     error: Option<SharedString>,
     // Bumped per load; a slow answer for one chip must not land after the user moved to another.
     generation: u64,
+    // The shelves' first appearance, kept here so a revisit does not fade them in again.
+    reveal: motion::Fade,
     scroll: ScrollHandle,
     _load: Option<Task<()>>,
     _more: Option<Task<()>>,
@@ -95,6 +97,7 @@ impl CatalogPage {
             paging: None,
             error: None,
             generation: 0,
+            reveal: motion::Fade::hidden(),
             scroll,
             _load: None,
             _more: None,
@@ -441,12 +444,9 @@ impl Render for CatalogPage {
         let first_load = self.loading && held.is_none();
         let switching = self.loading && held.is_some();
         let paging_page = self.paging == Some(Paging::Page);
-        let reveal = motion::enter(
-            motion::id("catalog-page-shelves", self.generation),
-            motion::MEDIUM,
-            window,
-            cx,
-        );
+        let reveal = self
+            .reveal
+            .sample(held.is_some(), motion::MEDIUM, window, cx);
         let content = v_flex()
             .w_full()
             .gap_8()

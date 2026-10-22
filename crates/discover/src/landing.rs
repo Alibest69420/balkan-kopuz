@@ -1,5 +1,6 @@
 //! The Discover landing: the source's mixes, a row per page it declares, and the library's forgotten corners.
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use api::{AlbumInfo, CatalogShelf, DiscoverRows, PageEntry, TrackInfo};
@@ -36,6 +37,8 @@ pub struct Landing {
     // Bumped per ask; an answer from before a refresh or a source change is dropped.
     generation: u64,
     started: bool,
+    // Each row's fade over its placeholder, by row name.
+    reveals: HashMap<String, motion::Fade>,
     // The mixes and the page rows, which play and page as the catalog's own shelves do.
     shelves: Entity<Shelves>,
     never_played: ScrollHandle,
@@ -65,6 +68,7 @@ impl Landing {
             page_rows: Vec::new(),
             generation: 0,
             started: false,
+            reveals: HashMap::new(),
             shelves: cx.new(Shelves::new),
             never_played: ScrollHandle::new(),
             forgotten: ScrollHandle::new(),
@@ -202,11 +206,21 @@ impl Landing {
         }
     }
 
-    fn row(&self, row: Row, fill: Fill, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn row(
+        &mut self,
+        row: Row,
+        fill: Fill,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let name = row_name(row, &self.pages);
+        // Kept per answer on the view, so a revisit finds every row already in rather than fading it again.
+        let fade = self.reveals.entry(name.clone()).or_default();
         if fill == Fill::Placeholder {
+            fade.snap(false);
             return placeholder_row(&name, self.title(row));
         }
+        let shown = fade.sample(true, motion::MEDIUM, window, cx);
         let content = match (row, &self.rows) {
             (Row::Mixes, _) => self
                 .shelves
@@ -228,17 +242,8 @@ impl Landing {
             _ => None,
         };
         // The content fades over where its placeholder stood, once per answer.
-        let shown = motion::enter(
-            motion::id("discover-row", format!("{name}-{}", self.generation)),
-            motion::MEDIUM,
-            window,
-            cx,
-        );
-        div()
-            .w_full()
-            .opacity(shown)
-            .children(content)
-            .into_any_element()
+        let placeholder = (shown < 1.).then(|| placeholder_row(&name, self.title(row)));
+        skeleton::reveal(div().w_full().children(content), placeholder, shown)
     }
 
     fn header(&self, cx: &mut Context<Self>) -> impl IntoElement {

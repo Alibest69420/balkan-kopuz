@@ -138,3 +138,27 @@ pub fn band(count: usize, width: Pixels, round: bool, cx: &App) -> impl IntoElem
         .pb_6()
         .children((0..count.max(1)).map(|_| tile(width, round, cx)))
 }
+
+/// Content fading in `shown` of the way over the placeholder it replaces, which fades out beneath it.
+pub fn reveal(
+    content: impl IntoElement,
+    placeholder: Option<gpui_kit::AnyElement>,
+    shown: f32,
+) -> gpui_kit::AnyElement {
+    div()
+        .w_full()
+        .relative()
+        .when_some(placeholder.filter(|_| shown < 1.), |frame, placeholder| {
+            frame.child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .w_full()
+                    .opacity(1. - shown)
+                    .child(placeholder),
+            )
+        })
+        .child(div().w_full().opacity(shown).child(content))
+        .into_any_element()
+}
