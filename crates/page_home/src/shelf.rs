@@ -37,6 +37,7 @@ pub(crate) fn title(name: &str) -> &'static str {
         "made_for_you" => "made_for_you",
         "top_artists" => "top_artists",
         "your_playlists" => "playlists",
+        "catalog" => "home_section_catalog",
         _ => "recently_played",
     }
 }

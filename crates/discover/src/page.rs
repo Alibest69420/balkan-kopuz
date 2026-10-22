@@ -20,7 +20,7 @@ use gpui_kit::{
     SharedString, StatefulInteractiveElement as _, Styled, Subscription, Task, Window, div,
     pulsating_between, px,
 };
-use store::{Link, SourcesModel};
+use store::{CatalogCache, Link, SourcesModel};
 
 use crate::shelves::{MoreOf, Shelves, TILE};
 use crate::states;
@@ -38,8 +38,10 @@ enum Paging {
 }
 
 pub struct CatalogPage {
-    /// The page the route opened.
+    /// The page the route opened; empty for the source's plain feed, which no page names.
     id: String,
+    // Drawn inside Home, which owns the scroll, the edge and the title.
+    embedded: bool,
     /// What is on screen: the page, or the chip picked over it.
     showing: String,
     // The source can keep marking a chip after it was cleared, so the local pick wins.
@@ -61,13 +63,30 @@ pub struct CatalogPage {
 
 impl CatalogPage {
     pub fn new(id: SharedString, _: &mut Window, cx: &mut Context<Self>) -> Self {
-        let shelves = cx.new(|cx| Shelves::new(cx).offer_more(true));
+        Self::build(id.to_string(), false, ScrollHandle::new(), cx)
+    }
+
+    /// The source's first page, or its plain feed when it lists none, as a section of a page that scrolls it.
+    pub fn embedded(
+        id: Option<SharedString>,
+        scroll: ScrollHandle,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let id = id.map(|id| id.to_string()).unwrap_or_default();
+        Self::build(id, true, scroll, cx)
+    }
+
+    fn build(id: String, embedded: bool, scroll: ScrollHandle, cx: &mut Context<Self>) -> Self {
+        let feed = id.is_empty();
+        let shelves = cx.new(|cx| Shelves::new(cx).offer_more(!feed));
         let subscriptions = vec![cx.subscribe(&shelves, |this, _, more: &MoreOf, cx| {
             this.top_up_shelf(more.0, cx)
         })];
         let mut page = Self {
-            id: id.to_string(),
-            showing: id.to_string(),
+            showing: id.clone(),
+            id,
+            embedded,
             picked: None,
             detail: None,
             tracks_first: false,
@@ -76,7 +95,7 @@ impl CatalogPage {
             paging: None,
             error: None,
             generation: 0,
-            scroll: ScrollHandle::new(),
+            scroll,
             _load: None,
             _more: None,
             _subscriptions: subscriptions,
@@ -85,17 +104,40 @@ impl CatalogPage {
         page
     }
 
+    fn is_feed(&self) -> bool {
+        self.showing.is_empty()
+    }
+
     fn load(&mut self, cx: &mut Context<Self>) {
         self.generation += 1;
         let generation = self.generation;
-        self.loading = true;
         self.error = None;
         self.paging = None;
         self._more = None;
+        // A page seen this session draws at once; a stale one is fetched again behind it.
+        let cached = CatalogCache::get(&self.showing, cx);
+        let held = cached.is_some();
+        if let Some(cached) = cached {
+            self.show(cached.detail, cx);
+            if cached.fresh {
+                self.loading = false;
+                self._load = None;
+                cx.notify();
+                return;
+            }
+        }
+        self.loading = !held;
         cx.notify();
-        let request = CatalogDetailRequest::page(self.showing.clone());
-        let call =
-            Link::global(cx).call(move |api| async move { api.catalog_detail(request).await });
+        let showing = self.showing.clone();
+        let call = Link::global(cx).call(move |api| async move {
+            match showing.is_empty() {
+                true => api.catalog(None).await.map(feed_detail),
+                false => {
+                    api.catalog_detail(CatalogDetailRequest::page(showing))
+                        .await
+                }
+            }
+        });
         self._load = Some(cx.spawn(async move |this, cx| {
             let result = call.await;
             this.update(cx, |this, cx| {
@@ -104,7 +146,10 @@ impl CatalogPage {
                 }
                 this.loading = false;
                 match result {
-                    Ok(detail) => this.show(detail, cx),
+                    Ok(detail) => {
+                        CatalogCache::put(&this.showing, detail.clone(), cx);
+                        this.show(detail, cx);
+                    }
                     // A stale page on screen beats an error over it.
                     Err(error) if this.detail.is_some() => {
                         tracing::warn!(%error, "catalog page refresh failed");
@@ -157,6 +202,10 @@ impl CatalogPage {
         if let Some(token) = detail.continuation.clone() {
             return Some((Paging::Page, token));
         }
+        // The plain feed pages only as a whole.
+        if self.is_feed() {
+            return None;
+        }
         let last = detail.shelves.len().checked_sub(1)?;
         let token = detail.shelves[last].continuation.clone()?;
         Some((Paging::Shelf(last), token))
@@ -199,12 +248,17 @@ impl CatalogPage {
         self.shelves
             .update(cx, |shelves, cx| shelves.set_topping_up(held, cx));
         let generation = self.generation;
+        let feed = self.is_feed();
         let request = CatalogDetailRequest {
-            continuation: Some(token),
+            continuation: Some(token.clone()),
             ..CatalogDetailRequest::page(self.showing.clone())
         };
-        let call =
-            Link::global(cx).call(move |api| async move { api.catalog_detail(request).await });
+        let call = Link::global(cx).call(move |api| async move {
+            match feed {
+                true => api.catalog(Some(token)).await.map(feed_detail),
+                false => api.catalog_detail(request).await,
+            }
+        });
         cx.notify();
         self._more = Some(cx.spawn(async move |this, cx| {
             let result = call.await;
@@ -216,7 +270,12 @@ impl CatalogPage {
                 this.shelves
                     .update(cx, |shelves, cx| shelves.set_topping_up(None, cx));
                 match result {
-                    Ok(answer) => this.extend(paging, answer, cx),
+                    Ok(answer) => {
+                        this.extend(paging, answer, cx);
+                        if let Some(detail) = this.detail.clone() {
+                            CatalogCache::update(&this.showing, detail, cx);
+                        }
+                    }
                     Err(error) => {
                         tracing::warn!(%error, "catalog page continuation failed");
                         // Stop asking: a failed cursor fails again on every scroll.
@@ -375,8 +434,6 @@ impl CatalogPage {
 impl Render for CatalogPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("catalog-page");
-        components::scroll::smooth("catalog-page-scroll", &self.scroll, window, cx);
-        let header = self.header(cx);
         let chips = self.chips(cx);
         let held = self.detail.as_ref();
         let empty =
@@ -390,6 +447,46 @@ impl Render for CatalogPage {
             window,
             cx,
         );
+        let content = v_flex()
+            .w_full()
+            .gap_8()
+            .children(chips)
+            .when_some(self.error.clone(), |page, message| {
+                page.child(EmptyState::failed(
+                    message,
+                    cx.listener(|this, _, _, cx| this.load(cx)),
+                ))
+            })
+            .when(first_load, |page| page.child(placeholder_bands(cx)))
+            .when(empty && !self.loading, |page| {
+                page.child(EmptyState::new(t("catalog_page_empty")).icon(components::icons::FOLDER))
+            })
+            .when(held.is_some(), |page| {
+                page.child(
+                    div()
+                        .w_full()
+                        .opacity(if switching { FADED } else { reveal })
+                        .child(self.shelves.clone()),
+                )
+            })
+            .when(paging_page, |page| {
+                page.child(
+                    components::Loading::new()
+                        .label(t("discover_more_loading"))
+                        .compact(),
+                )
+            });
+        if self.embedded {
+            // The host scrolls; a wheel over the feed is what asks it for more.
+            return div()
+                .id("catalog-home")
+                .w_full()
+                .on_scroll_wheel(cx.listener(|this, _, _, cx| this.page_on_scroll(cx)))
+                .child(content)
+                .into_any_element();
+        }
+        components::scroll::smooth("catalog-page-scroll", &self.scroll, window, cx);
+        let header = self.header(cx);
         div()
             .id("catalog-page")
             .size_full()
@@ -404,36 +501,18 @@ impl Render for CatalogPage {
                     .pb_10()
                     .gap_8()
                     .child(header)
-                    .children(chips)
-                    .when_some(self.error.clone(), |page, message| {
-                        page.child(EmptyState::failed(
-                            message,
-                            cx.listener(|this, _, _, cx| this.load(cx)),
-                        ))
-                    })
-                    .when(first_load, |page| page.child(placeholder_bands(cx)))
-                    .when(empty && !self.loading, |page| {
-                        page.child(
-                            EmptyState::new(t("catalog_page_empty"))
-                                .icon(components::icons::FOLDER),
-                        )
-                    })
-                    .when(held.is_some(), |page| {
-                        page.child(
-                            div()
-                                .w_full()
-                                .opacity(if switching { FADED } else { reveal })
-                                .child(self.shelves.clone()),
-                        )
-                    })
-                    .when(paging_page, |page| {
-                        page.child(
-                            components::Loading::new()
-                                .label(t("discover_more_loading"))
-                                .compact(),
-                        )
-                    }),
+                    .child(content),
             )
+            .into_any_element()
+    }
+}
+
+/// The plain feed's answer, in the shape a page holds.
+fn feed_detail(page: api::CatalogPage) -> CatalogDetail {
+    CatalogDetail {
+        shelves: page.shelves,
+        continuation: page.continuation,
+        ..CatalogDetail::default()
     }
 }
 

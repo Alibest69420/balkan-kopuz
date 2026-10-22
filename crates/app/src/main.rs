@@ -127,6 +127,13 @@ fn main() -> anyhow::Result<()> {
             shortcuts::init(cx);
             library::register(cx);
             page_home::register(cx);
+            page_home::register_catalog(
+                |id, scroll, window, cx| {
+                    cx.new(|cx| discover::CatalogPage::embedded(id, scroll, window, cx))
+                        .into()
+                },
+                cx,
+            );
             topbar::register_settings(cx);
             playlists_panel::register_settings(cx);
             palette::register_settings(cx);

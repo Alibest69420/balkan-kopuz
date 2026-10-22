@@ -589,6 +589,61 @@ impl Ordered for Home {
     }
 }
 
+/// Home while the active source has a catalog of its own: its feed leads, and the library shelves it repeats start hidden.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CatalogHome {
+    pub order: Vec<String>,
+    pub hidden: Vec<String>,
+}
+
+impl Default for CatalogHome {
+    fn default() -> Self {
+        Self {
+            order: CATALOG_SHELVES
+                .iter()
+                .map(|name| name.to_string())
+                .collect(),
+            hidden: CATALOG_SHELVES
+                .iter()
+                .filter(|name| !CATALOG_SHOWN.contains(name))
+                .map(|name| name.to_string())
+                .collect(),
+        }
+    }
+}
+
+/// The shelves a catalog Home can draw, in their designed order.
+pub const CATALOG_SHELVES: &[&str] = &[
+    "catalog",
+    "your_playlists",
+    "for_you",
+    "jump_back_in",
+    "recently_added",
+    "made_for_you",
+    "top_artists",
+    "recently_played",
+];
+
+/// What a catalog Home shows before anyone arranges it.
+const CATALOG_SHOWN: &[&str] = &["catalog", "your_playlists"];
+
+impl Ordered for CatalogHome {
+    const KNOWN: &'static [&'static str] = CATALOG_SHELVES;
+
+    fn order(&self) -> &[String] {
+        &self.order
+    }
+
+    fn hidden(&self) -> &[String] {
+        &self.hidden
+    }
+
+    fn lists(&mut self) -> (&mut Vec<String>, &mut Vec<String>) {
+        (&mut self.order, &mut self.hidden)
+    }
+}
+
 /// What the command palette remembers, and how much of it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -688,6 +743,7 @@ pub struct Layout {
     /// The encoded facet and filter set the library was last left on, so a restart opens it again.
     pub library_view: Option<String>,
     pub home: Home,
+    pub catalog_home: CatalogHome,
     pub interface: Interface,
     pub palette: Palette,
     pub notifications: Notifications,
@@ -715,6 +771,7 @@ impl Default for Layout {
             library: Library::default(),
             library_view: None,
             home: Home::default(),
+            catalog_home: CatalogHome::default(),
             interface: Interface::default(),
             palette: Palette::default(),
             notifications: Notifications::default(),
@@ -763,7 +820,10 @@ impl Section {
                 layout.ui.artists_view_mode = fresh.ui.artists_view_mode;
                 layout.ui.artist_sort = fresh.ui.artist_sort;
             }
-            Section::Home => layout.home = fresh.home,
+            Section::Home => {
+                layout.home = fresh.home;
+                layout.catalog_home = fresh.catalog_home;
+            }
             Section::Interface => {
                 layout.interface = fresh.interface;
                 layout.accent = fresh.accent;
@@ -1053,6 +1113,13 @@ mod tests {
         let text = toml::to_string_pretty(&layout).expect("serialise");
         let back: Layout = toml::from_str(&text).expect("deserialise");
         assert_eq!(layout, back);
+    }
+
+    #[test]
+    fn the_catalog_home_opens_on_the_feed_and_playlists() {
+        let home = CatalogHome::default();
+        assert_eq!(home.visible(), &["catalog", "your_playlists"]);
+        assert_eq!(home.order.len(), CATALOG_SHELVES.len());
     }
 
     #[test]

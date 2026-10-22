@@ -11,6 +11,7 @@ mod shelf;
 pub use settings::register;
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use api::{AlbumPage, ArtistPage, Page, StatsView, Table, TrackFilter, TrackPage, TrackSort};
 use components::format::t;
@@ -18,14 +19,35 @@ use components::{EmptyState, PageHeader, TitleSize, icons};
 use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
-    ParentElement as _, Render, ScrollHandle, StatefulInteractiveElement as _, Styled,
-    Subscription, Window,
+    AnyElement, AnyView, App, AppContext as _, Context, Entity, Global, InteractiveElement as _,
+    IntoElement, ParentElement as _, Render, ScrollHandle, SharedString,
+    StatefulInteractiveElement as _, Styled, Subscription, Window,
 };
 use store::layout::Ordered as _;
 use store::{DownloadsModel, ForYouModel, ForYouState, PlaylistsModel, Query, SourcesModel};
 
 use data::{RECENT_TRACKS_WINDOW, RECENTLY_ADDED_WINDOW, Shelf};
+
+type BuildCatalog =
+    Rc<dyn Fn(Option<SharedString>, ScrollHandle, &mut Window, &mut App) -> AnyView>;
+
+struct CatalogBuilder(BuildCatalog);
+
+impl Global for CatalogBuilder {}
+
+/// Register what draws a source's own feed as Home's catalog section: its first page by id, or its plain feed with none.
+pub fn register_catalog(
+    build: impl Fn(Option<SharedString>, ScrollHandle, &mut Window, &mut App) -> AnyView + 'static,
+    cx: &mut App,
+) {
+    cx.set_global(CatalogBuilder(Rc::new(build)));
+}
+
+/// One row of the page, top to bottom.
+enum Drawn {
+    Catalog,
+    Shelf(usize),
+}
 
 pub struct Home {
     albums: Entity<Query<AlbumPage>>,
@@ -40,6 +62,8 @@ pub struct Home {
     // One scroller per shelf, kept across rebuilds so new data does not throw a row back to its start.
     scroll: HashMap<&'static str, ScrollHandle>,
     page: ScrollHandle,
+    // The catalog section, and the source and page it was built for.
+    catalog: Option<(String, AnyView)>,
     seed: u64,
     _subscriptions: Vec<Subscription>,
 }
@@ -136,6 +160,7 @@ impl Home {
                 .map(|name| (*name, ScrollHandle::default()))
                 .collect(),
             page: ScrollHandle::default(),
+            catalog: None,
             seed: seed(),
             _subscriptions: subscriptions,
         }
@@ -177,22 +202,56 @@ impl Home {
         cx.notify();
     }
 
-    /// The shelves the layout asks for, in its order, skipping the ones with nothing in them.
-    fn drawn(&self, cx: &Context<Self>) -> Vec<usize> {
+    /// The rows the layout asks for, in its order, skipping the shelves with nothing in them.
+    fn drawn(&self, cx: &Context<Self>) -> Vec<Drawn> {
+        let sources = SourcesModel::global(cx).read(cx);
         // The mix is radio from the source, which offline mode never reaches.
-        let for_you = ForYouModel::global(cx).read(cx).state().is_shown()
-            && !SourcesModel::global(cx).read(cx).offline_reads();
-        store::layout(cx)
-            .home
-            .visible()
+        let for_you =
+            ForYouModel::global(cx).read(cx).state().is_shown() && !sources.offline_reads();
+        let catalog = sources.has_catalog();
+        let layout = store::layout(cx);
+        let names = match catalog {
+            true => layout.catalog_home.visible(),
+            false => layout.home.visible(),
+        };
+        names
             .into_iter()
-            .filter_map(|name| self.shelves.iter().position(|shelf| shelf.name == name))
-            .filter(|index| match self.shelves[*index].name {
+            .filter_map(|name| match name {
+                "catalog" => catalog.then_some(Drawn::Catalog),
+                _ => self
+                    .shelves
+                    .iter()
+                    .position(|shelf| shelf.name == name)
+                    .map(Drawn::Shelf),
+            })
+            .filter(|drawn| match drawn {
+                Drawn::Catalog => true,
                 // Waiting and failing are both said in the row, so it stands before it has tiles.
-                "for_you" => for_you,
-                _ => !self.shelves[*index].tiles.is_empty(),
+                Drawn::Shelf(index) if self.shelves[*index].name == "for_you" => for_you,
+                Drawn::Shelf(index) => !self.shelves[*index].tiles.is_empty(),
             })
             .collect()
+    }
+
+    /// The source's own feed, built once per source and first page.
+    fn catalog(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyView> {
+        let build = cx.try_global::<CatalogBuilder>()?.0.clone();
+        let sources = SourcesModel::global(cx).read(cx);
+        let source = sources.active()?.id.clone();
+        let first = sources
+            .capabilities()
+            .pages
+            .first()
+            .map(|page| SharedString::from(page.id.clone()));
+        let key = format!("{source}\u{0}{}", first.as_deref().unwrap_or_default());
+        if let Some((held, view)) = &self.catalog
+            && *held == key
+        {
+            return Some(view.clone());
+        }
+        let view = build(first, self.page.clone(), window, cx);
+        self.catalog = Some((key, view.clone()));
+        Some(view)
     }
 }
 
@@ -202,11 +261,20 @@ impl Render for Home {
         components::scroll::smooth("home-scroll", &self.page, window, cx);
         let banner = resume::banner(cx);
         let drawn = self.drawn(cx);
-        let asks = drawn
-            .iter()
-            .any(|index| self.shelves[*index].name == "for_you");
+        let asks = drawn.iter().any(
+            |drawn| matches!(drawn, Drawn::Shelf(index) if self.shelves[*index].name == "for_you"),
+        );
         let mut rows: Vec<AnyElement> = Vec::with_capacity(drawn.len());
-        for index in drawn {
+        for drawn in drawn {
+            let index = match drawn {
+                Drawn::Catalog => {
+                    if let Some(view) = self.catalog(window, cx) {
+                        rows.push(view.into_any_element());
+                    }
+                    continue;
+                }
+                Drawn::Shelf(index) => index,
+            };
             let shelf = &self.shelves[index];
             let Some(handle) = self.scroll.get(shelf.name).cloned() else {
                 continue;

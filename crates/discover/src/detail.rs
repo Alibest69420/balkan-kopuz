@@ -216,15 +216,29 @@ impl CatalogArtist {
     }
 
     fn banner(&self, detail: &CatalogDetail, cx: &mut Context<Self>) -> AnyElement {
-        let bar = detail.playback_id.clone().map(|id| {
-            DetailActions::new("catalog-artist", Rc::<[String]>::from([]))
-                .look(Look::Banner)
-                .shuffle_with(cx.listener(move |this, _, _, cx| {
+        // The artist's shuffle and mix are radios the source issues, not playlists it can list.
+        let shuffle = detail.shuffle_radio.clone();
+        let mix = detail.mix_radio.clone();
+        let legacy = detail.playback_id.clone().filter(|_| shuffle.is_none());
+        let bar = (shuffle.is_some() || mix.is_some() || legacy.is_some()).then(|| {
+            let mut bar =
+                DetailActions::new("catalog-artist", Rc::<[String]>::from([])).look(Look::Banner);
+            if let Some(id) = shuffle {
+                bar =
+                    bar.shuffle_with(move |_, _, cx| actions::start_playlist_radio(id.clone(), cx));
+            }
+            if let Some(id) = legacy {
+                bar = bar.shuffle_with(cx.listener(move |this, _, _, cx| {
                     let id = id.clone();
                     this.shelves.update(cx, |shelves, cx| {
                         shelves.play(CatalogItemKind::Playlist, id, cx)
                     });
-                }))
+                }));
+            }
+            if let Some(id) = mix {
+                bar = bar.radio(move |_, _, cx| actions::start_playlist_radio(id.clone(), cx));
+            }
+            bar
         });
         DetailHeader::new(detail.title.clone())
             .layout(HeaderLayout::Banner)

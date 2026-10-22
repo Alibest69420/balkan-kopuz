@@ -198,6 +198,13 @@ impl SourcesModel {
         SourceStatus::of(self.active().and_then(|source| source.state))
     }
 
+    /// Whether the active source has a catalog of its own that it can reach now, which Home then leads with.
+    pub fn has_catalog(&self) -> bool {
+        let caps = self.active().map(|source| &source.capabilities);
+        let offers = caps.is_some_and(|caps| caps.discover || !caps.pages.is_empty());
+        offers && !self.offline_reads()
+    }
+
     /// The active source's capabilities; all off until sources load.
     pub fn capabilities(&self) -> SourceCapabilities {
         self.active()
