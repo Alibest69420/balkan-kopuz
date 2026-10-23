@@ -622,7 +622,7 @@ impl Ordered for Home {
     }
 }
 
-/// Home while the active source has a catalog of its own: its feed leads, and the library shelves it repeats start hidden.
+/// Home while the active source has a catalog of its own: For you leads, then its feed, and the library shelves it repeats start hidden.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CatalogHome {
@@ -648,9 +648,9 @@ impl Default for CatalogHome {
 
 /// The shelves a catalog Home can draw, in their designed order.
 pub const CATALOG_SHELVES: &[&str] = &[
+    "for_you",
     "catalog",
     "your_playlists",
-    "for_you",
     "jump_back_in",
     "recently_added",
     "made_for_you",
@@ -659,7 +659,7 @@ pub const CATALOG_SHELVES: &[&str] = &[
 ];
 
 /// What a catalog Home shows before anyone arranges it.
-const CATALOG_SHOWN: &[&str] = &["catalog", "your_playlists"];
+const CATALOG_SHOWN: &[&str] = &["for_you", "catalog", "your_playlists"];
 
 impl Ordered for CatalogHome {
     const KNOWN: &'static [&'static str] = CATALOG_SHELVES;
@@ -1149,9 +1149,9 @@ mod tests {
     }
 
     #[test]
-    fn the_catalog_home_opens_on_the_feed_and_playlists() {
+    fn the_catalog_home_opens_on_for_you_then_the_feed_and_playlists() {
         let home = CatalogHome::default();
-        assert_eq!(home.visible(), &["catalog", "your_playlists"]);
+        assert_eq!(home.visible(), &["for_you", "catalog", "your_playlists"]);
         assert_eq!(home.order.len(), CATALOG_SHELVES.len());
     }
 
