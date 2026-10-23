@@ -175,6 +175,23 @@ impl Shell {
                     cx.notify();
                 }
             }),
+            // Pulled before the skip, so the cover's colours are in hand on the frame its track starts.
+            cx.observe(&store::QueueModel::global(cx), |_, queue, cx| {
+                let neighbours: Vec<api::ArtworkRef> = {
+                    let queue = queue.read(cx);
+                    let Some(at) = queue.position().map(|at| at as usize) else {
+                        return;
+                    };
+                    [at.checked_sub(1), Some(at), at.checked_add(1)]
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|index| queue.items().get(index)?.artwork.clone())
+                        .collect()
+                };
+                for artwork in &neighbours {
+                    store::palette::warm(artwork, cx);
+                }
+            }),
             cx.observe_in(&config, window, |this, _, window, cx| {
                 follow_config(&mut this.applied_theme, window, cx);
                 cx.notify();

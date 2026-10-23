@@ -40,6 +40,11 @@ pub fn of(artwork: &ArtworkRef, window: &mut Window, cx: &mut App) -> Option<Swa
         .flatten()
 }
 
+/// Start pulling a cover's colours without waiting for them, so they are in hand once it plays.
+pub fn warm(artwork: &ArtworkRef, cx: &mut App) {
+    let _ = cx.fetch_asset::<CoverPalette>(&ArtworkKey::new(artwork, false));
+}
+
 /// The thumbnail is resampled to this square before it is counted; a cover's colours survive it.
 const SAMPLE: u32 = 48;
 
