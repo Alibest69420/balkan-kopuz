@@ -6471,6 +6471,7 @@ dependencies = [
  "topbar",
  "tracing",
  "tracing-subscriber",
+ "winres",
 ]
 
 [[package]]
@@ -7186,7 +7187,6 @@ name = "link"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "directories",
  "futures",
  "gpui-kit",
  "kopuz-api",
