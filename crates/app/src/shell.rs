@@ -109,6 +109,7 @@ pub struct Shell {
     // The theme these were applied for, so config edits reapply only on a change.
     applied_theme: AppliedTheme,
     system_artwork: Option<api::ArtworkRef>,
+    system_ease: crate::system_ease::SystemEase,
     // The route last drawn and the incoming page's fade, kept here so a cached page fades like a new one.
     page_key: String,
     page_fade: motion::Fade,
@@ -248,6 +249,7 @@ impl Shell {
             debug_overlay: cx.new(|cx| debug_overlay::DebugOverlay::new(window, cx)),
             applied_theme,
             system_artwork: None,
+            system_ease: Default::default(),
             page_key: String::new(),
             page_fade: motion::Fade::hidden(),
             page_leaving: None,
@@ -440,7 +442,10 @@ impl Render for Shell {
         let _rebuild = profile::Rebuild::new();
         // System colors follows the playing cover, which changes without the config changing.
         if self.applied_theme.0 == theme::SYSTEM {
-            theme::follow_system(window, cx);
+            self.system_ease.follow(window, cx);
+        } else {
+            // Picking System again snaps to its scheme, as picking any theme does.
+            self.system_ease = Default::default();
         }
         if let Some(loader) = self.loader.clone() {
             return div()

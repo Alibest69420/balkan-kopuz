@@ -3,6 +3,7 @@ mod backdrop;
 mod handover;
 mod router;
 mod shell;
+mod system_ease;
 
 use std::time::Duration;
 

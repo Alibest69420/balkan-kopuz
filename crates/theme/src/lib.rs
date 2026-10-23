@@ -106,6 +106,8 @@ impl Colors {
 struct Active {
     colors: Colors,
     dim_text: gpui_kit::Hsla,
+    // Where an ease is headed; the showing colors once it lands.
+    settled: Colors,
 }
 
 impl gpui_kit::Global for Active {}
@@ -115,6 +117,13 @@ pub fn colors(cx: &App) -> Colors {
     cx.try_global::<Active>()
         .map(|active| active.colors.clone())
         .unwrap_or_else(|| palette("default").expect("default theme").into())
+}
+
+/// The palette the theme is easing to, or the one showing when it is still.
+pub fn settled(cx: &App) -> Colors {
+    cx.try_global::<Active>()
+        .map(|active| active.settled.clone())
+        .unwrap_or_else(|| colors(cx))
 }
 
 /// `text-slate-500`, the dimmest body text: `surface` is a panel colour too, so as text it is clamped to AA.
@@ -141,9 +150,21 @@ fn parse(color: &str) -> Option<gpui_kit::Hsla> {
 
 /// Make these colors the active theme, including the scrollbars the Base layer paints.
 pub fn apply(name: &str, colors: &Colors, window: Option<&mut Window>, cx: &mut App) {
+    apply_easing(name, colors, colors, window, cx);
+}
+
+/// One frame of an ease to `settled`: `colors` show, and what is keyed on the theme renders for where it lands.
+pub fn apply_easing(
+    name: &str,
+    colors: &Colors,
+    settled: &Colors,
+    window: Option<&mut Window>,
+    cx: &mut App,
+) {
     cx.set_global(Active {
         colors: colors.clone(),
         dim_text: dim_text_of(colors),
+        settled: settled.clone(),
     });
     let mode = if colors.dark {
         ThemeMode::Dark
@@ -195,7 +216,7 @@ pub fn apply_config(config: &Ui, window: Option<&mut Window>, cx: &mut App) {
         apply(name, &colors, window, cx);
         return;
     }
-    // Built from the playing cover, which is only readable mid-render: the shell's frame calls `follow_system`.
+    // Built from the playing cover, which is only readable mid-render: the shell's frame asks `system_target` and eases to it.
     if name == SYSTEM {
         reset_system(cx);
         if let Some(window) = window {
@@ -213,8 +234,8 @@ struct SystemSeed(Option<(Option<store::Swatches>, bool)>);
 
 impl gpui_kit::Global for SystemSeed {}
 
-/// Rebuild System colors when the playing cover's colours or the window's appearance change; call it from a render.
-pub fn follow_system(window: &mut Window, cx: &mut App) {
+/// System colors' new scheme when the playing cover's colours or the window's appearance changed, else `None`; call it from a render.
+pub fn system_target(window: &mut Window, cx: &mut App) -> Option<Colors> {
     let artwork = store::PlayerModel::global(cx)
         .read(cx)
         .track()
@@ -227,7 +248,7 @@ pub fn follow_system(window: &mut Window, cx: &mut App) {
                 .try_global::<SystemSeed>()
                 .is_some_and(|seed| seed.0.is_some()) =>
             {
-                return;
+                return None;
             }
             None => None,
         },
@@ -239,10 +260,45 @@ pub fn follow_system(window: &mut Window, cx: &mut App) {
     );
     let seed = Some((swatches, dark));
     if cx.default_global::<SystemSeed>().0 == seed {
-        return;
+        return None;
     }
     cx.global_mut::<SystemSeed>().0 = seed;
-    apply(SYSTEM, &system_colors(swatches, dark), Some(window), cx);
+    Some(system_colors(swatches, dark))
+}
+
+/// `from` `amount` of the way to `to`, channel by channel; the appearance is `to`'s, as a flip is never eased.
+pub fn mix(from: &Colors, to: &Colors, amount: f32) -> Colors {
+    let at = |from: &str, to: &str| mix_hex(from, to, amount);
+    Colors {
+        dark: to.dark,
+        bg: at(&from.bg, &to.bg),
+        raised: at(&from.raised, &to.raised),
+        surface: at(&from.surface, &to.surface),
+        text: at(&from.text, &to.text),
+        text_muted: at(&from.text_muted, &to.text_muted),
+        accent: at(&from.accent, &to.accent),
+        accent_soft: at(&from.accent_soft, &to.accent_soft),
+        accent_alt: at(&from.accent_alt, &to.accent_alt),
+        accent_deep: at(&from.accent_deep, &to.accent_deep),
+        highlight: at(&from.highlight, &to.highlight),
+        highlight_dark: at(&from.highlight_dark, &to.highlight_dark),
+        progress: at(&from.progress, &to.progress),
+        danger: at(&from.danger, &to.danger),
+    }
+}
+
+fn mix_hex(from: &str, to: &str, amount: f32) -> String {
+    let (Ok(a), Ok(b)) = (gpui_kit::Rgba::try_from(from), gpui_kit::Rgba::try_from(to)) else {
+        return to.to_string();
+    };
+    let amount = amount.clamp(0., 1.);
+    let channel = |a: f32, b: f32| ((a + (b - a) * amount).clamp(0., 1.) * 255.).round() as u8;
+    format!(
+        "#{:02x}{:02x}{:02x}",
+        channel(a.r, b.r),
+        channel(a.g, b.g),
+        channel(a.b, b.b)
+    )
 }
 
 /// Forget what System colors was built from, so the next follow rebuilds it.

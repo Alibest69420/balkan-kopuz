@@ -95,16 +95,19 @@ pub fn ambient(cx: &App) -> Option<(ArtworkRef, Spread)> {
     playing(Surface::Chrome, cx).map(|artwork| (artwork, spread))
 }
 
-/// What that light falls on: the active theme's background, and the faintest ink it has to leave readable.
+/// What that light falls on: the theme's background, and the faintest ink it has to leave readable.
 pub fn ground(cx: &App) -> Ground {
     let bytes = |colour: Hsla| {
         let colour: gpui_kit::Rgba = colour.into();
         [colour.r, colour.g, colour.b].map(|channel| (channel * 255.).round() as u8)
     };
+    // Mid-ease the field is rendered once, for where the theme lands, not again for every frame on the way.
+    let settled = crate::settled(cx);
+    let or = |hex: &str, showing: Hsla| crate::parse(hex).unwrap_or(showing);
     Ground {
-        background: bytes(cx.theme().background),
-        ink: bytes(cx.theme().muted_foreground),
-        dark: crate::colors(cx).dark,
+        background: bytes(or(&settled.bg, cx.theme().background)),
+        ink: bytes(or(&settled.text_muted, cx.theme().muted_foreground)),
+        dark: settled.dark,
     }
 }
 

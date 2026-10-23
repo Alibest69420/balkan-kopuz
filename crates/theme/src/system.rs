@@ -114,6 +114,17 @@ mod tests {
     }
 
     #[test]
+    fn a_mix_runs_from_one_scheme_to_the_other() {
+        let from = system_colors(Some(swatches(0xc81e28, 0x080808)), true);
+        let to = system_colors(Some(swatches(0x006aff, 0x101830)), true);
+        assert_eq!(crate::mix(&from, &to, 0.), from);
+        assert_eq!(crate::mix(&from, &to, 1.), to);
+        let half = crate::mix(&from, &to, 0.5);
+        assert_ne!(half.accent, from.accent);
+        assert_ne!(half.accent, to.accent);
+    }
+
+    #[test]
     fn grey_art_gets_no_invented_hue() {
         let colors = system_colors(Some(swatches(0x5a5c5f, 0xf0f0f0)), true);
         assert!(parse(&colors.accent).s < 0.1, "{}", colors.accent);
