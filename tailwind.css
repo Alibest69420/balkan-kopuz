@@ -1,14 +1,14 @@
 @import "tailwindcss";
-@source "./apps/dioxus/kopuz/**/*.rs";
-@source "./apps/dioxus/components/**/*.rs";
-@source "./apps/dioxus/pages/**/*.rs";
-@source "./apps/dioxus/hooks/**/*.rs";
+@source "./apps/kopuz/kopuz/**/*.rs";
+@source "./apps/kopuz/components/**/*.rs";
+@source "./apps/kopuz/pages/**/*.rs";
+@source "./apps/kopuz/hooks/**/*.rs";
 @source "./daemon/player/**/*.rs";
 @source "./daemon/reader/**/*.rs";
 @source "./daemon/server/**/*.rs";
 @source "./shared/utils/**/*.rs";
 @source "./shared/config/**/*.rs";
-@source "./apps/dioxus/kopuz_route/**/*.rs";
+@source "./apps/kopuz/kopuz_route/**/*.rs";
 
 /* Hover and press feedback should feel immediate; 150ms reads as lag. */
 @theme {
