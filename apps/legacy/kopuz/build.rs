@@ -60,6 +60,12 @@ const NETWORK_SECURITY_CONFIG: &str = r#"<?xml version="1.0" encoding="utf-8"?>
 </network-security-config>
 "#;
 
+/// The launcher name Android users have always had, whatever the desktop binary is called.
+const APP_STRINGS: &str = r#"<resources>
+    <string name="app_name">Kopuz</string>
+</resources>
+"#;
+
 /// Media control icons, as vector drawables written into the generated project —
 /// the framework ships `ic_media_play`/`_next`/`_previous` and nothing else. Glyphs
 /// are the Material Symbols paths (Apache-2.0); `dot` marks the active state the
@@ -292,6 +298,7 @@ fn main() {
         Err(_) => return,
     };
 
+    // android-src lives at the repo root (apps/legacy/kopuz/../../../android-src).
     let android_src = crate_dir
         .join("..")
         .join("..")
@@ -360,6 +367,14 @@ fn main() {
         NETWORK_SECURITY_CONFIG,
     );
 
+    // 5c. dx labels the app after the binary (KopuzLegacy) and rewrites this every build.
+    let strings = main_dir.join("res/values/strings.xml");
+    println!("cargo:rerun-if-changed={}", strings.display());
+    copy_str(&strings, APP_STRINGS);
+
+    // 6. dx templates `versionCode = 1` into the module's Gradle script and never
+    //    moves it, so every release would look like the same build to Android and
+    //    refuse to install over its predecessor. Derive it from the crate version.
     if let Some(app_dir) = main_dir.parent().and_then(Path::parent) {
         patch_version_code(&app_dir.join("build.gradle.kts"));
         patch_sdk_levels(&app_dir.join("build.gradle.kts"));

@@ -1,13 +1,16 @@
 [package]
-name = "kopuz-gpui"
-version = "0.1.0"
+name = "kopuz"
+version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "A modern, lightweight music player built with Rust and GPUI."
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
 publish = false
 
 [[bin]]
-name = "kopuz-gpui"
+name = "kopuz"
 path = "src/main.rs"
 
 [lints]

@@ -1,9 +1,9 @@
 # Agent Development Guide
 
-`kopuz-gpui` is a GPUI frontend for the Kopuz music daemon. It talks to the
+`kopuz` (package and binary) is the GPUI frontend for the Kopuz music daemon. It talks to the
 daemon over a socket and nothing else: no database, no media source, no
 credentials, no audio. The Dioxus frontend it is porting lives in
-`apps/kopuz/` beside it, and `docs/PARITY.md` is the
+`apps/legacy/` beside it, and `docs/PARITY.md` is the
 feature-by-feature checklist that port is measured against.
 
 ## Commands

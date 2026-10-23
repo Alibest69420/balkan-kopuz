@@ -11,7 +11,7 @@ _default:
 
 # Build the frontend, and the daemon beside it.
 build profile="debug":
-    {{ nix }} cargo build -p kopuz-gpui -p kopuz-kopuzd {{ if profile == "release" { "--release" } else { "" } }}
+    {{ nix }} cargo build -p kopuz -p kopuz-kopuzd {{ if profile == "release" { "--release" } else { "" } }}
 
 # Run the app against its own daemon; neither outlives the other.
 run profile="debug" *args: (build profile)
@@ -34,7 +34,7 @@ run profile="debug" *args: (build profile)
         sleep 0.2
     done
 
-    {{ nix }} {{ target }}/{{ profile }}/kopuz-gpui {{ args }} &
+    {{ nix }} {{ target }}/{{ profile }}/kopuz {{ args }} &
     app=$!
 
     # Whichever goes first takes the other with it: a frontend with no daemon can only
@@ -63,7 +63,7 @@ watch profile="debug" *args: (build profile)
     # A crash loop is worth seeing rather than hiding, so a fast second death stops here.
     while kill -0 $daemon 2>/dev/null; do
         started=$SECONDS
-        {{ nix }} {{ target }}/{{ profile }}/kopuz-gpui {{ args }} || true
+        {{ nix }} {{ target }}/{{ profile }}/kopuz {{ args }} || true
         kill -0 $daemon 2>/dev/null || break
         if [ $(( SECONDS - started )) -lt 5 ]; then
             echo "the frontend died within five seconds; not restarting it again"
@@ -84,16 +84,16 @@ daemon profile="debug":
 app profile="debug" *args:
     #!/usr/bin/env bash
     set -euo pipefail
-    {{ nix }} cargo build -p kopuz-gpui {{ if profile == "release" { "--release" } else { "" } }}
+    {{ nix }} cargo build -p kopuz {{ if profile == "release" { "--release" } else { "" } }}
     export KOPUZ_SOCKET={{ shared_socket }}
     # Uncoupled on purpose, so this only ever reports a daemon it did not start rather than starting one.
     [ -S "$KOPUZ_SOCKET" ] || { echo "nothing listening on $KOPUZ_SOCKET; start one with 'just gpui daemon'"; exit 1; }
-    exec {{ nix }} {{ target }}/{{ profile }}/kopuz-gpui {{ args }}
+    exec {{ nix }} {{ target }}/{{ profile }}/kopuz {{ args }}
 
 # Everything CI checks, in the order that fails fastest.
 check:
-    apps/gpui/scripts/check_hover.sh
-    apps/gpui/scripts/check_source_agnostic.sh
+    apps/kopuz/scripts/check_hover.sh
+    apps/kopuz/scripts/check_source_agnostic.sh
     {{ nix }} cargo fmt --all -- --check
     {{ nix }} cargo clippy --workspace --all-targets -j 4 -- -D warnings
     {{ nix }} cargo test --workspace -j 4

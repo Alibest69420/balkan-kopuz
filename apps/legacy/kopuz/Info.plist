@@ -5,15 +5,15 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>English</string>
     <key>CFBundleExecutable</key>
-    <string>kopuz</string>
+    <string>kopuz-legacy</string>
     <key>CFBundleIdentifier</key>
-    <string>com.temidaradev.kopuz</string>
+    <string>moe.kopuz.legacy</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>Kopuz</string>
+    <string>Kopuz Legacy</string>
     <key>CFBundleIconFile</key>
-    <string>Kopuz</string>
+    <string>KopuzLegacy</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

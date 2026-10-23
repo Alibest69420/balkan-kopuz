@@ -1,5 +1,5 @@
 [package]
-name = "kopuz"
+name = "kopuz-legacy"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,7 +13,7 @@ keywords.workspace = true
 workspace = true
 
 [package.metadata.bundle]
-identifier = "moe.kopuz.kopuz"
+identifier = "moe.kopuz.legacy"
 icon = ["assets/app.ico", "assets/logo.png"]
 category = "public.app-category.music"
 

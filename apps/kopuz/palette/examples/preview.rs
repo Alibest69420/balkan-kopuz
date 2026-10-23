@@ -65,7 +65,7 @@ fn main() {
                     cx,
                 ))),
                 window_background: gpui_kit::WindowBackgroundAppearance::Opaque,
-                app_id: Some("kopuz-gpui".into()),
+                app_id: Some("kopuz".into()),
                 ..Default::default()
             };
             cx.open_window(options, |window, cx| {

@@ -2,7 +2,7 @@
 
 The Dioxus UI is Tailwind v4 classes written inline in each component. This is
 how each of them becomes a GPUI call. The source of truth is the component file
-in `apps/kopuz/{components,pages}/src/…`; read the classes on the element
+in `apps/legacy/{components,pages}/src/…`; read the classes on the element
 you are porting and translate them here, rather than eyeballing a screenshot.
 
 ## The colour system

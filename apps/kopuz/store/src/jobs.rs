@@ -40,6 +40,7 @@ pub fn kind_key(kind: JobKind) -> &'static str {
         JobKind::PlaylistSync => "playlist_sync",
         JobKind::Download => "download",
         JobKind::UrlDownload => "url_download",
+        JobKind::AudioRip => "audio_rip",
         JobKind::Unknown => "job",
     }
 }

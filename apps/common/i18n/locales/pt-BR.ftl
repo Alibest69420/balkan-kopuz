@@ -845,6 +845,7 @@ job_favorites_sync = Favorites sync
 job_playlist_sync = Playlist sync
 job_download = Downloading tracks
 job_url_download = URL download
+job_audio_rip = Disc rip
 job = Background job
 job_finished = { $job } finished
 job_failed = { $job } failed

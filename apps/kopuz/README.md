@@ -1,4 +1,4 @@
-# kopuz-gpui
+# kopuz
 
 A [GPUI](https://gpui.rs) frontend for the [Kopuz](https://github.com/Kopuz-org/kopuz)
 music daemon, built with [gpui-kit](https://github.com/longbridge/gpui-kit).
@@ -14,7 +14,7 @@ hand, start a daemon, then the app:
 
 ```sh
 kopuzd --socket $XDG_RUNTIME_DIR/kopuzd.sock
-nix develop --command cargo run -p kopuz-gpui
+nix develop --command cargo run -p kopuz
 ```
 
 The app finds the daemon at the standard socket path. `KOPUZ_SOCKET` points it

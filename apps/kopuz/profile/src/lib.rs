@@ -19,7 +19,7 @@ pub struct Session {
 
 /// Installs the log subscriber, and a Chrome trace layer when `KOPUZ_TRACE` names a file.
 ///
-/// `KOPUZ_TRACE=trace.json kopuz-gpui` then opens in <https://ui.perfetto.dev>.
+/// `KOPUZ_TRACE=trace.json kopuz` then opens in <https://ui.perfetto.dev>.
 pub fn init() -> Session {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));

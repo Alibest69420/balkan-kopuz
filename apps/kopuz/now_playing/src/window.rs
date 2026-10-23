@@ -63,7 +63,7 @@ fn options(kind: WindowKind, bounds: Bounds<Pixels>) -> WindowOptions {
         window_background: WindowBackgroundAppearance::Opaque,
         window_decorations: Some(WindowDecorations::Client),
         window_min_size: Some(dimensions()),
-        app_id: Some("kopuz-gpui".into()),
+        app_id: Some("kopuz".into()),
         titlebar: Some(TitlebarOptions {
             title: Some("Kopuz".into()),
             ..Default::default()
