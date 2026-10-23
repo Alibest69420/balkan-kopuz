@@ -52,6 +52,21 @@ fn argb(color: gpui_kit::Hsla) -> Argb {
     Argb::new(255, channel(rgba.r), channel(rgba.g), channel(rgba.b))
 }
 
+/// How far, in HCT tone, a primary button moves on hover and on press.
+const HOVER_TONE: f64 = 5.0;
+const PRESS_TONE: f64 = 10.0;
+
+/// `color` moved `by` tones away from the background, which is also away from the button's label.
+fn toned(color: Argb, by: f64, dark: bool) -> Argb {
+    let mut hct = Hct::new(color);
+    let tone = match dark {
+        true => hct.get_tone() + by,
+        false => hct.get_tone() - by,
+    };
+    hct.set_tone(tone.clamp(0., 100.));
+    Argb::from(hct)
+}
+
 fn hex(color: Argb) -> String {
     format!("#{:02x}{:02x}{:02x}", color.red, color.green, color.blue)
 }
@@ -66,8 +81,8 @@ fn colors(roles: &Scheme, dark: bool) -> Colors {
         text: hex(roles.on_surface),
         text_muted: hex(roles.on_surface_variant),
         accent: hex(roles.primary),
-        accent_soft: hex(roles.primary),
-        accent_alt: hex(roles.primary),
+        accent_soft: hex(toned(roles.primary, HOVER_TONE, dark)),
+        accent_alt: hex(toned(roles.primary, PRESS_TONE, dark)),
         accent_deep: hex(roles.primary_container),
         highlight: hex(roles.tertiary),
         highlight_dark: hex(roles.tertiary_container),
@@ -110,6 +125,22 @@ mod tests {
                     assert!(ratio >= crate::AA, "{cover:?} dark={dark}: {ratio:.2}");
                 }
             }
+        }
+    }
+
+    #[test]
+    fn a_primary_button_moves_on_hover_and_further_on_press_keeping_its_label() {
+        for dark in [false, true] {
+            let colors = system_colors(Some(swatches(0xc81e28, 0x080808)), dark);
+            assert_ne!(colors.accent_soft, colors.accent, "dark={dark}");
+            assert_ne!(colors.accent_alt, colors.accent_soft, "dark={dark}");
+            let label = parse(&colors.bg);
+            let on = |fill: &str| crate::contrast(label, parse(fill));
+            assert!(on(&colors.accent_soft) >= on(&colors.accent), "dark={dark}");
+            assert!(
+                on(&colors.accent_alt) >= on(&colors.accent_soft),
+                "dark={dark}"
+            );
         }
     }
 
