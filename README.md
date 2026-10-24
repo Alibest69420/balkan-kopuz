@@ -370,7 +370,8 @@ yay -S kopuz-bin
 paru -S kopuz-bin
 ```
 
-`kopuz-bin` is Kopuz with `kopuzd`; `kopuz-legacy` builds Kopuz Legacy from source.
+`kopuz-bin` is Kopuz with `kopuzd`; `kopuz-legacy` builds Kopuz Legacy from
+source.
 
 ### Flatpak (Recommended)
 
@@ -419,10 +420,10 @@ Discover.
 ### AppImage
 
 > [!IMPORTANT]
-> The Kopuz Legacy AppImage requires `webkit2gtk-4.1` and `gtk3` installed on your system.
-> Those dependencies are **not** bundled. The system tray icon additionally
-> needs the **appindicator** library (e.g. `libayatana-appindicator`); without
-> it Kopuz runs fine but shows no tray icon.
+> The Kopuz Legacy AppImage requires `webkit2gtk-4.1` and `gtk3` installed on
+> your system. Those dependencies are **not** bundled. The system tray icon
+> additionally needs the **appindicator** library (e.g.
+> `libayatana-appindicator`); without it Kopuz runs fine but shows no tray icon.
 >
 > On most distros with a modern desktop environment, these are already present.
 > You will need to install them manually if they are not yet installed.
