@@ -6,13 +6,14 @@ use components::format::t;
 use components::settings::{
     Choice, SettingRow, SliderRow, on_slider_change, section, set_slider, slider_state, toggle_row,
 };
-use components::{PathField, PathKind};
+use components::{PathField, PathKind, style};
 use config::{
     BackBehavior, BackgroundEdit, LyricsEdit, PlaybackEdit, PlayerBarPosition, Settings,
     SettingsEdit, SystemEdit, UiEdit,
 };
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::slider::SliderState;
-use gpui_kit::component::v_flex;
+use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, InteractiveElement as _, IntoElement,
@@ -412,6 +413,18 @@ fn push(rows: &mut Vec<AnyElement>, row: SettingRow, cx: &App) {
     }
 }
 
+/// First-run setup sets far more than sources, so its way back in sits under General.
+fn run_setup_row(cx: &App) -> impl IntoElement {
+    h_flex().w_full().justify_end().child(
+        Button::new("run-setup-again")
+            .ghost()
+            .small()
+            .label(t("onboarding_run_again"))
+            .text_color(style::white(style::TEXT_SECONDARY, cx))
+            .on_click(|_, _, cx| store::SetupModel::start_over(cx)),
+    )
+}
+
 fn path_edit(key: &str, value: String) -> Option<SettingsEdit> {
     match key {
         "custom_background_path" => Some(SettingsEdit::Background(
@@ -448,7 +461,14 @@ impl Render for AppearanceSettings {
             .pb_4()
             .pr_2()
             .when(self.shows("general"), |panel| {
-                panel.child(section(t("general")).children(self.general(&cfg, cx)))
+                panel.child(
+                    v_flex()
+                        .gap_2()
+                        .child(section(t("general")).children(self.general(&cfg, cx)))
+                        .when(components::settings::query(cx).is_none(), |general| {
+                            general.child(run_setup_row(cx))
+                        }),
+                )
             })
             .when(self.shows("appearance"), |panel| {
                 panel.child(section(t("appearance")).children(self.appearance(&cfg, cx)))

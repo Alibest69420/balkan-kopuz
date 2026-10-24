@@ -488,25 +488,14 @@ impl Render for Sources {
                 })
                 .children(rows)
                 .child(
-                    gpui_kit::component::h_flex()
-                        .gap_2()
-                        .child(
-                            Button::new("add-source")
-                                .custom(style::soft_button(cx.theme().foreground, cx))
-                                .small()
-                                .icon(icons::icon(icons::PLUS))
-                                .label(t("add_source"))
-                                .on_click(
-                                    cx.listener(|this, _, window, cx| this.open_add(window, cx)),
-                                ),
-                        )
-                        .child(
-                            Button::new("run-setup-again")
-                                .custom(style::quiet_button(style::slate_400(cx), cx))
-                                .small()
-                                .label(t("onboarding_run_again"))
-                                .on_click(|_, _, cx| store::SetupModel::start_over(cx)),
-                        ),
+                    gpui_kit::component::h_flex().child(
+                        Button::new("add-source")
+                            .custom(style::soft_button(cx.theme().foreground, cx))
+                            .small()
+                            .icon(icons::icon(icons::PLUS))
+                            .label(t("add_source"))
+                            .on_click(cx.listener(|this, _, window, cx| this.open_add(window, cx))),
+                    ),
                 ),
         )
     }
