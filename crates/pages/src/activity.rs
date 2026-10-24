@@ -27,8 +27,6 @@ pub fn Activity(settings: Signal<Settings>) -> Element {
     let albums_res = use_albums(source, albums_query);
     let counts_res = use_listen_counts(source);
     let filter = use_memo(move || {
-        // The source is the daemon's; naming it here only keeps the memo
-        // re-running across a switch.
         let _ = source();
         TrackFilter {
             sort: TrackSort::PlayCount,
@@ -36,7 +34,6 @@ pub fn Activity(settings: Signal<Settings>) -> Element {
         }
     });
 
-    // album_id → genre (covers resolve via the source seam off the track itself).
     let album_map = use_memo(move || {
         albums_res
             .read()
@@ -61,7 +58,6 @@ pub fn Activity(settings: Signal<Settings>) -> Element {
     const ITEM_HEIGHT: f64 = 60.0;
 
     let mut total_rows = use_signal(|| 0_usize);
-    // One open menu at a time: rows are a loop, so per-row hooks are not an option.
     let mut active_menu_track = use_signal(|| None::<String>);
     let page = use_memo(move || {
         let info = components::virtual_scroll::use_virtual_scroll(

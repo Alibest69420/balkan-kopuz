@@ -327,6 +327,14 @@ impl ReadStore for Native {
         queries::albums_recently_added(&self.pool(), source, limit).await
     }
 
+    async fn albums_recently_added_page(
+        &self,
+        source: &crate::Source,
+        page: crate::Page,
+    ) -> Result<(u32, Vec<reader::Album>), DbError> {
+        queries::albums_recently_added_page(&self.pool(), source, page).await
+    }
+
     async fn load_queue(&self, source: &crate::Source) -> Result<crate::QueueSnapshot, DbError> {
         dump::load_queue(&self.pool(), source).await
     }

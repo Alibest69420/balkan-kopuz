@@ -1,7 +1,5 @@
-//! DownloadsService: offline-caching server tracks, ported from the app's
-//! `pages/server/cache.rs` policy (hashed filenames that cannot escape the
-//! cache, partial-file publication, guarded deletes) with the queue and
-//! progress reporting moved onto the job runner.
+//! Offline downloads with hashed cache paths, partial-file publication, and
+//! guarded deletes. Batch progress is reported through the job runner.
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -104,7 +102,7 @@ impl DownloadsService {
             .collect()
     }
 
-    /// Item ids with a registered offline copy.
+    /// Item ids with an available offline copy.
     pub async fn list(&self) -> Vec<String> {
         let mut ids = self.session.offline().ids();
         ids.sort();

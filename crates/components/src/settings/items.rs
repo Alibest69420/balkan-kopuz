@@ -443,8 +443,7 @@ pub fn ThemeSelector(current_theme: String, on_change: EventHandler<String>) -> 
         ("one-light".into(), i18n::t("one_light")),
         ("gruvbox-light".into(), i18n::t("gruvbox_light_soft")),
     ];
-    // Android has no palette control, since choosing one opens a native file
-    // dialog, so don't offer a theme it can't point at anything.
+
     if cfg!(target_os = "android") {
         options.retain(|(id, _)| id != utils::live_theme::THEME_ID);
     }
@@ -768,7 +767,7 @@ pub fn RadioRegistryDropdown(
                 }
                 i { class: if is_open { "fa-solid fa-chevron-up text-[10px] text-white/40" } else { "fa-solid fa-chevron-down text-[10px] text-white/40" } }
             }
-            // Expandable panel
+
             if is_open {
                 div { class: "flex flex-col gap-2 pb-3",
                     if registries.is_empty() {
