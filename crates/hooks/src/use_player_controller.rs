@@ -110,6 +110,14 @@ impl PlayerController {
         self.queue.peek().get(idx).cloned()
     }
 
+    /// The playing row's uid for a render to highlight. Reads the queue as
+    /// well as the index: the daemon moves the index before the new queue
+    /// lands, so a render that only follows the index keeps the old row.
+    pub fn current_uid(&self) -> Option<String> {
+        let idx = *self.current_queue_index.read();
+        self.queue.read().get(idx).map(|track| track.uid.clone())
+    }
+
     pub fn current_track(&self) -> Option<Track> {
         self.get_track_at(*self.current_queue_index.peek())
     }
