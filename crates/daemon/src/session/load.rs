@@ -11,6 +11,7 @@ impl Session {
     /// as a transition candidate, which means the pointer stays on the outgoing
     /// track until the engine reports the switch.
     pub(super) fn start_load(&mut self, idx: usize, allow_crossfade: bool) -> bool {
+        self.engine_released = false;
         let Some(track) = self.model.track_at(idx).cloned() else {
             return false;
         };
@@ -407,7 +408,7 @@ impl Session {
                         .and_then(|position| self.model.track_at(position).cloned())
                         .or_else(|| self.model.current_track().cloned());
                     if let Some(track) = committed_track {
-                        self.scrobble_committed(track, finished.token);
+                        self.track_committed(track, finished.token);
                     }
                 }
                 let matching_transition = self
