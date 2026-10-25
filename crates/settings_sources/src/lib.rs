@@ -4,7 +4,7 @@ pub mod add_source;
 pub mod folders;
 pub mod integrations;
 mod login;
-mod offline_cache;
+pub mod offline_cache;
 mod reauth;
 mod registries;
 mod schedule;

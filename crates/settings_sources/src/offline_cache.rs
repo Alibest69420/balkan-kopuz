@@ -19,7 +19,7 @@ const GB: u64 = 1_000_000_000;
 const PRESETS_GB: [u64; 6] = [1, 2, 5, 10, 20, 50];
 
 /// The presets, plus the current cap when a settings file set one that is not among them.
-fn sizes(current: u64) -> Vec<u64> {
+pub fn sizes(current: u64) -> Vec<u64> {
     let mut sizes: Vec<u64> = PRESETS_GB.iter().map(|gb| gb * GB).collect();
     if !sizes.contains(&current) {
         sizes.push(current);

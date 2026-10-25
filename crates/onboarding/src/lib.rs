@@ -62,6 +62,7 @@ pub struct FirstRun {
     probed: bool,
     outcome: Option<Outcome>,
     language_offered: bool,
+    backdrop_offered: bool,
     focus_first: bool,
     services: Entity<Query<Vec<ServiceInfo>>>,
     add: Entity<AddSource>,
@@ -95,7 +96,10 @@ impl FirstRun {
             cx.observe(&sources, |this, _, cx| this.sources_moved(cx)),
             cx.observe(&services, |_, _, cx| cx.notify()),
             cx.observe(&add, |_, _, cx| cx.notify()),
-            cx.observe(&config, |this, _, cx| this.offer_language(cx)),
+            cx.observe(&config, |this, _, cx| {
+                this.offer_language(cx);
+                this.offer_backdrop(cx);
+            }),
             cx.observe_in(&setup, window, |this, setup, window, cx| {
                 let run = setup.read(cx).run();
                 if flow::starts_over(this.run, run) {
@@ -127,6 +131,7 @@ impl FirstRun {
             probed: false,
             outcome: None,
             language_offered: false,
+            backdrop_offered: false,
             focus_first: false,
             services,
             add,
@@ -146,9 +151,11 @@ impl FirstRun {
         self.probed = false;
         self.outcome = None;
         self.language_offered = false;
+        self.backdrop_offered = false;
         self.focus_first = false;
         self.add.update(cx, |add, cx| add.reset(window, cx));
         self.offer_language(cx);
+        self.offer_backdrop(cx);
         cx.notify();
     }
 

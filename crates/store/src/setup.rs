@@ -40,6 +40,8 @@ pub struct SetupModel {
     showing: bool,
     /// Bumped each time the guide opens, so it starts over instead of resuming a stale step.
     run: u64,
+    /// The guide opened by itself, for a setup that never ran, rather than because someone asked.
+    unprompted: bool,
     _load: Option<Task<()>>,
     _subscription: Subscription,
 }
@@ -60,6 +62,7 @@ impl SetupModel {
             decision: Decision::Unknown,
             showing: false,
             run: 0,
+            unprompted: false,
             _load: None,
             _subscription: subscription,
         }
@@ -84,6 +87,11 @@ impl SetupModel {
 
     pub fn run(&self) -> u64 {
         self.run
+    }
+
+    /// Whether this run is a first setup, which may set defaults, rather than one someone reopened.
+    pub fn unprompted(&self) -> bool {
+        self.unprompted
     }
 
     /// Ask again; a decision already taken stands, so this only matters before the first answer.
@@ -112,6 +120,7 @@ impl SetupModel {
         }
         self.decision = decision;
         if decision == Decision::Guide {
+            self.unprompted = true;
             self.open(cx);
         }
         crate::notify(cx);
@@ -145,6 +154,7 @@ impl SetupModel {
     /// Forget setup was done and open the guide from its first step.
     pub fn run_again(&mut self, cx: &mut Context<Self>) {
         self.decision = Decision::Guide;
+        self.unprompted = false;
         store(false, cx);
         self.open(cx);
     }

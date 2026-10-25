@@ -193,6 +193,50 @@ pub fn starts_over(held: u64, current: u64) -> bool {
     held != current
 }
 
+/// How the window's background shows the playing cover, as the guide offers it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Backdrop {
+    Off,
+    Cover,
+    Blurred,
+}
+
+/// The blur "Blurred" sets: enough that the cover reads as colour, not as a picture.
+pub const BACKDROP_BLUR: u8 = 40;
+
+impl Backdrop {
+    pub const ALL: [Backdrop; 3] = [Backdrop::Off, Backdrop::Cover, Backdrop::Blurred];
+
+    pub fn of(background: &config::Background) -> Self {
+        match (background.cover_art_background, background.cover_art_blur) {
+            (false, _) => Backdrop::Off,
+            (true, 0) => Backdrop::Cover,
+            (true, _) => Backdrop::Blurred,
+        }
+    }
+
+    /// The settings that make this the backdrop; a blur already chosen in Settings is kept.
+    pub fn edits(self, background: &config::Background) -> Vec<config::BackgroundEdit> {
+        use config::BackgroundEdit::{CoverArtBackground, CoverArtBlur};
+        match self {
+            Backdrop::Off => vec![CoverArtBackground(false)],
+            Backdrop::Cover => vec![CoverArtBackground(true), CoverArtBlur(0)],
+            Backdrop::Blurred => {
+                let blur = match background.cover_art_blur {
+                    0 => BACKDROP_BLUR,
+                    kept => kept,
+                };
+                vec![CoverArtBackground(true), CoverArtBlur(blur)]
+            }
+        }
+    }
+}
+
+/// A fresh install starts on the blurred cover; a background anyone already set is left alone.
+pub fn starts_blurred(background: &config::Background) -> bool {
+    *background == config::Background::default()
+}
+
 /// The jobs that fill a library: a folder scan, or a sync source's library, playlists and likes together.
 pub const FILL_KINDS: [JobKind; 4] = [
     JobKind::Scan,
@@ -372,6 +416,47 @@ mod tests {
         }
         assert_eq!(step, Step::Welcome);
         assert_eq!(undone, vec![Step::Scan]);
+    }
+
+    #[test]
+    fn the_backdrop_reads_back_what_it_writes() {
+        let mut background = config::Background::default();
+        assert_eq!(Backdrop::of(&background), Backdrop::Off);
+        for look in Backdrop::ALL {
+            for edit in look.edits(&background) {
+                match edit {
+                    config::BackgroundEdit::CoverArtBackground(on) => {
+                        background.cover_art_background = on
+                    }
+                    config::BackgroundEdit::CoverArtBlur(blur) => background.cover_art_blur = blur,
+                    _ => {}
+                }
+            }
+            assert_eq!(Backdrop::of(&background), look);
+        }
+    }
+
+    #[test]
+    fn blurred_keeps_a_blur_already_chosen() {
+        let background = config::Background {
+            cover_art_blur: 75,
+            ..Default::default()
+        };
+        assert!(
+            Backdrop::Blurred
+                .edits(&background)
+                .contains(&config::BackgroundEdit::CoverArtBlur(75))
+        );
+    }
+
+    #[test]
+    fn only_an_untouched_background_starts_blurred() {
+        assert!(starts_blurred(&config::Background::default()));
+        let chosen = config::Background {
+            cover_art_darkening: 30,
+            ..Default::default()
+        };
+        assert!(!starts_blurred(&chosen));
     }
 
     #[test]

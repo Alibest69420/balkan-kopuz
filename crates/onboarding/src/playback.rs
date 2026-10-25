@@ -1,33 +1,49 @@
-//! How the player behaves: what Back does partway through a song, and whether played songs are kept for offline.
+//! How the player behaves: what Back does partway through a song, and whether played songs are kept for offline, up to how much.
 
-use components::format::{self, t, t_with};
+use components::format::{self, t};
 use components::settings::Toggle;
 use components::{Choice, SettingRow};
 use config::{BackBehavior, LibraryEdit, PlaybackEdit, SettingsEdit};
 use gpui_kit::component::v_flex;
 use gpui_kit::{AnyElement, App, Context, IntoElement, ParentElement as _, Styled};
+use settings_sources::offline_cache::sizes;
 use store::ConfigModel;
 
 use crate::FirstRun;
 
-/// Keeping played songs, said with the cap they are kept up to.
-fn offline_cache(settings: &config::Settings, cx: &App) -> SettingRow {
-    let size = format::bytes(settings.library.offline_cache_max_bytes);
-    SettingRow::new(t_with(
-        "onboarding_offline_cache",
-        &[("size", size.to_string().into())],
-    ))
-    .setting(
-        Toggle::new("onboarding-offline_cache_enabled")
-            .enabled(settings.library.offline_cache_enabled)
-            .on_change(|on, _, cx| {
-                ConfigModel::edit(
-                    cx,
-                    SettingsEdit::Library(LibraryEdit::OfflineCacheEnabled(*on)),
-                )
-            }),
-    )
-    .bind("offline_cache_enabled", cx)
+/// Keeping played songs, and the cap on them once they are kept.
+fn offline_cache(settings: &config::Settings, cx: &App) -> Vec<SettingRow> {
+    let library = &settings.library;
+    let keep = SettingRow::new(t("offline_cache_enabled"))
+        .setting(
+            Toggle::new("onboarding-offline_cache_enabled")
+                .enabled(library.offline_cache_enabled)
+                .on_change(|on, _, cx| {
+                    ConfigModel::edit(
+                        cx,
+                        SettingsEdit::Library(LibraryEdit::OfflineCacheEnabled(*on)),
+                    )
+                }),
+        )
+        .bind("offline_cache_enabled", cx);
+    let max = library.offline_cache_max_bytes;
+    let options = sizes(max)
+        .into_iter()
+        .map(|bytes| (bytes, format::bytes(bytes)))
+        .collect();
+    let cap = SettingRow::new(t("offline_cache_max_size"))
+        .setting(
+            Choice::new("onboarding-offline_cache_max", max, options).on_change(
+                ConfigModel::writer(|bytes| {
+                    SettingsEdit::Library(LibraryEdit::OfflineCacheMaxBytes(bytes))
+                }),
+            ),
+        )
+        .bind("offline_cache_max_bytes", cx);
+    let mut rows = vec![keep];
+    // A cap on a cache that keeps nothing would only be a question with no effect.
+    rows.extend(library.offline_cache_enabled.then_some(cap));
+    rows
 }
 
 impl FirstRun {
@@ -54,7 +70,7 @@ impl FirstRun {
                             .setting(back)
                             .bind("back_behavior", cx),
                     )
-                    .child(offline_cache(&settings, cx)),
+                    .children(offline_cache(&settings, cx)),
             )
             .into_any_element()
     }
