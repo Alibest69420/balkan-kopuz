@@ -8,7 +8,10 @@ use components::{
 use gpui_kit::component::button::Button;
 use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::{AnyElement, App, Context, IntoElement, ParentElement as _, Styled, Window, div};
+use gpui_kit::{
+    AnyElement, App, Context, InteractiveElement as _, IntoElement, ParentElement as _, Styled,
+    Window, div,
+};
 use link::Link;
 use store::{JobsModel, SourcesModel};
 
@@ -47,6 +50,12 @@ fn blocker(source: &SourceInfo, internet_down: bool) -> Option<Blocker> {
         Some(SourceState::AuthExpired) => Some(Blocker::SignedOut),
         _ => None,
     }
+}
+
+/// The bar's fill across the running jobs: their mean once each knows its total, else a sweep.
+fn share(fractions: &[Option<f32>]) -> Option<f32> {
+    let known: Vec<f32> = fractions.iter().copied().collect::<Option<_>>()?;
+    (!known.is_empty()).then(|| known.iter().sum::<f32>() / known.len() as f32)
 }
 
 impl FirstRun {
@@ -93,25 +102,28 @@ impl FirstRun {
         let column = match blocked {
             Some(blocker) => column.child(self.blocker_line(blocker, cx)),
             None => {
-                // Whichever library job the daemon started for the source, scan or sync alike.
-                let progress = JobsModel::global(cx)
+                // Every job filling the source, scan or syncs alike: a streaming library's tracks arrive through more than one.
+                let running: Vec<api::JobProgress> = JobsModel::global(cx)
                     .read(cx)
                     .running()
                     .iter()
-                    .find(|job| matches!(job.kind, api::JobKind::Scan | api::JobKind::LibrarySync))
-                    .cloned();
-                let share = progress.as_ref().and_then(components::job::fraction);
+                    .filter(|job| self.ours(&job.id, job.kind))
+                    .cloned()
+                    .collect();
+                let fractions: Vec<Option<f32>> =
+                    running.iter().map(components::job::fraction).collect();
                 column
                     .child(crate::ui::hint(t("first_run_sync_hint"), cx))
-                    .child(ProgressBar::new("first-run-progress", share).height(BAR))
-                    .when_some(progress, |step, progress| {
-                        step.child(
-                            div()
-                                .text_xs()
-                                .text_color(style::white(style::TEXT_SECONDARY, cx))
-                                .child(JobLine::new(&progress)),
-                        )
-                    })
+                    .child(ProgressBar::new("first-run-progress", share(&fractions)).height(BAR))
+                    .children(running.iter().map(|progress| {
+                        div()
+                            .id(gpui_kit::ElementId::Name(
+                                format!("first-run-job-{}", progress.id).into(),
+                            ))
+                            .text_xs()
+                            .text_color(style::white(style::TEXT_SECONDARY, cx))
+                            .child(JobLine::new(progress))
+                    }))
             }
         };
         column.into_any_element()
@@ -257,6 +269,13 @@ mod tests {
             detail: Some("http://nas:4533".into()),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn the_bar_fills_only_once_every_job_knows_its_total() {
+        assert_eq!(share(&[]), None);
+        assert_eq!(share(&[Some(0.5), None]), None);
+        assert_eq!(share(&[Some(1.0), Some(0.5)]), Some(0.75));
     }
 
     #[test]
