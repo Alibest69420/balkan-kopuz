@@ -67,6 +67,9 @@ impl FirstRun {
     }
 
     pub(crate) fn connect_step(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        if self.added.is_some() {
+            return self.connection_step(cx);
+        }
         let service = self.add.read(cx).service().cloned();
         v_flex()
             .w_full()

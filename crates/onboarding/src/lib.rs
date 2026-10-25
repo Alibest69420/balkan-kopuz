@@ -8,7 +8,7 @@ mod sync;
 mod ui;
 mod welcome;
 
-use api::{JobKind, JobState, Page, ServiceInfo, SourceInfo, Table, TrackFilter};
+use api::{JobKind, JobState, Page, ServiceInfo, SourceInfo, SourceState, Table, TrackFilter};
 use components::format::t;
 use components::{StepFrame, Stepper};
 use gpui_kit::component::{ActiveTheme as _, v_flex};
@@ -54,6 +54,8 @@ pub struct FirstRun {
     baseline: Option<u64>,
     /// Whether the jobs were last checked with the source ready to fill, so each change checks once.
     checked: Option<bool>,
+    /// The saved source has been probed once since its sign-in landed.
+    probed: bool,
     outcome: Option<Outcome>,
     language_offered: bool,
     focus_first: bool,
@@ -117,6 +119,7 @@ impl FirstRun {
             fill_previous: None,
             baseline: None,
             checked: None,
+            probed: false,
             outcome: None,
             language_offered: false,
             focus_first: false,
@@ -134,6 +137,7 @@ impl FirstRun {
         self.fill_previous = None;
         self.baseline = None;
         self.checked = None;
+        self.probed = false;
         self.outcome = None;
         self.language_offered = false;
         self.focus_first = false;
@@ -155,6 +159,12 @@ impl FirstRun {
     }
 
     fn back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // A saved source still connecting is taken away, leaving its form to correct.
+        if self.step == Step::Connect && self.added.is_some() {
+            self.undo(window, cx);
+            cx.notify();
+            return;
+        }
         let Some(to) = self.step.back() else { return };
         if self.step.undoes_source() {
             self.undo(window, cx);
@@ -234,7 +244,8 @@ impl FirstRun {
         });
         self.outcome = None;
         self.checked = None;
-        self.go(Step::Scan, cx);
+        self.probed = false;
+        cx.notify();
         match active.as_deref() == Some(id.as_str()) {
             true => SourcesModel::global(cx).update(cx, |sources, cx| sources.refetch(cx)),
             false => {
@@ -243,9 +254,34 @@ impl FirstRun {
         }
     }
 
+    /// Connect ends only once the saved source is active, signed in and answering.
+    fn connecting(&mut self, cx: &mut Context<Self>) {
+        let Some(added) = self.added.as_ref() else {
+            return;
+        };
+        let Some(source) = active_source(cx).filter(|source| source.id == added.id) else {
+            return;
+        };
+        match connect_next(&source, self.probed) {
+            ConnectNext::Advance => {
+                self.go(Step::Scan, cx);
+                self.sources_moved(cx);
+            }
+            ConnectNext::Probe => {
+                self.probed = true;
+                self.retry(cx);
+            }
+            ConnectNext::Wait => {}
+        }
+    }
+
     /// Sources moved: once ours is active, look for the fill it may already have finished.
     fn sources_moved(&mut self, cx: &mut Context<Self>) {
         cx.notify();
+        if self.step == Step::Connect {
+            self.connecting(cx);
+            return;
+        }
         if self.step != Step::Scan || self.outcome.is_some() {
             return;
         }
@@ -352,6 +388,7 @@ impl FirstRun {
         };
         self.outcome = None;
         self.checked = None;
+        self.probed = false;
         let link = Link::global(cx).clone();
         let undone = added.clone();
         let call = link.call(move |api| async move {
@@ -463,6 +500,11 @@ impl Render for FirstRun {
                 cx.listener(|this: &mut Self, _, _, cx| this.go(Step::Pick, cx)),
             ),
             Step::Pick => frame,
+            Step::Connect if self.added.is_some() => frame.next(
+                t("continue"),
+                self.connection_blocked(cx).is_none(),
+                cx.listener(|this: &mut Self, _, _, cx| this.retry(cx)),
+            ),
             Step::Connect => frame.next(
                 t("continue"),
                 self.add.read(cx).is_saving(),
@@ -512,6 +554,25 @@ fn ready_to_sync(source: &SourceInfo) -> bool {
     source.authenticated || source.anonymous
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConnectNext {
+    Wait,
+    Probe,
+    Advance,
+}
+
+/// Only a signed-in source the daemon has seen answer moves the guide on to its scan.
+fn connect_next(source: &SourceInfo, probed: bool) -> ConnectNext {
+    if !ready_to_sync(source) {
+        return ConnectNext::Wait;
+    }
+    match source.state {
+        Some(SourceState::Online) => ConnectNext::Advance,
+        _ if !probed => ConnectNext::Probe,
+        _ => ConnectNext::Wait,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -527,5 +588,37 @@ mod tests {
     fn a_source_waiting_on_a_sign_in_is_not_ready() {
         assert!(!ready_to_sync(&signed_in(false)));
         assert!(ready_to_sync(&signed_in(true)));
+    }
+
+    fn in_state(state: Option<SourceState>) -> SourceInfo {
+        SourceInfo {
+            state,
+            ..signed_in(true)
+        }
+    }
+
+    #[test]
+    fn connect_holds_until_the_source_answers() {
+        let mut waiting = in_state(Some(SourceState::Online));
+        waiting.authenticated = false;
+        assert_eq!(connect_next(&waiting, false), ConnectNext::Wait);
+        assert_eq!(connect_next(&in_state(None), false), ConnectNext::Probe);
+        assert_eq!(connect_next(&in_state(None), true), ConnectNext::Wait);
+        assert_eq!(
+            connect_next(&in_state(Some(SourceState::Checking)), true),
+            ConnectNext::Wait
+        );
+        assert_eq!(
+            connect_next(&in_state(Some(SourceState::Offline)), true),
+            ConnectNext::Wait
+        );
+        assert_eq!(
+            connect_next(&in_state(Some(SourceState::AuthExpired)), true),
+            ConnectNext::Wait
+        );
+        assert_eq!(
+            connect_next(&in_state(Some(SourceState::Online)), true),
+            ConnectNext::Advance
+        );
     }
 }

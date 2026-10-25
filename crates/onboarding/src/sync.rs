@@ -8,7 +8,7 @@ use components::{
 use gpui_kit::component::button::Button;
 use gpui_kit::component::{Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::{AnyElement, Context, IntoElement, ParentElement as _, Styled, Window, div};
+use gpui_kit::{AnyElement, App, Context, IntoElement, ParentElement as _, Styled, Window, div};
 use link::Link;
 use store::{JobsModel, SourcesModel};
 
@@ -19,10 +19,14 @@ const BAR: gpui_kit::Pixels = gpui_kit::px(6.);
 
 /// What is in the way of the fill, in the order it is worth saying.
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum Blocker {
+pub(crate) enum Blocker {
     /// The internet is down and this source lives on it.
     NetworkDown,
-    Unreachable(String),
+    /// Named by its address when it has one, so only then is there an address to edit.
+    Unreachable {
+        name: String,
+        address: Option<String>,
+    },
     SignedOut,
     WaitingSignIn,
 }
@@ -31,19 +35,43 @@ fn blocker(source: &SourceInfo, internet_down: bool) -> Option<Blocker> {
     if internet_down && !source.works_offline {
         return Some(Blocker::NetworkDown);
     }
-    match source.state {
-        Some(SourceState::Offline) => {
-            return Some(Blocker::Unreachable(
-                source.detail.clone().unwrap_or_default(),
-            ));
-        }
-        Some(SourceState::AuthExpired) => return Some(Blocker::SignedOut),
-        _ => {}
+    // The daemon probes a source with no credentials yet as unreachable, so the sign-in comes first.
+    if !ready_to_sync(source) {
+        return Some(Blocker::WaitingSignIn);
     }
-    (!ready_to_sync(source)).then_some(Blocker::WaitingSignIn)
+    match source.state {
+        Some(SourceState::Offline) => Some(Blocker::Unreachable {
+            name: source.name.clone(),
+            address: source.detail.clone().filter(|detail| !detail.is_empty()),
+        }),
+        Some(SourceState::AuthExpired) => Some(Blocker::SignedOut),
+        _ => None,
+    }
 }
 
 impl FirstRun {
+    /// What still stands between the saved source and its first fill.
+    pub(crate) fn connection_blocked(&self, cx: &App) -> Option<Blocker> {
+        let internet_down = SourcesModel::global(cx).read(cx).network().internet_down;
+        self.added_source(cx)
+            .and_then(|source| blocker(&source, internet_down))
+    }
+
+    /// The saved source while it connects: its sign-in, its address trouble, or the wait for its first answer.
+    pub(crate) fn connection_step(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let source = self.added_source(cx);
+        let line = match self.connection_blocked(cx) {
+            Some(blocker) => self.blocker_line(blocker, cx),
+            None => StatusLine::new(store::SourceStatus::Connecting).into_any_element(),
+        };
+        v_flex()
+            .w_full()
+            .gap_3()
+            .children(source.map(|source| SectionHeading::new(source.name).heading(Heading::Step)))
+            .child(line)
+            .into_any_element()
+    }
+
     pub(crate) fn sync_step(&mut self, _: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let source = self.added_source(cx);
         let internet_down = SourcesModel::global(cx).read(cx).network().internet_down;
@@ -96,13 +124,13 @@ impl FirstRun {
                 .tone(CalloutTone::Warning)
                 .icon(icons::WARNING)
                 .into_any_element(),
-            Blocker::Unreachable(url) => v_flex()
+            Blocker::Unreachable { name, address } => v_flex()
                 .w_full()
                 .gap_3()
                 .child(
                     Callout::new(t_with(
                         "onboarding_probe_unreachable",
-                        &[("url", url.into())],
+                        &[("url", address.clone().unwrap_or(name).into())],
                     ))
                     .id("first-run-unreachable")
                     .tone(CalloutTone::Warning)
@@ -111,15 +139,17 @@ impl FirstRun {
                 .child(
                     h_flex()
                         .gap_2()
-                        .child(
-                            Button::new("first-run-edit-url")
-                                .outline()
-                                .small()
-                                .label(t("edit_url"))
-                                .on_click(cx.listener(|this: &mut Self, _, window, cx| {
-                                    this.back(window, cx)
-                                })),
-                        )
+                        .when(address.is_some(), |row| {
+                            row.child(
+                                Button::new("first-run-edit-url")
+                                    .outline()
+                                    .small()
+                                    .label(t("edit_url"))
+                                    .on_click(cx.listener(|this: &mut Self, _, window, cx| {
+                                        this.back(window, cx)
+                                    })),
+                            )
+                        })
                         .child(
                             Button::new("first-run-retry")
                                 .outline()
@@ -189,7 +219,7 @@ impl FirstRun {
     }
 
     /// Ask the daemon to probe the source again; its answer arrives as a status event.
-    fn retry(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn retry(&mut self, cx: &mut Context<Self>) {
         let Some(id) = self.added.as_ref().map(|added| added.id.clone()) else {
             return;
         };
@@ -220,6 +250,7 @@ mod tests {
 
     fn source(state: Option<SourceState>, works_offline: bool) -> SourceInfo {
         SourceInfo {
+            name: "NAS".into(),
             authenticated: true,
             state,
             works_offline,
@@ -232,8 +263,32 @@ mod tests {
     fn an_offline_server_names_its_address() {
         assert_eq!(
             blocker(&source(Some(SourceState::Offline), false), false),
-            Some(Blocker::Unreachable("http://nas:4533".into()))
+            Some(Blocker::Unreachable {
+                name: "NAS".into(),
+                address: Some("http://nas:4533".into()),
+            })
         );
+    }
+
+    #[test]
+    fn a_source_without_an_address_is_named_and_has_none_to_edit() {
+        let mut streaming = source(Some(SourceState::Offline), false);
+        streaming.detail = None;
+        assert_eq!(
+            blocker(&streaming, false),
+            Some(Blocker::Unreachable {
+                name: "NAS".into(),
+                address: None,
+            })
+        );
+    }
+
+    #[test]
+    fn a_source_waiting_on_its_sign_in_is_not_called_unreachable() {
+        let mut waiting = source(Some(SourceState::Offline), false);
+        waiting.authenticated = false;
+        waiting.detail = None;
+        assert_eq!(blocker(&waiting, false), Some(Blocker::WaitingSignIn));
     }
 
     #[test]
