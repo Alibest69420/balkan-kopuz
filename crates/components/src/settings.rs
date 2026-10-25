@@ -718,15 +718,15 @@ impl RenderOnce for SettingRow {
                 .child(t("setting_saved"))
         });
         let locked = self.locked;
-        let control = self.control.map(|control| {
-            h_flex().gap_2().items_center().children(tick).child(
-                div()
-                    .when(held < 1., |fading| fading.opacity(held))
-                    .child(control(locked)),
-            )
-        });
         if self.stacked {
-            v_flex()
+            // A stacked control needs the full width, so the saved tick sits on the label's line instead.
+            let control = self.control.map(|control| {
+                div()
+                    .w_full()
+                    .when(held < 1., |fading| fading.opacity(held))
+                    .child(control(locked))
+            });
+            return v_flex()
                 .id(scoped("row", &self.title))
                 .w_full()
                 .min_h(row_height())
@@ -734,25 +734,39 @@ impl RenderOnce for SettingRow {
                 .py_4()
                 .bg(surface)
                 .on_hover(motion::track(hovered))
-                .child(div().mb_3().child(label))
+                .child(
+                    h_flex()
+                        .mb_3()
+                        .gap_2()
+                        .items_start()
+                        .justify_between()
+                        .child(label)
+                        .children(tick),
+                )
                 .children(control)
-                .into_any_element()
-        } else {
-            h_flex()
-                .id(scoped("row", &self.title))
-                .w_full()
-                .min_h(row_height())
-                .gap_5()
-                .px_5()
-                .py_2p5()
-                .justify_between()
-                .items_center()
-                .bg(surface)
-                .on_hover(motion::track(hovered))
-                .child(label)
-                .children(control)
-                .into_any_element()
+                .into_any_element();
         }
+        let control = self.control.map(|control| {
+            h_flex().gap_2().items_center().children(tick).child(
+                div()
+                    .when(held < 1., |fading| fading.opacity(held))
+                    .child(control(locked)),
+            )
+        });
+        h_flex()
+            .id(scoped("row", &self.title))
+            .w_full()
+            .min_h(row_height())
+            .gap_5()
+            .px_5()
+            .py_2p5()
+            .justify_between()
+            .items_center()
+            .bg(surface)
+            .on_hover(motion::track(hovered))
+            .child(label)
+            .children(control)
+            .into_any_element()
     }
 }
 

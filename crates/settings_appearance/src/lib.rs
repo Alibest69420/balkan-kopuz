@@ -6,7 +6,7 @@ use components::format::t;
 use components::settings::{
     Choice, SettingRow, SliderRow, on_slider_change, section, set_slider, slider_state, toggle_row,
 };
-use components::{PathField, PathKind, style};
+use components::{PathField, PathKind, ThemeGallery, ThemeOption, style};
 use config::{
     BackBehavior, BackgroundEdit, LyricsEdit, PlaybackEdit, PlayerBarPosition, Settings,
     SettingsEdit, SystemEdit, UiEdit,
@@ -220,6 +220,7 @@ impl AppearanceSettings {
             SettingRow::new(t("appearance"))
                 .bind("theme", cx)
                 .description(t("theme_description"))
+                .stacked()
                 .setting(self.theme(cfg)),
             cx,
         );
@@ -386,24 +387,49 @@ impl AppearanceSettings {
         ))
     }
 
-    fn theme(&self, cfg: &Settings) -> Choice<String> {
-        let mut options: Vec<(String, SharedString)> = theme::BUILT_IN
-            .iter()
-            .map(|palette| (palette.name.to_string(), theme_label(palette.name)))
-            .collect();
-        options.push((theme::SYSTEM.to_string(), t("system_colors")));
-        let mut custom: Vec<(String, SharedString)> = cfg
-            .ui
-            .custom_themes
-            .iter()
-            .map(|(id, custom)| (id.clone(), SharedString::from(custom.name.clone())))
-            .collect();
-        custom.sort_by(|left, right| left.1.cmp(&right.1));
-        options.extend(custom);
-        Choice::new("theme", cfg.ui.theme.clone(), options).on_change(ConfigModel::writer(
-            |value| SettingsEdit::Ui(UiEdit::Theme(value)),
-        ))
+    fn theme(&self, cfg: &Settings) -> ThemeGallery {
+        theme_gallery("theme", cfg).columns(6)
     }
+}
+
+/// Every theme on offer, each with the colours its example is drawn in.
+pub fn theme_options(cfg: &Settings) -> Vec<ThemeOption> {
+    let mut options: Vec<ThemeOption> = theme::BUILT_IN
+        .iter()
+        .map(|palette| ThemeOption {
+            id: palette.name.to_string(),
+            label: theme_label(palette.name),
+            colors: palette.into(),
+        })
+        .collect();
+    // System colours follow the cover; the example shows them as they start, before anything plays.
+    options.push(ThemeOption {
+        id: theme::SYSTEM.to_string(),
+        label: t("system_colors"),
+        colors: theme::system_colors(None, true),
+    });
+    let mut custom: Vec<ThemeOption> = cfg
+        .ui
+        .custom_themes
+        .iter()
+        .filter_map(|(id, custom)| {
+            Some(ThemeOption {
+                id: id.clone(),
+                label: SharedString::from(custom.name.clone()),
+                colors: theme::Colors::from_vars(&custom.vars)?,
+            })
+        })
+        .collect();
+    custom.sort_by(|left, right| left.label.cmp(&right.label));
+    options.extend(custom);
+    options
+}
+
+/// The theme picker, writing the choice straight to the config.
+pub fn theme_gallery(id: &'static str, cfg: &Settings) -> ThemeGallery {
+    ThemeGallery::new(id, cfg.ui.theme.clone(), theme_options(cfg)).on_change(ConfigModel::writer(
+        |value| SettingsEdit::Ui(UiEdit::Theme(value)),
+    ))
 }
 
 /// Keep a row unless the settings search is filtering it out.
