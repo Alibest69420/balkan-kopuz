@@ -89,17 +89,12 @@ pub fn Activity(settings: Signal<Settings>) -> Element {
     });
 
     let track_data_len = total_rows();
-    let scroll_info = components::virtual_scroll::use_virtual_scroll(
-        *scroll_stat.read(),
-        *container_height.read(),
-        track_data_len,
-        ITEM_HEIGHT,
-    );
+    let window_rows = window.rows.read().clone().unwrap_or_default();
+    let (top_pad, bottom_pad) = crate::library::window_padding(track_data_len, &window_rows);
 
     let visible_tracks: Vec<(usize, Track, u64, String, Option<CoverUrl>)> = {
         let counts = counts_res.read().clone().unwrap_or_default();
         let albums = album_map.read();
-        let window_rows = window.rows.read().clone().unwrap_or_default();
         let row_offset = window_rows.offset as usize;
         window_rows
             .rows
@@ -168,8 +163,8 @@ pub fn Activity(settings: Signal<Settings>) -> Element {
                     container_height,
                     item_height: ITEM_HEIGHT,
                     saved_scroll,
-                    top_pad: scroll_info.top_pad,
-                    bottom_pad: scroll_info.bottom_pad,
+                    top_pad,
+                    bottom_pad,
                     onscroll: move |scroll| {
                         scroll_positions.write().insert(Route::Activity, scroll);
                     },

@@ -8,6 +8,7 @@ use components::header::Header;
 use components::metadata_modal::MetadataModal;
 use components::playlist_modal::PlaylistModal;
 use components::selection_bar::SelectionBar;
+use components::showcase;
 use components::sort_control::SortControl;
 use components::stat_card::StatCard;
 use components::track_row::TrackRow;
@@ -24,7 +25,10 @@ use std::collections::HashSet;
 
 const ITEM_HEIGHT: f64 = 60.0;
 
-fn window_padding(total_tracks: usize, window: &WindowRows) -> (f64, f64) {
+/// Pads around the window that is loaded, not the one being asked for, so rows
+/// stay at their absolute positions while the next page is in flight. Shared
+/// with Activity, whose rows are the same height.
+pub(crate) fn window_padding(total_tracks: usize, window: &WindowRows) -> (f64, f64) {
     let offset = window.offset as usize;
     (
         offset as f64 * ITEM_HEIGHT,
@@ -50,7 +54,33 @@ pub fn LibraryPage(
     let downloads = hooks::downloads::use_downloads();
 
     let mut prefs = hooks::ui_prefs::use_ui_prefs();
-    let library_sort = use_signal(|| prefs.peek().library_sort.clone());
+    let mut library_sort = use_signal(|| prefs.peek().library_sort.clone());
+    // The column headers drive the same sort as the Sort by control: a header
+    // click replaces the criteria with that one column, and the control's
+    // leading criterion is what the header marks.
+    let mut header_sort = use_signal(|| header_state(&library_sort.peek()));
+    use_effect(move || {
+        let shown = header_state(&library_sort.read());
+        if *header_sort.peek() != shown {
+            header_sort.set(shown);
+        }
+    });
+    use_effect(move || {
+        let picked = *header_sort.read();
+        if picked == header_state(&library_sort.peek()) {
+            return;
+        }
+        library_sort.set(match picked {
+            Some((field, direction)) => vec![config::SortCriterion::new(
+                track_sort_field(field),
+                match direction {
+                    showcase::SortDirection::Asc => config::SortDirection::Asc,
+                    showcase::SortDirection::Desc => config::SortDirection::Desc,
+                },
+            )],
+            None => config::UiPrefs::default().library_sort,
+        });
+    });
     let filter = use_memo(move || {
         // The source is the daemon's; naming it here only keeps the memo
         // re-running across a switch.
@@ -432,7 +462,7 @@ pub fn LibraryPage(
                     ],
                 }
             }
-            Header { is_vaxry: is_vaxry, is_album: false }
+            Header { is_vaxry: is_vaxry, is_album: false, sort_state: Some(header_sort) }
             VirtualScrollView {
                 id: "library-scroll".to_string(),
                 class: if cfg!(target_os = "android") { "flex-1 overflow-y-auto overflow-x-hidden pb-20".to_string() } else { "flex-1 overflow-y-auto pb-20".to_string() },
@@ -464,6 +494,32 @@ pub fn LibraryPage(
             }
         }
     }
+}
+
+fn track_sort_field(field: showcase::SortField) -> TrackSortField {
+    match field {
+        showcase::SortField::Title => TrackSortField::Title,
+        showcase::SortField::Artist => TrackSortField::Artist,
+        showcase::SortField::Album => TrackSortField::Album,
+        showcase::SortField::Duration => TrackSortField::Duration,
+    }
+}
+
+/// The leading criterion as a header column, if it is one the header shows.
+fn header_state(criteria: &[config::SortCriterion<TrackSortField>]) -> showcase::SortState {
+    let first = criteria.first()?;
+    let field = match first.field {
+        TrackSortField::Title => showcase::SortField::Title,
+        TrackSortField::Artist => showcase::SortField::Artist,
+        TrackSortField::Album => showcase::SortField::Album,
+        TrackSortField::Duration => showcase::SortField::Duration,
+        TrackSortField::DateAdded => return None,
+    };
+    let direction = match first.direction {
+        config::SortDirection::Asc => showcase::SortDirection::Asc,
+        config::SortDirection::Desc => showcase::SortDirection::Desc,
+    };
+    Some((field, direction))
 }
 
 #[cfg(test)]
