@@ -1,4 +1,4 @@
-//! The volume control: a perceptual curve at the UI edge, a linear level on the wire.
+//! The volume control: the slider's position is the level sent, and the player engine applies the loudness curve.
 
 use std::rc::Rc;
 
@@ -32,21 +32,10 @@ const PIXELS_PER_NOTCH: f32 = 60.;
 const MAX_NOTCHES: f32 = 3.;
 const SILENT: f32 = f32::EPSILON;
 
-/// The wire level a slider reading of `shown` means; loudness is cubic, not linear.
-pub fn to_wire(shown: f32) -> f32 {
-    let shown = shown.clamp(0., 1.);
-    shown * shown * shown
-}
-
-/// Where a wire level sits on the slider.
-pub fn to_ui(level: f32) -> f32 {
-    level.clamp(0., 1.).cbrt()
-}
-
 fn glyph_for(level: f32, muted: bool) -> &'static str {
     if muted || level <= SILENT {
         icons::VOLUME_MUTED
-    } else if to_ui(level) < 0.5 {
+    } else if level < 0.5 {
         icons::VOLUME_LOW
     } else {
         icons::VOLUME
@@ -211,28 +200,5 @@ impl RenderOnce for VolumeControl {
             .when(wide, |control| {
                 control.child(div().w(button).flex_shrink_0())
             })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{to_ui, to_wire};
-
-    #[test]
-    fn the_middle_of_the_slider_is_not_half_the_power() {
-        assert!(to_wire(0.5) < 0.2);
-    }
-
-    #[test]
-    fn the_ends_are_where_they_look() {
-        assert_eq!(to_wire(0.), 0.);
-        assert_eq!(to_wire(1.), 1.);
-    }
-
-    #[test]
-    fn a_level_round_trips_through_the_curve() {
-        for level in [0., 0.05, 0.3, 0.75, 1.] {
-            assert!((to_wire(to_ui(level)) - level).abs() < 1e-5);
-        }
     }
 }

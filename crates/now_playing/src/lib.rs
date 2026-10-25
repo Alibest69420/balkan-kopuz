@@ -15,7 +15,6 @@ mod transport;
 mod volume;
 mod window;
 
-use components::volume_control::to_ui;
 use gpui_kit::base::slider::{SliderEvent, SliderState};
 use gpui_kit::{
     App, AppContext as _, Bounds, Context, Entity, Global, IntoElement, Pixels, Render,
@@ -129,7 +128,7 @@ impl NowPlaying {
 
     fn new(presentation: Presentation, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let level = PlayerModel::global(cx).read(cx).volume();
-        let volume = cx.new(|_| fraction_state(VOLUME_STEP, to_ui(level)));
+        let volume = cx.new(|_| fraction_state(VOLUME_STEP, level));
         let holds_tabs = matches!(presentation, Presentation::Sheet | Presentation::Panel);
         let mini = presentation == Presentation::Mini;
         let seek = (presentation != Presentation::Panel).then(|| {
@@ -211,7 +210,7 @@ impl NowPlaying {
         let playing = PlayerModel::global(cx).read(cx).track().cloned();
         self.swap.follow(playing.as_ref());
         if !self.volume_held {
-            let shown = to_ui(PlayerModel::global(cx).read(cx).volume());
+            let shown = PlayerModel::global(cx).read(cx).volume();
             self.volume
                 .update(cx, |state, cx| state.set_value(shown, window, cx));
         }
@@ -277,8 +276,7 @@ impl NowPlaying {
                 value.end()
             }
         };
-        let level = components::volume_control::to_wire(shown);
-        PlayerModel::global(cx).update(cx, |player, cx| player.set_volume(level, cx));
+        PlayerModel::global(cx).update(cx, |player, cx| player.set_volume(shown, cx));
     }
 }
 

@@ -1,7 +1,6 @@
 //! The level control, wired to the player: the paint is `components::VolumeControl`.
 
 use components::VolumeControl;
-use components::volume_control::to_wire;
 use gpui_kit::Context;
 use store::{ConfigModel, PlayerModel};
 
@@ -32,8 +31,7 @@ impl NowPlaying {
             })
             .on_step(move |next, window, cx| {
                 state.update(cx, |state, cx| state.set_value(next, window, cx));
-                PlayerModel::global(cx)
-                    .update(cx, |player, cx| player.set_volume(to_wire(next), cx));
+                PlayerModel::global(cx).update(cx, |player, cx| player.set_volume(next, cx));
             })
     }
 }
