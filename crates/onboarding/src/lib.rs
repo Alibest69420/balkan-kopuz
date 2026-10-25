@@ -496,12 +496,15 @@ impl Render for FirstRun {
                 false,
                 cx.listener(|this: &mut Self, _, _, cx| this.go(Step::Pick, cx)),
             ),
-            // Picking a card is the way on; this passes Music by for someone whose music is already set up.
-            Step::Pick => frame.next(
-                t("continue"),
-                false,
-                cx.listener(|this: &mut Self, _, _, cx| this.go(Step::Appearance, cx)),
-            ),
+            // Picking a card is the way on; only music already set up, as on a rerun, may be passed by.
+            Step::Pick => match active_source(cx).is_some_and(|source| has_music(&source)) {
+                true => frame.next(
+                    t("continue"),
+                    false,
+                    cx.listener(|this: &mut Self, _, _, cx| this.go(Step::Appearance, cx)),
+                ),
+                false => frame,
+            },
             Step::Connect if self.added.is_some() => frame.next(
                 t("continue"),
                 self.connection_blocked(cx).is_none(),
@@ -565,6 +568,12 @@ fn ready_to_sync(source: &SourceInfo) -> bool {
     source.authenticated || source.anonymous
 }
 
+/// A source that can already fill a library: signed in, and pointed at folders if it reads them.
+fn has_music(source: &SourceInfo) -> bool {
+    ready_to_sync(source)
+        && (!source.capabilities.scan_folders || !settings_sources::folders::of(source).is_empty())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ConnectNext {
     Wait,
@@ -599,6 +608,21 @@ mod tests {
     fn a_source_waiting_on_a_sign_in_is_not_ready() {
         assert!(!ready_to_sync(&signed_in(false)));
         assert!(ready_to_sync(&signed_in(true)));
+    }
+
+    #[test]
+    fn music_is_passed_by_only_when_a_source_can_already_fill_the_library() {
+        assert!(!has_music(&signed_in(false)));
+        assert!(has_music(&signed_in(true)));
+        let mut folders = signed_in(true);
+        folders.capabilities.scan_folders = true;
+        assert!(!has_music(&folders));
+        folders.settings = vec![api::schema::FieldSpec {
+            key: settings_sources::folders::KEY.into(),
+            value: Some(api::schema::encode_directories(&["/music".into()])),
+            ..Default::default()
+        }];
+        assert!(has_music(&folders));
     }
 
     fn in_state(state: Option<SourceState>) -> SourceInfo {
