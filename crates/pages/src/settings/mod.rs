@@ -226,8 +226,6 @@ pub fn Settings(settings: Signal<config::Settings>) -> Element {
         );
     };
 
-    // Signing in again on an active server: which flow it is belongs to the
-    // service, and the daemon runs it.
     let mut sign_in_again = move || match active_server() {
         Some(server) if server.reauth == api::SignInKind::Browser => {
             let mut reauth_error = reauth_error;

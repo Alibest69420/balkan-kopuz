@@ -152,7 +152,7 @@ pub fn ThemeEditorPage(settings: Signal<Settings>, #[props(default)] embedded: b
 
     let editor = rsx! {
         div { class: "flex gap-6",
-            // ── Left: saved themes list ──────────────────────────────
+
             div { class: "w-52 shrink-0 flex flex-col gap-2",
                 button {
                     class: "app-button-tonal w-full px-3 py-2 bg-white/10 hover:bg-white/15 rounded text-sm text-white transition-colors text-left",
@@ -182,7 +182,6 @@ pub fn ThemeEditorPage(settings: Signal<Settings>, #[props(default)] embedded: b
                 }
             }
 
-            // ── Right: editor ────────────────────────────────────────
             div { class: "flex-1 flex flex-col gap-5",
                 div { class: "bg-white/5 rounded-xl p-5",
                     label { class: "block text-xs text-slate-400 mb-1", "{i18n::t(\"theme_name\")}" }

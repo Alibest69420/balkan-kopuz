@@ -696,10 +696,7 @@ pub async fn recently_played(
 pub async fn push_recent(pool: &SqlitePool, source: &Source, key: &str) -> Result<(), DbError> {
     let src = source.as_str();
     let mut tx = pool.begin().await?;
-    // The next position is computed inside the INSERT rather than SELECTed
-    // first: a deferred transaction that reads before it writes holds a shared
-    // lock it then cannot upgrade if anyone commits in between -- SQLite
-    // answers SQLITE_BUSY at once, busy_timeout notwithstanding.
+
     sqlx::query(
         "INSERT INTO recently_played (source, track_key, played_at) \
          VALUES (?1, ?2, (SELECT COALESCE(MAX(played_at), 0) + 1 \

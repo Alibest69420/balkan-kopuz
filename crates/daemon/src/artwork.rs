@@ -329,9 +329,7 @@ impl ArtworkService {
                     first.as_ref(),
                 ))
             }
-            // Public images the daemon holds a URL for. Proxied rather than
-            // handed over, so every frontend gets pictures the same way and
-            // one that cannot fetch a URL itself still works.
+
             ArtworkTarget::Catalog(id) => self
                 .catalog
                 .get()
