@@ -67,7 +67,7 @@ pub fn DownloadOverlay() -> Element {
             class: "fixed top-16 right-4 z-50 w-72 rounded-xl bg-neutral-900/95 border border-white/10 shadow-2xl backdrop-blur-md overflow-hidden",
 
             div {
-                class: "flex items-center justify-between px-4 py-3 border-b border-white/5 cursor-pointer select-none",
+                class: "flex items-center justify-between px-4 py-3 border-b border-white/5 cursor-pointer select-none hover:bg-white/5 transition-colors",
                 onclick: move |_| { let value = *collapsed.read(); collapsed.set(!value); },
 
                 div { class: "flex items-center gap-2",

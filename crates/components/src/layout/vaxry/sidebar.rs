@@ -290,8 +290,9 @@ pub fn SidebarVaxry(props: SidebarProps) -> Element {
                 DrawerNowPlaying {}
             } else {
                 div {
-                    class: "absolute top-0 right-0 w-2 h-full cursor-col-resize z-50",
+                    class: "absolute top-0 right-0 w-2 h-full cursor-col-resize group/handle z-50",
                     onmousedown: move |_| is_resizing.set(true),
+                    div { class: "absolute inset-y-0 right-0 w-px bg-white/0 group-hover/handle:bg-white/10 transition-colors" }
                 }
             }
         }

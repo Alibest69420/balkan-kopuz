@@ -94,7 +94,7 @@ pub fn ShowcaseVaxry(props: ShowcaseProps) -> Element {
     let phone = cfg!(target_os = "android");
     let cover_size = if phone { "w-32 h-32" } else { "w-44 h-44" };
     let cover_cursor = if props.on_cover_click.is_some() {
-        "cursor-pointer"
+        "cursor-pointer transition-[filter] hover:brightness-110 active:brightness-95"
     } else {
         ""
     };
