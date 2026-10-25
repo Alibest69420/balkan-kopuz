@@ -225,7 +225,7 @@ pub fn TrackRow(
     if is_vaxry {
         return rsx! {
             div {
-                class: "track-row track-row-draggable grid px-2 py-1.5 rounded-lg mx-1 group cursor-grab active:cursor-grabbing transition-colors hover:bg-white/5 select-none",
+                class: "track-row track-row-draggable grid px-2 py-1.5 rounded-lg mx-1 group cursor-grab active:cursor-grabbing transition-all hover:bg-white/10 hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] select-none",
                 style: if is_currently_playing {
                     format!("grid-template-columns: {columns_vaxry}; background: color-mix(in oklab, var(--color-indigo-500) 12%, transparent); box-shadow: {selection_shadow};")
                 } else {
@@ -323,9 +323,9 @@ pub fn TrackRow(
                         }
                         button {
                             class: if row_num.is_some() {
-                                "hidden group-hover:flex items-center justify-center"
+                                "w-full h-full rounded-md hidden group-hover:flex items-center justify-center hover:bg-white/10 active:bg-white/15 transition-colors"
                             } else {
-                                "flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                "w-full h-full rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-white/10 active:bg-white/15 transition-all"
                             },
                             onclick: move |_| on_play.call(()),
                             i { class: "fa-solid fa-play text-xs text-white/80" }
@@ -349,7 +349,7 @@ pub fn TrackRow(
                         }
                     }
                     span {
-                        class: "text-sm font-medium truncate cursor-pointer hover:underline",
+                        class: "text-sm font-medium truncate cursor-pointer hover:underline group-hover:text-white transition-colors",
                         style: if is_currently_playing {
                             "color: var(--color-indigo-500); font-weight: 600;"
                         } else {
@@ -389,7 +389,7 @@ pub fn TrackRow(
 
                 div { class: "flex items-center min-w-0 pr-3",
                     span {
-                        class: "text-sm truncate cursor-pointer hover:underline",
+                        class: "text-sm truncate cursor-pointer hover:underline group-hover:text-white/70 transition-colors",
                         style: "color: var(--color-white); opacity: 0.45;",
                         onclick: {
                             let artist = billed_artist(&track);
@@ -414,7 +414,7 @@ pub fn TrackRow(
                             class: if track.album.trim().is_empty() {
                                 "text-sm truncate"
                             } else {
-                                "text-sm truncate cursor-pointer hover:underline"
+                                "text-sm truncate cursor-pointer hover:underline group-hover:text-white/60 transition-colors"
                             },
                             style: "color: var(--color-white); opacity: 0.35;",
                             onclick: {
@@ -459,7 +459,7 @@ pub fn TrackRow(
 
                     div { class: "flex items-center min-w-0 pr-3",
                         span {
-                            class: "text-sm truncate cursor-pointer hover:underline",
+                            class: "text-sm truncate cursor-pointer hover:underline group-hover:text-white/70 transition-colors",
                             style: "color: var(--color-white); opacity: 0.45;",
                             onclick: {
                                 let artist = billed_artist(&track);

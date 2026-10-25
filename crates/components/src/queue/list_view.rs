@@ -75,13 +75,18 @@ pub fn QueueRow(
                 menu_open.set(true);
             },
 
-            div { class: "w-4 flex justify-center items-end shrink-0",
+            div {
+                class: "w-10 h-12 flex justify-center items-center shrink-0 rounded-md hover:bg-white/10 active:bg-white/15 transition-colors cursor-pointer",
+                onclick: move |evt| {
+                    evt.stop_propagation();
+                    on_play.call(());
+                },
 
                 span { class: "queue-item-number text-xs group-hover:hidden text-white/60",
                     "{queue_idx + 1}"
                 }
 
-                div { class: "queue-item-icon hidden group-hover:flex items-center justify-center",
+                div { class: "queue-item-icon hidden group-hover:flex w-full h-full items-center justify-center",
                     i { class: "{row_icon_class}" }
                 }
             }

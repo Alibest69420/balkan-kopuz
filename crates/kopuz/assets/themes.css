@@ -537,9 +537,21 @@ select:disabled {
 
 .settings-category-content {
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
     scroll-margin-top: 1rem;
     contain: layout;
     animation: settings-category-enter 220ms ease-out;
+}
+
+/* Changing a settings tab must not move the sticky navigation while the new
+   section settles. Keep the bar as the scroll anchor and reveal the section
+   below it without an animated layout shift. */
+.settings-layout-topbar .settings-category-content {
+    animation: none;
+    overflow-anchor: none;
+    scroll-margin-top: 3.5rem;
 }
 
 @keyframes settings-category-enter {
@@ -851,7 +863,7 @@ select:disabled {
     .settings-layout-topbar .settings-fan {
         position: sticky;
         z-index: 30;
-        top: 0;
+        top: 3.5rem;
         display: flex;
         width: 100%;
         height: auto;
@@ -863,6 +875,17 @@ select:disabled {
         border-bottom: 1px solid color-mix(in srgb, var(--color-white, #ffffff) 9%, transparent);
         background: color-mix(in srgb, var(--color-black, #000000) 92%, transparent);
         scrollbar-width: none;
+        overflow-anchor: none;
+        scroll-behavior: smooth;
+    }
+
+    .settings-page.settings-layout-topbar > h1 {
+        position: sticky;
+        z-index: 31;
+        top: 0;
+        margin-bottom: 0;
+        padding: 0.75rem 0.25rem;
+        background: transparent;
     }
 
     .settings-layout-topbar .settings-fan::-webkit-scrollbar {

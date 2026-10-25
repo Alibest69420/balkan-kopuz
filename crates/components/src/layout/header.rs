@@ -96,7 +96,7 @@ pub fn Header(
     if is_vaxry {
         return rsx! {
             div {
-                class: "grid px-3 py-2 text-[10px] font-bold text-white/50 border-white/10 border-b mb-1",
+                class: "grid px-3 py-0 text-[10px] font-bold text-white/50 border-white/10 border-b mb-1",
                 style: "grid-template-columns: {columns_vaxry};",
                 div {
                     class: "flex items-center h-4 shrink-0",
@@ -122,7 +122,11 @@ pub fn Header(
                     }
                 }
                 button {
-                    class: "flex items-center gap-1 text-left hover:text-white transition-colors",
+                    class: if is_album {
+                        "w-full h-14 flex items-center gap-1 px-2 -mx-2 rounded-md text-left hover:bg-white/5 hover:text-white active:bg-white/10 transition-colors"
+                    } else {
+                        "w-full h-14 flex items-center gap-1 pl-10 pr-2 -mx-2 rounded-md text-left hover:bg-white/5 hover:text-white active:bg-white/10 transition-colors"
+                    },
                     onclick: move |_| {
                         if let Some(sort_state) = sort_state {
                             showcase::toggle_sort_state(sort_state, SortField::Title);
@@ -132,7 +136,7 @@ pub fn Header(
                         i { class: "{icon_class(&sort_state, SortField::Title)} text-[9px]" }
                 }
                 button {
-                    class: "flex items-center gap-1 text-left hover:text-white transition-colors",
+                    class: "w-full h-14 flex items-center gap-1 px-2 -mx-2 rounded-md text-left hover:bg-white/5 hover:text-white active:bg-white/10 transition-colors",
                     onclick: move |_| {
                         if let Some(sort_state) = sort_state {
                             showcase::toggle_sort_state(sort_state, SortField::Artist);
@@ -143,7 +147,7 @@ pub fn Header(
                 }
                 if !is_album {
                     button {
-                        class: "flex items-center gap-1 text-left hover:text-white transition-colors",
+                        class: "w-full h-14 flex items-center gap-1 px-2 -mx-2 rounded-md text-left hover:bg-white/5 hover:text-white active:bg-white/10 transition-colors",
                         onclick: move |_| {
                             if let Some(sort_state) = sort_state {
                                 showcase::toggle_sort_state(sort_state, SortField::Album);
@@ -170,7 +174,7 @@ pub fn Header(
         rsx! {
             div { class: "flex items-center mb-2",
                   div {
-                      class: if cfg!(target_os = "android") { "grid flex-1 gap-2 px-2 py-2 border-b border-white/10 text-sm font-medium text-white/50 items-center" } else { "grid flex-1 gap-6 px-2 py-2 border-b border-white/10 text-sm font-medium text-white/50 items-center" },
+                    class: if cfg!(target_os = "android") { "grid flex-1 gap-2 px-2 py-0 border-b border-white/10 text-sm font-medium text-white/50 items-center" } else { "grid flex-1 gap-6 px-2 py-0 border-b border-white/10 text-sm font-medium text-white/50 items-center" },
                       style: "grid-template-columns: {columns_normal};",
                       div { class: "flex justify-center items-center h-6 shrink-0",
                             if is_selection_mode {
@@ -194,8 +198,12 @@ pub fn Header(
                                 "#"
                             }
                       }
-                      button {
-                          class: "flex items-center gap-1 text-left hover:text-white transition-colors",
+                button {
+                          class: if is_album {
+                              "w-full h-14 flex items-center gap-1 px-2 -mx-2 rounded-md text-left hover:bg-white/5 hover:text-white active:bg-white/10 transition-colors"
+                          } else {
+                              "w-full h-14 flex items-center gap-1 pl-10 pr-2 -mx-2 rounded-md text-left hover:bg-white/5 hover:text-white active:bg-white/10 transition-colors"
+                          },
                           onclick: move |_| {
                               if let Some(sort_state) = sort_state {
                                   showcase::toggle_sort_state(sort_state, SortField::Title);
@@ -205,7 +213,7 @@ pub fn Header(
                               i { class: "{icon_class(&sort_state, SortField::Title)} text-[10px]" }
                       }
                       button {
-                          class: "flex items-center gap-1 text-left hover:text-white transition-colors",
+                          class: "w-full h-14 flex items-center gap-1 px-2 -mx-2 rounded-md text-left hover:bg-white/5 hover:text-white active:bg-white/10 transition-colors",
                           onclick: move |_| {
                               if let Some(sort_state) = sort_state {
                                   showcase::toggle_sort_state(sort_state, SortField::Artist);
@@ -216,7 +224,7 @@ pub fn Header(
                       }
                       if !is_album {
                           button {
-                              class: "flex items-center gap-1 text-left hover:text-white transition-colors",
+                              class: "w-full h-14 flex items-center gap-1 px-2 -mx-2 rounded-md text-left hover:bg-white/5 hover:text-white active:bg-white/10 transition-colors",
                               onclick: move |_| {
                                   if let Some(sort_state) = sort_state {
                                       showcase::toggle_sort_state(sort_state, SortField::Album);
@@ -227,7 +235,7 @@ pub fn Header(
                           }
                       }
                       button {
-                          class: "flex items-center justify-end gap-1 text-right hover:text-white transition-colors",
+                          class: "w-full h-14 flex items-center justify-end gap-1 px-2 -mx-2 rounded-md text-right hover:bg-white/5 hover:text-white active:bg-white/10 transition-colors",
                           onclick: move |_| {
                               if let Some(sort_state) = sort_state {
                                   showcase::toggle_sort_state(sort_state, SortField::Duration);

@@ -308,7 +308,11 @@ fn VaxryNavItem(
     let phone = cfg!(target_os = "android");
     rsx! {
         a {
-            class: if phone { "flex items-center gap-4 cursor-pointer transition-colors relative mx-2 rounded-lg" } else { "flex items-center gap-3 cursor-pointer transition-colors relative mx-1 rounded-lg" },
+            class: if phone {
+                "flex items-center gap-4 cursor-pointer transition-all hover:bg-white/10 active:bg-white/15 relative mx-2 rounded-lg"
+            } else {
+                "flex items-center gap-3 cursor-pointer transition-all hover:bg-white/10 active:bg-white/15 relative mx-1 rounded-lg"
+            },
             style: match (active, phone) {
                 (true, true) => "min-height: 48px; padding: 0 16px; background: color-mix(in oklab, var(--color-indigo-500) 15%, transparent); box-shadow: inset 3px 0 var(--color-indigo-500);",
                 (true, false) => "padding: 6px 10px; background: color-mix(in oklab, var(--color-indigo-500) 15%, transparent);",

@@ -151,7 +151,7 @@ pub fn ThemeEditorPage(settings: Signal<Settings>, #[props(default)] embedded: b
     };
 
     let editor = rsx! {
-        div { class: "flex gap-6",
+        div { class: "flex gap-6 min-w-0",
 
             div { class: "w-52 shrink-0 flex flex-col gap-2",
                 button {
@@ -169,7 +169,7 @@ pub fn ThemeEditorPage(settings: Signal<Settings>, #[props(default)] embedded: b
                                 button {
                                     key: "{id}",
                                     class: if is_active {
-                                        "w-full text-left px-3 py-2 rounded text-sm bg-white/15 text-white"
+                                        "w-full text-left px-3 py-2 rounded text-sm bg-white/15 text-white hover:bg-white/25 transition-colors"
                                     } else {
                                         "w-full text-left px-3 py-2 rounded text-sm text-slate-400 hover:bg-white/5 hover:text-white transition-colors"
                                     },
@@ -182,7 +182,7 @@ pub fn ThemeEditorPage(settings: Signal<Settings>, #[props(default)] embedded: b
                 }
             }
 
-            div { class: "flex-1 flex flex-col gap-5",
+            div { class: "flex-1 min-w-0 flex flex-col gap-5",
                 div { class: "bg-white/5 rounded-xl p-5",
                     label { class: "block text-xs text-slate-400 mb-1", "{i18n::t(\"theme_name\")}" }
                     // Uncontrolled, since echoing `value` back over the bridge overwrote keys typed meanwhile; keyed to remount per theme.
@@ -331,7 +331,8 @@ pub fn ThemeEditorPage(settings: Signal<Settings>, #[props(default)] embedded: b
 
                 div { class: "flex gap-3",
                     button {
-                        class: "app-button-filled px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded text-sm text-white transition-colors",
+                        class: "app-button-filled px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded text-sm font-semibold text-black transition-colors",
+                        style: "color: var(--color-black);",
                         onclick: move |_| {
                             let name = editing_name.read().trim().to_string();
                             if name.is_empty() { return; }
@@ -362,7 +363,7 @@ pub fn ThemeEditorPage(settings: Signal<Settings>, #[props(default)] embedded: b
                     }
                     if selected_id.peek().is_some() {
                         button {
-                            class: "app-button-tonal app-button-danger px-4 py-2 bg-red-500/20 hover:bg-red-500/30 rounded text-sm text-red-400 transition-colors",
+                            class: "app-button-tonal app-button-danger px-4 py-2 bg-red-500/20 hover:bg-red-500/30 rounded text-sm font-semibold text-red-200 transition-colors",
                             onclick: move |_| {
                                 let Some(id) = selected_id.write().take() else {
                                     return;

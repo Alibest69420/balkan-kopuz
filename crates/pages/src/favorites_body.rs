@@ -430,9 +430,9 @@ pub fn FavoritesBody(
                 }
                 div {
                     class: if is_vaxry {
-                        "grid px-3 py-2 text-[10px] font-bold border-b mb-1"
+                        "grid px-3 py-0 text-[10px] font-bold border-b mb-1"
                     } else {
-                        "grid gap-6 px-2 py-2 border-b border-white/5 text-sm font-medium text-slate-500 mb-2"
+                        "grid gap-6 px-2 py-0 border-b border-white/5 text-sm font-medium text-slate-500 mb-2"
                     },
                     style: if is_vaxry {
                         "grid-template-columns: 40px 1fr 180px 180px 56px 40px; color: rgba(255,255,255,0.25); border-color: rgba(255,255,255,0.06);"
@@ -441,25 +441,25 @@ pub fn FavoritesBody(
                     },
                     div {}
                     button {
-                        class: "flex items-center gap-1 text-left hover:text-white transition-colors",
+                        class: "w-full h-14 flex items-center gap-1 pl-10 pr-2 -mx-2 rounded-md text-left hover:bg-white/5 hover:text-white active:bg-white/10 transition-colors",
                         onclick: move |_| showcase::toggle_sort_state(sort_state, SortField::Title),
                         "{i18n::t(\"title\")}"
                         i { class: "{showcase::sort_icon(*sort_state.read(), SortField::Title)} text-[10px]" }
                     }
                     button {
-                        class: "flex items-center gap-1 text-left hover:text-white transition-colors",
+                        class: "w-full h-14 flex items-center gap-1 px-2 -mx-2 rounded-md text-left hover:bg-white/5 hover:text-white active:bg-white/10 transition-colors",
                         onclick: move |_| showcase::toggle_sort_state(sort_state, SortField::Artist),
                         "{i18n::t(\"artist\")}"
                         i { class: "{showcase::sort_icon(*sort_state.read(), SortField::Artist)} text-[10px]" }
                     }
                     button {
-                        class: "flex items-center gap-1 text-left hover:text-white transition-colors",
+                        class: "w-full h-14 flex items-center gap-1 px-2 -mx-2 rounded-md text-left hover:bg-white/5 hover:text-white active:bg-white/10 transition-colors",
                         onclick: move |_| showcase::toggle_sort_state(sort_state, SortField::Album),
                         "{i18n::t(\"album\")}"
                         i { class: "{showcase::sort_icon(*sort_state.read(), SortField::Album)} text-[10px]" }
                     }
                     button {
-                        class: "flex items-center justify-end gap-1 text-right hover:text-white transition-colors",
+                        class: "w-full h-14 flex items-center justify-end gap-1 px-2 -mx-2 rounded-md text-right hover:bg-white/5 hover:text-white active:bg-white/10 transition-colors",
                         onclick: move |_| showcase::toggle_sort_state(sort_state, SortField::Duration),
                         i { class: "fa-regular fa-clock" }
                         i { class: "{showcase::sort_icon(*sort_state.read(), SortField::Duration)} text-[10px]" }

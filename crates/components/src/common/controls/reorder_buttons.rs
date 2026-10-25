@@ -10,13 +10,13 @@ pub fn ReorderButtons(
     #[props(default = "text-[9px]".to_string())] icon_class: String,
 ) -> Element {
     rsx! {
-        div { class: "{class}",
+        div { class: "{class} justify-center",
             button {
                 disabled: !can_move_up,
                 class: if can_move_up {
-                    "p-0.5 text-slate-500 hover:text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                    "w-8 h-8 flex items-center justify-center rounded-md text-slate-500 hover:bg-white/10 hover:text-white active:bg-white/15 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
                 } else {
-                    "p-0.5 text-slate-700 cursor-default"
+                    "w-8 h-8 flex items-center justify-center rounded-md text-slate-700 cursor-default"
                 },
                 onclick: move |evt| {
                     evt.stop_propagation();
@@ -30,9 +30,9 @@ pub fn ReorderButtons(
             button {
                 disabled: !can_move_down,
                 class: if can_move_down {
-                    "p-0.5 text-slate-500 hover:text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                    "w-8 h-8 flex items-center justify-center rounded-md text-slate-500 hover:bg-white/10 hover:text-white active:bg-white/15 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
                 } else {
-                    "p-0.5 text-slate-700 cursor-default"
+                    "w-8 h-8 flex items-center justify-center rounded-md text-slate-700 cursor-default"
                 },
                 onclick: move |evt| {
                     evt.stop_propagation();

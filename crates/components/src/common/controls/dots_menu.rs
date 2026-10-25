@@ -98,7 +98,7 @@ pub fn DotsMenu(props: DotsMenuProps) -> Element {
     let is_rtl = i18n::is_rtl();
 
     let base_button_class = format!(
-        "w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-colors {}",
+        "w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-colors {}",
         props.button_class
     );
     let sheet = cfg!(target_os = "android");

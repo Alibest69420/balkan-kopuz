@@ -897,9 +897,9 @@ pub fn Settings(settings: Signal<config::Settings>) -> Element {
                 }
                 if active_category() == SettingsCategory::Library {
                     // Above the sources, whose list grows with every one added.
-                    div { class: "mt-6", OfflineCacheSection { settings } }
+                    div { OfflineCacheSection { settings } }
                     // Clears the sticky category tabs when Manage sources scrolls here.
-                    div { id: MEDIA_SERVERS_SECTION, class: "mt-6", style: "scroll-margin-top: 5rem;", onmounted: move |event| scroll_if_pending(MEDIA_SERVERS_SECTION, event.data()),
+                    div { id: MEDIA_SERVERS_SECTION, style: "scroll-margin-top: 5rem;", onmounted: move |event| scroll_if_pending(MEDIA_SERVERS_SECTION, event.data()),
                         SettingsSection { title: i18n::t("sources").to_string(),
                             div { class: "px-5 py-4",
                                 SourceSettings {
