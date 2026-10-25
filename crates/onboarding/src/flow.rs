@@ -1,7 +1,7 @@
 //! The guide's rules, apart from GPUI so they can be tested: its steps, its groups and its language.
 
-use api::ServiceInfo;
 use api::schema::FieldKind;
+use api::{JobKind, JobState, ServiceInfo};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Step {
@@ -162,6 +162,43 @@ pub fn starts_over(held: u64, current: u64) -> bool {
     held != current
 }
 
+/// The jobs that fill a library: a folder scan, or a sync source's library, playlists and likes together.
+pub const FILL_KINDS: [JobKind; 4] = [
+    JobKind::Scan,
+    JobKind::LibrarySync,
+    JobKind::PlaylistSync,
+    JobKind::FavoritesSync,
+];
+
+/// What a source needs started to fill it; a streaming library arrives through its playlists and likes, not its library sync alone.
+pub fn fill_kinds(scan_folders: bool, sync: bool) -> &'static [JobKind] {
+    match (scan_folders, sync) {
+        (true, _) => &FILL_KINDS[..1],
+        (false, true) => &FILL_KINDS[1..],
+        (false, false) => &[],
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fill {
+    NotStarted,
+    Running,
+    Ended { ok: bool },
+}
+
+/// Where the fill stands, from the states of its jobs: over only when none still runs.
+pub fn fill(jobs: &[JobState]) -> Fill {
+    if jobs.is_empty() {
+        Fill::NotStarted
+    } else if jobs.contains(&JobState::Running) {
+        Fill::Running
+    } else {
+        Fill::Ended {
+            ok: jobs.iter().all(|state| *state == JobState::Finished),
+        }
+    }
+}
+
 /// The number in a daemon job id such as `job-12`, which only ever grows.
 pub fn job_number(id: &str) -> Option<u64> {
     id.rsplit('-').next()?.parse().ok()
@@ -290,6 +327,38 @@ mod tests {
         }
         assert_eq!(step, Step::Welcome);
         assert_eq!(undone, vec![Step::Scan]);
+    }
+
+    #[test]
+    fn a_sync_source_fills_through_its_playlists_and_likes_too() {
+        assert_eq!(fill_kinds(true, false), &[JobKind::Scan]);
+        assert_eq!(
+            fill_kinds(false, true),
+            &[
+                JobKind::LibrarySync,
+                JobKind::PlaylistSync,
+                JobKind::FavoritesSync
+            ]
+        );
+        assert!(fill_kinds(false, false).is_empty());
+    }
+
+    #[test]
+    fn the_fill_is_over_only_when_none_of_its_jobs_runs() {
+        assert_eq!(fill(&[]), Fill::NotStarted);
+        // The library sync ending first is what used to count a still-empty library.
+        assert_eq!(
+            fill(&[JobState::Finished, JobState::Running, JobState::Running]),
+            Fill::Running
+        );
+        assert_eq!(
+            fill(&[JobState::Finished, JobState::Finished]),
+            Fill::Ended { ok: true }
+        );
+        assert_eq!(
+            fill(&[JobState::Finished, JobState::Failed]),
+            Fill::Ended { ok: false }
+        );
     }
 
     #[test]

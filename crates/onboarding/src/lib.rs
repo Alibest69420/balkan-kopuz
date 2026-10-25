@@ -229,7 +229,7 @@ impl FirstRun {
     }
 
     fn ours(&self, id: &str, kind: JobKind) -> bool {
-        let filling = matches!(kind, JobKind::Scan | JobKind::LibrarySync);
+        let filling = flow::FILL_KINDS.contains(&kind);
         let after = flow::job_number(id).unwrap_or(0) > self.baseline.unwrap_or(0);
         filling && after && self.added.is_some()
     }
@@ -305,41 +305,42 @@ impl FirstRun {
         cx.spawn(async move |this, cx| {
             let Ok(jobs) = call.await else { return };
             this.update(cx, |this, cx| {
-                let ours: Vec<&api::JobStatus> = jobs
+                let ours: Vec<JobState> = jobs
                     .iter()
                     .filter(|job| this.ours(&job.id, job.kind))
+                    .map(|job| job.state)
                     .collect();
-                if ours.iter().any(|job| job.state == JobState::Running) {
-                    return;
-                }
-                let latest = ours
-                    .iter()
-                    .max_by_key(|job| flow::job_number(&job.id).unwrap_or(0));
-                if let Some(job) = latest {
-                    this.settle(job.state == JobState::Finished, cx);
-                    return;
+                match flow::fill(&ours) {
+                    flow::Fill::Running => return,
+                    flow::Fill::Ended { ok } => return this.settle(ok, cx),
+                    flow::Fill::NotStarted => {}
                 }
                 if !ready_to_sync(&source) {
                     return;
                 }
-                let kind = match (source.capabilities.scan_folders, source.capabilities.sync) {
-                    (true, _) => Some(JobKind::Scan),
-                    (false, true) => Some(JobKind::LibrarySync),
-                    (false, false) => None,
-                };
-                match kind {
-                    Some(kind) => JobsModel::global(cx).update(cx, |jobs, cx| jobs.start(kind, cx)),
-                    None => this.settle(true, cx),
+                let kinds =
+                    flow::fill_kinds(source.capabilities.scan_folders, source.capabilities.sync);
+                if kinds.is_empty() {
+                    return this.settle(true, cx);
                 }
+                JobsModel::global(cx).update(cx, |jobs, cx| {
+                    for kind in kinds {
+                        jobs.start(*kind, cx);
+                    }
+                });
             })
             .ok();
         })
         .detach();
     }
 
+    /// One of the fill's jobs ended; the fill is over only once none of the others still runs.
     fn job_finished(&mut self, event: &JobEvent, cx: &mut Context<Self>) {
-        if self.step == Step::Scan && self.outcome.is_none() && self.ours(&event.id, event.kind) {
-            self.settle(event.ok, cx);
+        if self.step != Step::Scan || self.outcome.is_some() || !self.ours(&event.id, event.kind) {
+            return;
+        }
+        if let Some(source) = self.added_source(cx) {
+            self.check_jobs(source, cx);
         }
     }
 
