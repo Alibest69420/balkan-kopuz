@@ -407,7 +407,7 @@ impl Session {
                         .and_then(|position| self.model.track_at(position).cloned())
                         .or_else(|| self.model.current_track().cloned());
                     if let Some(track) = committed_track {
-                        self.scrobble_committed(track, finished.token);
+                        self.track_committed(track, finished.token);
                     }
                 }
                 let matching_transition = self

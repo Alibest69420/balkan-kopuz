@@ -70,8 +70,8 @@ pub trait QueueMaterializer: Send + Sync {
     fn register_restored(&self, _tracks: &[Track]) {}
 }
 
-/// Durable playback bookkeeping: recents on commit, listen counts when a
-/// track completes or crossfades out, credited to the source that was active
+/// Durable playback bookkeeping: recents on commit, listen counts once a
+/// track has played long enough to scrobble, credited to the source that was active
 /// when it played. Implemented over that source; tests inject a stub.
 #[async_trait::async_trait]
 pub trait PlaybackRecorder: Send + Sync {
@@ -371,6 +371,7 @@ impl SessionHandle {
             remote_loaded: None,
             remote_writer,
             recorder: services.recorder,
+            published: None,
             scrobbler: services.scrobbler,
             last_recent_key: None,
             external: None,
@@ -792,6 +793,8 @@ struct Session {
     remote_loaded: Option<(RemoteQueueMark, u64)>,
     remote_writer: mpsc::UnboundedSender<RemoteQueueJob>,
     recorder: Option<Arc<dyn PlaybackRecorder>>,
+    /// What the session last published, for listen watchers that outlive a command.
+    published: Option<watch::Receiver<PlayerState>>,
     scrobbler: Option<Arc<crate::scrobbler::Scrobbler>>,
     last_recent_key: Option<String>,
     /// Set while an integration the engine cannot drive owns playback.
@@ -821,6 +824,7 @@ impl Session {
         mut engine_events: mpsc::UnboundedReceiver<EngineEvent>,
         state_tx: watch::Sender<PlayerState>,
     ) {
+        self.published = Some(state_tx.subscribe());
         let correction_start = tokio::time::Instant::now() + POSITION_CORRECTION_INTERVAL;
         let mut correction =
             tokio::time::interval_at(correction_start, POSITION_CORRECTION_INTERVAL);
@@ -1877,7 +1881,6 @@ impl Session {
             if let Some(external) = self.external.as_mut() {
                 external.completed_key = Some(track.id.uid());
             }
-            self.record_listen(track);
             // The queue is kopuz's, so its end-of-track is kopuz's too: the
             // next item may be another Spotify track or a local file, and
             // either way the load path decides who plays it.
@@ -1887,8 +1890,8 @@ impl Session {
         }
         self.push_external_now_playing();
         self.publish(state_tx, false);
-        if let (Some(scrobbler), Some((track, token))) = (self.scrobbler.clone(), committed) {
-            scrobbler.track_committed(track, token);
+        if let Some((track, token)) = committed {
+            self.track_committed(track, token);
         }
     }
 
@@ -2008,25 +2011,26 @@ impl Session {
         });
     }
 
-    /// Count a completed listen (auto-advance or crossfade arm), mirroring
-    /// the pump: bumped for the outgoing track, never for radio.
-    pub(super) fn record_listen_of_current(&mut self) {
-        let Some(track) = self.model.current_track() else {
-            return;
-        };
-        self.record_listen(track.clone());
-    }
-
-    pub(super) fn record_listen(&self, track: Track) {
-        let Some(recorder) = self.recorder.clone() else {
+    /// Count a listen once the committed track has played long enough, by the
+    /// scrobbler's rule, so a skip after most of a song still counts and a
+    /// skip after a few seconds does not. Never for radio.
+    fn count_listen_after_playtime(&self, track: Track, token: u64) {
+        let (Some(recorder), Some(published)) = (self.recorder.clone(), self.published.clone())
+        else {
             return;
         };
         if track.duration == u64::MAX {
             return;
         }
+        let threshold = crate::scrobbler::listen_threshold(track.duration);
         let events = self.events.clone();
         let source = self.active_source.clone();
         tokio::spawn(async move {
+            let state = || published.borrow().clone();
+            let uid = track.id.uid();
+            if !crate::scrobbler::accumulate_playtime(state, threshold, token, &uid).await {
+                return;
+            }
             recorder.bump_listen_count(source.as_ref(), &track).await;
             announce_history(&events);
         });
@@ -2248,11 +2252,7 @@ impl Session {
             return false;
         };
         let outgoing_token = pending.from_token;
-        let outgoing = self.model.current_track().cloned();
         self.armed_transition = Some(outgoing_token);
-        if let Some(track) = outgoing {
-            self.record_listen(track);
-        }
         if !self.commit_transition_model(token) {
             return false;
         }
@@ -2298,7 +2298,10 @@ impl Session {
         }
     }
 
-    pub(super) fn scrobble_committed(&self, track: Track, token: u64) {
+    /// A committed track is scrobbled and, once it has played long enough by
+    /// the same rule, counted as a listen for the source active now.
+    pub(super) fn track_committed(&self, track: Track, token: u64) {
+        self.count_listen_after_playtime(track.clone(), token);
         if let Some(scrobbler) = self.scrobbler.clone() {
             scrobbler.track_committed(track, token);
         }

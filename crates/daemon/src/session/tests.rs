@@ -1654,7 +1654,7 @@ impl PlaybackRecorder for MemoryRecorder {
 }
 
 #[tokio::test]
-async fn recents_record_once_and_completion_bumps_listens() {
+async fn recents_record_once_per_committed_track() {
     let recorder = Arc::new(MemoryRecorder {
         recents: Mutex::new(Vec::new()),
         listens: Mutex::new(Vec::new()),
@@ -1680,8 +1680,6 @@ async fn recents_record_once_and_completion_bumps_listens() {
     tokio::time::sleep(Duration::from_millis(50)).await;
     let recents = recorder.recents.lock().expect("lock").clone();
     assert_eq!(recents, vec!["short-a".to_string(), "short-b".to_string()]);
-    let listens = recorder.listens.lock().expect("lock").clone();
-    assert_eq!(listens, vec!["short-a".to_string()]);
 
     harness
         .api
@@ -1696,6 +1694,73 @@ async fn recents_record_once_and_completion_bumps_listens() {
     tokio::time::sleep(Duration::from_millis(50)).await;
     let recents = recorder.recents.lock().expect("lock").clone();
     assert_eq!(recents.len(), 2, "resume must not re-record the same track");
+}
+
+/// A track counts once half of it has played, before it ends: the fake sink
+/// only advances when pulled, so the one-second track stays playing.
+#[tokio::test]
+async fn a_track_counts_as_listened_once_half_of_it_has_played() {
+    let recorder = Arc::new(MemoryRecorder {
+        recents: Mutex::new(Vec::new()),
+        listens: Mutex::new(Vec::new()),
+    });
+    let harness = harness_with_services(
+        |_| {},
+        Arc::new(|track| Some(wav_factory(track.duration.min(6)))),
+        Some(recorder.clone()),
+    );
+
+    harness
+        .api
+        .set_queue(replace(&["short-a", "short-b"]))
+        .await
+        .expect("set queue");
+    wait_committed(&harness.api).await;
+    tokio::time::sleep(Duration::from_millis(1_600)).await;
+
+    let listens = recorder.listens.lock().expect("lock").clone();
+    assert_eq!(listens, vec!["short-a".to_string()]);
+}
+
+/// Skipping before the threshold counts nothing, and the skipped track's
+/// watcher stops rather than counting later; a paused track gains no time.
+#[tokio::test]
+async fn a_skip_before_half_the_track_counts_no_listen() {
+    let recorder = Arc::new(MemoryRecorder {
+        recents: Mutex::new(Vec::new()),
+        listens: Mutex::new(Vec::new()),
+    });
+    let harness = harness_with_services(
+        |_| {},
+        Arc::new(|track| Some(wav_factory(track.duration.min(6)))),
+        Some(recorder.clone()),
+    );
+
+    harness
+        .api
+        .set_queue(replace(&["a-1", "a-2"]))
+        .await
+        .expect("set queue");
+    wait_committed(&harness.api).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    harness
+        .api
+        .player_command(PlayerCommand::Next)
+        .await
+        .expect("next");
+    wait_state(&harness.api, "second track committed", |state| {
+        state.queue.index == Some(1) && matches!(state.intent, Intent::Committed { .. })
+    })
+    .await;
+    harness
+        .api
+        .player_command(PlayerCommand::Pause)
+        .await
+        .expect("pause");
+    // Past the six-second tracks' three-second threshold.
+    tokio::time::sleep(Duration::from_millis(3_600)).await;
+
+    assert!(recorder.listens.lock().expect("lock").is_empty());
 }
 
 /// Notes which source each listen was credited to.
@@ -1742,15 +1807,13 @@ async fn a_listen_is_credited_to_the_source_active_when_it_played() {
 
     harness
         .api
-        .set_queue(replace(&["short-a", "short-b"]))
+        .set_queue(replace(&["short-a"]))
         .await
         .expect("set queue");
     wait_committed(&harness.api).await;
-    drive_until(&harness, "auto-advance to second track", |state| {
-        state.queue.index == Some(1) && matches!(state.intent, Intent::Committed { .. })
-    })
-    .await;
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    // The fake sink only advances when pulled, so the track stays playing in
+    // real time and crosses its one-second threshold.
+    tokio::time::sleep(Duration::from_millis(1_600)).await;
 
     assert_eq!(
         recorder.listens.lock().expect("lock").as_slice(),
@@ -1811,6 +1874,8 @@ async fn play_history_is_announced_after_it_is_written() {
         .await
         .expect("set queue");
     wait_committed(&harness.api).await;
+    // The first track plays past its one-second threshold, so it counts.
+    tokio::time::sleep(Duration::from_millis(1_200)).await;
     drive_until(&harness, "auto-advance to second track", |state| {
         state.queue.index == Some(1) && matches!(state.intent, Intent::Committed { .. })
     })
@@ -3197,6 +3262,8 @@ async fn late_failed_gapless_preload_stops_and_can_retry_the_next_track() {
         .set_queue(replace(&["short-a", "track-b"]))
         .await
         .unwrap();
+    // Let the outgoing track play past its one-second listen threshold.
+    tokio::time::sleep(Duration::from_millis(1_200)).await;
     finish_track_during_preload(&mut harness).await;
     tokio::time::sleep(Duration::from_millis(100)).await;
     *gate.0.lock().unwrap() = false;
@@ -3259,6 +3326,8 @@ async fn late_successful_gapless_preload_commits_history_and_seek_duration() {
         .set_queue(replace(&["short-a", "track-b"]))
         .await
         .unwrap();
+    // Let the outgoing track play past its one-second listen threshold.
+    tokio::time::sleep(Duration::from_millis(1_200)).await;
     finish_track_during_preload(&mut harness).await;
     tokio::time::sleep(Duration::from_millis(100)).await;
     let waiting = harness.api.player_state().await.unwrap();
