@@ -1921,8 +1921,9 @@ async fn a_track_whose_media_cannot_be_reached_says_so() {
     }
 }
 
+/// A failed crossfade and its retry count the outgoing track once, by playtime.
 #[tokio::test]
-async fn failed_crossfade_preparation_records_no_listen_and_can_retry() {
+async fn failed_crossfade_preparation_can_retry_and_counts_the_outgoing_track_once() {
     let recorder = Arc::new(MemoryRecorder {
         recents: Mutex::new(Vec::new()),
         listens: Mutex::new(Vec::new()),
@@ -1952,6 +1953,9 @@ async fn failed_crossfade_preparation_records_no_listen_and_can_retry() {
         .await
         .expect("set queue");
     wait_committed(&harness.api).await;
+    // Past the six-second track's three-second threshold before driving on;
+    // the fake sink only advances when pulled, so this is playing time.
+    tokio::time::sleep(Duration::from_millis(3_400)).await;
     drive_until(&harness, "first crossfade attempt", |state| {
         matches!(
             state.intent,
@@ -1971,7 +1975,10 @@ async fn failed_crossfade_preparation_records_no_listen_and_can_retry() {
     })
     .await;
     tokio::time::sleep(Duration::from_millis(50)).await;
-    assert!(recorder.listens.lock().expect("lock").is_empty());
+    assert_eq!(
+        recorder.listens.lock().expect("lock").as_slice(),
+        ["track-0"]
+    );
 
     drive_until(&harness, "retried crossfade committed", |state| {
         state.queue.index == Some(1) && matches!(state.intent, Intent::Committed { token: 3 })
@@ -4170,12 +4177,20 @@ async fn switching_to_the_video_keeps_the_place_in_the_song_and_the_queue() {
         .player_command(PlayerCommand::Play)
         .await
         .expect("play");
-    let state = wait_committed(&harness.api).await;
+    // The load commits before its seek lands, so wait for the resumed place
+    // rather than reading the first committed state.
+    let state = wait_state(&harness.api, "video resumed at the song's place", |state| {
+        state.phase == ApiPhase::Playing
+            && matches!(state.intent, Intent::Committed { .. })
+            && state
+                .position
+                .is_some_and(|anchor| anchor.ms >= paused_at + 1_000)
+    })
+    .await;
     assert_eq!(
         state.track.as_ref().map(|t| t.key.as_str()),
         Some("ytm-song:a-video")
     );
-    assert!(state.position.expect("anchor").ms >= paused_at + 1_000);
 
     // Playing, the song comes back where the video stood, less the intro.
     for _ in 0..20 {
