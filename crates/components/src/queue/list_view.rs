@@ -51,6 +51,15 @@ pub fn QueueRow(
     } else {
         base_class.to_string()
     };
+    // The end margin swallows the row gap only when a cover follows, so the
+    // title never butts against the cell.
+    let show_row_images = settings.read().ui.show_row_images;
+    let play_cell_class = match (layout, show_row_images) {
+        (LayoutMode::Fullscreen, true) => "w-14 -ms-4 -me-4 -my-2",
+        (LayoutMode::Fullscreen, false) => "w-14 -ms-4 -my-2",
+        (LayoutMode::Rightbar, true) => "w-11 -ms-2 -me-3 -my-1.5",
+        (LayoutMode::Rightbar, false) => "w-11 -ms-2 -my-1.5",
+    };
     let row_icon_class = if is_active {
         "fa-solid fa-volume-high text-xs"
     } else {
@@ -75,8 +84,10 @@ pub fn QueueRow(
                 menu_open.set(true);
             },
 
+            // Spans from the row's edge to the cover at full row height, so the
+            // icon sits centred and a click anywhere left of the cover plays.
             div {
-                class: "w-10 h-12 flex justify-center items-center shrink-0 rounded-md hover:bg-white/10 active:bg-white/15 transition-colors cursor-pointer",
+                class: "{play_cell_class} self-stretch flex justify-center items-center shrink-0 rounded-s-lg hover:bg-white/10 active:bg-white/15 transition-colors cursor-pointer",
                 onclick: move |evt| {
                     evt.stop_propagation();
                     on_play.call(());
@@ -91,7 +102,7 @@ pub fn QueueRow(
                 }
             }
 
-            if settings.read().ui.show_row_images {
+            if show_row_images {
                 div {
                     class: "rounded-md overflow-hidden flex-shrink-0 shadow-sm",
                     style: {
@@ -138,9 +149,9 @@ pub fn QueueRow(
                 }
             }
 
-            div { onmousedown: move |evt| evt.stop_propagation(),
+            div { class: "flex self-stretch", onmousedown: move |evt| evt.stop_propagation(),
                 ReorderButtons {
-                    class: "flex flex-col pr-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity",
+                    class: "pr-1 opacity-0 group-hover:opacity-100 transition-opacity",
                     can_move_up,
                     can_move_down,
                     on_move_up,

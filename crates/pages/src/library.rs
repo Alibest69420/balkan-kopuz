@@ -384,33 +384,36 @@ pub fn LibraryPage(
 
             div {
                 class: "flex items-center justify-between mb-4",
-                div { class: "flex items-center gap-3",
-                    button {
+                // The heading belongs to the select-all target, not just the 16px box.
+                button {
+                    r#type: "button",
+                    class: "group/all flex items-center gap-3 -ms-2 px-2 py-1.5 rounded-lg hover:bg-white/5 active:bg-white/10 transition-colors disabled:cursor-default",
+                    aria_label: "Select all tracks",
+                    disabled: is_empty,
+                    onclick: move |_| {
+                        if all_selected {
+                            selected_tracks.write().clear();
+                            is_selection_mode.set(false);
+                        } else {
+                            let api = hooks::consume_api();
+                            let f = filter();
+                            spawn(async move {
+                                let tracks = api
+                                    .tracks(f, hooks::use_db_queries::all())
+                                    .await
+                                    .map(|page| page.items)
+                                    .unwrap_or_default();
+                                selected_tracks
+                                    .set(tracks.into_iter().map(|track| track.key).collect());
+                                is_selection_mode.set(true);
+                            });
+                        }
+                        },
+                    span {
                         class: if all_selected {
                             "w-4 h-4 rounded border border-indigo-400 bg-indigo-500 text-white flex items-center justify-center transition-colors"
                         } else {
-                            "w-4 h-4 rounded border border-white/20 bg-white/5 hover:border-white/50 transition-colors"
-                        },
-                        aria_label: "Select all tracks",
-                        disabled: is_empty,
-                        onclick: move |_| {
-                            if all_selected {
-                                selected_tracks.write().clear();
-                                is_selection_mode.set(false);
-                            } else {
-                                let api = hooks::consume_api();
-                                let f = filter();
-                                spawn(async move {
-                                    let tracks = api
-                                        .tracks(f, hooks::use_db_queries::all())
-                                        .await
-                                        .map(|page| page.items)
-                                        .unwrap_or_default();
-                                    selected_tracks
-                                        .set(tracks.into_iter().map(|track| track.key).collect());
-                                    is_selection_mode.set(true);
-                                });
-                            }
+                            "w-4 h-4 rounded border border-white/20 bg-white/5 group-hover/all:border-white/50 transition-colors"
                         },
                         if all_selected {
                             i { class: "fa-solid fa-check", style: "font-size: 9px;" }

@@ -294,43 +294,16 @@ pub fn TrackRow(
                     }
                 },
 
-                div { class: "flex items-center h-8",
-                    if is_currently_playing && !is_selection_mode {
-                        i {
-                            class: "fa-solid fa-volume-high text-xs",
-                            style: "color: var(--color-indigo-500);"
-                        }
-                    } else if on_select.is_some() && is_selection_mode {
-                        button {
-                            class: if is_selected {
-                                "w-4 h-4 rounded border border-indigo-400 bg-indigo-500 text-white flex items-center justify-center transition-colors"
-                            } else {
-                                "w-4 h-4 rounded border border-white/20 bg-white/5 hover:border-white/50 transition-colors"
-                            },
-                            onclick: move |evt| {
-                                evt.stop_propagation();
-                                handle_select_click(is_selected, is_selection_mode, on_select);
-                            },
-                            if is_selected { i { class: "fa-solid fa-check", style: "font-size: 9px;" } }
-                        }
-                    } else {
-                        if let Some(n) = row_num {
-                            span {
-                                class: "text-xs group-hover:hidden text-white/25",
-                                "{n}"
-
-                            }
-                        }
-                        button {
-                            class: if row_num.is_some() {
-                                "w-full h-full rounded-md hidden group-hover:flex items-center justify-center hover:bg-white/10 active:bg-white/15 transition-colors"
-                            } else {
-                                "w-full h-full rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-white/10 active:bg-white/15 transition-all"
-                            },
-                            onclick: move |_| on_play.call(()),
-                            i { class: "fa-solid fa-play text-xs text-white/80" }
-                        }
-                    }
+                TrackLeadCell {
+                    reach: "-my-1.5 -ms-2 min-h-8",
+                    number_class: "text-xs text-white/25",
+                    play_class: "text-xs text-white/80",
+                    row_num,
+                    is_selection_mode,
+                    is_selected,
+                    is_currently_playing,
+                    on_select,
+                    on_play,
                 }
 
                 div { class: "flex items-center min-w-0 pr-3 gap-2",
@@ -372,10 +345,22 @@ pub fn TrackRow(
                         ondoubleclick: move |evt| evt.stop_propagation(),
                         "{track.title}"
                     }
+                    if track.explicit {
+                        ExplicitBadge {}
+                    }
                     if is_downloaded {
                         i {
-                            class: "fa-solid fa-arrow-down-to-line text-[9px] shrink-0",
-                            style: "color: var(--color-indigo-500); opacity: 0.7;"
+                            class: "fa-solid fa-circle-arrow-down text-[9px] shrink-0",
+                            style: "color: var(--color-indigo-500); opacity: 0.7;",
+                            title: "{offline_mark}",
+                            aria_label: "{offline_mark}",
+                        }
+                    } else if is_cached {
+                        i {
+                            class: "fa-solid fa-hard-drive text-[9px] shrink-0",
+                            style: "color: var(--color-white); opacity: 0.45;",
+                            title: "{cached_mark}",
+                            aria_label: "{cached_mark}",
                         }
                     }
                     if let Some(ref ft) = file_type {
@@ -428,115 +413,7 @@ pub fn TrackRow(
                                 }
                             },
                             ondoubleclick: move |evt| evt.stop_propagation(),
-                            "{track.title}"
-                        }
-                        if track.explicit {
-                            ExplicitBadge {}
-                        }
-                        if is_downloaded {
-                            i {
-                                class: "fa-solid fa-circle-arrow-down text-[9px] shrink-0",
-                                style: "color: var(--color-indigo-500); opacity: 0.7;",
-                                title: "{offline_mark}",
-                                aria_label: "{offline_mark}",
-                            }
-                        } else if is_cached {
-                            i {
-                                class: "fa-solid fa-hard-drive text-[9px] shrink-0",
-                                style: "color: var(--color-white); opacity: 0.45;",
-                                title: "{cached_mark}",
-                                aria_label: "{cached_mark}",
-                            }
-                        }
-                        if let Some(ref ft) = file_type {
-                            span {
-                                class: "shrink-0 text-[9px] font-semibold uppercase px-1 py-0.5 rounded leading-none tracking-wide",
-                                style: "background: rgba(255,255,255,0.08); color: var(--color-white); opacity: 0.5;",
-                                "{ft}"
-                            }
-                        }
-                    }
-
-                    div { class: "flex items-center min-w-0 pr-3",
-                        span {
-                            class: "text-sm truncate cursor-pointer hover:underline group-hover:text-white/70 transition-colors",
-                            style: "color: var(--color-white); opacity: 0.45;",
-                            onclick: {
-                                let artist = billed_artist(&track);
-                                move |evt: MouseEvent| {
-                                    evt.stop_propagation();
-                                    if is_selection_mode {
-                                        return;
-                                    }
-                                    if let Some(artist) = artist.clone() {
-                                        nav_ctrl.open_artist(artist);
-                                    }
-                                }
-                            },
-                            ondoubleclick: move |evt| evt.stop_propagation(),
-                            "{track.artist}"
-                        }
-                    }
-
-                    if !is_album {
-                        div { class: "flex items-center min-w-0 pr-3",
-                            span {
-                                class: if track.album.trim().is_empty() {
-                                    "text-sm truncate"
-                                } else {
-                                    "text-sm truncate cursor-pointer hover:underline"
-                                },
-                                style: "color: var(--color-white); opacity: 0.35;",
-                                onclick: {
-                                    let album_id = track.album_id.clone();
-                                    let has_album = !track.album.trim().is_empty();
-                                    move |evt: MouseEvent| {
-                                        evt.stop_propagation();
-                                        if !is_selection_mode && has_album {
-                                            nav_ctrl.navigate_to_album(album_id.clone());
-                                        }
-                                    }
-                                },
-                                ondoubleclick: move |evt| evt.stop_propagation(),
-                                "{track.album}"
-                            }
-                        }
-                    }
-
-                    div { class: "flex items-center justify-end",
-                        span {
-                            class: "text-xs font-mono",
-                            style: "color: var(--color-white); opacity: 0.3;",
-                            "{duration_str}"
-                        }
-                    }
-
-                    div { class: "flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity",
-                        if !is_selection_mode {
-                            crate::track_actions::TrackActionsMenu {
-                                track: menu_track.clone(),
-                                catalog_actions: catalog_actions.clone(),
-                                on_catalog_actions,
-                                is_open: Some(is_menu_open),
-                                position: *context_menu_position.read(),
-                                on_open: Some(EventHandler::new(move |_| {
-                                    context_menu_position.set(None);
-                                    on_click_menu.call(());
-                                })),
-                                on_close: Some(EventHandler::new(move |_| {
-                                    context_menu_position.set(None);
-                                    on_close_menu.call(());
-                                })),
-                                button_class: "active:scale-95".to_string(),
-                                anchor: "right".to_string(),
-                                on_add_to_playlist: Some(on_add_to_playlist),
-                                on_remove_from_playlist,
-                                on_download,
-                                on_view_metadata,
-                                on_delete: (!hide_delete).then_some(on_delete),
-                                is_downloaded,
-                                is_downloading,
-                            }
+                            "{track.album}"
                         }
                     }
                 }
@@ -553,6 +430,8 @@ pub fn TrackRow(
                     if !is_selection_mode {
                         crate::track_actions::TrackActionsMenu {
                             track: menu_track.clone(),
+                            catalog_actions: catalog_actions.clone(),
+                            on_catalog_actions,
                             is_open: Some(is_menu_open),
                             position: *context_menu_position.read(),
                             on_open: Some(EventHandler::new(move |_| {
@@ -583,6 +462,12 @@ pub fn TrackRow(
         COLUMNS_NORMAL_ALBUM
     } else {
         COLUMNS_NORMAL
+    };
+    // Swallows the whole column gap up to a cover, half of it before bare text.
+    let normal_lead_reach = if !is_album && show_row_images {
+        "-my-2 -ms-2 -me-6"
+    } else {
+        "-my-2 -ms-2 -me-3"
     };
     let column_gap = if cfg!(target_os = "android") {
         "0.5rem"
@@ -666,40 +551,16 @@ pub fn TrackRow(
                 }
             },
 
-            div { class: "flex justify-center items-center shrink-0",
-                if on_select.is_some() && is_selection_mode {
-                    button {
-                        class: if is_selected {
-                            "w-4 h-4 rounded border border-indigo-400 bg-indigo-500 text-white flex items-center justify-center transition-colors"
-                        } else {
-                            "w-4 h-4 rounded border border-white/20 bg-white/5 hover:border-white/50 transition-colors"
-                        },
-                        aria_label: if is_selected { "Deselect track" } else { "Select track" },
-                        onclick: move |evt| {
-                            evt.stop_propagation();
-                            handle_select_click(is_selected, is_selection_mode, on_select);
-                        },
-                        if is_selected {
-                            i { class: "fa-solid fa-check", style: "font-size: 9px;" }
-                        }
-                    }
-                } else if is_currently_playing {
-                    i { class: "fa-solid fa-volume-high text-xs", style: "color: var(--color-indigo-500);" }
-                } else if let Some(n) = row_num {
-                    span {
-                        class: "text-xs group-hover:hidden text-white/60",
-                        "{n}"
-                    }
-                    button {
-                        class: if row_num.is_some() {
-                            "hidden group-hover:flex items-center justify-center"
-                        } else {
-                            "flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                        },
-                        onclick: move |_| on_play.call(()),
-                        i { class: "fa-solid fa-play text-m text-white/60" }
-                    }
-                }
+            TrackLeadCell {
+                reach: normal_lead_reach,
+                number_class: "text-xs text-white/60",
+                play_class: "text-sm text-white/60",
+                row_num,
+                is_selection_mode,
+                is_selected,
+                is_currently_playing,
+                on_select,
+                on_play,
             }
 
             div { class: "flex items-center min-w-0",
@@ -848,6 +709,71 @@ pub fn TrackRow(
             }
         }
     };
+}
+
+/// The cell left of the cover. It reaches from the row's edge to the cover at
+/// the row's full height, so a click anywhere there plays the track (or toggles
+/// it in selection mode) instead of only one on the small icon.
+#[component]
+pub fn TrackLeadCell(
+    /// Margins that pull the cell out over the row's padding and column gap.
+    reach: &'static str,
+    number_class: &'static str,
+    play_class: &'static str,
+    row_num: Option<usize>,
+    is_selection_mode: bool,
+    is_selected: bool,
+    is_currently_playing: bool,
+    on_select: Option<EventHandler<bool>>,
+    on_play: EventHandler<()>,
+) -> Element {
+    let selectable = is_selection_mode && on_select.is_some();
+    let label = if selectable {
+        if is_selected {
+            "Deselect track"
+        } else {
+            "Select track"
+        }
+    } else {
+        "Play"
+    };
+    rsx! {
+        button {
+            r#type: "button",
+            class: "self-stretch flex items-center justify-center rounded-s-lg hover:bg-white/10 active:bg-white/15 transition-colors cursor-pointer {reach}",
+            aria_label: label,
+            onmousedown: move |evt| evt.stop_propagation(),
+            onclick: move |evt| {
+                evt.stop_propagation();
+                if is_selection_mode {
+                    handle_select_click(is_selected, is_selection_mode, on_select);
+                } else {
+                    on_play.call(());
+                }
+            },
+            ondoubleclick: move |evt| evt.stop_propagation(),
+            if selectable {
+                span {
+                    class: if is_selected {
+                        "w-4 h-4 rounded border border-indigo-400 bg-indigo-500 text-white flex items-center justify-center transition-colors"
+                    } else {
+                        "w-4 h-4 rounded border border-white/20 bg-white/5 group-hover:border-white/50 transition-colors"
+                    },
+                    if is_selected {
+                        i { class: "fa-solid fa-check", style: "font-size: 9px;" }
+                    }
+                }
+            } else if is_currently_playing {
+                i { class: "fa-solid fa-volume-high text-xs", style: "color: var(--color-indigo-500);" }
+            } else if let Some(n) = row_num {
+                span { class: "group-hover:hidden {number_class}", "{n}" }
+                // Font Awesome's unlayered `display` would beat `hidden` on the icon itself.
+                span { class: "hidden group-hover:inline-flex", i { class: "fa-solid fa-play {play_class}" } }
+            } else {
+                span { class: "flex opacity-0 group-hover:opacity-100 transition-opacity", i { class: "fa-solid fa-play {play_class}" } }
+            }
+        }
+    }
 }
 
 /// Re-exported from [`crate::radio_actions`], where track and playlist radio
