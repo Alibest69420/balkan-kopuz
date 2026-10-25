@@ -3,33 +3,56 @@
 use api::schema::FieldKind;
 use api::{JobKind, JobState, ServiceInfo};
 
+/// Pick, Connect and Scan are one rail step, Music, drawn as the stages of a single section.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Step {
     Welcome,
     Pick,
     Connect,
     Scan,
+    Appearance,
+    Playback,
+    Integrations,
     Privacy,
     Ready,
 }
 
-/// The steps the rail numbers; the welcome and the ready card sit outside it.
-pub const RAIL: [Step; 4] = [Step::Pick, Step::Connect, Step::Scan, Step::Privacy];
+/// The rail's labels, one per numbered step.
+pub const RAIL: [&str; 6] = [
+    "language",
+    "music",
+    "appearance",
+    "settings_group_playback",
+    "settings_group_services",
+    "onboarding_privacy_title",
+];
 
 impl Step {
-    /// Where the step sits on the rail, from zero.
+    /// Where the step sits on the rail, from zero; the ready card sits outside it.
     pub fn index(self) -> Option<usize> {
-        RAIL.iter().position(|step| *step == self)
+        match self {
+            Step::Welcome => Some(0),
+            Step::Pick | Step::Connect | Step::Scan => Some(1),
+            Step::Appearance => Some(2),
+            Step::Playback => Some(3),
+            Step::Integrations => Some(4),
+            Step::Privacy => Some(5),
+            Step::Ready => None,
+        }
     }
 
-    /// The step Back leads to; the welcome has nowhere further back.
-    pub fn back(self) -> Option<Step> {
+    /// The step Back leads to; leaving Music backwards lands on its source page only if a source was added.
+    pub fn back(self, added: bool) -> Option<Step> {
         match self {
             Step::Welcome => None,
             Step::Pick => Some(Step::Welcome),
             Step::Connect => Some(Step::Pick),
             Step::Scan => Some(Step::Connect),
-            Step::Privacy => Some(Step::Scan),
+            Step::Appearance if added => Some(Step::Scan),
+            Step::Appearance => Some(Step::Pick),
+            Step::Playback => Some(Step::Appearance),
+            Step::Integrations => Some(Step::Playback),
+            Step::Privacy => Some(Step::Integrations),
             Step::Ready => Some(Step::Privacy),
         }
     }
@@ -39,12 +62,20 @@ impl Step {
         self == Step::Scan
     }
 
+    /// The source is connected by now, so its fill is still worth following even off the Scan stage.
+    pub fn past_connect(self) -> bool {
+        !matches!(self, Step::Welcome | Step::Pick | Step::Connect)
+    }
+
     pub fn key(self) -> &'static str {
         match self {
             Step::Welcome => "welcome",
             Step::Pick => "pick",
             Step::Connect => "connect",
             Step::Scan => "scan",
+            Step::Appearance => "appearance",
+            Step::Playback => "playback",
+            Step::Integrations => "integrations",
             Step::Privacy => "privacy",
             Step::Ready => "ready",
         }
@@ -228,24 +259,38 @@ mod tests {
     ];
 
     #[test]
-    fn the_rail_numbers_every_step_on_it_without_a_gap() {
-        assert_eq!(Step::Welcome.index(), None);
-        assert_eq!(Step::Pick.index(), Some(0));
-        assert_eq!(Step::Connect.index(), Some(1));
-        assert_eq!(Step::Scan.index(), Some(2));
-        assert_eq!(Step::Privacy.index(), Some(3));
+    fn music_is_one_rail_step_and_the_rail_has_no_gap() {
+        let steps = [
+            Step::Welcome,
+            Step::Pick,
+            Step::Connect,
+            Step::Scan,
+            Step::Appearance,
+            Step::Playback,
+            Step::Integrations,
+            Step::Privacy,
+        ];
+        let indices: Vec<usize> = steps.iter().filter_map(|step| step.index()).collect();
+        assert_eq!(indices, [0, 1, 1, 1, 2, 3, 4, 5]);
+        assert_eq!(RAIL.len(), 6);
         assert_eq!(Step::Ready.index(), None);
     }
 
     #[test]
     fn back_walks_one_step_and_only_the_scan_takes_the_source_away() {
-        assert_eq!(Step::Welcome.back(), None);
-        assert_eq!(Step::Connect.back(), Some(Step::Pick));
-        assert_eq!(Step::Scan.back(), Some(Step::Connect));
-        assert_eq!(Step::Ready.back(), Some(Step::Privacy));
+        assert_eq!(Step::Welcome.back(false), None);
+        assert_eq!(Step::Connect.back(false), Some(Step::Pick));
+        assert_eq!(Step::Scan.back(true), Some(Step::Connect));
+        assert_eq!(Step::Ready.back(true), Some(Step::Privacy));
         assert!(Step::Scan.undoes_source());
         assert!(!Step::Connect.undoes_source());
         assert!(!Step::Privacy.undoes_source());
+    }
+
+    #[test]
+    fn back_from_appearance_skips_a_music_step_that_added_nothing() {
+        assert_eq!(Step::Appearance.back(true), Some(Step::Scan));
+        assert_eq!(Step::Appearance.back(false), Some(Step::Pick));
     }
 
     #[test]
@@ -319,7 +364,7 @@ mod tests {
         // Back from the scan is the only way back that takes the source away, so a reopen never resumes it.
         let mut step = Step::Privacy;
         let mut undone = Vec::new();
-        while let Some(previous) = step.back() {
+        while let Some(previous) = step.back(true) {
             if step.undoes_source() {
                 undone.push(step);
             }

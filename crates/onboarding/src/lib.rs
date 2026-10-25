@@ -1,9 +1,12 @@
-//! First run: welcome, add a source with the settings page's own form, watch the daemon fill it, then wrap up.
+//! First run: the language, the music (a source added, connected and filled), the look, playback, services, privacy, then the way in.
 
+mod appearance;
 mod flow;
 mod pick;
+mod playback;
 mod privacy;
 mod ready;
+mod services;
 mod sync;
 mod ui;
 mod welcome;
@@ -20,6 +23,7 @@ use gpui_kit::{
 };
 use link::Link;
 use settings_sources::add_source::{AddSource, SourceAdded};
+use settings_sources::integrations::Integrations;
 use store::{ConfigModel, JobEvent, JobsModel, Navigator, Query, Route, SetupModel, SourcesModel};
 
 use flow::Step;
@@ -61,6 +65,7 @@ pub struct FirstRun {
     focus_first: bool,
     services: Entity<Query<Vec<ServiceInfo>>>,
     add: Entity<AddSource>,
+    integrations: Entity<Integrations>,
     scroll: ScrollHandle,
     _subscriptions: Vec<Subscription>,
 }
@@ -125,6 +130,7 @@ impl FirstRun {
             focus_first: false,
             services,
             add,
+            integrations: cx.new(|cx| Integrations::new(window, cx)),
             scroll: ScrollHandle::new(),
             _subscriptions: subscriptions,
         }
@@ -165,7 +171,9 @@ impl FirstRun {
             cx.notify();
             return;
         }
-        let Some(to) = self.step.back() else { return };
+        let Some(to) = self.step.back(self.added.is_some()) else {
+            return;
+        };
         if self.step.undoes_source() {
             self.undo(window, cx);
         }
@@ -282,7 +290,7 @@ impl FirstRun {
             self.connecting(cx);
             return;
         }
-        if self.step != Step::Scan || self.outcome.is_some() {
+        if !self.step.past_connect() || self.outcome.is_some() {
             return;
         }
         let Some(added) = self.added.as_ref() else {
@@ -336,7 +344,8 @@ impl FirstRun {
 
     /// One of the fill's jobs ended; the fill is over only once none of the others still runs.
     fn job_finished(&mut self, event: &JobEvent, cx: &mut Context<Self>) {
-        if self.step != Step::Scan || self.outcome.is_some() || !self.ours(&event.id, event.kind) {
+        if !self.step.past_connect() || self.outcome.is_some() || !self.ours(&event.id, event.kind)
+        {
             return;
         }
         if let Some(source) = self.added_source(cx) {
@@ -425,15 +434,6 @@ impl FirstRun {
         });
     }
 
-    /// Leave for the library now; whatever is still filling carries on.
-    fn finish_now(&mut self, cx: &mut Context<Self>) {
-        SetupModel::global(cx).update(cx, |setup, cx| {
-            setup.complete(cx);
-            setup.close(cx);
-        });
-        Navigator::navigate(Route::Library, cx);
-    }
-
     fn start_listening(&mut self, cx: &mut Context<Self>) {
         SetupModel::global(cx).update(cx, |setup, cx| {
             setup.complete(cx);
@@ -468,6 +468,9 @@ impl Render for FirstRun {
             Step::Pick => self.pick_step(window, cx),
             Step::Connect => self.connect_step(cx),
             Step::Scan => self.sync_step(window, cx),
+            Step::Appearance => self.appearance_step(cx),
+            Step::Playback => self.playback_step(cx),
+            Step::Integrations => self.services_step(cx),
             Step::Privacy => self.privacy_step(cx),
             Step::Ready => self.ready_step(cx),
         };
@@ -476,19 +479,12 @@ impl Render for FirstRun {
             _ => t("first_run_subtitle"),
         };
         let key = format!("{}-{}", step.key(), self.run);
+        let added = self.added.is_some();
         let mut frame = StepFrame::new(key, t("first_run_title"), subtitle)
             .when_some(step.index(), |frame, index| {
-                frame.stepper(
-                    Stepper::new([
-                        t("first_run_step_source"),
-                        t("first_run_step_connect"),
-                        t("first_run_step_scan"),
-                        t("onboarding_privacy_title"),
-                    ])
-                    .current(index),
-                )
+                frame.stepper(Stepper::new(flow::RAIL.map(t)).current(index))
             })
-            .when(step.back().is_some(), |frame| {
+            .when(step.back(added).is_some(), |frame| {
                 frame.on_back(cx.listener(|this: &mut Self, _, window, cx| this.back(window, cx)))
             })
             .when(step != Step::Ready, |frame| {
@@ -500,7 +496,12 @@ impl Render for FirstRun {
                 false,
                 cx.listener(|this: &mut Self, _, _, cx| this.go(Step::Pick, cx)),
             ),
-            Step::Pick => frame,
+            // Picking a card is the way on; this passes Music by for someone whose music is already set up.
+            Step::Pick => frame.next(
+                t("continue"),
+                false,
+                cx.listener(|this: &mut Self, _, _, cx| this.go(Step::Appearance, cx)),
+            ),
             Step::Connect if self.added.is_some() => frame.next(
                 t("continue"),
                 self.connection_blocked(cx).is_none(),
@@ -513,18 +514,27 @@ impl Render for FirstRun {
                     this.add.update(cx, |form, cx| form.save(window, cx))
                 }),
             ),
-            Step::Scan => match self.outcome {
-                Some(_) => frame.next(
-                    t("continue"),
-                    false,
-                    cx.listener(|this: &mut Self, _, _, cx| this.go(Step::Privacy, cx)),
-                ),
-                None => frame.next(
-                    t("first_run_go_to_library"),
-                    false,
-                    cx.listener(|this: &mut Self, _, _, cx| this.finish_now(cx)),
-                ),
-            },
+            // The fill carries on in the background, so the rest of the guide need not wait for it.
+            Step::Scan => frame.next(
+                t("continue"),
+                false,
+                cx.listener(|this: &mut Self, _, _, cx| this.go(Step::Appearance, cx)),
+            ),
+            Step::Appearance => frame.next(
+                t("continue"),
+                false,
+                cx.listener(|this: &mut Self, _, _, cx| this.go(Step::Playback, cx)),
+            ),
+            Step::Playback => frame.next(
+                t("continue"),
+                false,
+                cx.listener(|this: &mut Self, _, _, cx| this.go(Step::Integrations, cx)),
+            ),
+            Step::Integrations => frame.next(
+                t("continue"),
+                false,
+                cx.listener(|this: &mut Self, _, _, cx| this.go(Step::Privacy, cx)),
+            ),
             Step::Privacy => frame.next(
                 t("continue"),
                 false,

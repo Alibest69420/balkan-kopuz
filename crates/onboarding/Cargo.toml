@@ -15,6 +15,7 @@ profile = { path = "../profile" }
 store = { workspace = true }
 components = { workspace = true }
 settings_sources = { path = "../settings_sources" }
+settings_appearance = { path = "../settings_appearance" }
 gpui-kit = { workspace = true }
 config = { workspace = true }
 i18n = { workspace = true }

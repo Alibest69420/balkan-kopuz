@@ -59,70 +59,56 @@ impl RenderOnce for Stepper {
             window,
             cx,
         );
+        // The counter sits under the line, so a long rail keeps the whole width for its labels.
         v_flex()
             .w_full()
             .gap_3()
-            .child(
-                h_flex()
-                    .w_full()
-                    .justify_between()
-                    .items_center()
-                    .child(h_flex().gap_4().items_center().children(
-                        self.labels.into_iter().enumerate().map(|(index, label)| {
-                            let (done, here) = (index < current, index == current);
-                            let color = if here {
-                                cx.theme().primary
-                            } else if done {
-                                style::white(style::TEXT_SECONDARY, cx)
-                            } else {
-                                style::white(style::TEXT_DIM, cx)
-                            };
-                            h_flex()
-                                .gap_2()
+            .child(h_flex().w_full().justify_between().items_center().children(
+                self.labels.into_iter().enumerate().map(|(index, label)| {
+                    let (done, here) = (index < current, index == current);
+                    let color = if here {
+                        cx.theme().primary
+                    } else if done {
+                        style::white(style::TEXT_SECONDARY, cx)
+                    } else {
+                        style::white(style::TEXT_DIM, cx)
+                    };
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            div()
+                                .flex()
                                 .items_center()
-                                .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .justify_center()
-                                        .size_5()
-                                        .rounded_full()
-                                        .bg(if here {
-                                            style::accent(BADGE_BG, cx)
-                                        } else {
-                                            style::white(style::RAISED, cx)
-                                        })
-                                        .text_size(style::text_10())
-                                        .font_weight(FontWeight::BOLD)
+                                .justify_center()
+                                .size_5()
+                                .rounded_full()
+                                .bg(if here {
+                                    style::accent(BADGE_BG, cx)
+                                } else {
+                                    style::white(style::RAISED, cx)
+                                })
+                                .text_size(style::text_10())
+                                .font_weight(FontWeight::BOLD)
+                                .text_color(color)
+                                .child(match done {
+                                    true => icons::icon(icons::CHECK)
+                                        .size(px(10.))
                                         .text_color(color)
-                                        .child(match done {
-                                            true => icons::icon(icons::CHECK)
-                                                .size(px(10.))
-                                                .text_color(color)
-                                                .into_any_element(),
-                                            false => SharedString::from((index + 1).to_string())
-                                                .into_any_element(),
-                                        }),
-                                )
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .font_weight(FontWeight::MEDIUM)
-                                        .text_color(color)
-                                        .child(label),
-                                )
-                        }),
-                    ))
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(style::white(style::TEXT_MUTED, cx))
-                            .child(crate::format::t_with(
-                                "onboarding_step",
-                                &[("current", (current + 1).into()), ("total", count.into())],
-                            )),
-                    ),
-            )
+                                        .into_any_element(),
+                                    false => SharedString::from((index + 1).to_string())
+                                        .into_any_element(),
+                                }),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(color)
+                                .child(label),
+                        )
+                }),
+            ))
             .child(
                 div()
                     .w_full()
@@ -136,6 +122,17 @@ impl RenderOnce for Stepper {
                             .rounded_full()
                             .bg(cx.theme().primary),
                     ),
+            )
+            .child(
+                h_flex().w_full().justify_end().child(
+                    div()
+                        .text_xs()
+                        .text_color(style::white(style::TEXT_MUTED, cx))
+                        .child(crate::format::t_with(
+                            "onboarding_step",
+                            &[("current", (current + 1).into()), ("total", count.into())],
+                        )),
+                ),
             )
     }
 }

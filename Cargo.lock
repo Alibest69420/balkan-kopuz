@@ -5219,6 +5219,7 @@ dependencies = [
  "kopuz-i18n",
  "link",
  "profile",
+ "settings_appearance",
  "settings_sources",
  "store",
  "tracing",
