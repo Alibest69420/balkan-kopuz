@@ -3,9 +3,12 @@
 use std::time::Duration;
 
 use api::schema::{FieldKind, FieldValue, Problem};
-use api::{DraftCheck, DraftProbe, ServerProbe, ServiceInfo, SignInKind, SourceDraft, Table};
+use api::{
+    BrowserSession, DraftCheck, DraftProbe, ServerProbe, ServiceInfo, SignInKind, SourceDraft,
+    Table,
+};
 use components::format::{t, t_with, text};
-use components::{Callout, CalloutTone, ErrorBanner, LabeledInput};
+use components::{BrowserSessionList, Callout, CalloutTone, ErrorBanner, LabeledInput};
 use components::{FieldChanged, SchemaForm};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -134,6 +137,10 @@ pub struct AddSource {
     fill: Option<String>,
     /// The last saved answers, so a form can be put back the way it was.
     last: Option<(ServiceInfo, Vec<FieldValue>, String)>,
+    /// The browser profiles signed in to the chosen service, by service id; `None` while the daemon looks.
+    sessions: Option<(String, Option<Vec<BrowserSession>>)>,
+    /// The browser session being taken into a new source.
+    importing: Option<String>,
     // Bumped per check, so a slower answer never overwrites a newer one.
     generation: u64,
     probe_generation: u64,
@@ -180,6 +187,8 @@ impl AddSource {
             warned: None,
             fill: None,
             last: None,
+            sessions: None,
+            importing: None,
             generation: 0,
             probe_generation: 0,
             _form_subscription: None,
@@ -213,6 +222,7 @@ impl AddSource {
         self.probe = None;
         self.warned = None;
         self.fill = None;
+        self.importing = None;
         self.service = None;
         self.form = None;
         self._form_subscription = None;
@@ -253,7 +263,150 @@ impl AddSource {
         self.probe = None;
         self.warned = None;
         self.recheck(cx);
+        self.look_for_sessions(cx);
         cx.notify();
+    }
+
+    /// Ask which browser profiles are already signed in to the chosen service; most services have none.
+    fn look_for_sessions(&mut self, cx: &mut Context<Self>) {
+        let Some(service) = self.service.as_ref().map(|service| service.id.clone()) else {
+            return;
+        };
+        if self
+            .sessions
+            .as_ref()
+            .is_some_and(|(held, _)| *held == service)
+        {
+            return;
+        }
+        self.sessions = Some((service.clone(), None));
+        let call = Link::global(cx).call({
+            let service = service.clone();
+            move |api| async move { api.browser_sessions(service).await }
+        });
+        cx.spawn(async move |this, cx| {
+            let found = call.await.unwrap_or_else(|error| {
+                tracing::debug!(%error, "could not list the browser sessions");
+                Vec::new()
+            });
+            this.update(cx, |this, cx| {
+                if this
+                    .sessions
+                    .as_ref()
+                    .is_some_and(|(held, _)| *held == service)
+                {
+                    this.sessions = Some((service, Some(found)));
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// The profiles to offer, once the daemon has said the service signs in through a browser.
+    fn offered_sessions(&self) -> Option<Option<Vec<BrowserSession>>> {
+        let browser = self
+            .check
+            .as_ref()
+            .is_some_and(|check| check.sign_in == SignInKind::Browser);
+        let service = self.service.as_ref()?;
+        let (held, sessions) = self.sessions.as_ref()?;
+        (browser && *held == service.id).then(|| sessions.clone())
+    }
+
+    /// Save the draft as a new source signed in with `session`'s cookies, so no sign-in window opens.
+    pub fn use_session(
+        &mut self,
+        session: BrowserSession,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.saving || self.importing.is_some() || self.service.is_none() {
+            return;
+        }
+        if let Some(form) = self.form.as_ref() {
+            form.update(cx, |form, cx| form.commit_typed(cx));
+        }
+        let draft = self.draft(cx);
+        let remembered = self.service.clone().map(|service| {
+            (
+                service,
+                draft.values.clone(),
+                self.name.read(cx).value().to_string(),
+            )
+        });
+        self.importing = Some(session.id.clone());
+        self.error = None;
+        cx.notify();
+        let link = Link::global(cx).clone();
+        let embedded = self.embedded;
+        cx.spawn_in(window, async move |this, cx| {
+            let fail = |message: SharedString,
+                        this: &gpui_kit::WeakEntity<Self>,
+                        cx: &mut gpui_kit::AsyncWindowContext| {
+                this.update(cx, |this, cx| {
+                    this.importing = None;
+                    this.error = Some(message);
+                    cx.notify();
+                })
+                .ok();
+            };
+            let checked = link
+                .call({
+                    let draft = draft.clone();
+                    move |api| async move { api.check_source_draft(draft).await }
+                })
+                .await;
+            let problem = match checked {
+                Ok(check) => check.problems.first().map(|problem| text(&problem.label)),
+                Err(error) => Some(store::human(&error)),
+            };
+            if let Some(problem) = problem {
+                return fail(problem, &this, cx);
+            }
+            let saved = match link
+                .call(move |api| async move { api.upsert_source(draft).await })
+                .await
+            {
+                Ok(saved) => saved,
+                Err(error) => return fail(store::human(&error), &this, cx),
+            };
+            let id = saved.id.clone();
+            let imported = link
+                .call({
+                    let id = id.clone();
+                    move |api| async move { api.import_browser_session(id, session.id).await }
+                })
+                .await;
+            if let Err(error) = imported {
+                // A source that never signed in would only sit in the list asking to.
+                let removed = link
+                    .call({
+                        let id = id.clone();
+                        move |api| async move { api.delete_source(id).await }
+                    })
+                    .await;
+                if let Err(cleanup) = removed {
+                    tracing::warn!(%cleanup, "could not remove a source whose sign-in failed");
+                }
+                let message = t_with(
+                    "signin_failed",
+                    &[("error", store::human(&error).to_string().into())],
+                );
+                return fail(message, &this, cx);
+            }
+            if !embedded {
+                cx.update(|window, cx| window.close_dialog(cx)).ok();
+            }
+            this.update_in(cx, |this, window, cx| {
+                this.reset(window, cx);
+                this.last = remembered;
+                cx.emit(SourceAdded(id));
+            })
+            .ok();
+        })
+        .detach();
     }
 
     /// The service's form with `values` already answered, as when editing what was saved.
@@ -665,6 +818,16 @@ impl Render for AddSource {
                         }),
                 )
             })
+            .children(self.offered_sessions().map(|sessions| {
+                let this = cx.entity().downgrade();
+                BrowserSessionList::new("add-source-sessions", sessions)
+                    .importing(self.importing.clone())
+                    .disabled(saving)
+                    .on_use(move |session, window, cx| {
+                        this.update(cx, |this, cx| this.use_session(session, window, cx))
+                            .ok();
+                    })
+            }))
             .children(self.form.clone())
             .when(self.probing, |form| {
                 // Held open, so the answer arriving never moves the buttons under the pointer.

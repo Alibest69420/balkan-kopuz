@@ -1,6 +1,7 @@
 //! Every shared component, each defined once: a page composes these and never draws its own copy.
 
 pub mod album_collection;
+pub mod browser_sessions;
 pub mod callout;
 pub mod cards;
 pub mod carousel;
@@ -78,6 +79,7 @@ pub use primitives::{
 };
 
 pub use album_collection::AlbumCollection;
+pub use browser_sessions::BrowserSessionList;
 pub use callout::{Callout, CalloutTone};
 pub use cards::{
     Frame, PlayState, Tile, TileRow, album_row, album_tile, artist_row, artist_tile, playlist_tile,

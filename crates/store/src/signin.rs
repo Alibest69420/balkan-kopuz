@@ -7,18 +7,25 @@
 
 use std::rc::Rc;
 
-use api::{SignInKind, SourceInfo};
+use api::{BrowserSession, SignInKind, SourceInfo};
 use gpui_kit::{App, Global, SharedString, Window};
 
 use crate::Notices;
 use crate::sources::SourcesModel;
 
 type Opener = Rc<dyn Fn(String, SharedString, &mut Window, &mut App)>;
+type Chooser = Rc<dyn Fn(SourceInfo, Vec<BrowserSession>, &mut Window, &mut App)>;
 
 #[derive(Default)]
 struct PasswordForm(Option<Opener>);
 
 impl Global for PasswordForm {}
+
+/// The dialog offering the browser profiles already signed in; a settings crate registers it.
+#[derive(Default)]
+struct SessionChooser(Option<Chooser>);
+
+impl Global for SessionChooser {}
 
 /// The sources whose browser flow the daemon is running right now.
 #[derive(Default)]
@@ -51,6 +58,59 @@ pub fn register_password_form(
     cx: &mut App,
 ) {
     cx.set_global(PasswordForm(Some(Rc::new(opener))));
+}
+
+/// Register the dialog that offers signed-in browser profiles; the app does this at startup.
+pub fn register_session_chooser(
+    chooser: impl Fn(SourceInfo, Vec<BrowserSession>, &mut Window, &mut App) + 'static,
+    cx: &mut App,
+) {
+    cx.set_global(SessionChooser(Some(Rc::new(chooser))));
+}
+
+/// Sign `source` in because someone asked to: a browser profile already signed in is offered before a new window.
+pub fn sign_in_again(source: &SourceInfo, window: &mut Window, cx: &mut App) {
+    // `sign_in` reads None once a source holds credentials, stale or not; `reauth` says what renewing them takes.
+    let kind = match source.sign_in {
+        SignInKind::None => source.reauth,
+        kind => kind,
+    };
+    match kind {
+        SignInKind::None => {}
+        SignInKind::Browser => offer_sessions(source.clone(), window, cx),
+        SignInKind::Password => password(source, window, cx),
+    }
+}
+
+/// The daemon checks each profile with the service, so the source shows as waiting meanwhile.
+fn offer_sessions(source: SourceInfo, window: &mut Window, cx: &mut App) {
+    let Some(chooser) = cx
+        .try_global::<SessionChooser>()
+        .and_then(|chooser| chooser.0.clone())
+    else {
+        return browser(source.id, cx);
+    };
+    set_waiting(&source.id, true, cx);
+    let call = {
+        let service = source.service.id.clone();
+        crate::Link::global(cx).call(move |api| async move { api.browser_sessions(service).await })
+    };
+    window
+        .spawn(cx, async move |cx| {
+            let found = call.await.unwrap_or_else(|error| {
+                tracing::debug!(%error, "could not list the browser sessions");
+                Vec::new()
+            });
+            cx.update(|window, cx| {
+                set_waiting(&source.id, false, cx);
+                match found.is_empty() {
+                    true => browser(source.id.clone(), cx),
+                    false => chooser(source, found, window, cx),
+                }
+            })
+            .ok();
+        })
+        .detach();
 }
 
 /// Start whichever sign-in `source` still needs. Nothing happens when it needs none.

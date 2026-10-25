@@ -64,7 +64,8 @@ pub use queue::{QueueModel, QueueSummary};
 pub use settings_filter::SettingsFilter;
 pub use setup::{Decision, SetupModel};
 pub use signin::{
-    browser as browser_sign_in, is_waiting_for_browser, register_password_form, start_sign_in,
+    browser as browser_sign_in, is_waiting_for_browser, register_password_form,
+    register_session_chooser, sign_in_again, start_sign_in,
 };
 pub use sources::{NetworkNotice, SourceStatus, SourcesModel, SwitchStarted};
 pub use target::{Kind, RowEdit, RowScope, Target, TrackActions};

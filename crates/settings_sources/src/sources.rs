@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use api::schema::{FieldKind, FieldSpec, FieldValue};
-use api::{SignInKind, SourceFolderEntry, SourceInfo, Table};
+use api::{SourceFolderEntry, SourceInfo, Table};
 use components::dialogs::{DialogSize, FormDialog};
 use components::format::{t, t_with, text};
 use components::{
@@ -204,7 +204,7 @@ impl Sources {
                         ConfigModel::global(cx).update(cx, |config, cx| config.reload(cx));
                     })
                     .ok();
-                    this.update_in(cx, |this, window, cx| this.sign_in(&source, window, cx))
+                    cx.update(|window, cx| store::start_sign_in(&source, window, cx))
                         .ok();
                 }
                 Err(error) => {
@@ -215,30 +215,9 @@ impl Sources {
         .detach();
     }
 
-    /// Which sign-in a source takes belongs to the service; this only asks for whichever it named.
-    fn sign_in(&mut self, source: &SourceInfo, window: &mut Window, cx: &mut Context<Self>) {
-        match source.sign_in {
-            SignInKind::None => {}
-            SignInKind::Browser => self.authenticate(source.id.clone(), cx),
-            SignInKind::Password => self.open_login(source, window, cx),
-        }
-    }
-
-    /// Signing in again reads `reauth`: `sign_in` is None once a source holds credentials.
+    /// Pressed, not automatic: the store offers a browser profile already signed in before a new window.
     fn sign_in_again(&mut self, source: &SourceInfo, window: &mut Window, cx: &mut Context<Self>) {
-        match source.reauth {
-            SignInKind::Browser => self.authenticate(source.id.clone(), cx),
-            _ => self.open_login(source, window, cx),
-        }
-    }
-
-    /// The daemon owns the browser window and the token it ends holding; this only asks for it.
-    fn authenticate(&mut self, id: String, cx: &mut Context<Self>) {
-        store::browser_sign_in(id, cx);
-    }
-
-    fn open_login(&mut self, source: &SourceInfo, window: &mut Window, cx: &mut Context<Self>) {
-        crate::login::open(source.id.clone(), text(&source.service.name), window, cx);
+        store::sign_in_again(source, window, cx);
     }
 
     fn open_add(&mut self, window: &mut Window, cx: &mut Context<Self>) {

@@ -252,7 +252,7 @@ impl FirstRun {
         let Some(source) = self.added_source(cx) else {
             return;
         };
-        store::start_sign_in(&source, window, cx);
+        store::sign_in_again(&source, window, cx);
     }
 }
 

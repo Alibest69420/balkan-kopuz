@@ -5,6 +5,7 @@ pub mod folders;
 pub mod integrations;
 mod login;
 mod offline_cache;
+mod reauth;
 mod registries;
 mod schedule;
 mod sources;
@@ -28,6 +29,7 @@ use sources::Sources;
 /// need lives in this crate, so `store` is handed a way to reach it.
 pub fn register(cx: &mut gpui_kit::App) {
     store::register_password_form(login::open, cx);
+    store::register_session_chooser(reauth::open, cx);
 }
 
 pub struct SourceSettings {

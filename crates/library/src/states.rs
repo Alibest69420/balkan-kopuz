@@ -59,7 +59,7 @@ pub fn empty_library(facet: Facet, active: &Active) -> EmptyState {
             .icon(SIGN_IN)
             .detail(SharedString::from(source.name.clone()))
             .action(t("library_sign_in"), move |_, window, cx| {
-                store::start_sign_in(&source, window, cx)
+                store::sign_in_again(&source, window, cx)
             });
     }
     // Playlists are made, not scanned or synced, so no folder or sync would fill this facet.
