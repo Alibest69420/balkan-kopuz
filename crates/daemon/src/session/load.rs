@@ -11,6 +11,7 @@ impl Session {
     /// as a transition candidate, which means the pointer stays on the outgoing
     /// track until the engine reports the switch.
     pub(super) fn start_load(&mut self, idx: usize, allow_crossfade: bool) -> bool {
+        self.engine_released = false;
         let Some(track) = self.model.track_at(idx).cloned() else {
             return false;
         };

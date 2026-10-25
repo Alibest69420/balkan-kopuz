@@ -342,6 +342,7 @@ impl SessionHandle {
             next_token: 0,
             current_token: 0,
             pending_resume: None,
+            engine_released: false,
             pending_transition: None,
             armed_transition: None,
             load_task: None,
@@ -758,6 +759,9 @@ struct Session {
     next_token: u64,
     current_token: u64,
     pending_resume: Option<PendingResumeState>,
+    /// A paused version switch stopped the engine for good: whatever session
+    /// it still reports is the old cut, so resuming loads the swapped one.
+    engine_released: bool,
     pending_transition: Option<PendingTransition>,
     armed_transition: Option<u64>,
     load_task: Option<(u64, JoinHandle<()>)>,
@@ -1676,9 +1680,10 @@ impl Session {
     fn resume(&mut self, state_tx: &watch::Sender<PlayerState>) {
         let idx = self.model.current_position();
         let is_radio = self.current_track_is_radio();
-        if is_radio || !self.player.can_resume() {
+        if is_radio || !self.player.can_resume() || self.engine_released {
             if self.model.track_at(idx).is_some() {
-                if !is_radio {
+                // A released engine already left the swapped cut's place.
+                if !is_radio && !self.engine_released {
                     self.store_pending_resume();
                 }
                 self.start_load(idx, false);
