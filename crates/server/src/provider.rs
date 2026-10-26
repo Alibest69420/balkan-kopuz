@@ -77,8 +77,6 @@ impl ProviderClient {
                 Err(SourceError::Backend("no plugin serves this service".into()))
             }
             MusicService::Nextcloud => {
-                // The password is expected to be an app password (Settings,
-                // Security), which is revocable and survives 2FA.
                 let client =
                     crate::nextcloud::NextcloudClient::new(&self.server_url, username, password)
                         .map_err(SourceError::InvalidInput)?;

@@ -106,17 +106,14 @@ mod tests {
 
     #[test]
     fn resolve_requires_user_id_except_ytmusic() {
-        // Jellyfin/Subsonic/Custom need a user_id — missing → None.
         assert!(ServerConn::resolve(&cfg("Jellyfin", Some("t"), None)).is_none());
         assert!(ServerConn::resolve(&cfg("Subsonic", Some("t"), None)).is_none());
         assert!(ServerConn::resolve(&cfg("Custom", Some("t"), None)).is_none());
 
-        // …present → resolves with the id carried through.
         let c = ServerConn::resolve(&cfg("Jellyfin", Some("t"), Some("u"))).unwrap();
         assert_eq!(c.user_id, "u");
         assert_eq!(c.token, "t");
 
-        // YtMusic authenticates by cookie — user_id optional, still resolves.
         let yt = ServerConn::resolve(&cfg("YtMusic", Some("cookie"), None)).unwrap();
         assert_eq!(yt.token, "cookie");
         assert!(yt.user_id.is_empty());

@@ -632,8 +632,6 @@ pub trait ConfigApi: Send + Sync {
             },
         })
     }
-
-    // Switching sources lives on `SourceApi`, which is where sources are.
 }
 
 /// What a connect found: a daemon to talk to, or one whose fields this build would misread.
@@ -760,7 +758,6 @@ mod handshake_tests {
         let ready = Daemon(Ok(WIRE_REVISION)).handshake().await.unwrap();
         assert!(matches!(ready, Handshake::Ready(_)));
 
-        // A daemon that predates the field sends nothing, which reads as revision 0.
         for daemon in [0, WIRE_REVISION + 1] {
             assert_eq!(
                 Daemon(Ok(daemon)).handshake().await.unwrap(),

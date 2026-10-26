@@ -1,14 +1,5 @@
-//! Configured sources, their credentials, and switching between them.
-//!
-//! This is where a media source is constructed, which is the whole point: a
-//! frontend used to build one, hand it to the daemon, and hold every token it
-//! took to sign in. Now it reads rows and calls methods, and no credential
-//! ever reaches it -- `SourceInfo` says whether a source is authenticated,
-//! never with what.
-//!
-//! Browser sign-in lives here too. It spawns a browser, drives an isolated
-//! profile or a loopback listener, and ends holding a secret, which makes it
-//! system-level work regardless of who triggered it.
+//! Source construction, credentials, switching, and browser sign-in.
+//! Clients receive `SourceInfo` with authentication status, never credentials.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -508,7 +499,7 @@ impl SourceService {
                 info.authenticated = server.access_token.is_some()
                     || crate::services::sign_in(&view, false) == api::SignInKind::None;
                 info.sign_in = crate::services::sign_in(&view, info.authenticated);
-                // What signing in again takes, for credentials that went stale.
+
                 info.reauth = crate::services::sign_in(&view, false);
                 info.detail = crate::services::detail(&view);
                 info.anonymous = server.yt_anonymous;
@@ -885,8 +876,7 @@ impl SourceService {
             self.session.reset_playback().await?;
         }
         self.session.invalidate(Table::Servers);
-        // A secret answered in the form is stored the same way one obtained
-        // any other way is, and never travels back out.
+
         if let Some(secret) = secret {
             return self
                 .provision_credentials(api::CredentialProvision {
@@ -990,8 +980,7 @@ impl SourceService {
         } else {
             self.session.invalidate(Table::Servers);
         }
-        // The browser profile is this server's, so it goes with it rather
-        // than being left behind holding a session.
+
         #[cfg(not(target_os = "android"))]
         match service {
             Some(config::MusicService::YtMusic) => {
@@ -1191,9 +1180,7 @@ impl SourceService {
                 .await
                 .map_err(db_error)?
                 .ok_or_else(|| ApiError::not_found("no such server"))?;
-            // No stored choice means "the system default", resolved here and
-            // persisted with the credential below, so a later cookie read goes
-            // back to the browser that actually holds the session.
+
             let browser = server::cookies::resolve_browser(server.yt_browser).await;
             // Kept when an existing session resumed, so the next expiry can
             // still re-read the imported profile.
@@ -1238,8 +1225,7 @@ impl SourceService {
                     .map_err(ApiError::internal)?;
                     (secret, "me".to_string())
                 }
-                // Spotify's "URL" field holds the client id its PKCE flow
-                // needs, not an address.
+
                 config::MusicService::Spotify => {
                     let auth = server::spotify::auth::launch_signin_and_extract(server.url)
                         .await
@@ -1892,7 +1878,7 @@ impl SourceService {
                 if (moved || unsettled) && !held {
                     let fresh = probed.as_ref().is_none_or(|(source, _)| *source != next.0);
                     probed = Some(next);
-                    // Spawned, so a slow unreachable server cannot hold up probing the next source.
+
                     let service = service.clone();
                     tokio::spawn(async move {
                         if let Err(error) = service.probe(&id, fresh).await {
@@ -1919,8 +1905,6 @@ impl SourceService {
     pub fn spawn_credential_upkeep(self: &Arc<Self>) {
         let service = self.clone();
         tokio::spawn(async move {
-            // Long enough not to hammer either provider, short enough that a
-            // session does not lapse between checks.
             let mut ticker = tokio::time::interval(Duration::from_secs(300));
             let mut since_spotify = 0u32;
             let mut since_client_version = 0u32;
