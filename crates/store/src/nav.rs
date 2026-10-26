@@ -91,8 +91,8 @@ impl Route {
     /// Where a route that is no longer a place now lands, so an old link never reaches a 404.
     pub fn redirect(self) -> Route {
         match self {
-            // The four listings are facets of one library now, and most-played is a sort of it.
-            Route::Favorites | Route::Activity => Route::Library,
+            // The listings are facets of one library now, and most-played is a sort of it.
+            Route::Activity => Route::Library,
             Route::Albums | Route::Artists | Route::Playlists => Route::Library,
             // Search and Discover are one destination; two keys would cache two of it.
             Route::Search => Route::Discover,
@@ -105,7 +105,6 @@ impl Route {
     /// What a redirected route was asking for, for the view that has to honour it instead.
     pub fn intent(&self) -> Option<&'static str> {
         match self {
-            Route::Favorites => Some("favorites"),
             Route::Activity => Some("activity"),
             Route::Downloader => Some("downloads"),
             _ => None,
@@ -139,8 +138,8 @@ impl Route {
             | Route::LibraryView(_)
             | Route::Albums
             | Route::Album(_)
-            | Route::Artists
-            | Route::Favorites => "library",
+            | Route::Artists => "library",
+            Route::Favorites => "favorites",
             Route::Artist(_) => match artists_remote {
                 true => "discover",
                 false => "library",
@@ -304,12 +303,7 @@ mod tests {
     #[test]
     fn a_route_that_is_no_longer_a_place_lands_somewhere() {
         // Most-played is an order over the library, not a page of its own.
-        for route in [
-            Route::Favorites,
-            Route::Activity,
-            Route::Albums,
-            Route::Artists,
-        ] {
+        for route in [Route::Activity, Route::Albums, Route::Artists] {
             assert_eq!(route.redirect(), Route::Library);
         }
         assert_eq!(Route::Playlists.redirect(), Route::Library);
@@ -319,14 +313,21 @@ mod tests {
 
     #[test]
     fn a_route_that_is_still_a_place_is_left_alone() {
-        for route in [Route::Home, Route::Library, Route::Discover, Route::Radio] {
+        for route in [
+            Route::Home,
+            Route::Library,
+            Route::Favorites,
+            Route::Discover,
+            Route::Radio,
+        ] {
             assert_eq!(route.clone().redirect(), route);
         }
     }
 
     #[test]
     fn a_redirect_says_what_it_was_after() {
-        assert_eq!(Route::Favorites.intent(), Some("favorites"));
+        assert_eq!(Route::Activity.intent(), Some("activity"));
+        assert_eq!(Route::Favorites.intent(), None);
         assert_eq!(Route::Library.intent(), None);
     }
 
@@ -336,7 +337,7 @@ mod tests {
             let route = Route::from_name(name).expect("a name the smoke script uses");
             assert!(matches!(
                 route.redirect(),
-                Route::Home | Route::Library | Route::Discover | Route::Radio
+                Route::Home | Route::Library | Route::Favorites | Route::Discover | Route::Radio
             ));
         }
     }
@@ -350,12 +351,10 @@ mod tests {
 
     #[test]
     fn a_destination_lights_up_from_its_own_route() {
-        // Favorites is the exception: it is a filter on the library, so it lights the library.
-        for name in DESTINATIONS.iter().filter(|name| **name != "favorites") {
+        for name in DESTINATIONS {
             let route = Route::destination(name).expect("a destination route");
             assert_eq!(route.destination_of(false), Some(*name));
         }
-        assert_eq!(Route::Favorites.destination_of(false), Some("library"));
     }
 
     /// An artist lights the destination the page actually opened under, which is what the source presents.
@@ -392,6 +391,7 @@ mod tests {
             Route::LibraryView("f=albums".into()).key()
         );
         assert_ne!(Route::Library.key(), Route::Albums.key());
+        assert_ne!(Route::Library.key(), Route::Favorites.key());
     }
 
     #[test]
@@ -414,11 +414,8 @@ mod tests {
     }
 
     #[test]
-    fn a_redirected_route_never_becomes_the_destination_it_lights() {
-        // Favorites lights Library and lands on it, so the bar and the page agree.
-        assert_eq!(
-            Route::Favorites.clone().redirect().destination_of(false),
-            Route::Favorites.destination_of(false)
-        );
+    fn favorites_is_a_place_of_its_own() {
+        assert_eq!(Route::Favorites.clone().redirect(), Route::Favorites);
+        assert_eq!(Route::Favorites.destination_of(false), Some("favorites"));
     }
 }

@@ -221,7 +221,7 @@ impl Default for Nav {
 }
 
 /// The destinations the bar shows until someone asks for more; the rest start hidden.
-pub const PRIMARY: &[&str] = &["home", "library", "discover", "radio"];
+pub const PRIMARY: &[&str] = &["home", "library", "discover", "radio", "favorites"];
 
 /// The destinations a nav bar can hold, in their designed order.
 pub const DESTINATIONS: &[&str] = &[
@@ -1197,7 +1197,7 @@ mod tests {
     }
 
     #[test]
-    fn the_bar_ships_holding_the_four_destinations() {
+    fn the_bar_ships_holding_the_primary_destinations() {
         assert_eq!(Nav::default().visible(), PRIMARY);
     }
 
@@ -1207,7 +1207,14 @@ mod tests {
         nav.hidden.retain(|name| name != "playlists");
         assert_eq!(
             nav.visible(),
-            &["home", "library", "discover", "radio", "playlists"]
+            &[
+                "home",
+                "library",
+                "discover",
+                "radio",
+                "playlists",
+                "favorites"
+            ]
         );
     }
 
@@ -1217,14 +1224,20 @@ mod tests {
         nav.order.swap(0, 1);
         let text = toml::to_string_pretty(&nav).expect("serialise");
         let back: Nav = toml::from_str(&text).expect("deserialise");
-        assert_eq!(back.visible(), &["library", "home", "discover", "radio"]);
+        assert_eq!(
+            back.visible(),
+            &["library", "home", "discover", "radio", "favorites"]
+        );
     }
 
     #[test]
     fn moving_a_destination_changes_what_the_bar_draws() {
         let mut nav = Nav::default();
         nav.step("library", -1);
-        assert_eq!(nav.visible(), &["library", "home", "discover", "radio"]);
+        assert_eq!(
+            nav.visible(),
+            &["library", "home", "discover", "radio", "favorites"]
+        );
     }
 
     #[test]

@@ -52,6 +52,13 @@ impl Filters {
         Self::on(self.facet)
     }
 
+    /// The same narrowing on the Favorites page, which only ever lists liked tracks.
+    pub fn held_to_liked(mut self) -> Self {
+        self.facet = Facet::Tracks;
+        self.favorites = true;
+        self
+    }
+
     /// The tracks the daemon is asked for: every chip and the order, narrowed and sorted there.
     pub fn track_filter(&self, sort: &Sort) -> TrackFilter {
         TrackFilter {

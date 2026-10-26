@@ -123,9 +123,11 @@ impl<T> Deref for CatalogWindow<T> {
     }
 }
 
-/// The library page.
+/// The library page, or the Favorites page: the same listing held to liked tracks.
 pub struct Library {
     filters: Filters,
+    /// The Favorites page: tracks only, liked only, and none of it written to the library's route.
+    liked: bool,
     // What the route last said, so adopting a route change cannot fight the page's own edit.
     encoded: String,
     columns: Vec<Column>,
@@ -201,8 +203,23 @@ impl Focusable for Library {
 
 impl Library {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let opening = opening_view(cx);
-        let filters = Filters::decode(&opening);
+        Self::build(false, window, cx)
+    }
+
+    /// The Favorites page.
+    pub fn favorites(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::build(true, window, cx)
+    }
+
+    fn build(liked: bool, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let opening = match liked {
+            true => String::new(),
+            false => opening_view(cx),
+        };
+        let filters = match liked {
+            true => Filters::default().held_to_liked(),
+            false => Filters::decode(&opening),
+        };
         let search = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder(t("library_filter_placeholder"))
@@ -291,6 +308,7 @@ impl Library {
         let scroll = UniformListScrollHandle::new();
         let mut page = Self {
             filters,
+            liked,
             encoded: opening,
             columns: Vec::new(),
             sort: Sort::default(),
@@ -329,9 +347,23 @@ impl Library {
             _subscriptions: subscriptions,
         };
         page.read_layout(cx);
-        page.adopt_intent(cx);
+        if !liked {
+            page.adopt_intent(cx);
+        }
         page.refetch(cx);
         page
+    }
+
+    /// The page's title.
+    pub(crate) fn title(&self) -> SharedString {
+        match self.liked {
+            true => t("favorites"),
+            false => t("your_library"),
+        }
+    }
+
+    pub(crate) fn is_liked(&self) -> bool {
+        self.liked
     }
 
     /// How this facet was left: its columns, its order, its density.
@@ -360,15 +392,10 @@ impl Library {
         }
     }
 
-    /// `Route::Favorites` and `Route::Activity` are no longer places; they arrive as an intent.
+    /// `Route::Activity` is no longer a place; it arrives as an intent.
     fn adopt_intent(&mut self, cx: &mut Context<Self>) {
         let intent = Navigator::global(cx).update(cx, |navigator, _| navigator.take_intent());
         match intent {
-            Some("favorites") => {
-                self.filters.facet = Facet::Tracks;
-                self.filters.favorites = true;
-                self.read_layout(cx);
-            }
             // The most-played page was a listing of the library, which is a sort, not a place.
             Some("activity") => {
                 self.filters.facet = Facet::Tracks;
@@ -396,7 +423,7 @@ impl Library {
     /// Back, forward, or a command that named a view: take what the route says and show it.
     fn adopt_route(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let route = Navigator::global(cx).read(cx).current().clone();
-        if !matches!(route, Route::Library | Route::LibraryView(_)) {
+        if self.liked || !matches!(route, Route::Library | Route::LibraryView(_)) {
             return;
         }
         self.adopt_intent(cx);
@@ -423,6 +450,10 @@ impl Library {
 
     /// Put the current view in the route, so back, forward and a restart all land back on it.
     fn publish(&mut self, push: bool, cx: &mut Context<Self>) {
+        // Favorites has a route of its own; its search must not become the library's view.
+        if self.liked {
+            return;
+        }
         let encoded = self.filters.encode();
         if encoded == self.encoded {
             return;
@@ -441,6 +472,10 @@ impl Library {
 
     /// Change the filter set: a chip or a facet is a place to come back to, a keystroke is not.
     pub(crate) fn set_filters(&mut self, filters: Filters, push: bool, cx: &mut Context<Self>) {
+        let filters = match self.liked {
+            true => filters.held_to_liked(),
+            false => filters,
+        };
         if filters == self.filters {
             return;
         }
@@ -884,6 +919,9 @@ impl Library {
     }
 
     fn cycle_facet(&mut self, step: isize, cx: &mut Context<Self>) {
+        if self.liked {
+            return;
+        }
         let at = Facet::ALL
             .iter()
             .position(|facet| *facet == self.filters.facet)
@@ -982,6 +1020,9 @@ impl Library {
         if self.total() == 0 {
             if !self.shared.settled {
                 return self.skeleton_body(cx);
+            }
+            if self.liked && self.filters == Filters::default().held_to_liked() {
+                return states::no_favorites().into_any_element();
             }
             if self.filters.is_narrowed() {
                 let page = cx.entity().downgrade();

@@ -120,8 +120,8 @@ fn build(route: &Route, window: &mut Window, cx: &mut Context<Shell>) -> Page {
         | Route::Albums
         | Route::Artists
         | Route::Playlists
-        | Route::Favorites
         | Route::Activity => Page::freezable(cx.new(|cx| library::Library::new(window, cx))),
+        Route::Favorites => Page::freezable(cx.new(|cx| library::Library::favorites(window, cx))),
         Route::Album(id) => cx
             .new(|cx| page_albums::AlbumDetail::new(id, window, cx))
             .into(),

@@ -26,7 +26,8 @@ impl Library {
     /// The heading, the facet switch, the filter bar and the facet's own controls.
     pub(crate) fn chrome(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let count = self.total();
-        let switch = self.facet_switch(cx);
+        // Favorites is one facet, so there is nothing to switch between.
+        let switch = (!self.is_liked()).then(|| self.facet_switch(cx));
         let controls = self.controls(cx);
         let filter_bar = self.filter_bar(cx);
         v_flex()
@@ -35,12 +36,12 @@ impl Library {
             .gap_4()
             .pb_4()
             .child(
-                PageHeader::new(t("your_library"))
+                PageHeader::new(self.title())
                     .count(t_with("library_count", &[("count", count.into())]))
                     .flush()
                     .action(controls),
             )
-            .child(switch)
+            .children(switch)
             .child(filter_bar)
             .into_any_element()
             .tap(window)
@@ -79,18 +80,25 @@ impl Library {
     /// Type to filter, then the chips that compose on top of what was typed.
     fn filter_bar(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let filters = self.filters().clone();
+        // On Favorites the liked filter is the page itself, not a narrowing to clear.
+        let narrowed = match self.is_liked() {
+            true => filters != Filters::default().held_to_liked(),
+            false => filters.is_narrowed(),
+        };
         let mut bar = FilterBar::new(&self.search)
-            .narrowed(filters.is_narrowed())
+            .narrowed(narrowed)
             .on_clear(cx.listener(|this, _, window, cx| {
                 let cleared = this.filters().cleared();
                 this.search
                     .update(cx, |state, cx| state.set_value("", window, cx));
                 this.set_filters(cleared, true, cx);
             }));
+        let liked = self.is_liked();
         for chip in Chip::ALL
             .iter()
             .copied()
             .filter(|chip| filters.applies(*chip))
+            .filter(|chip| !(liked && *chip == Chip::Favorites))
         {
             bar = bar.chip(self.chip(chip, &filters, cx));
         }

@@ -102,6 +102,11 @@ pub fn empty_library(facet: Facet, active: &Active) -> EmptyState {
     EmptyState::new(t("no_tracks_found")).icon(icons::LIBRARY)
 }
 
+/// The Favorites page before anything has been liked.
+pub fn no_favorites() -> EmptyState {
+    EmptyState::new(t("no_favorites")).icon(icons::HEART)
+}
+
 /// Everything is there, the chips simply exclude it: the button takes the chips off.
 pub fn no_matches(clear: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> EmptyState {
     EmptyState::new(t("library_no_matches"))
