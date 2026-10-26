@@ -34,6 +34,18 @@ fn failed(error: ApiError) -> Status {
     proto::status::to_status(error)
 }
 
+/// Installing runs code someone else wrote, so it is left to the owner of
+/// the socket or pipe; `--listen` carries no credentials to say who asked.
+fn over_tcp<T>(request: &Request<T>) -> bool {
+    request.remote_addr().is_some()
+}
+
+fn not_from_here() -> Status {
+    failed(ApiError::unsupported(
+        "plugins are installed and removed only from this computer",
+    ))
+}
+
 const ARTWORK_CHUNK: usize = 256 * 1024;
 
 type ServerStream<T> = Pin<Box<dyn Stream<Item = Result<T, Status>> + Send + 'static>>;
@@ -1321,6 +1333,9 @@ impl Kopuz for KopuzGrpc {
         &self,
         request: Request<proto::PluginId>,
     ) -> Result<Response<proto::PluginInfo>, Status> {
+        if over_tcp(&request) {
+            return Err(not_from_here());
+        }
         let info = self
             .0
             .api
@@ -1334,6 +1349,9 @@ impl Kopuz for KopuzGrpc {
         &self,
         request: Request<proto::PluginId>,
     ) -> Result<Response<proto::Unit>, Status> {
+        if over_tcp(&request) {
+            return Err(not_from_here());
+        }
         self.0
             .api
             .uninstall_plugin(request.into_inner().id)
