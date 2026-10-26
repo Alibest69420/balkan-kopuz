@@ -24,6 +24,54 @@ pub(super) struct PluginSource {
     service: MusicService,
     session: Arc<Session>,
     capabilities: Capabilities,
+    artwork: Artwork,
+}
+
+/// The pictures a plugin names are fetched or read by the host, outside the
+/// sandbox, so only what its own permissions would let it reach is kept.
+pub(crate) struct Artwork {
+    /// Shipped inside kopuz, so its references are ours to trust.
+    trusted: bool,
+    permissions: manifest::Permissions,
+    server_host: Option<String>,
+}
+
+impl Artwork {
+    pub(crate) fn new(plugin: &plugin_host::Plugin, server_url: &str) -> Self {
+        Self {
+            trusted: plugin.origin() == plugin_host::Origin::Bundled,
+            permissions: plugin.manifest().permissions.clone(),
+            server_host: reqwest::Url::parse(server_url)
+                .ok()
+                .and_then(|url| url.host_str().map(str::to_string)),
+        }
+    }
+
+    /// `raw` if the host may follow it for this plugin, else nothing.
+    pub(crate) fn cover(&self, raw: Option<String>) -> Option<String> {
+        let raw = raw?;
+        let keep = match reader::CoverRef::parse(&raw) {
+            reader::CoverRef::Local(_) => false,
+            reader::CoverRef::EmbeddedUrl(url) => self.reachable(&url),
+            reader::CoverRef::JellyfinItem { .. } | reader::CoverRef::SubsonicItem { .. } => {
+                self.trusted
+            }
+            reader::CoverRef::None => self.trusted || raw == reader::CoverRef::NO_COVER,
+        };
+        keep.then_some(raw)
+    }
+
+    fn reachable(&self, url: &str) -> bool {
+        let Ok(url) = reqwest::Url::parse(url) else {
+            return false;
+        };
+        matches!(url.scheme(), "http" | "https")
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.host_str().is_some_and(|host| {
+                self.trusted || self.permissions.allows(host, self.server_host.as_deref())
+            })
+    }
 }
 
 impl PluginSource {
@@ -34,23 +82,48 @@ impl PluginSource {
         connection: wit::Connection,
     ) -> Option<Self> {
         let slug = connection.service.clone();
+        let server_url = connection.url.clone();
         let session = crate::plugins::session(connection)?;
         let capabilities = session
             .plugin()
             .manifest()
             .service(&slug)
             .map(|declared| capabilities(&declared.capabilities))?;
+        let artwork = Artwork::new(session.plugin(), &server_url);
         Some(Self {
             db,
             source,
             service,
             session,
             capabilities,
+            artwork,
         })
     }
 
-    fn track(&self, track: wit::Track) -> reader::Track {
+    fn track(&self, mut track: wit::Track) -> reader::Track {
+        track.cover = self.artwork.cover(track.cover);
         track_from(self.service, track)
+    }
+
+    fn album(&self, mut album: wit::Album) -> reader::Album {
+        album.cover = self.artwork.cover(album.cover);
+        album_from(album)
+    }
+
+    fn albums(&self, albums: Vec<wit::Album>) -> Vec<reader::Album> {
+        albums.into_iter().map(|album| self.album(album)).collect()
+    }
+
+    fn listing(&self, mut listing: wit::ArtistListing) -> (reader::ArtistCredit, Option<String>) {
+        listing.photo = self.artwork.cover(listing.photo);
+        listing_from(listing)
+    }
+
+    fn radio_page(&self, page: wit::TrackPage) -> RadioPage {
+        RadioPage {
+            tracks: self.tracks(page.tracks),
+            more: page.next,
+        }
     }
 
     fn tracks(&self, tracks: Vec<wit::Track>) -> Vec<reader::Track> {
@@ -188,17 +261,6 @@ fn quality_of(quality: config::StreamQuality) -> wit::StreamQuality {
         config::StreamQuality::Low => wit::StreamQuality::Low,
         config::StreamQuality::Normal => wit::StreamQuality::Normal,
         config::StreamQuality::High => wit::StreamQuality::High,
-    }
-}
-
-fn radio_page(page: wit::TrackPage, service: MusicService) -> RadioPage {
-    RadioPage {
-        tracks: page
-            .tracks
-            .into_iter()
-            .map(|track| track_from(service, track))
-            .collect(),
-        more: page.next,
     }
 }
 
@@ -431,17 +493,17 @@ impl MediaSource for PluginSource {
 
     async fn start_radio(&self, seed_ref: &str) -> Result<RadioPage, SourceError> {
         let page = answer(self.session.start_radio(seed_ref).await)?;
-        Ok(radio_page(page, self.service))
+        Ok(self.radio_page(page))
     }
 
     async fn start_playlist_radio(&self, playlist_ref: &str) -> Result<RadioPage, SourceError> {
         let page = answer(self.session.start_playlist_radio(playlist_ref).await)?;
-        Ok(radio_page(page, self.service))
+        Ok(self.radio_page(page))
     }
 
     async fn more_radio(&self, cursor: &str) -> Result<RadioPage, SourceError> {
         let page = answer(self.session.more_radio(cursor).await)?;
-        Ok(radio_page(page, self.service))
+        Ok(self.radio_page(page))
     }
 
     async fn save_play_queue(
@@ -493,10 +555,7 @@ impl MediaSource for PluginSource {
             return Ok((Vec::new(), Vec::new()));
         }
         match answer(self.session.search(query).await) {
-            Ok(results) => Ok((
-                self.tracks(results.tracks),
-                results.albums.into_iter().map(album_from).collect(),
-            )),
+            Ok(results) => Ok((self.tracks(results.tracks), self.albums(results.albums))),
             Err(SourceError::Unsupported(_)) => {
                 let tracks = self.db.search_corpus(&self.source).await?;
                 let albums = self.db.albums(&self.source).await?;
@@ -513,9 +572,13 @@ impl MediaSource for PluginSource {
     async fn fetch_library(&self) -> Result<LibrarySnapshot, SourceError> {
         let snapshot = answer(self.session.fetch_library().await)?;
         Ok(LibrarySnapshot {
-            albums: snapshot.albums.into_iter().map(album_from).collect(),
+            albums: self.albums(snapshot.albums),
             tracks: self.tracks(snapshot.tracks),
-            artists: snapshot.artists.into_iter().map(listing_from).collect(),
+            artists: snapshot
+                .artists
+                .into_iter()
+                .map(|listing| self.listing(listing))
+                .collect(),
         })
     }
 
@@ -551,7 +614,7 @@ impl MediaSource for PluginSource {
             .map(|playlist| PlaylistMeta {
                 id: playlist.id,
                 name: playlist.name,
-                image_tag: playlist.image_tag,
+                image_tag: self.artwork.cover(playlist.image_tag),
             })
             .collect())
     }
@@ -561,7 +624,7 @@ impl MediaSource for PluginSource {
     ) -> Result<Vec<(reader::ArtistCredit, Option<String>)>, SourceError> {
         Ok(answer(self.session.fetch_artists().await)?
             .into_iter()
-            .map(listing_from)
+            .map(|listing| self.listing(listing))
             .collect())
     }
 
@@ -649,6 +712,57 @@ impl MediaSource for PluginSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn community() -> Artwork {
+        Artwork {
+            trusted: false,
+            permissions: manifest::Permissions {
+                network: vec!["archive.org".into(), "$server".into()],
+            },
+            server_host: Some("music.example".into()),
+        }
+    }
+
+    #[test]
+    fn a_community_plugin_keeps_only_covers_it_could_reach() {
+        let artwork = community();
+        let kept = |raw: &str| artwork.cover(Some(raw.into()));
+        for allowed in [
+            "directurl:https://archive.org/services/img/gd77",
+            "https://music.example/art.jpg",
+            "none",
+        ] {
+            assert_eq!(kept(allowed).as_deref(), Some(allowed));
+        }
+        for refused in [
+            "/etc/passwd",
+            "plugin:x:/home/someone/.ssh/id_ed25519",
+            "directurl:file:///etc/passwd",
+            "https://169.254.169.254/latest/meta-data",
+            "directurl:https://user:pass@archive.org/x",
+            "artwork://track/1",
+            "jellyfin:item:tag",
+            "../../etc/passwd",
+        ] {
+            assert_eq!(kept(refused), None, "{refused}");
+        }
+    }
+
+    #[test]
+    fn a_bundled_plugin_keeps_its_references() {
+        let artwork = Artwork {
+            trusted: true,
+            ..community()
+        };
+        for raw in [
+            "subsonic:al-1",
+            "jellyfin:item:tag",
+            "https://cdn.test/a.jpg",
+        ] {
+            assert_eq!(artwork.cover(Some(raw.into())).as_deref(), Some(raw));
+        }
+        assert_eq!(artwork.cover(Some("/etc/passwd".into())), None);
+    }
 
     #[test]
     fn a_plugin_track_is_filed_under_the_session_service() {
