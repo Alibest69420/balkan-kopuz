@@ -84,6 +84,14 @@ fn runtime() -> Result<&'static Runtime, PluginError> {
 
 const EPOCH_TICK: std::time::Duration = std::time::Duration::from_millis(10);
 
+/// Instantiating and constructing a session do no real work, so a plugin
+/// still busy after this is stuck.
+const STARTUP_LIMIT: std::time::Duration = if cfg!(test) {
+    std::time::Duration::from_secs(1)
+} else {
+    std::time::Duration::from_secs(60)
+};
+
 /// Plugin code yields every tick, so one spinning in a loop costs CPU, not a
 /// runtime worker.
 fn tick(engine: &Engine) {
@@ -167,9 +175,13 @@ impl Plugin {
         store.limiter(|state| &mut state.limits);
         store.set_epoch_deadline(1);
         store.epoch_deadline_async_yield_and_update(1);
-        let bindings = SourcePlugin::instantiate_async(&mut store, component, &runtime.linker)
-            .await
-            .map_err(|error| self.trapped(error))?;
+        let started = self
+            .starting(
+                "instantiating",
+                SourcePlugin::instantiate_async(&mut store, component, &runtime.linker),
+            )
+            .await?;
+        let bindings = started.map_err(|error| self.trapped(error))?;
         Ok(Instance { store, bindings })
     }
 
@@ -195,8 +207,40 @@ impl Plugin {
         }
     }
 
+    /// `work`, unless it is still going after [`STARTUP_LIMIT`].
+    pub(crate) async fn starting<T>(
+        &self,
+        doing: &str,
+        work: impl std::future::Future<Output = T>,
+    ) -> Result<T, PluginError> {
+        tokio::time::timeout(STARTUP_LIMIT, work)
+            .await
+            .map_err(|_| {
+                tracing::error!(plugin = %self.id, "plugin timed out {doing}");
+                PluginError::TimedOut
+            })
+    }
+
     pub(crate) fn trapped(&self, error: wasmtime::Error) -> PluginError {
         tracing::error!(plugin = %self.id, error = %format!("{error:#}"), "plugin trapped");
         PluginError::Trapped(format!("{error:#}"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn startup_that_never_finishes_times_out() {
+        let manifest = Manifest::parse(
+            "id = \"stuck\"\nname = \"Stuck\"\nversion = \"0.1.0\"\napi = \"0.1\"\n",
+        )
+        .expect("manifest");
+        let plugin = Plugin::new(manifest, Code::Native, Origin::Installed);
+        let started = plugin
+            .starting("opening a session", std::future::pending::<()>())
+            .await;
+        assert!(matches!(started, Err(PluginError::TimedOut)));
     }
 }

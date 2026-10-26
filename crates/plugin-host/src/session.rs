@@ -57,13 +57,18 @@ impl Session {
 
     async fn open(&self) -> Result<Live, PluginError> {
         let mut instance = self.plugin.instantiate(&self.connection.url).await?;
-        let session = instance
-            .bindings
-            .kopuz_plugin_source()
-            .session()
-            .call_constructor(&mut instance.store, &self.connection)
-            .await
-            .map_err(|error| self.plugin.trapped(error))?;
+        let constructed = self
+            .plugin
+            .starting(
+                "opening a session",
+                instance
+                    .bindings
+                    .kopuz_plugin_source()
+                    .session()
+                    .call_constructor(&mut instance.store, &self.connection),
+            )
+            .await?;
+        let session = constructed.map_err(|error| self.plugin.trapped(error))?;
         Ok(Live { instance, session })
     }
 }
