@@ -1,6 +1,8 @@
 //! Source construction, credentials, switching, and browser sign-in.
 //! Clients receive `SourceInfo` with authentication status, never credentials.
 
+mod removable;
+
 use std::collections::HashMap;
 use std::future::Future;
 use std::path::PathBuf;
@@ -36,7 +38,7 @@ pub struct SourceService {
     session: SessionHandle,
     config: Arc<ConfigService>,
     /// The authority on the sources; the session's copy follows it.
-    current: tokio::sync::Mutex<Arc<Sources>>,
+    current: tokio::sync::Mutex<HeldSources>,
     /// Each source's last probe answer, tagged with the probe that wrote it.
     status: Mutex<HashMap<String, (u64, SourceState)>>,
     probes: AtomicU64,
@@ -50,6 +52,25 @@ pub struct SourceService {
     network: Mutex<NetworkStatus>,
     checker: network::Checker,
     rechecking: AtomicBool,
+    removable: tokio::sync::Mutex<HashMap<String, config::MusicServer>>,
+}
+
+struct HeldSources {
+    saved: Arc<Sources>,
+    temporary: Option<config::MusicServer>,
+}
+
+impl HeldSources {
+    fn running(&self) -> Arc<Sources> {
+        match &self.temporary {
+            Some(server) => {
+                let mut sources = Sources::clone(&self.saved);
+                sources.set_active_server(server.clone());
+                Arc::new(sources)
+            }
+            None => self.saved.clone(),
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -180,6 +201,7 @@ fn capabilities(source: &dyn server::source::MediaSource) -> SourceCapabilities 
         complete_play_history: caps.complete_play_history,
         sync: caps.sync,
         downloads: caps.downloads,
+        rip_audio: false,
         uploads: caps.uploads,
         storage_quota: caps.storage_quota,
         discover: caps.discover,
@@ -309,7 +331,10 @@ impl SourceService {
             db,
             session,
             config,
-            current: tokio::sync::Mutex::new(sources),
+            current: tokio::sync::Mutex::new(HeldSources {
+                saved: sources,
+                temporary: None,
+            }),
             status: Mutex::new(HashMap::new()),
             probes: AtomicU64::new(0),
             upstream,
@@ -319,11 +344,12 @@ impl SourceService {
             network: Mutex::new(NetworkStatus::default()),
             checker: network::Checker::default(),
             rechecking: AtomicBool::new(false),
+            removable: tokio::sync::Mutex::new(HashMap::new()),
         })
     }
 
     pub async fn snapshot(&self) -> Arc<Sources> {
-        self.current.lock().await.clone()
+        self.current.lock().await.running()
     }
 
     /// Change the sources, persist what moved, and pass them on while still locked, so the session sees changes in the order they were saved.
@@ -331,15 +357,28 @@ impl SourceService {
         &self,
         mutate: impl FnOnce(&mut Sources) + Send,
     ) -> Result<Arc<Sources>, ApiError> {
+        self.change_sources(mutate, false).await
+    }
+
+    async fn change_sources(
+        &self,
+        mutate: impl FnOnce(&mut Sources) + Send,
+        select_saved: bool,
+    ) -> Result<Arc<Sources>, ApiError> {
         let mut held = self.current.lock().await;
-        let mut next = Sources::clone(&held);
+        let mut next = Sources::clone(&held.saved);
         mutate(&mut next);
-        if next == **held {
-            return Ok(held.clone());
+        if next == *held.saved && !(select_saved && held.temporary.is_some()) {
+            return Ok(held.running());
         }
-        persist(&self.db, &held, &next).await.map_err(db_error)?;
-        let next = Arc::new(next);
-        *held = next.clone();
+        persist(&self.db, &held.saved, &next)
+            .await
+            .map_err(db_error)?;
+        held.saved = Arc::new(next);
+        if select_saved {
+            held.temporary = None;
+        }
+        let next = held.running();
         self.session
             .set_active_source(Some(self.build_active(&next)));
         let adopted = self.session.adopt_sources(next.clone());
@@ -357,7 +396,7 @@ impl SourceService {
     async fn refresh_active(&self) {
         let held = self.current.lock().await;
         self.session
-            .set_active_source(Some(self.build_active(&held)));
+            .set_active_source(Some(self.build_active(&held.running())));
     }
 
     /// The last probe answer for `id`, if it has been probed.
@@ -389,7 +428,11 @@ impl SourceService {
     /// A source id reserved for local libraries must not be claimed by a
     /// server, or the two namespaces collide.
     fn validate_server_id(id: &str) -> Result<(), ApiError> {
-        if id.is_empty() || id == "local" || id.starts_with("local:") {
+        if id.is_empty()
+            || id == "local"
+            || id.starts_with("local:")
+            || id.starts_with("removable:")
+        {
             return Err(ApiError::invalid_input(
                 "that id is reserved for local sources",
             ));
@@ -415,12 +458,16 @@ impl SourceService {
                 sources.set_active_local(config::Source::LocalLibrary(local_id));
             }
             config::Source::Server(server_id) => {
-                let server = self
-                    .db
-                    .load_server(&server_id)
-                    .await
-                    .map_err(db_error)?
-                    .ok_or_else(|| ApiError::not_found("no such server"))?;
+                let temporary = self.removable.lock().await.get(&server_id).cloned();
+                let server = match temporary {
+                    Some(server) => server,
+                    None => self
+                        .db
+                        .load_server(&server_id)
+                        .await
+                        .map_err(db_error)?
+                        .ok_or_else(|| ApiError::not_found("no such server"))?,
+                };
                 sources.set_active_server(server);
             }
         }
@@ -431,16 +478,23 @@ impl SourceService {
     pub async fn sources(&self) -> Result<Vec<SourceInfo>, ApiError> {
         let config = self.current().await;
         let servers = self.snapshot().await;
-        let ids: Vec<String> = config
+        let mut ids: Vec<String> = config
             .library
             .local_sources
             .iter()
             .map(|source| source.id.clone())
             .chain(servers.servers.iter().map(|server| server.id.clone()))
             .collect();
+        let mut temporary: Vec<_> = self.removable.lock().await.keys().cloned().collect();
+        temporary.sort();
+        ids.extend(temporary);
         let mut sources = Vec::with_capacity(ids.len());
         for id in ids {
-            sources.push(self.source_info(&id).await?);
+            match self.source_info(&id).await {
+                Ok(info) => sources.push(info),
+                Err(_) if id.starts_with("removable:") => {}
+                Err(error) => return Err(error),
+            }
         }
         Ok(sources)
     }
@@ -457,6 +511,11 @@ impl SourceService {
             state: self.status(key.as_str()),
             ..Default::default()
         };
+        info.temporary = self.removable.lock().await.contains_key(id);
+        if info.temporary {
+            info.state = Some(SourceState::Online);
+        }
+        info.capabilities.rip_audio = source.rip_audio();
         match &key {
             config::Source::LocalLibrary(local_id) => {
                 let saved = current
@@ -484,17 +543,22 @@ impl SourceService {
                     .ok_or_else(|| ApiError::not_found("no such server"))?;
                 let view = crate::services::ServerView::from(server);
                 info.name = server.name.clone();
-                info.needs_network = true;
-                info.works_offline = network::is_local(&key, Some(&server.url));
+                info.needs_network = server.service != config::MusicService::AudioCd;
+                info.works_offline = server.service == config::MusicService::AudioCd
+                    || network::is_local(&key, Some(&server.url));
                 info.service = crate::services::service_ref(server.service);
 
-                info.authenticated = server.access_token.is_some() || server.yt_anonymous;
+                info.authenticated = server.access_token.is_some()
+                    || server.yt_anonymous
+                    || server.service == config::MusicService::AudioCd;
                 info.sign_in = crate::services::sign_in(&view, info.authenticated);
 
                 info.reauth = crate::services::sign_in(&view, false);
                 info.detail = crate::services::detail(&view);
                 info.anonymous = server.yt_anonymous;
-                info.settings = crate::services::settings(&view, &current);
+                if !info.temporary {
+                    info.settings = crate::services::settings(&view, &current);
+                }
                 let signed_in = server
                     .access_token
                     .as_deref()
@@ -554,8 +618,7 @@ impl SourceService {
     pub async fn switch_source(&self, id: &str) -> Result<SourceInfo, ApiError> {
         if self.network_status().internet_down {
             let (target, _) = self.resolve(id).await?;
-            let url = target.server.as_ref().map(|server| server.url.as_str());
-            if !network::is_local(&target.active, url)
+            if network::needs_internet(&target)
                 && self.check_network_spaced(network::NUDGE_SPACING).await == Verdict::Down
             {
                 return Err(ApiError::new(
@@ -571,19 +634,32 @@ impl SourceService {
     }
 
     async fn switch_to(&self, id: &str) -> Result<SourceInfo, ApiError> {
+        {
+            // Serialize acceptance with removal so an ejected disc cannot become active.
+            let removable = self.removable.lock().await;
+            if let Some(server) = removable.get(id) {
+                self.set_temporary_source(server.clone()).await;
+                drop(removable);
+                self.finish_source_change();
+                return self.source_info(id).await;
+            }
+        }
         let previous = self.snapshot().await.active.clone();
         let (target, _) = self.resolve(id).await?;
         let source = target.active.clone();
         let changed = previous != source;
         let server = target.server.clone();
-        self.mutate(move |sources| match source {
-            config::Source::LocalLibrary(_) => sources.set_active_local(source),
-            config::Source::Server(_) => {
-                if let Some(server) = server {
-                    sources.set_active_server(server);
+        self.change_sources(
+            move |sources| match source {
+                config::Source::LocalLibrary(_) => sources.set_active_local(source),
+                config::Source::Server(_) => {
+                    if let Some(server) = server {
+                        sources.set_active_server(server);
+                    }
                 }
-            }
-        })
+            },
+            true,
+        )
         .await?;
         if changed {
             self.finish_source_change();
@@ -655,9 +731,14 @@ impl SourceService {
             })
             .await?;
         // The session drops this source's queue itself once its pending saves land, so none outlives the purge.
-        if was_active {
-            self.mutate(Sources::clear_active).await?;
-        } else {
+        let removed = id.to_string();
+        self.mutate(move |sources| {
+            if sources.active.local_library_id() == Some(removed.as_str()) {
+                sources.clear_active();
+            }
+        })
+        .await?;
+        if !was_active {
             self.refresh_active().await;
         }
         self.db
@@ -781,6 +862,11 @@ impl SourceService {
     }
 
     pub async fn upsert_source(&self, draft: SourceDraft) -> Result<SourceInfo, ApiError> {
+        if draft.service == "cdda" {
+            return Err(ApiError::invalid_input(
+                "Audio CDs are detected automatically when inserted",
+            ));
+        }
         if draft.service == crate::services::FOLDERS {
             return self.upsert_folder_source(draft).await;
         }
@@ -960,8 +1046,9 @@ impl SourceService {
         let was_active = current.active.server_id() == Some(id);
         let id_owned = id.to_string();
         self.mutate(move |sources| {
+            let selected = sources.active.server_id() == Some(id_owned.as_str());
             sources.remove_saved_server(&id_owned);
-            if was_active {
+            if selected {
                 sources.clear_active();
             }
         })
@@ -1493,6 +1580,9 @@ impl SourceService {
 
     /// Probe `id` and record the answer; `announce` shows it as checking meanwhile, for a source with no answer of its own yet.
     async fn probe(&self, id: &str, announce: bool) -> Result<SourceState, ApiError> {
+        if self.removable.lock().await.contains_key(id) {
+            return Ok(SourceState::Online);
+        }
         let probe = self.probes.fetch_add(1, Ordering::Relaxed) + 1;
         if announce {
             self.record_status(id, probe, SourceState::Checking);
@@ -1637,8 +1727,7 @@ impl SourceService {
         }
         let sources = self.snapshot().await;
         let active = sources.active.clone();
-        let url = sources.server.as_ref().map(|server| server.url.as_str());
-        if !network::is_local(&active, url) {
+        if network::needs_internet(&sources) {
             match self.local_fallback(&sources).await {
                 Some(target) => match self.switch_to(target.as_str()).await {
                     Ok(_) => {

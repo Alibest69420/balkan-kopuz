@@ -90,6 +90,7 @@ impl<'a> From<&'a config::MusicServer> for ServerView<'a> {
 pub fn all() -> Vec<ServiceInfo> {
     let mut services: Vec<ServiceInfo> = MusicService::ALL
         .iter()
+        .filter(|service| **service != MusicService::AudioCd)
         .map(|service| ServiceInfo {
             id: service.id().to_string(),
             name: name(*service),
@@ -204,6 +205,7 @@ fn summary(service: MusicService) -> &'static str {
         MusicService::Nextcloud => "service_summary_nextcloud",
         MusicService::Clippsly => "service_summary_clippsly",
         MusicService::Smb => "service_summary_smb",
+        MusicService::AudioCd => "removable_temporary",
     }
 }
 
@@ -219,6 +221,7 @@ fn icon(service: MusicService) -> Icon {
         }
         MusicService::Nextcloud => Icon::Svg(NEXTCLOUD_MARK.into()),
         MusicService::Clippsly => Icon::Class("fa-solid fa-cloud".into()),
+        MusicService::AudioCd => Icon::Class("fa-solid fa-compact-disc".into()),
         MusicService::Smb => Icon::Class("fa-solid fa-server".into()),
     }
 }
@@ -234,6 +237,7 @@ fn accent(service: MusicService) -> &'static str {
         MusicService::Nextcloud => "#0082c9",
         MusicService::Clippsly => "#8064e9",
         MusicService::Smb => "#6366f1",
+        MusicService::AudioCd => "#a3a3a3",
     }
 }
 
@@ -425,6 +429,7 @@ pub fn add_fields(service: MusicService) -> Vec<FieldSpec> {
                 ..note_field()
             },
         ],
+        MusicService::AudioCd => Vec::new(),
         MusicService::Smb => vec![
             url_field("smb_url_placeholder"),
             FieldSpec {
@@ -557,7 +562,7 @@ pub fn sign_in(server: &ServerView<'_>, authenticated: bool) -> SignInKind {
 }
 
 fn draft_sign_in(service: MusicService, anonymous: bool) -> SignInKind {
-    if anonymous {
+    if anonymous || service == MusicService::AudioCd {
         SignInKind::None
     } else if service.uses_browser_signin() {
         SignInKind::Browser
@@ -603,6 +608,7 @@ pub fn check(service: MusicService, draft: &SourceDraft) -> (SignInKind, Vec<For
             }
         }
         MusicService::YtMusic | MusicService::SoundCloud | MusicService::Clippsly => {}
+        MusicService::AudioCd => {}
         MusicService::Smb => {
             if server::smb::Location::parse(value(URL)).is_err() {
                 problems.push(FormProblem::on(URL, ErrorReason::InvalidSmbUrl));
@@ -774,7 +780,8 @@ pub fn probe_target(draft: &SourceDraft) -> Result<ProbeTarget, api::ApiError> {
         | MusicService::AppleMusic
         | MusicService::Spotify
         | MusicService::Clippsly
-        | MusicService::Smb => Ok(ProbeTarget::Nothing),
+        | MusicService::Smb
+        | MusicService::AudioCd => Ok(ProbeTarget::Nothing),
     }
 }
 
@@ -852,7 +859,11 @@ mod summary_tests {
     fn every_service_says_what_it_is_in_the_baseline_locale() {
         let baseline = include_str!("../../i18n/locales/en.ftl");
         let services = all();
-        assert_eq!(services.len(), MusicService::ALL.len() + 1, "folders too");
+        assert_eq!(
+            services.len(),
+            MusicService::ALL.len(),
+            "folders are configurable; audio CDs are detected"
+        );
         for service in services {
             let Text::Key(key) = &service.summary else {
                 panic!("{} has no summary key", service.id);
@@ -1112,6 +1123,12 @@ mod probe_tests {
 #[cfg(test)]
 mod webview_tests {
     use super::*;
+
+    #[test]
+    fn audio_cd_is_discovered_instead_of_manually_configured() {
+        assert!(!all().iter().any(|service| service.id == "cdda"));
+        assert!(add_fields(MusicService::AudioCd).is_empty());
+    }
 
     #[test]
     fn android_forms_have_no_external_browser_or_registered_app_setup() {

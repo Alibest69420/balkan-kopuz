@@ -358,7 +358,8 @@ impl CoverRef {
             | MusicService::Spotify
             | MusicService::Nextcloud
             | MusicService::Clippsly
-            | MusicService::Smb => cover.map_or(Self::None, Self::parse),
+            | MusicService::Smb
+            | MusicService::AudioCd => cover.map_or(Self::None, Self::parse),
         }
     }
 
@@ -411,7 +412,8 @@ impl CoverRef {
             | MusicService::Spotify
             | MusicService::Nextcloud
             | MusicService::Clippsly
-            | MusicService::Smb => track.cover.as_deref().map_or(Self::None, Self::parse),
+            | MusicService::Smb
+            | MusicService::AudioCd => track.cover.as_deref().map_or(Self::None, Self::parse),
         }
     }
 

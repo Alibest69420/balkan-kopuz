@@ -48,6 +48,7 @@ impl Native {
         };
         let settings_path = config::store::settings_path_for(db_dir);
         migrations::apply(&pool, Some(&settings_path), &pending).await?;
+        cfg_store::purge_removable(&pool).await?;
         Ok(Self {
             pool: ArcSwap::from_pointee(pool),
             settings_path,

@@ -3,7 +3,7 @@
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use api::{ApiError, JobKind, JobRef, Table};
@@ -13,6 +13,8 @@ use tokio::io::AsyncWriteExt;
 
 use crate::jobs::{JobCtx, JobRunner};
 use crate::session::SessionHandle;
+
+mod rip;
 
 /// Upper bound on a single read from the download stream; a server that
 /// accepts the request and then stalls without closing the socket would
@@ -35,6 +37,7 @@ pub struct DownloadsService {
     db: db::Db,
     session: SessionHandle,
     cache_dir: PathBuf,
+    artwork: OnceLock<Arc<crate::ArtworkService>>,
     /// What the running batch is working through, for a progress list.
     batch: std::sync::Mutex<Batch>,
 }
@@ -73,8 +76,13 @@ impl DownloadsService {
             db,
             session,
             cache_dir,
+            artwork: OnceLock::new(),
             batch: std::sync::Mutex::new(Batch::default()),
         })
+    }
+
+    pub(crate) fn attach_artwork(&self, artwork: Arc<crate::ArtworkService>) {
+        let _ = self.artwork.set(artwork);
     }
 
     /// Per-item state for a progress list: what is queued, what is being

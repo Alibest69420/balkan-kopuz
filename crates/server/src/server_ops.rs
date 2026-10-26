@@ -21,7 +21,9 @@ impl ServerConn {
     /// The active server's connection params, or `None` without a token (anonymous YouTube Music runs on none and ignores a leftover one), or without a `user_id` for a service that signs requests with one.
     pub fn resolve(sources: &crate::sources::Sources) -> Option<Self> {
         let server = sources.server.as_ref()?;
-        let token = if server.service == MusicService::YtMusic && server.yt_anonymous {
+        let token = if server.service == MusicService::AudioCd
+            || (server.service == MusicService::YtMusic && server.yt_anonymous)
+        {
             String::new()
         } else {
             server.access_token.clone()?
@@ -30,6 +32,7 @@ impl ServerConn {
             MusicService::YtMusic
             | MusicService::AppleMusic
             | MusicService::Spotify
+            | MusicService::AudioCd
             | MusicService::Clippsly => server.user_id.clone().unwrap_or_default(),
             _ => server.user_id.clone()?,
         };
@@ -78,6 +81,13 @@ mod tests {
             server: Some(serde_json::from_value(server).unwrap()),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn audio_cd_needs_no_credentials() {
+        let connection = ServerConn::resolve(&cfg("AudioCd", None, None)).unwrap();
+        assert_eq!(connection.service, MusicService::AudioCd);
+        assert!(connection.token.is_empty());
     }
 
     #[test]
