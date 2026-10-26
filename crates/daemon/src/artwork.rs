@@ -533,15 +533,16 @@ fn fetch_failed(error: reqwest::Error) -> ApiError {
     ApiError::internal(format!("artwork fetch failed: {}", error.without_url()))
 }
 
-/// The response for `url`. One the active plugin could have named itself has
-/// every redirect held to that plugin's hosts too, since the host fetches it.
+/// The response for `url`. Under a community plugin every remote picture came
+/// from it, so the URL and each redirect are held to the hosts it may reach:
+/// one stored before the plugin narrowed them is refused, not fetched.
 pub(crate) async fn get(
     http: &reqwest::Client,
     unredirected: &reqwest::Client,
     url: &str,
     reach: Option<&server::plugins::Reach>,
 ) -> Result<reqwest::Response, ApiError> {
-    let Some(reach) = reach.filter(|reach| reach.allows(url)) else {
+    let Some(reach) = reach else {
         return http
             .get(url)
             .timeout(REMOTE_ARTWORK_TIMEOUT)
@@ -549,6 +550,10 @@ pub(crate) async fn get(
             .await
             .map_err(fetch_failed);
     };
+    let outside = || ApiError::internal("artwork is outside the hosts its plugin may reach");
+    if !reach.allows(url) {
+        return Err(outside());
+    }
     let mut url = reqwest::Url::parse(url)
         .map_err(|error| ApiError::internal(format!("artwork URL is invalid: {error}")))?;
     for _ in 0..=MAX_ARTWORK_REDIRECTS {
@@ -568,9 +573,7 @@ pub(crate) async fn get(
             .and_then(|location| url.join(location).ok())
             .ok_or_else(|| ApiError::internal("artwork redirect names no location"))?;
         if !reach.allows(next.as_str()) {
-            return Err(ApiError::internal(
-                "artwork redirected outside the hosts its plugin may reach",
-            ));
+            return Err(outside());
         }
         url = next;
     }
@@ -620,7 +623,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn a_plugin_cover_never_redirects_off_the_plugins_hosts() {
+    async fn a_plugin_cover_never_leaves_the_plugins_hosts() {
         let (elsewhere, elsewhere_hits) =
             serve_on("127.0.0.2", vec![("/x.jpg", String::new())]).await;
         let (allowed, _) = serve_on(
@@ -660,11 +663,27 @@ mod tests {
         )
         .await;
         assert!(refused.is_err());
+        let denied = get(
+            &http,
+            &unredirected,
+            &format!("{elsewhere}/x.jpg"),
+            Some(&reach),
+        )
+        .await;
+        assert!(
+            denied.is_err(),
+            "a stored URL off its hosts is refused outright"
+        );
         assert_eq!(
             elsewhere_hits.load(std::sync::atomic::Ordering::SeqCst),
             0,
             "the undeclared host is never asked"
         );
+
+        let unrestricted = get(&http, &unredirected, &format!("{elsewhere}/x.jpg"), None)
+            .await
+            .expect("without a community plugin the URL is fetched as before");
+        assert_eq!(unrestricted.status(), reqwest::StatusCode::OK);
     }
 
     fn jpeg_of(edge: u32) -> Vec<u8> {
