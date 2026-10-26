@@ -88,7 +88,9 @@ pub(crate) fn connection(conn: &ServerConn) -> wit::Connection {
 pub(crate) fn session(connection: wit::Connection) -> Option<Arc<Session>> {
     static OPEN: OnceLock<Mutex<HashMap<String, Weak<Session>>>> = OnceLock::new();
     let registry = registry();
-    let plugin = registry.for_service(&connection.service)?;
+    let plugin = registry
+        .for_service(&connection.service)
+        .filter(|plugin| !plugin.is_native())?;
     // Keyed on the plugin's address too, so a reload never reuses old code.
     let key = format!(
         "{:p}\u{0}{}\u{0}{}\u{0}{}\u{0}{}\u{0}{}\u{0}{}\u{0}{}",

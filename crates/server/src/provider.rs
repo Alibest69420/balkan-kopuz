@@ -44,7 +44,12 @@ impl ProviderClient {
     }
 
     pub async fn login(&self, username: &str, password: &str) -> Result<AuthSession, SourceError> {
-        if let Some(plugin) = crate::plugins::registry().for_service(self.service_id()) {
+        let registry = crate::plugins::registry();
+        // A native plugin's code is ours: it signs in below, not in a sandbox.
+        if let Some(plugin) = registry
+            .for_service(self.service_id())
+            .filter(|plugin| !plugin.is_native())
+        {
             let connection = plugin_host::wit::Connection {
                 service: self.service_id().to_string(),
                 url: self.server_url.clone(),
@@ -161,5 +166,17 @@ mod tests {
             .login("someone", "hunter2")
             .await;
         assert!(matches!(broken.err(), Some(SourceError::Backend(_))));
+    }
+
+    #[tokio::test]
+    async fn a_native_plugin_signs_in_with_its_own_client() {
+        let refused = ProviderClient::new(
+            MusicService::Nextcloud,
+            answering("401 Unauthorized").await,
+            "test-device",
+        )
+        .login("someone", "app-password")
+        .await;
+        assert_eq!(refused.err(), Some(SourceError::Auth));
     }
 }
