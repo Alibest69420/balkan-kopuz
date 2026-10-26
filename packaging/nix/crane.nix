@@ -109,6 +109,10 @@ let
             (s + /android-src)
             (s + /crates)
             (s + /data)
+            # Workspace members, and the official plugins' sources embedded in the build.
+            (s + /plugins)
+            (s + /examples/plugins)
+            (s + /wit)
             (s + /packaging/systemd)
 
             (s + /Cargo.toml)
