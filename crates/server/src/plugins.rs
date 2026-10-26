@@ -164,3 +164,73 @@ pub fn own_service(slug: &str) -> Option<OwnService> {
         .into_iter()
         .find(|own| own.service.id == slug)
 }
+
+/// What a plugin may reach. The pictures it names are fetched or read by the
+/// host, outside the sandbox, so they are held to the same hosts.
+pub struct Reach {
+    /// Shipped inside kopuz, so its references are ours to trust.
+    trusted: bool,
+    permissions: plugin_host::manifest::Permissions,
+    server_host: Option<String>,
+}
+
+impl Reach {
+    pub(crate) fn new(plugin: &plugin_host::Plugin, server_url: &str) -> Self {
+        Self::from_parts(
+            plugin.origin() == plugin_host::Origin::Bundled,
+            plugin.manifest().permissions.clone(),
+            server_url,
+        )
+    }
+
+    pub fn from_parts(
+        trusted: bool,
+        permissions: plugin_host::manifest::Permissions,
+        server_url: &str,
+    ) -> Self {
+        Self {
+            trusted,
+            permissions,
+            server_host: reqwest::Url::parse(server_url)
+                .ok()
+                .and_then(|url| url.host_str().map(str::to_string)),
+        }
+    }
+
+    /// The reach of the sandboxed plugin serving `server`, unless kopuz ships it.
+    pub fn of_installed(server: &config::MusicServer) -> Option<Self> {
+        let registry = registry();
+        let plugin = registry
+            .for_service(server.service_id())
+            .filter(|plugin| !plugin.is_native())?;
+        let reach = Self::new(plugin, &server.url);
+        (!reach.trusted).then_some(reach)
+    }
+
+    /// `raw` if the host may follow it for this plugin, else nothing.
+    pub(crate) fn cover(&self, raw: Option<String>) -> Option<String> {
+        let raw = raw?;
+        let keep = match reader::CoverRef::parse(&raw) {
+            reader::CoverRef::Local(_) => false,
+            reader::CoverRef::EmbeddedUrl(url) => self.allows(&url),
+            reader::CoverRef::JellyfinItem { .. } | reader::CoverRef::SubsonicItem { .. } => {
+                self.trusted
+            }
+            reader::CoverRef::None => self.trusted || raw == reader::CoverRef::NO_COVER,
+        };
+        keep.then_some(raw)
+    }
+
+    /// Whether the host may fetch `url` for this plugin.
+    pub fn allows(&self, url: &str) -> bool {
+        let Ok(url) = reqwest::Url::parse(url) else {
+            return false;
+        };
+        matches!(url.scheme(), "http" | "https")
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.host_str().is_some_and(|host| {
+                self.trusted || self.permissions.allows(host, self.server_host.as_deref())
+            })
+    }
+}

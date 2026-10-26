@@ -24,54 +24,7 @@ pub(super) struct PluginSource {
     service: MusicService,
     session: Arc<Session>,
     capabilities: Capabilities,
-    artwork: Artwork,
-}
-
-/// The pictures a plugin names are fetched or read by the host, outside the
-/// sandbox, so only what its own permissions would let it reach is kept.
-pub(crate) struct Artwork {
-    /// Shipped inside kopuz, so its references are ours to trust.
-    trusted: bool,
-    permissions: manifest::Permissions,
-    server_host: Option<String>,
-}
-
-impl Artwork {
-    pub(crate) fn new(plugin: &plugin_host::Plugin, server_url: &str) -> Self {
-        Self {
-            trusted: plugin.origin() == plugin_host::Origin::Bundled,
-            permissions: plugin.manifest().permissions.clone(),
-            server_host: reqwest::Url::parse(server_url)
-                .ok()
-                .and_then(|url| url.host_str().map(str::to_string)),
-        }
-    }
-
-    /// `raw` if the host may follow it for this plugin, else nothing.
-    pub(crate) fn cover(&self, raw: Option<String>) -> Option<String> {
-        let raw = raw?;
-        let keep = match reader::CoverRef::parse(&raw) {
-            reader::CoverRef::Local(_) => false,
-            reader::CoverRef::EmbeddedUrl(url) => self.reachable(&url),
-            reader::CoverRef::JellyfinItem { .. } | reader::CoverRef::SubsonicItem { .. } => {
-                self.trusted
-            }
-            reader::CoverRef::None => self.trusted || raw == reader::CoverRef::NO_COVER,
-        };
-        keep.then_some(raw)
-    }
-
-    fn reachable(&self, url: &str) -> bool {
-        let Ok(url) = reqwest::Url::parse(url) else {
-            return false;
-        };
-        matches!(url.scheme(), "http" | "https")
-            && url.username().is_empty()
-            && url.password().is_none()
-            && url.host_str().is_some_and(|host| {
-                self.trusted || self.permissions.allows(host, self.server_host.as_deref())
-            })
-    }
+    artwork: crate::plugins::Reach,
 }
 
 impl PluginSource {
@@ -89,7 +42,7 @@ impl PluginSource {
             .manifest()
             .service(&slug)
             .map(|declared| capabilities(&declared.capabilities))?;
-        let artwork = Artwork::new(session.plugin(), &server_url);
+        let artwork = crate::plugins::Reach::new(session.plugin(), &server_url);
         Some(Self {
             db,
             source,
@@ -713,14 +666,14 @@ impl MediaSource for PluginSource {
 mod tests {
     use super::*;
 
-    fn community() -> Artwork {
-        Artwork {
-            trusted: false,
-            permissions: manifest::Permissions {
+    fn community() -> crate::plugins::Reach {
+        crate::plugins::Reach::from_parts(
+            false,
+            manifest::Permissions {
                 network: vec!["archive.org".into(), "$server".into()],
             },
-            server_host: Some("music.example".into()),
-        }
+            "https://music.example",
+        )
     }
 
     #[test]
@@ -750,10 +703,11 @@ mod tests {
 
     #[test]
     fn a_bundled_plugin_keeps_its_references() {
-        let artwork = Artwork {
-            trusted: true,
-            ..community()
-        };
+        let artwork = crate::plugins::Reach::from_parts(
+            true,
+            manifest::Permissions::default(),
+            "https://music.example",
+        );
         for raw in [
             "subsonic:al-1",
             "jellyfin:item:tag",
