@@ -38,6 +38,11 @@ info-plist-path = "../../../packaging/kopuz/Info.plist"
 
 [package.metadata.packager.nsis]
 installer-icon = "../../legacy/kopuz/assets/app.ico"
+template = "../../../packaging/kopuz/installer.nsi"
+
+[package.metadata.packager.wix]
+fragment-paths = ["../../../packaging/kopuz/stop-kopuzd.wxs"]
+custom-action-refs = ["StopKopuzd"]
 
 [dependencies]
 api = { workspace = true }
