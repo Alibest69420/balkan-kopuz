@@ -20,12 +20,37 @@ use tonic::{Request, Response, Status};
 
 use daemon::SessionHandle;
 
+/// How many apps hold an event subscription right now; `kopuzctl` calls never subscribe, so they never count.
+#[derive(Clone, Default)]
+pub struct Clients(Arc<std::sync::atomic::AtomicUsize>);
+
+impl Clients {
+    pub fn count(&self) -> usize {
+        self.0.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    fn join(&self) -> ClientGuard {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        ClientGuard(self.clone())
+    }
+}
+
+/// One subscriber, counted for as long as its stream is alive.
+struct ClientGuard(Clients);
+
+impl Drop for ClientGuard {
+    fn drop(&mut self) {
+        self.0.0.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 pub struct GrpcState {
     pub api: Arc<dyn KopuzApi>,
     /// Entity-addressed artwork; `None` makes GetArtwork answer unsupported.
     pub artwork: Option<Arc<daemon::ArtworkService>>,
     pub session: SessionHandle,
     pub started: Instant,
+    pub clients: Clients,
 }
 
 pub struct KopuzGrpc(Arc<GrpcState>);
@@ -65,6 +90,7 @@ struct EventSubscription {
     /// Sent before anything else, so a subscriber knows the stream is live.
     greeting: Option<proto::EventEnvelope>,
     live: broadcast::Receiver<ApiEvent>,
+    _client: ClientGuard,
 }
 
 impl EventSubscription {
@@ -93,6 +119,7 @@ impl Kopuz for KopuzGrpc {
         let subscription = EventSubscription {
             greeting: Some(resync_message()),
             live,
+            _client: self.0.clients.join(),
         };
         let stream = futures_util::stream::unfold(subscription, |subscription| subscription.next());
         Ok(Response::new(Box::pin(stream)))

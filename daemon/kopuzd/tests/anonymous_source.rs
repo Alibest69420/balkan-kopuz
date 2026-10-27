@@ -56,6 +56,7 @@ async fn an_anonymous_youtube_music_source_is_usable_without_a_credential() {
         artwork: None,
         session,
         started: Instant::now(),
+        clients: Default::default(),
     });
     let socket = dir.path().join("kopuzd.sock");
     let listener = kopuzd::bind_socket(&socket).expect("bind socket");

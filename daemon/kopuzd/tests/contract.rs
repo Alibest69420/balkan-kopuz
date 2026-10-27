@@ -245,6 +245,7 @@ async fn spawn_pair() -> Pair {
         artwork: Some(artwork.clone()),
         session: session.clone(),
         started: Instant::now(),
+        clients: Default::default(),
     });
     let socket = dir.path().join("kopuzd.sock");
     let listener = kopuzd::bind_socket(&socket).expect("bind socket");
