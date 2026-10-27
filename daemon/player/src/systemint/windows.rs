@@ -259,6 +259,9 @@ fn find_toolbar_icon(kind: TaskbarIconKind) -> Option<std::path::PathBuf> {
     bases.push(
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
+            .join("..")
+            .join("apps")
+            .join("dioxus")
             .join("kopuz")
             .join("assets")
             .join("toolbar_icons"),
