@@ -220,10 +220,10 @@ jobs:
           set -euo pipefail
 
           for deb in dist/*.deb; do
-            dpkg-deb -c "$deb" | grep -q './usr/bin/kopuzd$'
+            grep -q '\./usr/bin/kopuzd$' <<<"$(dpkg-deb -c "$deb")"
           done
           for rpm in dist/*.rpm; do
-            rpm -qlp "$rpm" | grep -qx /usr/bin/kopuzd
+            grep -qx /usr/bin/kopuzd <<<"$(rpm -qlp "$rpm")"
           done
 
       - name: Create Linux checksums
