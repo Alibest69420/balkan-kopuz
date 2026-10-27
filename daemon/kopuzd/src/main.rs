@@ -13,6 +13,8 @@ usage: kopuzd [options]
   --socket <path>        socket (named pipe on Windows) to serve on
   --listen <ip>:<port>   also serve on a TCP port
   --db-path <file>       library database to open
+  --exit-with-app        exit once no app has been connected for 15 seconds
+                         and nothing is playing; how an app starts its own
   --offline              start in offline mode: only downloads and cached
                          songs list and play, until a frontend leaves it
   --app-id <id>          the app this daemon plays for: the AppUserModelID
@@ -72,6 +74,7 @@ fn parse_args(
                 );
             }
             "--offline" => args.offline = true,
+            "--exit-with-app" => args.exit_with_app = true,
             "--help" | "-h" => return Err(USAGE.to_string()),
             other => return Err(format!("unknown argument: {other}")),
         }
@@ -172,6 +175,17 @@ mod tests {
         assert!(!parse(&[], None).unwrap().offline);
         assert!(parse(&["--offline"], None).unwrap().offline);
         assert!(parse(&["--help"], None).unwrap_err().contains("--offline"));
+    }
+
+    #[test]
+    fn only_an_app_started_daemon_exits_with_it() {
+        assert!(!parse(&[], None).unwrap().exit_with_app);
+        assert!(parse(&["--exit-with-app"], None).unwrap().exit_with_app);
+        assert!(
+            parse(&["--help"], None)
+                .unwrap_err()
+                .contains("--exit-with-app")
+        );
     }
 
     #[test]
