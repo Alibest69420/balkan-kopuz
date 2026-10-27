@@ -121,7 +121,7 @@ impl FirstRun {
                 this.job_finished(event, cx)
             }),
         ];
-        Self {
+        let mut this = Self {
             step: Step::Welcome,
             run: SetupModel::global(cx).read(cx).run(),
             added: None,
@@ -138,7 +138,11 @@ impl FirstRun {
             integrations: cx.new(|cx| Integrations::new(window, cx)),
             scroll: ScrollHandle::new(),
             _subscriptions: subscriptions,
-        }
+        };
+        // The config is usually loaded before the guide opens, so no change will arrive to prompt these.
+        this.offer_language(cx);
+        this.offer_backdrop(cx);
+        this
     }
 
     /// Start over from the welcome, with nothing left of an earlier run.
