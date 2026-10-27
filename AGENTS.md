@@ -121,7 +121,7 @@ the Dioxus app); pass `--workspace` or `-p kopuz-legacy` for it.
   patched gpui platform crate, applied through the root `[patch.crates-io]`.
 - `daemon/player` audio · `daemon/radio` · `daemon/scrobble` · `daemon/discord-presence`
   · `apps/common/i18n` · `shared/utils` (`CoverUrl`, image-URL builders; frontend utilities do not link SQLite).
-- `android-src/` — Kotlin media-session classes patched in by `build.rs`.
+- `apps/legacy/kopuz/android-src/` — Kotlin media-session classes its `build.rs` copies into the Android build.
 - `packaging/` (flatpak / AUR / nix) · `scripts/` (codegen + vendor helpers).
 
 ## Issues and PRs

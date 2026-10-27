@@ -298,12 +298,7 @@ fn main() {
         Err(_) => return,
     };
 
-    // android-src lives at the repo root (apps/legacy/kopuz/../../../android-src).
-    let android_src = crate_dir
-        .join("..")
-        .join("..")
-        .join("..")
-        .join("android-src");
+    let android_src = crate_dir.join("android-src");
 
     println!("cargo:rerun-if-changed={}", android_src.display());
 
@@ -673,8 +668,7 @@ fn copy_file(src: &Path, dst: &Path) {
     }
 }
 
-/// Mirror of android-src/patch_manifest.py's manifest logic, in Rust so it runs as
-/// part of the cargo build. Idempotent: each insertion is guarded by a presence check.
+/// Idempotent: each insertion is guarded by a presence check.
 fn patch_manifest(path: &Path) {
     let mut content = match fs::read_to_string(path) {
         Ok(c) => c,
@@ -714,7 +708,7 @@ fn patch_manifest(path: &Path) {
             ("launchMode", "singleTask"),
             (
                 "configChanges",
-                include_str!("../../../android-src/activity-config-changes.txt").trim(),
+                include_str!("android-src/activity-config-changes.txt").trim(),
             ),
         ] {
             let marker = format!("android:{key}=\"");
