@@ -10,12 +10,11 @@ use store::{ConfigModel, SetupModel};
 use crate::FirstRun;
 use crate::flow::{self, Backdrop};
 
-// TODO(i18n): no keys for these yet; the Dioxus app never offered the choice.
 fn label(look: Backdrop) -> SharedString {
-    SharedString::from(match look {
-        Backdrop::Off => "Off",
-        Backdrop::Cover => "Cover",
-        Backdrop::Blurred => "Blurred",
+    t(match look {
+        Backdrop::Off => "cover_art_background_off",
+        Backdrop::Cover => "cover_art_background_cover",
+        Backdrop::Blurred => "cover_art_background_blurred",
     })
 }
 
