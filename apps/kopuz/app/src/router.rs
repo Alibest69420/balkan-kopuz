@@ -14,6 +14,8 @@ type Freezer = Rc<dyn Fn(&mut App)>;
 struct Page {
     view: AnyView,
     freeze: Option<Freezer>,
+    // Settings reads the sources live, so a source switch has no reason to reset its tab.
+    survives_switch: bool,
 }
 
 impl<T: Render> From<Entity<T>> for Page {
@@ -21,6 +23,7 @@ impl<T: Render> From<Entity<T>> for Page {
         Self {
             view: page.into(),
             freeze: None,
+            survives_switch: false,
         }
     }
 }
@@ -33,7 +36,13 @@ impl Page {
             freeze: Some(Rc::new(move |cx: &mut App| {
                 held.update(cx, |page, cx| page.freeze(cx))
             })),
+            survives_switch: false,
         }
+    }
+
+    fn surviving_switch(mut self) -> Self {
+        self.survives_switch = true;
+        self
     }
 }
 
@@ -89,8 +98,8 @@ impl Router {
 
     /// Drop cached pages, for a source switch that makes every page's contents wrong.
     pub fn clear(&mut self) {
-        self.pages.clear();
-        self.order.clear();
+        self.pages.retain(|_, page| page.survives_switch);
+        self.order.retain(|key| self.pages.contains_key(key));
     }
 }
 
@@ -148,8 +157,9 @@ fn build(route: &Route, window: &mut Window, cx: &mut Context<Shell>) -> Page {
             .new(|cx| page_playlists::PlaylistDetail::new(id, window, cx))
             .into(),
         Route::Radio => cx.new(|cx| page_radio::Radio::new(window, cx)).into(),
-        Route::Settings { section } => cx
-            .new(|cx| page_settings::Settings::new(section, window, cx))
-            .into(),
+        Route::Settings { section } => {
+            Page::from(cx.new(|cx| page_settings::Settings::new(section, window, cx)))
+                .surviving_switch()
+        }
     }
 }
