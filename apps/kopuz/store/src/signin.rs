@@ -27,26 +27,39 @@ struct SessionChooser(Option<Chooser>);
 
 impl Global for SessionChooser {}
 
-/// The sources whose browser flow the daemon is running right now.
+/// What a source's sign-in is waiting on right now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignInWait {
+    /// The daemon is asking the browsers which profiles are already signed in.
+    Sessions,
+    /// A browser window the daemon opened.
+    Browser,
+}
+
 #[derive(Default)]
-struct Waiting(Vec<String>);
+struct Waiting(Vec<(String, SignInWait)>);
 
 impl Global for Waiting {}
 
-/// Whether `id` is waiting on a browser window the daemon opened.
-pub fn is_waiting_for_browser(id: &str, cx: &App) -> bool {
-    cx.try_global::<Waiting>()
-        .is_some_and(|waiting| waiting.0.iter().any(|held| held == id))
+/// What `id`'s sign-in is waiting on, if one is under way.
+pub fn sign_in_wait(id: &str, cx: &App) -> Option<SignInWait> {
+    cx.try_global::<Waiting>().and_then(|waiting| {
+        waiting
+            .0
+            .iter()
+            .find(|(held, _)| held == id)
+            .map(|(_, wait)| *wait)
+    })
 }
 
-fn set_waiting(id: &str, waiting: bool, cx: &mut App) {
+fn set_waiting(id: &str, wait: Option<SignInWait>, cx: &mut App) {
     if cx.try_global::<Waiting>().is_none() {
         cx.set_global(Waiting::default());
     }
     let held = cx.global_mut::<Waiting>();
-    held.0.retain(|other| other != id);
-    if waiting {
-        held.0.push(id.to_string());
+    held.0.retain(|(other, _)| other != id);
+    if let Some(wait) = wait {
+        held.0.push((id.to_string(), wait));
     }
     // A global has no observers of its own, and the row showing the spinner is somebody else's view.
     cx.refresh_windows();
@@ -90,7 +103,7 @@ fn offer_sessions(source: SourceInfo, window: &mut Window, cx: &mut App) {
     else {
         return browser(source.id, cx);
     };
-    set_waiting(&source.id, true, cx);
+    set_waiting(&source.id, Some(SignInWait::Sessions), cx);
     let call = {
         let service = source.service.id.clone();
         crate::Link::global(cx).call(move |api| async move { api.browser_sessions(service).await })
@@ -102,7 +115,7 @@ fn offer_sessions(source: SourceInfo, window: &mut Window, cx: &mut App) {
                 Vec::new()
             });
             cx.update(|window, cx| {
-                set_waiting(&source.id, false, cx);
+                set_waiting(&source.id, None, cx);
                 match found.is_empty() {
                     true => browser(source.id.clone(), cx),
                     false => chooser(source, found, window, cx),
@@ -125,7 +138,7 @@ pub fn start_sign_in(source: &SourceInfo, window: &mut Window, cx: &mut App) {
 /// Ask the daemon to run the browser flow. It owns the window that opens and the token it ends
 /// holding; this only says which source it is for.
 pub fn browser(id: String, cx: &mut App) {
-    set_waiting(&id, true, cx);
+    set_waiting(&id, Some(SignInWait::Browser), cx);
     let call = {
         let id = id.clone();
         crate::Link::global(cx).call(move |api| async move { api.authenticate_source(id).await })
@@ -133,7 +146,7 @@ pub fn browser(id: String, cx: &mut App) {
     cx.spawn(async move |cx| {
         let result = call.await;
         cx.update(|cx| {
-            set_waiting(&id, false, cx);
+            set_waiting(&id, None, cx);
             match result {
                 Ok(_) => {
                     SourcesModel::global(cx).update(cx, |sources, cx| sources.refetch(cx));

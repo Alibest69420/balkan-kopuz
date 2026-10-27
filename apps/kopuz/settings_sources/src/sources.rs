@@ -285,7 +285,7 @@ impl Sources {
     fn status_line(&self, source: &SourceInfo, cx: &mut Context<Self>) -> StatusLine {
         let source = source.clone();
         StatusLine::new(self.status(&source))
-            .waiting(store::is_waiting_for_browser(&source.id, cx))
+            .waiting(store::sign_in_wait(&source.id, cx))
             .on_sign_in(cx.listener(move |this: &mut Self, _, window, cx| {
                 this.sign_in_again(&source, window, cx)
             }))

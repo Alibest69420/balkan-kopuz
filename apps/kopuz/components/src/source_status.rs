@@ -11,7 +11,7 @@ use gpui_kit::{
     Animation, AnimationExt as _, App, ClickEvent, Hsla, IntoElement, ParentElement as _, Pixels,
     RenderOnce, SharedString, Styled, Window, div, pulsating_between, px,
 };
-use store::SourceStatus;
+use store::{SignInWait, SourceStatus};
 
 use crate::format::t;
 use crate::style;
@@ -66,7 +66,7 @@ type SignIn = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 #[derive(IntoElement)]
 pub struct StatusLine {
     status: SourceStatus,
-    waiting: bool,
+    waiting: Option<SignInWait>,
     label: Option<SharedString>,
     on_sign_in: Option<SignIn>,
 }
@@ -75,14 +75,14 @@ impl StatusLine {
     pub fn new(status: SourceStatus) -> Self {
         Self {
             status,
-            waiting: false,
+            waiting: None,
             label: None,
             on_sign_in: None,
         }
     }
 
-    /// A sign-in is open in the browser: it shows a spinner and offers no second one.
-    pub fn waiting(mut self, waiting: bool) -> Self {
+    /// A sign-in is under way: it shows a spinner saying on what, and offers no second one.
+    pub fn waiting(mut self, waiting: Option<SignInWait>) -> Self {
         self.waiting = waiting;
         self
     }
@@ -116,24 +116,24 @@ impl RenderOnce for StatusLine {
                 ink(self.status, cx),
             ),
         };
-        let waiting = self.waiting;
+        let waiting = self.waiting.is_some();
         let down = self.status == SourceStatus::Disconnected;
         h_flex()
             .gap_2()
             .items_center()
             .child(div().text_xs().text_color(color).child(label))
-            .when(waiting, |row| {
+            .when_some(self.waiting, |row, wait| {
                 row.child(
                     h_flex()
                         .gap_2()
                         .items_center()
                         .child(Spinner::new().small().color(cx.theme().warning))
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(cx.theme().warning)
-                                .child(t("waiting_for_browser")),
-                        ),
+                        .child(div().text_xs().text_color(cx.theme().warning).child(t(
+                            match wait {
+                                SignInWait::Sessions => "browser_sessions_checking",
+                                SignInWait::Browser => "waiting_for_browser",
+                            },
+                        ))),
                 )
             })
             .when(down && !waiting, |row| {
