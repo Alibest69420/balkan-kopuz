@@ -2,9 +2,10 @@
 nix := "nix develop --command"
 set working-directory := "../.."
 target := env_var_or_default("CARGO_TARGET_DIR", "target")
-socket := env_var_or_default("KOPUZ_SOCKET", env_var("XDG_RUNTIME_DIR") / "kopuzd-dev.sock")
+runtime_dir := env_var_or_default("XDG_RUNTIME_DIR", env_var_or_default("TMPDIR", "/tmp"))
+socket := env_var_or_default("KOPUZ_SOCKET", runtime_dir / "kopuzd-dev.sock")
 # Where kopuzd listens by default, so `app` finds a daemon started anywhere else.
-shared_socket := env_var_or_default("KOPUZ_SOCKET", env_var("XDG_RUNTIME_DIR") / "kopuz" / "kopuzd.sock")
+shared_socket := env_var_or_default("KOPUZ_SOCKET", runtime_dir / "kopuz" / "kopuzd.sock")
 
 _default:
     @just --list gpui

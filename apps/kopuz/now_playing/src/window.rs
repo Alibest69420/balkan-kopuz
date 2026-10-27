@@ -2,6 +2,7 @@
 
 use components::style;
 use gpui_kit::component::{ActiveTheme as _, Root};
+#[cfg(target_os = "linux")]
 use gpui_kit::layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellOptions};
 use gpui_kit::{
     AnyWindowHandle, App, AppContext as _, Bounds, Context, Entity, Global, IntoElement,
@@ -76,14 +77,21 @@ fn options(kind: WindowKind, bounds: Bounds<Pixels>) -> WindowOptions {
 
 /// Anchored to the top-right of the display, on the layer every compositor paints above windows.
 fn overlay() -> WindowKind {
-    WindowKind::LayerShell(LayerShellOptions {
-        namespace: "kopuz-mini".into(),
-        layer: Layer::Overlay,
-        anchor: Anchor::TOP | Anchor::RIGHT,
-        margin: Some((MARGIN, MARGIN, MARGIN, MARGIN)),
-        keyboard_interactivity: KeyboardInteractivity::OnDemand,
-        ..Default::default()
-    })
+    #[cfg(target_os = "linux")]
+    {
+        WindowKind::LayerShell(LayerShellOptions {
+            namespace: "kopuz-mini".into(),
+            layer: Layer::Overlay,
+            anchor: Anchor::TOP | Anchor::RIGHT,
+            margin: Some((MARGIN, MARGIN, MARGIN, MARGIN)),
+            keyboard_interactivity: KeyboardInteractivity::OnDemand,
+            ..Default::default()
+        })
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        WindowKind::Floating
+    }
 }
 
 fn open_window(kind: WindowKind, cx: &mut App) -> Option<AnyWindowHandle> {
