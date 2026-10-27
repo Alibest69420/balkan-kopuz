@@ -36,10 +36,11 @@ contents:
   - src: LICENSE
     dst: /usr/share/licenses/kopuz/LICENSE
 
-# kopuz links xcb/xkbcommon and dlopens wayland, vulkan and fontconfig; kopuzd links ALSA and OpenSSL.
+# kopuz links xcb/xkbcommon and dlopens wayland, vulkan and fontconfig; kopuzd links ALSA and OpenSSL and won't start without CA certs.
 overrides:
   deb:
     depends:
+      - ca-certificates
       - libasound2
       - libssl3
       - libstdc++6
@@ -54,6 +55,7 @@ overrides:
       - ffmpeg
   rpm:
     depends:
+      - ca-certificates
       - alsa-lib
       - openssl-libs
       - libstdc++
