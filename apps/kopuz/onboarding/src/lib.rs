@@ -65,6 +65,8 @@ pub struct FirstRun {
     backdrop_offered: bool,
     focus_first: bool,
     services: Entity<Query<Vec<ServiceInfo>>>,
+    /// How many tracks the active source's library holds; a configured but empty folder is not music.
+    tracks: Entity<Query<u32>>,
     add: Entity<AddSource>,
     integrations: Entity<Integrations>,
     scroll: ScrollHandle,
@@ -84,6 +86,21 @@ impl FirstRun {
                 cx,
             )
         });
+        let tracks = cx.new(|cx| {
+            Query::new(
+                &[Table::Tracks, Table::Servers],
+                |api| async move {
+                    let page = Page {
+                        offset: 0,
+                        limit: 1,
+                    };
+                    api.tracks(TrackFilter::default(), page)
+                        .await
+                        .map(|page| page.total)
+                },
+                cx,
+            )
+        });
         let host_access = cx.new(|cx| {
             Query::new(
                 &[Table::Servers],
@@ -95,6 +112,7 @@ impl FirstRun {
         let subscriptions = vec![
             cx.observe(&sources, |this, _, cx| this.sources_moved(cx)),
             cx.observe(&services, |_, _, cx| cx.notify()),
+            cx.observe(&tracks, |_, _, cx| cx.notify()),
             cx.observe(&add, |_, _, cx| cx.notify()),
             cx.observe(&config, |this, _, cx| {
                 this.offer_language(cx);
@@ -134,6 +152,7 @@ impl FirstRun {
             backdrop_offered: false,
             focus_first: false,
             services,
+            tracks,
             add,
             integrations: cx.new(|cx| Integrations::new(window, cx)),
             scroll: ScrollHandle::new(),
@@ -507,8 +526,10 @@ impl Render for FirstRun {
                 false,
                 cx.listener(|this: &mut Self, _, _, cx| this.go(Step::Pick, cx)),
             ),
-            // Picking a card is the way on; only music already set up, as on a rerun, may be passed by.
-            Step::Pick => match active_source(cx).is_some_and(|source| has_music(&source)) {
+            // Picking a card is the way on; only music already in the library, as on a rerun, may be passed by.
+            Step::Pick => match active_source(cx).is_some_and(|source| has_music(&source))
+                && self.tracks.read(cx).value().is_some_and(|total| *total > 0)
+            {
                 true => frame.next(
                     t("continue"),
                     false,
