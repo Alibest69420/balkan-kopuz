@@ -6434,7 +6434,7 @@ checksum = "a4933f3f57a8e9d9da04db23fb153356ecaf00cbd14aee46279c33dc80925c37"
 
 [[package]]
 name = "kopuz"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "anyhow",
  "commands",
@@ -6475,7 +6475,7 @@ dependencies = [
 
 [[package]]
 name = "kopuz-api"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -6487,7 +6487,7 @@ dependencies = [
 
 [[package]]
 name = "kopuz-client"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -6503,7 +6503,7 @@ dependencies = [
 
 [[package]]
 name = "kopuz-components"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "base64 0.22.1",
  "dioxus",
@@ -6522,7 +6522,7 @@ dependencies = [
 
 [[package]]
 name = "kopuz-config"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "directories",
  "garde",
@@ -6538,7 +6538,7 @@ dependencies = [
 
 [[package]]
 name = "kopuz-ctl"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "clap",
  "kopuz-api",
@@ -6552,7 +6552,7 @@ dependencies = [
 
 [[package]]
 name = "kopuz-daemon"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -6584,7 +6584,7 @@ dependencies = [
 
 [[package]]
 name = "kopuz-db"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -6607,7 +6607,7 @@ dependencies = [
 
 [[package]]
 name = "kopuz-discord-presence"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "discord-rich-presence",
  "kopuz-config",
@@ -6621,7 +6621,7 @@ dependencies = [
 
 [[package]]
 name = "kopuz-hooks"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "dioxus",
  "futures-util",
@@ -6637,7 +6637,7 @@ dependencies = [
 
 [[package]]
 name = "kopuz-i18n"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "fluent-bundle",
  "unic-langid",
@@ -6645,7 +6645,7 @@ dependencies = [
 
 [[package]]
 name = "kopuz-kopuzd"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "async-trait",
  "directories",
@@ -6676,7 +6676,7 @@ dependencies = [
 
 [[package]]
 name = "kopuz-legacy"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "ashpd",
  "async-trait",
@@ -6735,7 +6735,7 @@ dependencies = [
 
 [[package]]
 name = "kopuz-pages"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "dioxus",
  "directories",
@@ -6756,7 +6756,7 @@ dependencies = [
 
 [[package]]
 name = "kopuz-player"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "arc-swap",
  "base64 0.22.1",
@@ -6784,7 +6784,7 @@ dependencies = [
 
 [[package]]
 name = "kopuz-proto"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "directories",
  "futures-util",
@@ -6800,7 +6800,7 @@ dependencies = [
 
 [[package]]
 name = "kopuz-radio"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "futures-util",
  "kopuz-utils",
@@ -6816,7 +6816,7 @@ dependencies = [
 
 [[package]]
 name = "kopuz-reader"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "kopuz-config",
  "kopuz-utils",
@@ -6831,11 +6831,11 @@ dependencies = [
 
 [[package]]
 name = "kopuz-route"
-version = "0.67.0"
+version = "0.68.0"
 
 [[package]]
 name = "kopuz-scrobble"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "kopuz-config",
  "kopuz-db",
@@ -6850,7 +6850,7 @@ dependencies = [
 
 [[package]]
 name = "kopuz-server"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "aes-gcm 0.11.0",
  "async-trait",
@@ -6899,7 +6899,7 @@ dependencies = [
 
 [[package]]
 name = "kopuz-utils"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "base64 0.22.1",
  "color-thief",
