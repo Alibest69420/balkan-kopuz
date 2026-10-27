@@ -1,14 +1,14 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 
-/// Start `kopuzd` detached; the supervisor attaches on its next retry.
-pub fn spawn_daemon(socket: Option<PathBuf>) -> std::io::Result<()> {
+/// Start `kopuzd` detached on `socket`, told to exit once no app is left on it.
+pub(crate) fn spawn_daemon(socket: &Path) -> std::io::Result<Child> {
     let mut command = Command::new(daemon_program());
-    if let Some(socket) = socket {
-        command.arg("--socket").arg(socket);
-    }
     command
+        .arg("--socket")
+        .arg(socket)
+        .arg("--exit-with-app")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -23,7 +23,7 @@ pub fn spawn_daemon(socket: Option<PathBuf>) -> std::io::Result<()> {
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         command.creation_flags(CREATE_NO_WINDOW);
     }
-    command.spawn().map(drop)
+    command.spawn()
 }
 
 /// `KOPUZD`, else the kopuzd packaged beside this binary (an .app or install dir is off `PATH`), else `PATH`.

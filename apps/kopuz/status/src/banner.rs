@@ -1,9 +1,8 @@
 //! The daemon is not there: said in a strip across the chrome, with the page still behind it.
 
 use components::format::{t, t_with};
-use components::{Badge, BadgeTone, Chip, ChipTone, icons, style};
+use components::{Chip, ChipTone, icons, style};
 use gpui_kit::component::{ActiveTheme as _, h_flex};
-use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Context, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Render,
     SharedString, Styled, Subscription, Window, div, px,
@@ -17,8 +16,6 @@ const EDGE: f32 = 0.20;
 
 /// The reconnect strip. It renders nothing until the daemon has first gone missing.
 pub struct ConnectionBanner {
-    // Cleared by the next status change, so the button cannot be pressed into spawning daemons.
-    starting: bool,
     // The last thing said while offline, kept up while the strip fades out after a reconnect.
     last: Option<(ConnectionStatus, u32)>,
     _subscriptions: Vec<Subscription>,
@@ -28,10 +25,8 @@ impl ConnectionBanner {
     pub fn new(_: &mut Window, cx: &mut Context<Self>) -> Self {
         let connection = link::Link::connection(cx);
         Self {
-            starting: false,
             last: None,
-            _subscriptions: vec![cx.observe(&connection, |this: &mut Self, _, cx| {
-                this.starting = false;
+            _subscriptions: vec![cx.observe(&connection, |_: &mut Self, _, cx| {
                 cx.notify();
             })],
         }
@@ -79,7 +74,6 @@ impl Render for ConnectionBanner {
         };
         let line = Self::line(&status, attempts);
         let warning = cx.theme().warning;
-        let starting = self.starting;
         h_flex()
             .w_full()
             .flex_shrink_0()
@@ -118,24 +112,6 @@ impl Render for ConnectionBanner {
                         link::Link::connection(cx).read(cx).retry_now();
                     }),
             )
-            .map(|banner| match starting {
-                true => banner.child(Badge::new(t("starting")).tone(BadgeTone::Muted)),
-                false => banner.child(
-                    Chip::new("connection-start")
-                        .label(t("start_daemon"))
-                        .tone(ChipTone::Ink(cx.theme().primary))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.starting = true;
-                            cx.notify();
-                            // Only logging this made users press again, spawning another daemon each time.
-                            if let Err(error) = crate::spawn_daemon(cx) {
-                                tracing::error!(%error, "could not start the daemon");
-                                this.starting = false;
-                                store::Notices::error(error.to_string(), cx);
-                            }
-                        })),
-                ),
-            })
             .into_any_element()
     }
 }

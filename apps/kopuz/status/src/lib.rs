@@ -45,15 +45,6 @@ const POPOVER_WIDTH: Pixels = px(320.);
 pub(crate) const LIST_HEIGHT: Pixels = px(260.);
 const BADGE: Pixels = px(14.);
 
-/// Start `kopuzd` on the socket this app attaches to; the supervisor picks it up on its next probe.
-pub(crate) fn spawn_daemon(cx: &App) -> std::io::Result<()> {
-    let socket = match link::Link::global(cx).address() {
-        link::Address::Socket(path) => Some(path.clone()),
-        link::Address::Tcp(_) => None,
-    };
-    link::spawn_daemon(socket)
-}
-
 /// Which popover of the three is showing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Which {

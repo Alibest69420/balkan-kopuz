@@ -1,10 +1,10 @@
-//! Startup: the mark drawing itself on until the daemon answers, and what to do if it never does.
+//! Startup: the mark drawing itself on until the daemon answers, and a way to retry one this app does not start.
 
 use std::time::{Duration, Instant};
 
 use components::format::t;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{h_flex, v_flex};
+use gpui_kit::component::button::Button;
+use gpui_kit::component::v_flex;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Context, FontWeight, IntoElement, ParentElement as _, Pixels, Render, Styled, Task, Window,
@@ -13,7 +13,7 @@ use gpui_kit::{
 
 use crate::logo;
 
-/// How long the daemon has to answer before the screen says how to start it.
+/// How long the daemon has to answer before the screen offers a retry.
 pub const DOWN_AFTER: Duration = Duration::from_secs(3);
 /// The daemon-down panel's fade.
 const FADE: Duration = Duration::from_millis(300);
@@ -21,7 +21,6 @@ const FADE: Duration = Duration::from_millis(300);
 const RISE: f32 = 6.;
 const LOGO_WIDTH: Pixels = px(120.);
 const LOGO_HEIGHT: Pixels = px(100.);
-const HINT_WIDTH: Pixels = px(380.);
 
 /// How far into its fade the daemon-down panel is, `elapsed` into the loader.
 pub fn down_shown(elapsed: Duration, connected: bool, reduced: bool) -> f32 {
@@ -37,7 +36,6 @@ pub fn down_shown(elapsed: Duration, connected: bool, reduced: bool) -> f32 {
 /// Shown only at startup, until the daemon answers and setup's state is read.
 pub struct Loader {
     started: Instant,
-    starting: bool,
     _wake: Task<()>,
 }
 
@@ -51,18 +49,7 @@ impl Loader {
         });
         Self {
             started,
-            starting: false,
             _wake: wake,
-        }
-    }
-
-    fn start_daemon(&mut self, cx: &mut Context<Self>) {
-        self.starting = true;
-        cx.notify();
-        if let Err(error) = crate::spawn_daemon(cx) {
-            tracing::error!(%error, "could not start the daemon");
-            self.starting = false;
-            store::Notices::error(error.to_string(), cx);
         }
     }
 }
@@ -72,15 +59,19 @@ impl Render for Loader {
         let colors = theme::startup();
         let reduced = cx.reduce_motion() || components::motion::span(FADE, cx).is_none();
         let connected = link::Link::connection(cx).read(cx).is_connected();
+        // The app starting its own daemon either gets an answer or crashes saying why; there is nothing to offer meanwhile.
+        let waiting_on_others = !link::Link::global(cx).starts_own();
         let elapsed = self.started.elapsed();
         let (frame, opacity) = logo::pose(elapsed, reduced);
-        let down = down_shown(elapsed, connected, reduced);
+        let down = match waiting_on_others {
+            true => down_shown(elapsed, connected, reduced),
+            false => 0.,
+        };
         if !reduced {
             window.request_animation_frame();
         }
         let frames = logo::frames();
         let image = frames[frame.min(frames.len() - 1)].clone();
-        let starting = self.starting;
         v_flex()
             .size_full()
             .items_center()
@@ -105,38 +96,14 @@ impl Render for Loader {
                                     .child(t("daemon_down_title")),
                             )
                             .child(
-                                h_flex()
-                                    .gap_2()
-                                    .child(
-                                        Button::new("loader-start-daemon")
-                                            .primary()
-                                            .label(match starting {
-                                                true => t("starting"),
-                                                false => t("start_daemon"),
-                                            })
-                                            .loading(starting)
-                                            .on_click(
-                                                cx.listener(|this, _, _, cx| this.start_daemon(cx)),
-                                            ),
-                                    )
-                                    .child(
-                                        Button::new("loader-retry")
-                                            .outline()
-                                            .label(t("retry"))
-                                            .on_click(|_, _, cx| {
-                                                link::Link::connection(cx).read(cx).retry_now();
-                                                store::SetupModel::global(cx)
-                                                    .update(cx, |setup, cx| setup.read(cx));
-                                            }),
-                                    ),
-                            )
-                            .child(
-                                div()
-                                    .max_w(HINT_WIDTH)
-                                    .text_sm()
-                                    .text_center()
-                                    .text_color(colors.muted)
-                                    .child(t("daemon_down_hint")),
+                                Button::new("loader-retry")
+                                    .outline()
+                                    .label(t("retry"))
+                                    .on_click(|_, _, cx| {
+                                        link::Link::connection(cx).read(cx).retry_now();
+                                        store::SetupModel::global(cx)
+                                            .update(cx, |setup, cx| setup.read(cx));
+                                    }),
                             )
                     }),
             )
