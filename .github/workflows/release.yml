@@ -705,6 +705,61 @@ jobs:
             dist/*.apk
             dist/*.apk.sha256
 
+  aur:
+    if: github.ref_type == 'tag'
+    needs: publish
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+
+    steps:
+      - name: Install tools
+        run: pacman -Syu --noconfirm --needed git openssh sudo curl
+
+      - uses: actions/checkout@v4
+
+      - name: Download Linux packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: kopuz-release-linux-*
+          path: dist
+          merge-multiple: true
+
+      - name: Fetch the tag's source tarball
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "dist/kopuz-${TAG#v}.tar.gz" \
+            "https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${TAG}.tar.gz"
+
+      # makepkg refuses root, so both packages are rendered and pushed by an unprivileged builder.
+      - name: Publish kopuz-bin and kopuz-legacy
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          version="${TAG#v}"
+          useradd -m builder
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
+          install -d -m700 -o builder -g builder /home/builder/.ssh
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > /home/builder/.ssh/id_ed25519
+          chmod 600 /home/builder/.ssh/id_ed25519
+          chown -R builder:builder /home/builder/.ssh "$PWD"
+
+          publish() {
+            sudo -u builder env \
+              HOME=/home/builder \
+              PKG="$1" VERSION="$version" SOURCE_FILE="$2" VERIFY="$3" \
+              GIT_SSH_COMMAND="ssh -i /home/builder/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new" \
+              bash scripts/publish-aur.sh
+          }
+
+          publish kopuz-bin "$PWD/dist/kopuz_${version}-1_amd64.deb" build
+          # A full source build of the legacy app takes most of an hour; the checksum is what can drift.
+          publish kopuz-legacy "$PWD/dist/kopuz-${version}.tar.gz" source
+
   homebrew:
     if: github.ref_type == 'tag'
     needs: publish
@@ -715,6 +770,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Kopuz-org/homebrew-tap
+          persist-credentials: false
+
+      - name: Checkout the legacy cask
+        uses: actions/checkout@v4
+        with:
+          path: kopuz
+          sparse-checkout: packaging/homebrew
           persist-credentials: false
 
       - name: Download macOS packages
@@ -755,11 +817,9 @@ jobs:
 
           bump Casks/kopuz.rb "dist/Kopuz_${version}_aarch64.dmg"
 
-          if [[ -f Casks/kopuz-legacy.rb ]]; then
-            bump Casks/kopuz-legacy.rb "dist/Kopuz-Legacy-${version}-aarch64.dmg"
-          else
-            echo "::warning::Casks/kopuz-legacy.rb is not in the tap yet; Kopuz Legacy has no cask to bump"
-          fi
+          # The first release with a legacy DMG brings its cask into the tap.
+          [[ -f Casks/kopuz-legacy.rb ]] || cp kopuz/packaging/homebrew/kopuz-legacy.rb Casks/kopuz-legacy.rb
+          bump Casks/kopuz-legacy.rb "dist/Kopuz-Legacy-${version}-aarch64.dmg"
 
       - name: Commit changes
         env:
