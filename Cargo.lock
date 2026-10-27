@@ -9859,9 +9859,12 @@ dependencies = [
 name = "profile"
 version = "0.1.0"
 dependencies = [
+ "directories",
+ "kopuz-utils",
  "tikv-jemalloc-ctl",
  "tikv-jemallocator",
  "tracing",
+ "tracing-appender",
  "tracing-chrome",
  "tracing-subscriber",
 ]

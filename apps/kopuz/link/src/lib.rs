@@ -3,22 +3,28 @@
 mod daemon_process;
 
 use std::future::Future;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Poll;
 use std::time::Duration;
+use std::time::Instant;
 
 use api::{ApiError, ApiEvent, KopuzApi};
 use futures::StreamExt as _;
-use gpui_kit::{App, AppContext as _, Context, Entity, EventEmitter, Global, Task};
+use gpui_kit::{App, AppContext as _, AsyncApp, Context, Entity, EventEmitter, Global, Task};
 
 pub use api;
 pub use client::Address;
 pub use client::default_socket_path;
-pub use daemon_process::spawn_daemon;
 
 const RETRY_INTERVAL: Duration = Duration::from_secs(2);
+/// How many times the app starts its own kopuzd before giving up and crashing.
+const START_TRIES: u32 = 3;
+/// A kopuzd still alive but silent this long is stuck, not slow.
+const START_WAIT: Duration = Duration::from_secs(60);
+const START_POLL: Duration = Duration::from_millis(250);
 
 /// The daemon client plus the runtime its futures run on. Cheap to clone.
 #[derive(Clone)]
@@ -26,6 +32,8 @@ pub struct Link {
     api: Arc<dyn KopuzApi>,
     runtime: tokio::runtime::Handle,
     address: Address,
+    /// The socket this app starts its own kopuzd on when nothing answers; `None` for a daemon run elsewhere.
+    own_socket: Option<PathBuf>,
     /// Open only while the connection is `Connected`; a daemon on another wire would misread every call.
     gate: Arc<Gate>,
 }
@@ -92,6 +100,17 @@ impl Link {
         &self.address
     }
 
+    /// Whether this app starts its own kopuzd when nothing answers.
+    pub fn starts_own(&self) -> bool {
+        self.own_socket.is_some()
+    }
+
+    async fn answers(&self) -> bool {
+        self.probe(|api| async move { api.player_state().await })
+            .await
+            .is_ok()
+    }
+
     /// Run `f` on the link's runtime, awaitable from a GPUI task; until the daemon is attached it fails saying why not.
     pub fn call<T, Fut>(&self, f: impl FnOnce(Arc<dyn KopuzApi>) -> Fut) -> Call<T>
     where
@@ -149,7 +168,9 @@ impl<T> Future for Call<T> {
 }
 
 /// Connect to the daemon at `address` and start supervising it; call once before any window opens.
-pub fn init(address: Address, cx: &mut App) -> anyhow::Result<()> {
+///
+/// With `start_own`, a socket nothing answers on gets this app's own kopuzd, which exits once the app is gone.
+pub fn init(address: Address, start_own: bool, cx: &mut App) -> anyhow::Result<()> {
     let runtime = Arc::new(
         tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -164,9 +185,14 @@ pub fn init(address: Address, cx: &mut App) -> anyhow::Result<()> {
             Address::Tcp(host) => Arc::new(client::GrpcApi::connect_tcp(host.clone())?),
         }
     };
+    let own_socket = match (&address, start_own) {
+        (Address::Socket(path), true) => Some(path.clone()),
+        _ => None,
+    };
     let link = Link {
         api,
         runtime: runtime.handle().clone(),
+        own_socket,
         address,
         gate: Arc::new(Gate::closed()),
     };
@@ -224,6 +250,10 @@ impl Connection {
                             .is_err()
                         {
                             return;
+                        }
+                        if let Some(socket) = link.own_socket.clone() {
+                            start_daemon(&link, &socket, cx).await;
+                            continue;
                         }
                         let timer = cx.background_executor().timer(RETRY_INTERVAL);
                         // "Retry now" is the same wait, cut short.
@@ -319,6 +349,51 @@ impl Connection {
             cx.notify();
         }
     }
+}
+
+/// Start kopuzd until it answers, up to [`START_TRIES`] times, then panic so the crash report says why.
+async fn start_daemon(link: &Link, socket: &Path, cx: &mut AsyncApp) {
+    let mut reason = String::new();
+    for attempt in 1..=START_TRIES {
+        // Another app or a service manager may have started one meanwhile.
+        if link.answers().await {
+            return;
+        }
+        let mut child = match daemon_process::spawn_daemon(socket) {
+            Ok(child) => child,
+            Err(error) => {
+                reason = format!("could not run kopuzd: {error}");
+                tracing::warn!(attempt, %reason, "kopuzd did not start");
+                continue;
+            }
+        };
+        let spawned = Instant::now();
+        loop {
+            cx.background_executor().timer(START_POLL).await;
+            if link.answers().await {
+                tracing::info!(attempt, "started kopuzd");
+                return;
+            }
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    reason = format!("kopuzd exited with {status}");
+                    break;
+                }
+                // Alive but silent: killing it could cut a migration short, and a second one would only fail to bind.
+                Ok(None) if spawned.elapsed() >= START_WAIT => panic!(
+                    "kopuzd started but did not answer within {} seconds",
+                    START_WAIT.as_secs()
+                ),
+                Ok(None) => {}
+                Err(error) => {
+                    reason = format!("could not watch kopuzd: {error}");
+                    break;
+                }
+            }
+        }
+        tracing::warn!(attempt, %reason, "kopuzd did not start");
+    }
+    panic!("kopuzd did not start after {START_TRIES} tries: {reason}");
 }
 
 /// Subscribe on the link's runtime and forward into a channel GPUI can poll.

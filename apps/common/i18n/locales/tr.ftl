@@ -666,7 +666,6 @@ share = Share
 share_copied = Bağlantı kopyalandı
 share_no_page = Bu şarkı için bir sayfa bulunamadı
 explicit = Müstehcen
-start_daemon = Hizmeti başlat
 
 first_run_title = Welcome to Kopuz
 first_run_subtitle = Point Kopuz at your music and it takes care of the rest.
@@ -1099,7 +1098,6 @@ tips_search = her şeyi arar ve komutları çalıştırır
 tips_now_playing = Now Playing'i açmak için oynatıcı çubuğundaki kapağa tıkla
 tips_source_switcher = Kaynakların arasında üst çubuktaki menüden geçiş yap
 daemon_down_title = Kopuz'un arka plan hizmetine ihtiyacı var
-daemon_down_hint = Başlamazsa bir terminalde systemctl --user enable --now kopuzd komutunu çalıştırın.
 retry = Yeniden dene
 connectivity_check_urls = Bağlantı denetimi
 connectivity_check_urls_description = Bir kaynak yanıt vermediğinde bağlantının mı koptuğunu yoksa sunucunun mu çöktüğünü anlamak için sorulan adresler. Denetimi atlamak için boş bırakın.

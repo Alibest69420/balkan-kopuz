@@ -4,6 +4,9 @@ version = "0.1.0"
 edition.workspace = true
 
 [dependencies]
+directories = { workspace = true }
+tracing-appender = { workspace = true }
+utils = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-chrome = "0.7"

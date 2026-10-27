@@ -64,16 +64,17 @@ fn keymap(cx: &mut App) {
     ]);
 }
 
-/// Where the daemon is: `KOPUZ_DAEMON_ADDR` for a TCP daemon, `KOPUZ_SOCKET` for a socket elsewhere.
-fn daemon_address() -> anyhow::Result<link::Address> {
+/// Where the daemon is, and whether this app starts its own there: only on the default socket, never on `KOPUZ_DAEMON_ADDR` or `KOPUZ_SOCKET`.
+fn daemon_address() -> anyhow::Result<(link::Address, bool)> {
     if let Ok(host) = std::env::var("KOPUZ_DAEMON_ADDR") {
-        return Ok(link::Address::Tcp(host));
+        return Ok((link::Address::Tcp(host), false));
     }
-    let socket = std::env::var_os("KOPUZ_SOCKET")
-        .map(Into::into)
-        .or_else(link::default_socket_path)
+    if let Some(socket) = std::env::var_os("KOPUZ_SOCKET") {
+        return Ok((link::Address::Socket(socket.into()), false));
+    }
+    let socket = link::default_socket_path()
         .ok_or_else(|| anyhow::anyhow!("no runtime directory to find the daemon socket in"))?;
-    Ok(link::Address::Socket(socket))
+    Ok((link::Address::Socket(socket), true))
 }
 
 /// jemalloc, so the profiler can ask the allocator what is held instead of reading RSS.
@@ -92,7 +93,7 @@ fn main() -> anyhow::Result<()> {
     let _profile = profile::init();
     let started = std::time::Instant::now();
 
-    let address = daemon_address()?;
+    let (address, start_own) = daemon_address()?;
     let args = args::Args::parse(std::env::args_os().skip(1));
 
     gpui_kit::application()
@@ -101,7 +102,7 @@ fn main() -> anyhow::Result<()> {
             gpui_kit::init(cx);
             i18n::init("en");
             // Quitting here would look like the icon did nothing; say why instead.
-            if let Err(error) = link::init(address, cx) {
+            if let Err(error) = link::init(address, start_own, cx) {
                 tracing::error!(%error, "could not set up the daemon link");
                 theme::apply_named("default", None, cx);
                 let reason = error.to_string();
