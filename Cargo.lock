@@ -6649,8 +6649,10 @@ name = "kopuz-kopuzd"
 version = "0.68.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "directories",
  "futures-util",
+ "hex",
  "kopuz-api",
  "kopuz-client",
  "kopuz-config",
@@ -6663,6 +6665,9 @@ dependencies = [
  "kopuz-reader",
  "kopuz-utils",
  "libc",
+ "reqwest 0.13.4",
+ "serde",
+ "sha2 0.11.0",
  "tempfile",
  "tokio",
  "tokio-stream",
