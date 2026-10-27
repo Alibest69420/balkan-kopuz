@@ -127,7 +127,7 @@ jobs:
           set -euo pipefail
 
           for package in dist/*.AppImage dist/*.deb dist/*.rpm; do
-            sha256sum "$package" > "${package}.sha256"
+            (cd dist && sha256sum "${package#dist/}" > "${package#dist/}.sha256")
           done
 
       - name: Upload Linux packages
@@ -232,7 +232,7 @@ jobs:
           set -euo pipefail
 
           for package in dist/*.AppImage dist/*.deb dist/*.rpm; do
-            sha256sum "$package" > "${package}.sha256"
+            (cd dist && sha256sum "${package#dist/}" > "${package#dist/}.sha256")
           done
 
       - name: Upload Linux packages
