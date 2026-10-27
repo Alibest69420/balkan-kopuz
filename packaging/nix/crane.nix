@@ -95,6 +95,8 @@ let
       ;
     strictDeps = true;
     doCheck = false;
+    # Only what the package ships; the default members now include the GPUI frontend.
+    cargoExtraArgs = "--locked -p kopuz-legacy -p kopuz-ctl -p kopuz-kopuzd";
 
     # On commonArgs so both the deps-only and final derivations see it.
     RUSTY_V8_ARCHIVE = librustyV8;
@@ -109,11 +111,11 @@ let
         fileset = fs.intersection (fs.fromSource (lib.sources.cleanSource s)) (
           fs.unions [
             (s + /.cargo)
-            # build.rs embeds Android configuration even for desktop builds.
-            (s + /android-src)
             (s + /shared)
             (s + /daemon)
             (s + /apps)
+            # Cargo resolves the workspace's [patch] even for packages that never use it.
+            (s + /vendor)
             (s + /data)
             (s + /packaging/systemd)
 
@@ -142,7 +144,7 @@ craneLib.mkCargoDerivation (
     dontWrapGApps = true;
 
     buildPhaseCargoCommand = ''
-      tailwindcss -i tailwind.css -o apps/kopuz/kopuz/assets/tailwind.css --minify
+      tailwindcss -i tailwind.css -o apps/legacy/kopuz/assets/tailwind.css --minify
 
       ${lib.optionalString stdenv.isDarwin ''
               mkdir -p "$TMPDIR/fake-bin"
@@ -154,7 +156,7 @@ craneLib.mkCargoDerivation (
               export PATH="$TMPDIR/fake-bin:$PATH"
       ''}
 
-      dx build --release --platform desktop -p kopuz --offline --frozen
+      dx build --release --platform desktop -p kopuz-legacy --offline --frozen
       cargo build --release --offline --frozen -p kopuz-ctl -p kopuz-kopuzd
     '';
 
@@ -167,7 +169,7 @@ craneLib.mkCargoDerivation (
       ${
         if stdenv.isLinux then
           ''
-            cp -r target/dx/kopuz/release/linux/app/* $out/bin/
+            cp -r target/dx/kopuz-legacy/release/linux/app/* $out/bin/
 
             install -Dm644 packaging/systemd/kopuzd.service \
               $out/share/systemd/user/kopuzd.service
@@ -177,19 +179,19 @@ craneLib.mkCargoDerivation (
             install -Dm644 data/moe.kopuz.kopuz.desktop \
               $out/share/applications/moe.kopuz.kopuz.desktop
             substituteInPlace $out/share/applications/moe.kopuz.kopuz.desktop \
-              --replace-fail "Exec=kopuz" "Exec=$out/bin/kopuz"
+              --replace-fail "Exec=kopuz" "Exec=$out/bin/kopuz-legacy"
 
             install -Dm644 data/moe.kopuz.kopuz.metainfo.xml \
               $out/share/metainfo/moe.kopuz.kopuz.metainfo.xml
 
-            install -Dm644 apps/kopuz/kopuz/assets/logo.png \
+            install -Dm644 apps/legacy/kopuz/assets/logo.png \
               $out/share/icons/hicolor/256x256/apps/moe.kopuz.kopuz.png
           ''
         else
           ''
-            cp -r target/dx/kopuz/release/macos/Kopuz.app $out/bin/kopuz.app
+            cp -r target/dx/kopuz-legacy/release/macos/KopuzLegacy.app $out/bin/kopuz.app
             macBin=$(find $out/bin/kopuz.app/Contents/MacOS -maxdepth 1 -type f | head -1)
-            ln -s "$macBin" $out/bin/kopuz
+            ln -s "$macBin" $out/bin/kopuz-legacy
           ''
       }
 
@@ -197,7 +199,7 @@ craneLib.mkCargoDerivation (
     '';
 
     preFixup = lib.optionalString stdenv.isLinux ''
-      wrapProgram $out/bin/kopuz \
+      wrapProgram $out/bin/kopuz-legacy \
         "''${gappsWrapperArgs[@]}" \
         --chdir $out/bin \
         --prefix PATH : ${lib.makeBinPath [ ffmpeg ]} \
@@ -228,7 +230,7 @@ craneLib.mkCargoDerivation (
         NotAShelf
       ];
       platforms = lib.platforms.linux ++ lib.platforms.darwin;
-      mainProgram = "kopuz";
+      mainProgram = "kopuz-legacy";
     };
   }
 )

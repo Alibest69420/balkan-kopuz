@@ -1,14 +1,17 @@
 @import "tailwindcss";
-@source "./apps/kopuz/kopuz/**/*.rs";
-@source "./apps/kopuz/components/**/*.rs";
-@source "./apps/kopuz/pages/**/*.rs";
-@source "./apps/kopuz/hooks/**/*.rs";
+/* Tailwind also scans the whole repo; the GPUI frontend and its vendored crate hold no Dioxus classes. */
+@source not "./apps/kopuz";
+@source not "./vendor";
+@source "./apps/legacy/kopuz/**/*.rs";
+@source "./apps/legacy/components/**/*.rs";
+@source "./apps/legacy/pages/**/*.rs";
+@source "./apps/legacy/hooks/**/*.rs";
 @source "./daemon/player/**/*.rs";
 @source "./daemon/reader/**/*.rs";
 @source "./daemon/server/**/*.rs";
 @source "./shared/utils/**/*.rs";
 @source "./shared/config/**/*.rs";
-@source "./apps/kopuz/kopuz_route/**/*.rs";
+@source "./apps/legacy/kopuz_route/**/*.rs";
 
 /* Hover and press feedback should feel immediate; 150ms reads as lag. */
 @theme {
