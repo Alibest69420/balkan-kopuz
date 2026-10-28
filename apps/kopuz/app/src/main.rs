@@ -142,8 +142,12 @@ fn main() -> anyhow::Result<()> {
             page_home::register(cx);
             page_home::register_catalog(
                 |id, scroll, window, cx| {
-                    cx.new(|cx| discover::CatalogPage::embedded(id, scroll, window, cx))
-                        .into()
+                    let feed = cx.new(|cx| discover::CatalogPage::embedded(id, scroll, window, cx));
+                    let chips = cx.new(|cx| discover::CatalogChips::new(feed.clone(), cx));
+                    page_home::CatalogViews {
+                        chips: chips.into(),
+                        feed: feed.into(),
+                    }
                 },
                 cx,
             );
