@@ -12,6 +12,8 @@ const RELEASES_URL: &str = "https://api.github.com/repos/Kopuz-org/kopuz/release
 /// Nightlies come out daily and only the last ten are kept, so one page always holds the newest.
 const NIGHTLY_PAGE: &str = "?per_page=30";
 const CHECK_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
+// A daemon that starts before the network would otherwise offer nothing for a whole CHECK_EVERY.
+const RETRY_EVERY: Duration = Duration::from_secs(10 * 60);
 const PROGRESS_EVERY: Duration = Duration::from_millis(250);
 // Long enough for the Ready event to reach the app before the socket closes.
 const EXIT_GRACE: Duration = Duration::from_secs(1);
@@ -107,12 +109,14 @@ impl Updater {
         let this = self.clone();
         tokio::spawn(async move {
             loop {
+                let mut wait = CHECK_EVERY;
                 if config.snapshot().await.system.auto_check_updates
                     && let Err(error) = this.check().await
                 {
                     tracing::debug!(%error, "update check failed");
+                    wait = RETRY_EVERY;
                 }
-                tokio::time::sleep(CHECK_EVERY).await;
+                tokio::time::sleep(wait).await;
             }
         });
     }
@@ -220,9 +224,6 @@ impl Updater {
         plan: &InstallPlan,
         app_pid: Option<u32>,
     ) -> Result<(), String> {
-        use sha2::{Digest, Sha256};
-        use std::io::Write;
-
         let client = http_client(Duration::from_secs(30 * 60))?;
         let checksum = client
             .get(&plan.checksum_url)
@@ -235,6 +236,35 @@ impl Updater {
             .map_err(|error| format!("checksum download: {error}"))?;
 
         let target = download_path(plan)?;
+        let pids: Vec<u32> = std::iter::once(std::process::id()).chain(app_pid).collect();
+        let kind = plan.kind.clone();
+        let staging = target.clone();
+        let staged = match self.fetch(&client, version, plan, &target, &checksum).await {
+            Ok(()) => tokio::task::spawn_blocking(move || stage(&kind, &staging, &pids))
+                .await
+                .map_err(|error| format!("staging: {error}"))
+                .flatten(),
+            Err(error) => Err(error),
+        };
+        // A retry starts a fresh download, so a half-written or unstaged one is only clutter.
+        if staged.is_err() {
+            let _ = std::fs::remove_file(&target);
+        }
+        staged
+    }
+
+    /// Stream the asset into `target`, reporting progress, and check it against `checksum`.
+    async fn fetch(
+        &self,
+        client: &reqwest::Client,
+        version: &str,
+        plan: &InstallPlan,
+        target: &Path,
+        checksum: &str,
+    ) -> Result<(), String> {
+        use sha2::{Digest, Sha256};
+        use std::io::Write;
+
         let mut response = client
             .get(&plan.asset_url)
             .send()
@@ -242,7 +272,7 @@ impl Updater {
             .and_then(reqwest::Response::error_for_status)
             .map_err(|error| format!("download: {error}"))?;
         let total = response.content_length();
-        let mut file = std::fs::File::create(&target)
+        let mut file = std::fs::File::create(target)
             .map_err(|error| format!("{}: {error}", target.display()))?;
         let mut hasher = Sha256::new();
         let mut done = 0u64;
@@ -270,15 +300,10 @@ impl Updater {
             .map_err(|error| format!("{}: {error}", target.display()))?;
         drop(file);
 
-        if !checksum_matches(&hasher.finalize(), &checksum) {
-            let _ = std::fs::remove_file(&target);
-            return Err(format!("{} does not match its checksum", plan.asset_name));
+        match checksum_matches(&hasher.finalize(), checksum) {
+            true => Ok(()),
+            false => Err(format!("{} does not match its checksum", plan.asset_name)),
         }
-        let pids: Vec<u32> = std::iter::once(std::process::id()).chain(app_pid).collect();
-        let kind = plan.kind.clone();
-        tokio::task::spawn_blocking(move || stage(&kind, &target, &pids))
-            .await
-            .map_err(|error| format!("staging: {error}"))?
     }
 }
 
@@ -494,12 +519,15 @@ fn stage(kind: &InstallKind, download: &Path, pids: &[u32]) -> Result<(), String
     );
     std::fs::rename(download, &installer)
         .map_err(|error| format!("{}: {error}", installer.display()))?;
-    let script = windows_apply_script(kind, &installer, pids).ok_or("not a Windows install")?;
+    let Some(script) = windows_apply_script(kind, &installer, pids) else {
+        let _ = std::fs::remove_file(&installer);
+        return Err("not a Windows install".into());
+    };
     let encoded: Vec<u8> = script
         .encode_utf16()
         .flat_map(|unit| unit.to_le_bytes())
         .collect();
-    std::process::Command::new("powershell.exe")
+    let started = std::process::Command::new("powershell.exe")
         .args([
             "-NoProfile",
             "-NonInteractive",
@@ -513,7 +541,11 @@ fn stage(kind: &InstallKind, download: &Path, pids: &[u32]) -> Result<(), String
         .creation_flags(CREATE_NO_WINDOW)
         .spawn()
         .map(drop)
-        .map_err(|error| format!("could not start the installer helper: {error}"))
+        .map_err(|error| format!("could not start the installer helper: {error}"));
+    if started.is_err() {
+        let _ = std::fs::remove_file(&installer);
+    }
+    started
 }
 
 /// A failed or cancelled install still starts the old copy again.
