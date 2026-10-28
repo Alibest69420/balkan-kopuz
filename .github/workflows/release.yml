@@ -905,6 +905,103 @@ jobs:
           # A full source build of the legacy app takes most of an hour; the checksum is what can drift.
           publish kopuz-legacy "$PWD/dist/kopuz-${version}.tar.gz" source
 
+  flatpak:
+    # Kopuz Nightly's Flatpak wraps the published .deb and is served from R2 at flatpak.kopuz.moe.
+    if: >-
+      ${{ github.ref_type == 'tag' && contains(github.ref_name, '-nightly.')
+      && !cancelled() && needs.publish.result == 'success' }}
+    needs: publish
+    runs-on: ubuntu-24.04
+    # Each run rewrites the repo's index, so two at once would lose one's commit.
+    concurrency:
+      group: flatpak-repo
+      cancel-in-progress: false
+    env:
+      MANIFEST_DIR: packaging/kopuz-nightly/flatpak
+      AWS_DEFAULT_REGION: auto
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the Linux packages
+        uses: actions/download-artifact@v4
+        with:
+          name: kopuz-nightly-linux
+          path: dist
+
+      - name: Import the signing key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          for name in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY R2_ENDPOINT R2_BUCKET; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::$name is empty; check the R2_* secrets"
+              exit 1
+            fi
+          done
+          if [[ -z "$GPG_PRIVATE_KEY" ]]; then
+            echo "::error::GPG_PRIVATE_KEY is not set; copy the key kopuz-flatpak signs with"
+            exit 1
+          fi
+          printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --import
+          fingerprint=$(gpg --list-secret-keys --with-colons | awk -F: '$1 == "fpr" { print $10; exit }')
+          echo "GPG_KEY=$fingerprint" >> "$GITHUB_ENV"
+
+      - name: Install Flatpak tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder appstream
+          flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak --user install -y --noninteractive flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08
+
+      - name: Build onto the published repo
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          dpkg-deb -x "dist/kopuz-nightly_${version}_amd64.deb" "$MANIFEST_DIR/payload"
+          # The repo's history lives in R2, so this commit lands on top of the nightlies already there.
+          aws s3 sync "s3://$R2_BUCKET/repo" repo --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          flatpak-builder --user --force-clean --disable-rofiles-fuse \
+            --default-branch=stable --gpg-sign="$GPG_KEY" --repo=repo \
+            --subject="Kopuz Nightly $version" \
+            build "$MANIFEST_DIR/moe.kopuz.kopuz.nightly.yml"
+          flatpak build-update-repo --gpg-sign="$GPG_KEY" --title=Kopuz --default-branch=stable \
+            --generate-static-deltas --prune --prune-depth=10 repo
+
+      - name: Upload to R2
+        run: |
+          set -euo pipefail
+          s3() { aws s3 "$@" --endpoint-url "$R2_ENDPOINT" --only-show-errors; }
+          key=$(gpg --export "$GPG_KEY" | base64 -w0)
+          sed "s|@GPGKEY@|$key|" "$MANIFEST_DIR/moe.kopuz.kopuz.nightly.flatpakref.in" > moe.kopuz.kopuz.nightly.flatpakref
+          sed "s|@GPGKEY@|$key|" "$MANIFEST_DIR/kopuz.flatpakrepo.in" > kopuz.flatpakrepo
+          # Objects first and the index last, so nobody updating mid-upload sees a commit whose objects are missing.
+          for dir in objects deltas; do
+            if [[ -d "repo/$dir" ]]; then
+              s3 sync "repo/$dir" "s3://$R2_BUCKET/repo/$dir" --cache-control "public, max-age=31536000, immutable"
+            fi
+          done
+          s3 sync repo "s3://$R2_BUCKET/repo" --exclude 'objects/*' --exclude 'deltas/*' --exclude 'tmp/*' \
+            --cache-control no-cache --delete
+          s3 cp moe.kopuz.kopuz.nightly.flatpakref "s3://$R2_BUCKET/moe.kopuz.kopuz.nightly.flatpakref" \
+            --cache-control no-cache --content-type application/vnd.flatpak.ref
+          s3 cp kopuz.flatpakrepo "s3://$R2_BUCKET/kopuz.flatpakrepo" \
+            --cache-control no-cache --content-type application/vnd.flatpak.repo
+          # What pruning dropped goes only once the new index no longer names it.
+          for dir in objects deltas; do
+            if [[ -d "repo/$dir" ]]; then
+              s3 sync "repo/$dir" "s3://$R2_BUCKET/repo/$dir" --delete
+            fi
+          done
+
   homebrew:
     # Kopuz Nightly has no macOS build of its own yet, so the casks follow releases only.
     if: github.ref_type == 'tag' && !contains(github.ref_name, '-nightly.')
