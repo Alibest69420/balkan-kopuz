@@ -1004,8 +1004,8 @@ interface_ambient_description = Let the current cover cast its colour across the
 interface_ambient_glow = Glow
 interface_ambient_full = Whole window
 
-daemon_older = The daemon is older than this app. Rebuild the daemon.
-daemon_newer = The daemon is newer than this app. Rebuild the app.
+daemon_older = The background service is older than this app. Update it or restart it.
+daemon_newer = Kopuz was updated while it was open. Restart it to finish updating.
 
 sign_in_with_webview = Sign in within Kopuz
 webview_sign_in_help = Sign-in opens inside Kopuz. Close the sign-in window to cancel.
