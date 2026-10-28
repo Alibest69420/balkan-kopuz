@@ -919,10 +919,6 @@ jobs:
     env:
       MANIFEST_DIR: packaging/kopuz-nightly/flatpak
       AWS_DEFAULT_REGION: auto
-      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-      R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
-      R2_BUCKET: ${{ secrets.R2_BUCKET }}
 
     steps:
       - uses: actions/checkout@v4
@@ -933,16 +929,24 @@ jobs:
           name: kopuz-nightly-linux
           path: dist
 
-      - name: Import the signing key
+      - name: Read the R2 secrets and the signing key
         env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
         run: |
           set -euo pipefail
+          # A pasted secret often ends in a newline, which breaks the request signature.
           for name in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY R2_ENDPOINT R2_BUCKET; do
-            if [[ -z "${!name}" ]]; then
+            value=$(printf '%s' "${!name}" | tr -d '[:space:]')
+            if [[ -z "$value" ]]; then
               echo "::error::$name is empty; check the R2_* secrets"
               exit 1
             fi
+            echo "::add-mask::$value"
+            echo "$name=$value" >> "$GITHUB_ENV"
           done
           if [[ -z "$GPG_PRIVATE_KEY" ]]; then
             echo "::error::GPG_PRIVATE_KEY is not set; copy the key kopuz-flatpak signs with"
