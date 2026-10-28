@@ -6471,6 +6471,7 @@ dependencies = [
  "topbar",
  "tracing",
  "tracing-subscriber",
+ "winres",
 ]
 
 [[package]]
@@ -7186,13 +7187,16 @@ name = "link"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "directories",
  "futures",
  "gpui-kit",
  "kopuz-api",
  "kopuz-client",
+ "kopuz-utils",
+ "libc",
+ "semver 1.0.28",
  "tokio",
  "tracing",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -9859,9 +9863,12 @@ dependencies = [
 name = "profile"
 version = "0.1.0"
 dependencies = [
+ "directories",
+ "kopuz-utils",
  "tikv-jemalloc-ctl",
  "tikv-jemallocator",
  "tracing",
+ "tracing-appender",
  "tracing-chrome",
  "tracing-subscriber",
 ]

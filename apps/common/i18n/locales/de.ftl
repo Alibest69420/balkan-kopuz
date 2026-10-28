@@ -674,7 +674,6 @@ share = Share
 share_copied = Link kopiert
 share_no_page = Für diesen Titel wurde keine Seite gefunden
 explicit = Explizit
-start_daemon = Dienst starten
 
 first_run_title = Welcome to Kopuz
 first_run_subtitle = Point Kopuz at your music and it takes care of the rest.
@@ -973,8 +972,8 @@ interface_ambient_description = Let the current cover cast its colour across the
 interface_ambient_glow = Glow
 interface_ambient_full = Whole window
 
-daemon_older = The daemon is older than this app. Rebuild the daemon.
-daemon_newer = The daemon is newer than this app. Rebuild the app.
+daemon_older = The background service is older than this app. Update it or restart it.
+daemon_newer = Kopuz was updated while it was open. Restart it to finish updating.
 
 sign_in_with_webview = Sign in within Kopuz
 webview_sign_in_help = Sign-in opens inside Kopuz. Close the sign-in window to cancel.
@@ -1111,7 +1110,7 @@ tips_search = durchsucht alles und führt Befehle aus
 tips_now_playing = Klicke auf das Cover in der Player-Leiste, um Now Playing zu öffnen
 tips_source_switcher = Wechsle über das Menü in der oberen Leiste zwischen deinen Quellen
 daemon_down_title = Kopuz braucht seinen Hintergrunddienst
-daemon_down_hint = Wenn er nicht startet, führe systemctl --user enable --now kopuzd in einem Terminal aus.
+daemon_not_answering = Ein Kopuz-Hintergrunddienst läuft bereits, antwortet aber nicht. Beende ihn und versuche es erneut.
 retry = Erneut versuchen
 connectivity_check_urls = Verbindungsprüfung
 connectivity_check_urls_description = Adressen, die abgefragt werden, wenn eine Quelle nicht mehr antwortet, um eine getrennte Verbindung von einem ausgefallenen Server zu unterscheiden. Leer lassen, um die Prüfung zu überspringen.

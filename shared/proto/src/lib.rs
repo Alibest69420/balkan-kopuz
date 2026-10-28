@@ -33,6 +33,10 @@ pub fn default_socket_path() -> Option<std::path::PathBuf> {
 /// The default socket served by the desktop app and `kopuzd`.
 #[cfg(not(windows))]
 pub fn default_socket_path() -> Option<std::path::PathBuf> {
+    // Moves the default socket without making it remote, e.g. into a sandbox's shared runtime folder.
+    if let Some(dir) = std::env::var_os("KOPUZ_RUNTIME_DIR").filter(|dir| !dir.is_empty()) {
+        return Some(std::path::PathBuf::from(dir).join("kopuzd.sock"));
+    }
     let base = directories::BaseDirs::new()?;
     let dir = base
         .runtime_dir()

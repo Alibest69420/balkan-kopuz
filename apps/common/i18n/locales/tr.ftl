@@ -666,7 +666,6 @@ share = Share
 share_copied = Bağlantı kopyalandı
 share_no_page = Bu şarkı için bir sayfa bulunamadı
 explicit = Müstehcen
-start_daemon = Hizmeti başlat
 
 first_run_title = Welcome to Kopuz
 first_run_subtitle = Point Kopuz at your music and it takes care of the rest.
@@ -965,8 +964,8 @@ interface_ambient_description = Let the current cover cast its colour across the
 interface_ambient_glow = Glow
 interface_ambient_full = Whole window
 
-daemon_older = The daemon is older than this app. Rebuild the daemon.
-daemon_newer = The daemon is newer than this app. Rebuild the app.
+daemon_older = Arka plan hizmeti bu uygulamadan eski. Güncelleyin ya da yeniden başlatın.
+daemon_newer = Kopuz açıkken güncellendi. Güncellemeyi tamamlamak için yeniden başlatın.
 
 sign_in_with_webview = Sign in within Kopuz
 webview_sign_in_help = Sign-in opens inside Kopuz. Close the sign-in window to cancel.
@@ -1099,7 +1098,7 @@ tips_search = her şeyi arar ve komutları çalıştırır
 tips_now_playing = Now Playing'i açmak için oynatıcı çubuğundaki kapağa tıkla
 tips_source_switcher = Kaynakların arasında üst çubuktaki menüden geçiş yap
 daemon_down_title = Kopuz'un arka plan hizmetine ihtiyacı var
-daemon_down_hint = Başlamazsa bir terminalde systemctl --user enable --now kopuzd komutunu çalıştırın.
+daemon_not_answering = Bir Kopuz arka plan hizmeti zaten çalışıyor ama yanıt vermiyor. Onu kapatıp tekrar deneyin.
 retry = Yeniden dene
 connectivity_check_urls = Bağlantı denetimi
 connectivity_check_urls_description = Bir kaynak yanıt vermediğinde bağlantının mı koptuğunu yoksa sunucunun mu çöktüğünü anlamak için sorulan adresler. Denetimi atlamak için boş bırakın.

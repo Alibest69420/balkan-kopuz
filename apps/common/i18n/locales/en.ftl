@@ -38,7 +38,6 @@ disconnected = ● Disconnected
 connecting = ● Connecting…
 reconnect = Reconnect
 daemon_unreachable = Can't reach the kopuz daemon
-start_daemon = Start Daemon
 remove = Remove
 add = Add
 add_folder = Add Folder
@@ -994,8 +993,8 @@ interface_ambient_description = Let the current cover cast its colour across the
 interface_ambient_glow = Glow
 interface_ambient_full = Whole window
 
-daemon_older = The daemon is older than this app. Rebuild the daemon.
-daemon_newer = The daemon is newer than this app. Rebuild the app.
+daemon_older = The background service is older than this app. Update it or restart it.
+daemon_newer = Kopuz was updated while it was open. Restart it to finish updating.
 
 sign_in_with_webview = Sign in within Kopuz
 webview_sign_in_help = Sign-in opens inside Kopuz. Close the sign-in window to cancel.
@@ -1139,7 +1138,7 @@ tips_search = searches everything and runs commands
 tips_now_playing = Click the cover in the player bar to open Now Playing
 tips_source_switcher = Switch between your sources from the menu in the top bar
 daemon_down_title = Kopuz needs its background service
-daemon_down_hint = If it doesn't start, run systemctl --user enable --now kopuzd in a terminal.
+daemon_not_answering = A Kopuz daemon is already running but not answering. Quit it, then retry.
 retry = Retry
 connectivity_check_urls = Connectivity checks
 connectivity_check_urls_description = Addresses asked when a source stops answering, to tell a dropped connection from a server that is down. Leave empty to skip the check.
