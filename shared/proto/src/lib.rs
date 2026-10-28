@@ -41,7 +41,12 @@ pub fn default_socket_path() -> Option<std::path::PathBuf> {
             true => base.runtime_dir()?.join(dir),
             false => dir,
         };
-        return Some(dir.join("kopuzd.sock"));
+        // The override replaces the flavour's own directory, so the flavour moves into the file name.
+        let name = match config::flavor::Flavor::current() {
+            config::flavor::Flavor::Stable => "kopuzd.sock",
+            config::flavor::Flavor::Nightly => "kopuzd-nightly.sock",
+        };
+        return Some(dir.join(name));
     }
     let dir = base
         .runtime_dir()
