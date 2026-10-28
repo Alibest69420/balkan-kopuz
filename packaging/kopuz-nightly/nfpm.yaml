@@ -29,6 +29,8 @@ contents:
     dst: /usr/share/applications/moe.kopuz.kopuz.nightly.desktop
   - src: packaging/kopuz-nightly/logo.png
     dst: /usr/share/icons/hicolor/256x256/apps/moe.kopuz.kopuz.nightly.png
+  - src: data/moe.kopuz.kopuz.nightly.metainfo.xml
+    dst: /usr/share/metainfo/moe.kopuz.kopuz.nightly.metainfo.xml
   - src: packaging/systemd/kopuzd-nightly.service
     dst: /usr/lib/systemd/user/kopuzd-nightly.service
   - src: LICENSE
