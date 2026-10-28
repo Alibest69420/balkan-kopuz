@@ -16,7 +16,12 @@ pub use heap::Heap;
 pub struct Session {
     _chrome: Option<tracing_chrome::FlushGuard>,
     _log: Option<tracing_appender::non_blocking::WorkerGuard>,
+    // Held for the process: whoever holds it owns `app-latest.log`.
+    _log_lock: Option<std::fs::File>,
 }
+
+/// The log file this process writes, which its crash report quotes.
+static LOG_NAME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
 /// Installs the log subscriber, writing to stderr and `app-latest.log`, and a Chrome trace layer when `KOPUZ_TRACE` names a file.
 ///
@@ -24,16 +29,17 @@ pub struct Session {
 pub fn init() -> Session {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
-    let (file, log_guard) = match log_file() {
-        Some((writer, guard)) => (
+    let (file, log_guard, log_lock) = match log_file() {
+        Some((writer, guard, lock)) => (
             Some(
                 tracing_subscriber::fmt::layer()
                     .with_ansi(false)
                     .with_writer(writer),
             ),
             Some(guard),
+            lock,
         ),
-        None => (None, None),
+        None => (None, None, None),
     };
     let (chrome, chrome_guard) = match std::env::var("KOPUZ_TRACE").ok() {
         Some(path) => {
@@ -59,6 +65,7 @@ pub fn init() -> Session {
     Session {
         _chrome: chrome_guard,
         _log: log_guard,
+        _log_lock: log_lock,
     }
 }
 
@@ -66,18 +73,37 @@ pub fn init() -> Session {
 fn log_file() -> Option<(
     tracing_appender::non_blocking::NonBlocking,
     tracing_appender::non_blocking::WorkerGuard,
+    Option<std::fs::File>,
 )> {
     let dir = directories::BaseDirs::new()?.cache_dir().join("kopuz/logs");
     std::fs::create_dir_all(&dir).ok()?;
     utils::logs::set_log_dir(dir.clone());
-    utils::logs::rotate_session_log_named(
-        &dir,
-        utils::logs::APP_LATEST,
-        utils::logs::APP_SESSION_PREFIX,
-    );
-    Some(tracing_appender::non_blocking(
-        tracing_appender::rolling::never(&dir, utils::logs::APP_LATEST),
-    ))
+    let lock = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(dir.join("app-latest.lock"))
+        .ok()
+        .filter(|lock| lock.try_lock().is_ok());
+    // A second window's process logs beside the first rather than archiving its log mid-write.
+    let name = match lock {
+        Some(_) => {
+            utils::logs::rotate_session_log_named(
+                &dir,
+                utils::logs::APP_LATEST,
+                utils::logs::APP_SESSION_PREFIX,
+            );
+            utils::logs::APP_LATEST.to_string()
+        }
+        None => format!(
+            "{}pid{}.log",
+            utils::logs::APP_SESSION_PREFIX,
+            std::process::id()
+        ),
+    };
+    let writer = tracing_appender::non_blocking(tracing_appender::rolling::never(&dir, &name));
+    let _ = LOG_NAME.set(name);
+    Some((writer.0, writer.1, lock))
 }
 
 /// A panic leaves a `crash-<time>.txt` beside the log, then unwinds as it would have.
@@ -99,7 +125,9 @@ fn install_crash_report() {
         if let Some(dir) = utils::logs::log_dir() {
             utils::logs::write_crash_report_named(
                 &dir,
-                utils::logs::APP_LATEST,
+                LOG_NAME
+                    .get()
+                    .map_or(utils::logs::APP_LATEST, String::as_str),
                 &message,
                 &location,
                 &backtrace,
