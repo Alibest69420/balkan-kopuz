@@ -56,6 +56,14 @@ impl IconTone {
             (false, false) => rest,
         };
         match self {
+            // A given accent fills it instead; the background reads on it as well as it reads on the background.
+            IconTone::Accent if accent.is_some() => (
+                accent
+                    .map(|accent| if hot { accent.opacity(0.85) } else { accent })
+                    .unwrap_or(cx.theme().primary),
+                cx.theme().background,
+                None,
+            ),
             IconTone::Accent => (
                 match hot {
                     true => cx.theme().primary_hover,
