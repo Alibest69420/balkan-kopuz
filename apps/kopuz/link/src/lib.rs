@@ -25,6 +25,8 @@ const START_TRIES: u32 = 3;
 /// A kopuzd still alive but silent this long is stuck, not slow.
 const START_WAIT: Duration = Duration::from_secs(60);
 const START_POLL: Duration = Duration::from_millis(250);
+/// A daemon this slow to say what state it is in is wedged, however it holds the socket.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The daemon client plus the runtime its futures run on. Cheap to clone.
 #[derive(Clone)]
@@ -119,17 +121,30 @@ impl Link {
     {
         match self.gate.refusal() {
             Some(error) => Call(self.runtime.spawn(async { Err(error) })),
-            None => self.probe(f),
+            None => Call(self.runtime.spawn(f(self.api.clone()))),
         }
     }
 
-    /// The supervisor's own calls, which are how the gate learns it may open.
+    /// The supervisor's own calls, which are how the gate learns it may open; a peer that never replies counts as gone.
     fn probe<T, Fut>(&self, f: impl FnOnce(Arc<dyn KopuzApi>) -> Fut) -> Call<T>
     where
         T: Send + 'static,
         Fut: Future<Output = Result<T, ApiError>> + Send + 'static,
     {
-        Call(self.runtime.spawn(f(self.api.clone())))
+        let call = f(self.api.clone());
+        Call(self.runtime.spawn(async move {
+            tokio::time::timeout(PROBE_TIMEOUT, call)
+                .await
+                .unwrap_or_else(|_| {
+                    Err(ApiError::new(
+                        api::ErrorCode::DaemonGone,
+                        format!(
+                            "the daemon did not answer within {} seconds",
+                            PROBE_TIMEOUT.as_secs()
+                        ),
+                    ))
+                })
+        }))
     }
 
     /// Fire a command whose effect arrives on the event stream; failure is only logged.
@@ -167,9 +182,7 @@ impl<T> Future for Call<T> {
     }
 }
 
-/// Connect to the daemon at `address` and start supervising it; call once before any window opens.
-///
-/// With `start_own`, a socket nothing answers on gets this app's own kopuzd, which exits once the app is gone.
+/// Connect to and supervise the daemon at `address`, before any window opens; `start_own` starts this app's own kopuzd on a free socket.
 pub fn init(address: Address, start_own: bool, cx: &mut App) -> anyhow::Result<()> {
     let runtime = Arc::new(
         tokio::runtime::Builder::new_multi_thread()
@@ -224,6 +237,10 @@ pub struct Connection {
     status: ConnectionStatus,
     /// Failed probes since the last time the daemon answered, for the banner's "attempt 3".
     attempts: u32,
+    /// This app is starting its own kopuzd, which either answers or crashes the app; retrying cannot help.
+    starting: bool,
+    /// The own socket is held by something that does not answer, so starting a kopuzd there would only fail to bind.
+    blocked: bool,
     retry: futures::channel::mpsc::UnboundedSender<()>,
     link: Link,
     _supervisor: Task<()>,
@@ -240,10 +257,15 @@ impl Connection {
                 loop {
                     let probe = link.probe(|api| async move { api.player_state().await });
                     if let Err(error) = probe.await {
+                        let own = link.own_socket.clone();
+                        let blocked = own.as_deref().is_some_and(socket_taken);
+                        let start = own.filter(|_| !blocked);
                         let unreachable = ConnectionStatus::Unreachable(error);
                         if this
                             .update(cx, |this, cx| {
                                 this.attempts = this.attempts.saturating_add(1);
+                                this.starting = start.is_some();
+                                this.blocked = blocked;
                                 this.set_status(unreachable, cx);
                                 cx.notify();
                             })
@@ -251,13 +273,11 @@ impl Connection {
                         {
                             return;
                         }
-                        if let Some(socket) = link.own_socket.clone() {
+                        if let Some(socket) = start {
                             start_daemon(&link, &socket, cx).await;
                             continue;
                         }
-                        let timer = cx.background_executor().timer(RETRY_INTERVAL);
-                        // "Retry now" is the same wait, cut short.
-                        futures::future::select(Box::pin(timer), Box::pin(retries.next())).await;
+                        wait_or_retry(&mut retries, cx).await;
                         continue;
                     }
 
@@ -275,6 +295,8 @@ impl Connection {
                         };
                         if this
                             .update(cx, |this, cx| {
+                                this.starting = false;
+                                this.blocked = false;
                                 this.set_status(wrong, cx);
                                 cx.notify();
                             })
@@ -282,14 +304,15 @@ impl Connection {
                         {
                             return;
                         }
-                        let timer = cx.background_executor().timer(RETRY_INTERVAL);
-                        futures::future::select(Box::pin(timer), Box::pin(retries.next())).await;
+                        wait_or_retry(&mut retries, cx).await;
                         continue;
                     }
 
                     let mut events = relay_events(&link);
                     let attached = this.update(cx, |this, cx| {
                         this.attempts = 0;
+                        this.starting = false;
+                        this.blocked = false;
                         this.set_status(ConnectionStatus::Connected, cx);
                         cx.emit(ApiEvent::Resync);
                     });
@@ -315,6 +338,8 @@ impl Connection {
         Self {
             status: ConnectionStatus::Connecting,
             attempts: 0,
+            starting: false,
+            blocked: false,
             retry,
             link,
             _supervisor: supervisor,
@@ -327,6 +352,16 @@ impl Connection {
 
     pub fn attempts(&self) -> u32 {
         self.attempts
+    }
+
+    /// Whether this app is starting its own kopuzd right now.
+    pub fn is_starting(&self) -> bool {
+        self.starting
+    }
+
+    /// Whether the own socket is held by a daemon that does not answer, which only someone outside the app can clear.
+    pub fn is_blocked(&self) -> bool {
+        self.blocked
     }
 
     /// Stop waiting out the retry interval and probe the daemon again now.
@@ -355,6 +390,9 @@ impl Connection {
 async fn start_daemon(link: &Link, socket: &Path, cx: &mut AsyncApp) {
     let mut reason = String::new();
     for attempt in 1..=START_TRIES {
+        if attempt > 1 {
+            cx.background_executor().timer(RETRY_INTERVAL).await;
+        }
         // Another app or a service manager may have started one meanwhile.
         if link.answers().await {
             return;
@@ -396,6 +434,33 @@ async fn start_daemon(link: &Link, socket: &Path, cx: &mut AsyncApp) {
     panic!("kopuzd did not start after {START_TRIES} tries: {reason}");
 }
 
+/// Wait out [`RETRY_INTERVAL`], or less if "Retry now" is pressed during it; presses from before the wait do not count.
+async fn wait_or_retry(retries: &mut futures::channel::mpsc::UnboundedReceiver<()>, cx: &AsyncApp) {
+    while retries.try_recv().is_ok() {}
+    let timer = cx.background_executor().timer(RETRY_INTERVAL);
+    futures::future::select(Box::pin(timer), Box::pin(retries.next())).await;
+}
+
+/// Something accepts connections on `socket`, so a kopuzd started there could not bind it.
+#[cfg(unix)]
+fn socket_taken(socket: &Path) -> bool {
+    std::os::unix::net::UnixStream::connect(socket).is_ok()
+}
+
+/// Opening a named pipe connects to it; a busy one is held all the same.
+#[cfg(windows)]
+fn socket_taken(pipe: &Path) -> bool {
+    const ERROR_PIPE_BUSY: i32 = 231;
+    match std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(pipe)
+    {
+        Ok(_) => true,
+        Err(error) => error.raw_os_error() == Some(ERROR_PIPE_BUSY),
+    }
+}
+
 /// Subscribe on the link's runtime and forward into a channel GPUI can poll.
 fn relay_events(link: &Link) -> futures::channel::mpsc::UnboundedReceiver<ApiEvent> {
     let (tx, rx) = futures::channel::mpsc::unbounded();
@@ -414,6 +479,20 @@ fn relay_events(link: &Link) -> futures::channel::mpsc::UnboundedReceiver<ApiEve
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn a_socket_is_taken_only_while_something_listens_on_it() {
+        let socket = std::env::temp_dir().join(format!("kopuz-taken-{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&socket);
+        assert!(!socket_taken(&socket));
+        let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        assert!(socket_taken(&socket));
+        drop(listener);
+        // A file left behind by a daemon that died is not a daemon.
+        assert!(!socket_taken(&socket));
+        std::fs::remove_file(&socket).unwrap();
+    }
 
     /// The banner reads this to say which of the two is the stale one.
     fn older(status: &ConnectionStatus) -> Option<bool> {
