@@ -1098,6 +1098,7 @@ tips_search = her şeyi arar ve komutları çalıştırır
 tips_now_playing = Now Playing'i açmak için oynatıcı çubuğundaki kapağa tıkla
 tips_source_switcher = Kaynakların arasında üst çubuktaki menüden geçiş yap
 daemon_down_title = Kopuz'un arka plan hizmetine ihtiyacı var
+daemon_not_answering = Bir Kopuz arka plan hizmeti zaten çalışıyor ama yanıt vermiyor. Onu kapatıp tekrar deneyin.
 retry = Yeniden dene
 connectivity_check_urls = Bağlantı denetimi
 connectivity_check_urls_description = Bir kaynak yanıt vermediğinde bağlantının mı koptuğunu yoksa sunucunun mu çöktüğünü anlamak için sorulan adresler. Denetimi atlamak için boş bırakın.

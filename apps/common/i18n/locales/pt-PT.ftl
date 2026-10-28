@@ -1139,6 +1139,7 @@ tips_search = searches everything and runs commands
 tips_now_playing = Click the cover in the player bar to open Now Playing
 tips_source_switcher = Switch between your sources from the menu in the top bar
 daemon_down_title = Kopuz needs its background service
+daemon_not_answering = A Kopuz daemon is already running but not answering. Quit it, then retry.
 retry = Retry
 connectivity_check_urls = Connectivity checks
 connectivity_check_urls_description = Addresses asked when a source stops answering, to tell a dropped connection from a server that is down. Leave empty to skip the check.

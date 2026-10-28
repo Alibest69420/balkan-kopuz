@@ -14,10 +14,18 @@ const GLYPH: Pixels = px(12.);
 const FILL: f32 = 0.15;
 const EDGE: f32 = 0.20;
 
+/// What the strip draws from the connection, kept up while it fades out after a reconnect.
+#[derive(Clone)]
+struct Said {
+    status: ConnectionStatus,
+    attempts: u32,
+    starting: bool,
+    blocked: bool,
+}
+
 /// The reconnect strip. It renders nothing until the daemon has first gone missing.
 pub struct ConnectionBanner {
-    // The last thing said while offline, kept up while the strip fades out after a reconnect.
-    last: Option<(ConnectionStatus, u32)>,
+    last: Option<Said>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -37,42 +45,66 @@ impl ConnectionBanner {
         !link::Link::connection(cx).read(cx).is_connected()
     }
 
+    /// Which of the two to rebuild is the only useful thing to say about a mismatch, so say it.
+    pub(crate) fn mismatch(daemon: u32, client: u32) -> SharedString {
+        t(match daemon < client {
+            true => "daemon_older",
+            false => "daemon_newer",
+        })
+    }
+
     /// What the strip says: the first probe is not a failure, and a later one counts itself.
-    fn line(status: &ConnectionStatus, attempts: u32) -> SharedString {
-        match status {
+    fn line(said: &Said) -> SharedString {
+        match &said.status {
             ConnectionStatus::Connected => SharedString::default(),
+            ConnectionStatus::Unreachable(_) if said.starting => t("starting"),
             ConnectionStatus::Connecting => t("connecting"),
-            ConnectionStatus::Unreachable(_) if attempts <= 1 => t("connecting"),
+            ConnectionStatus::Unreachable(_) if said.attempts <= 1 => t("connecting"),
             ConnectionStatus::Unreachable(_) => {
-                t_with("reconnecting_attempt", &[("attempt", attempts.into())])
+                t_with("reconnecting_attempt", &[("attempt", said.attempts.into())])
             }
-            // Which of the two to rebuild is the only useful thing to say, so say it.
-            ConnectionStatus::Mismatched { daemon, client } => t(match daemon < client {
-                true => "daemon_older",
-                false => "daemon_newer",
-            }),
+            ConnectionStatus::Mismatched { daemon, client } => Self::mismatch(*daemon, *client),
+        }
+    }
+
+    fn reason(said: &Said) -> Option<SharedString> {
+        match &said.status {
+            _ if said.blocked => Some(t("daemon_not_answering")),
+            ConnectionStatus::Unreachable(error) => Some(store::human(error)),
+            _ => None,
         }
     }
 }
 
 impl Render for ConnectionBanner {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let (status, attempts) = {
+        let said = {
             let connection = link::Link::connection(cx);
             let connection = connection.read(cx);
-            (connection.status().clone(), connection.attempts())
+            Said {
+                status: connection.status().clone(),
+                attempts: connection.attempts(),
+                starting: connection.is_starting(),
+                blocked: connection.is_blocked(),
+            }
         };
-        if status != ConnectionStatus::Connected {
-            self.last = Some((status, attempts));
+        if said.status != ConnectionStatus::Connected {
+            self.last = Some(said);
         }
-        let Some((status, attempts)) = self.last.clone() else {
+        let Some(said) = self.last.clone() else {
             return div().into_any_element();
         };
-        let reason = match &status {
-            ConnectionStatus::Unreachable(error) => Some(store::human(error)),
-            _ => None,
-        };
-        let line = Self::line(&status, attempts);
+        let reason = Self::reason(&said);
+        let line = Self::line(&said);
+        // A starting daemon answers or crashes the app; a retry would only wait on it again.
+        let retry = (!said.starting).then(|| {
+            Chip::new("connection-retry")
+                .label(t("retry_now"))
+                .tone(ChipTone::Ink(cx.theme().warning))
+                .on_click(|_, _, cx| {
+                    link::Link::connection(cx).read(cx).retry_now();
+                })
+        });
         let warning = cx.theme().warning;
         h_flex()
             .w_full()
@@ -104,14 +136,7 @@ impl Render for ConnectionBanner {
                     .into_any_element()
             }))
             .child(div().flex_1().min_w_0())
-            .child(
-                Chip::new("connection-retry")
-                    .label(t("retry_now"))
-                    .tone(ChipTone::Ink(warning))
-                    .on_click(|_, _, cx| {
-                        link::Link::connection(cx).read(cx).retry_now();
-                    }),
-            )
+            .children(retry)
             .into_any_element()
     }
 }
