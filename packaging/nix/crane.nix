@@ -186,15 +186,6 @@ craneLib.mkCargoDerivation (
             libcdio-paranoia
           ]
         }
-      wrapProgram $out/bin/kopuzd \
-        --prefix PATH : ${lib.makeBinPath [ ffmpeg ]} \
-        --prefix LD_LIBRARY_PATH : ${
-          lib.makeLibraryPath [
-            libayatana-appindicator
-            libcdio
-            libcdio-paranoia
-          ]
-        }
     '';
 
     meta = {

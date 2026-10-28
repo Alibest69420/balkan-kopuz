@@ -11,6 +11,8 @@
   alsa-lib,
   libopus,
   ffmpeg,
+  libcdio,
+  libcdio-paranoia,
   wayland,
   vulkan-loader,
   libxcb,
@@ -112,7 +114,14 @@ craneLib.buildPackage (
         $out/share/icons/hicolor/256x256/apps/moe.kopuz.kopuz.png
 
       wrapProgram $out/bin/kopuz --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath gpuiLibs}
-      wrapProgram $out/bin/kopuzd --prefix PATH : ${lib.makeBinPath [ ffmpeg ]}
+      # kopuzd dlopens libcdio for audio CDs, so it is found at runtime rather than linked.
+      wrapProgram $out/bin/kopuzd --prefix PATH : ${lib.makeBinPath [ ffmpeg ]} \
+        --prefix LD_LIBRARY_PATH : ${
+          lib.makeLibraryPath [
+            libcdio
+            libcdio-paranoia
+          ]
+        }
     '';
 
     meta = {
