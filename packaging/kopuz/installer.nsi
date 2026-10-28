@@ -472,6 +472,8 @@ SectionEnd
   ; The daemon outlives the window while music plays; it holds kopuzd.exe open, so it goes without asking.
   nsis_tauri_utils::KillProcess "kopuzd.exe"
   Pop $R0
+  ; Windows lets go of a killed process's exe a moment after it dies, and the files are written or deleted next.
+  Sleep 1000
 !macroend
 
 Section Install
