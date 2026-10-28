@@ -89,10 +89,10 @@ pub async fn assemble(args: &CoreArgs) -> Result<Core, Box<dyn std::error::Error
     let using_default_database =
         args.db_path.is_none() && std::env::var_os("KOPUZ_DB_PATH").is_none();
     if using_default_database {
-        crate::nightly_seed::seed_from_stable().await;
         for line in db::legacy::migrate_identity() {
             tracing::info!("{line}");
         }
+        crate::nightly_seed::seed_from_stable().await;
         db::legacy::migrate_locations();
     }
     let db_path = args

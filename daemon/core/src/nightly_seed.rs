@@ -26,24 +26,44 @@ pub async fn seed_from_stable() {
         (stable.data_dir(), nightly.data_dir()),
         (stable.data_local_dir(), nightly.data_local_dir()),
     ]);
+    // Only what this seed creates is undone; a directory already there is Nightly's own.
+    let created: Vec<PathBuf> = pairs
+        .iter()
+        .map(|(_, to)| to.clone())
+        .filter(|to| !to.exists())
+        .collect();
     let copied = tokio::task::spawn_blocking(move || {
         pairs.iter().try_for_each(|(from, to)| copy_tree(from, to))
     })
     .await;
-    match copied {
-        Ok(Ok(())) => {}
-        Ok(Err(error)) => tracing::warn!(%error, "could not copy all of the stable app's files"),
-        Err(error) => tracing::warn!(%error, "the copy of the stable app's files stopped"),
-    }
+    let mut seeded = match copied {
+        Ok(Ok(())) => true,
+        Ok(Err(error)) => {
+            tracing::warn!(%error, "could not copy all of the stable app's files");
+            false
+        }
+        Err(error) => {
+            tracing::warn!(%error, "the copy of the stable app's files stopped");
+            false
+        }
+    };
     let (from, to) = (
         stable.config_dir().join(DATABASE),
         nightly.config_dir().join(DATABASE),
     );
-    if from.exists()
+    if seeded
+        && from.exists()
         && let Err(error) = db::snapshot(&from, &to).await
     {
-        tracing::warn!(%error, "could not copy the stable library; Kopuz Nightly starts empty");
-        let _ = std::fs::remove_file(&to);
+        tracing::warn!(%error, "could not copy the stable library");
+        seeded = false;
+    }
+    // Half a copy would pass for a seeded Nightly on every later start, so it goes and Nightly starts empty.
+    if !seeded {
+        tracing::warn!("Kopuz Nightly starts empty");
+        for dir in &created {
+            let _ = std::fs::remove_dir_all(dir);
+        }
     }
 }
 

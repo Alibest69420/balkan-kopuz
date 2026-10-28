@@ -14,7 +14,8 @@ const LEGACY_IDENTITY: (&str, &str, &str) = ("com", "temidaradev", "kopuz");
 pub fn migrate_identity() -> Vec<String> {
     let (Some(old), Some(new)) = (
         directories::ProjectDirs::from(LEGACY_IDENTITY.0, LEGACY_IDENTITY.1, LEGACY_IDENTITY.2),
-        config::flavor::project_dirs(),
+        // The old identity was the stable app's; Kopuz Nightly seeds itself from Stable afterwards.
+        config::flavor::Flavor::Stable.project_dirs(),
     ) else {
         return Vec::new();
     };
