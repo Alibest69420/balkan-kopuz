@@ -67,7 +67,10 @@ fn log_file() -> Option<(
     tracing_appender::non_blocking::NonBlocking,
     tracing_appender::non_blocking::WorkerGuard,
 )> {
-    let dir = directories::BaseDirs::new()?.cache_dir().join("kopuz/logs");
+    let dir = directories::BaseDirs::new()?
+        .cache_dir()
+        .join(config::flavor::Flavor::current().name())
+        .join("logs");
     std::fs::create_dir_all(&dir).ok()?;
     utils::logs::set_log_dir(dir.clone());
     utils::logs::rotate_session_log_named(

@@ -26,7 +26,7 @@ pub(crate) fn spawn_daemon(socket: &Path) -> std::io::Result<Child> {
     command.spawn()
 }
 
-/// `KOPUZD`, else the kopuzd packaged beside this binary (an .app or install dir is off `PATH`), else `PATH`.
+/// `KOPUZD`, else this flavour's kopuzd packaged beside this binary (an .app or install dir is off `PATH`), else `PATH`.
 fn daemon_program() -> OsString {
     if let Some(program) = std::env::var_os("KOPUZD") {
         return program;
@@ -35,11 +35,16 @@ fn daemon_program() -> OsString {
         .ok()
         .and_then(|exe| exe.parent().and_then(sibling_daemon))
         .map(PathBuf::into_os_string)
-        .unwrap_or_else(|| "kopuzd".into())
+        .unwrap_or_else(|| daemon_name().into())
+}
+
+/// `kopuzd`, or `kopuzd-nightly` for Kopuz Nightly, so the two apps never start each other's daemon.
+fn daemon_name() -> String {
+    config::flavor::Flavor::current().binary("kopuzd")
 }
 
 fn sibling_daemon(dir: &Path) -> Option<PathBuf> {
-    let path = dir.join(format!("kopuzd{}", std::env::consts::EXE_SUFFIX));
+    let path = dir.join(format!("{}{}", daemon_name(), std::env::consts::EXE_SUFFIX));
     path.is_file().then_some(path)
 }
 
@@ -52,7 +57,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("kopuz-sibling-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         assert_eq!(sibling_daemon(&dir), None);
-        let daemon = dir.join(format!("kopuzd{}", std::env::consts::EXE_SUFFIX));
+        let daemon = dir.join(format!("{}{}", daemon_name(), std::env::consts::EXE_SUFFIX));
         std::fs::write(&daemon, b"").unwrap();
         assert_eq!(sibling_daemon(&dir), Some(daemon));
         std::fs::remove_dir_all(&dir).unwrap();

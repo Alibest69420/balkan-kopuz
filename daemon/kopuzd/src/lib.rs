@@ -238,7 +238,12 @@ pub fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
 }
 
 fn log_dir() -> Option<PathBuf> {
-    Some(directories::BaseDirs::new()?.cache_dir().join("kopuz/logs"))
+    Some(
+        directories::BaseDirs::new()?
+            .cache_dir()
+            .join(config::flavor::Flavor::current().name())
+            .join("logs"),
+    )
 }
 
 /// Build a runtime and run the daemon to completion.

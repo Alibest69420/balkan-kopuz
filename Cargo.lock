@@ -6666,6 +6666,7 @@ dependencies = [
  "kopuz-utils",
  "libc",
  "reqwest 0.13.4",
+ "semver 1.0.28",
  "serde",
  "sha2 0.11.0",
  "tempfile",
@@ -6914,6 +6915,7 @@ dependencies = [
  "icu_locale_core",
  "image",
  "jni 0.21.1",
+ "kopuz-config",
  "ndk-context",
  "objc2-foundation 0.3.2",
  "percent-encoding",
@@ -7196,6 +7198,7 @@ dependencies = [
  "gpui-kit",
  "kopuz-api",
  "kopuz-client",
+ "kopuz-config",
  "tokio",
  "tracing",
 ]
@@ -9865,6 +9868,7 @@ name = "profile"
 version = "0.1.0"
 dependencies = [
  "directories",
+ "kopuz-config",
  "kopuz-utils",
  "tikv-jemalloc-ctl",
  "tikv-jemallocator",

@@ -36,7 +36,10 @@ pub fn default_socket_path() -> Option<std::path::PathBuf> {
     let base = directories::BaseDirs::new()?;
     let dir = base
         .runtime_dir()
-        .map(|runtime| runtime.join("kopuz"))
-        .unwrap_or_else(|| base.cache_dir().join("kopuz"));
+        .map(|runtime| runtime.join(config::flavor::Flavor::current().name()))
+        .unwrap_or_else(|| {
+            base.cache_dir()
+                .join(config::flavor::Flavor::current().name())
+        });
     Some(dir.join("kopuzd.sock"))
 }

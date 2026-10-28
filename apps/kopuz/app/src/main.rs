@@ -108,9 +108,9 @@ fn main() -> anyhow::Result<()> {
                 let reason = error.to_string();
                 cx.open_window(
                     WindowOptions {
-                        app_id: Some("kopuz".into()),
+                        app_id: Some(config::flavor::Flavor::current().name().into()),
                         titlebar: Some(TitlebarOptions {
-                            title: Some("Kopuz".into()),
+                            title: Some(config::flavor::Flavor::current().display_name().into()),
                             ..Default::default()
                         }),
                         ..Default::default()
@@ -178,9 +178,9 @@ fn open_main_window(started: std::time::Instant, cx: &mut App) {
         })),
         window_min_size: Some(MAIN_WINDOW_MIN_SIZE),
         window_background: gpui_kit::WindowBackgroundAppearance::Opaque,
-        app_id: Some("kopuz".into()),
+        app_id: Some(config::flavor::Flavor::current().name().into()),
         titlebar: Some(TitlebarOptions {
-            title: Some("Kopuz".into()),
+            title: Some(config::flavor::Flavor::current().display_name().into()),
             ..Default::default()
         }),
         ..Default::default()
