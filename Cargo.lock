@@ -7191,8 +7191,12 @@ dependencies = [
  "gpui-kit",
  "kopuz-api",
  "kopuz-client",
+ "kopuz-utils",
+ "libc",
+ "semver 1.0.28",
  "tokio",
  "tracing",
+ "windows 0.62.2",
 ]
 
 [[package]]

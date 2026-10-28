@@ -1,6 +1,7 @@
 //! The one seam to a Kopuz daemon: a gRPC client on its own tokio runtime, supervised as a GPUI entity.
 
 mod daemon_process;
+mod replace;
 
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -255,6 +256,8 @@ impl Connection {
         let supervisor = cx.spawn({
             let link = link.clone();
             async move |this, cx| {
+                // Once per run: a second older daemon means the kopuzd beside the app is the old one.
+                let mut replaced = false;
                 loop {
                     let probe = link.probe(|api| async move { api.player_state().await });
                     if let Err(error) = probe.await {
@@ -282,13 +285,35 @@ impl Connection {
                         continue;
                     }
 
-                    // A daemon from another checkout reads fields by its own numbers, so a
-                    // mismatch is said out loud rather than left to show as a missing button.
-                    let spoken = link
+                    let status = link
                         .probe(|api| async move { api.daemon_status().await })
                         .await
-                        .map(|status| status.proto_revision)
-                        .unwrap_or(api::WIRE_REVISION);
+                        .ok();
+                    let spoken = status
+                        .as_ref()
+                        .map_or(api::WIRE_REVISION, |status| status.proto_revision);
+                    let outdated = status.as_ref().is_some_and(|status| {
+                        status.proto_revision < api::WIRE_REVISION
+                            || replace::is_older(&status.version)
+                    });
+                    if let Some(socket) = link.own_socket.clone().filter(|_| outdated && !replaced)
+                    {
+                        replaced = true;
+                        let starting = this.update(cx, |this, cx| {
+                            this.starting = true;
+                            this.set_status(ConnectionStatus::Connecting, cx);
+                            cx.notify();
+                        });
+                        if starting.is_err() {
+                            return;
+                        }
+                        if replace::stop_daemon(&socket, cx).await {
+                            continue;
+                        }
+                    }
+
+                    // A daemon from another checkout reads fields by its own numbers, so a
+                    // mismatch is said out loud rather than left to show as a missing button.
                     if spoken != api::WIRE_REVISION {
                         let wrong = ConnectionStatus::Mismatched {
                             daemon: spoken,
