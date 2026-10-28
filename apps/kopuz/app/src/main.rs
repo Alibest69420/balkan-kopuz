@@ -144,9 +144,13 @@ fn main() -> anyhow::Result<()> {
                 |id, scroll, window, cx| {
                     let feed = cx.new(|cx| discover::CatalogPage::embedded(id, scroll, window, cx));
                     let chips = cx.new(|cx| discover::CatalogChips::new(feed.clone(), cx));
+                    let page = feed.clone();
                     page_home::CatalogViews {
                         chips: chips.into(),
                         feed: feed.into(),
+                        strapline_to_host: std::rc::Rc::new(move |on, cx| {
+                            page.update(cx, |page, cx| page.hand_strapline_to_host(on, cx));
+                        }),
                     }
                 },
                 cx,

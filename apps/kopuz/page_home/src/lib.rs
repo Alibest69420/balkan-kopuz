@@ -28,12 +28,16 @@ use store::{DownloadsModel, ForYouModel, PlaylistsModel, Query, SourcesModel};
 
 use data::{RECENT_TRACKS_WINDOW, RECENTLY_ADDED_WINDOW, Shelf};
 
-/// A source's feed for Home, and its chips, which Home draws under its title rather than in the feed.
+/// A source's feed for Home, and its chips, which Home draws over its first row rather than in the feed.
 #[derive(Clone)]
 pub struct CatalogViews {
     pub chips: AnyView,
     pub feed: AnyView,
+    /// Whether For you wears the feed's opening line, or the feed keeps it.
+    pub strapline_to_host: HandStrapline,
 }
+
+pub type HandStrapline = Rc<dyn Fn(bool, &mut App)>;
 
 type BuildCatalog =
     Rc<dyn Fn(Option<SharedString>, ScrollHandle, &mut Window, &mut App) -> CatalogViews>;
@@ -111,6 +115,8 @@ pub struct Home {
     page: ScrollHandle,
     // The catalog section, and the source and page it was built for.
     catalog: Option<(String, CatalogViews)>,
+    // The feed the strapline was last handed over for, and whether it was.
+    handed: Option<(gpui_kit::EntityId, bool)>,
     seed: u64,
     // The For you row's fade over its placeholder, kept here so a revisit finds it already in.
     for_you: components::motion::Fade,
@@ -222,6 +228,7 @@ impl Home {
                 .collect(),
             page: ScrollHandle::default(),
             catalog: None,
+            handed: None,
             seed: seed(),
             for_you: components::motion::Fade::hidden(),
             for_you_last: Rc::from([]),
@@ -342,11 +349,19 @@ impl Render for Home {
             true => self.catalog(window, cx),
             false => None,
         };
+        if let Some(views) = &catalog {
+            let handed = (views.feed.entity_id(), asks);
+            if self.handed != Some(handed) {
+                self.handed = Some(handed);
+                let hand = views.strapline_to_host.clone();
+                cx.defer(move |cx| hand(asks, cx));
+            }
+        }
         let mut rows: Vec<AnyElement> = Vec::with_capacity(drawn.len());
         // The chips head For you, or the feed where For you is not shown, whichever comes first.
         let mut chips = catalog.as_ref().map(|views| views.chips.clone());
         let headed = |chips: &mut Option<AnyView>, row: AnyElement| match chips.take() {
-            Some(chips) => v_flex().gap_6().child(chips).child(row).into_any_element(),
+            Some(chips) => v_flex().child(chips).child(row).into_any_element(),
             None => row,
         };
         for drawn in drawn {

@@ -42,6 +42,8 @@ pub struct CatalogPage {
     id: String,
     // Drawn inside Home, which owns the scroll, the edge and the title.
     embedded: bool,
+    // Whether the host wears the first shelf's strapline itself, as Home's For you does.
+    strapline_to_host: bool,
     /// What is on screen: the page, or the chip picked over it.
     showing: String,
     // The source can keep marking a chip after it was cleared, so the local pick wins.
@@ -89,6 +91,7 @@ impl CatalogPage {
             showing: id.clone(),
             id,
             embedded,
+            strapline_to_host: embedded,
             picked: None,
             detail: None,
             tracks_first: false,
@@ -173,13 +176,25 @@ impl CatalogPage {
         }
         held.extend(detail.shelves.iter().cloned());
         // Home moves the feed's opening line up to its own first row.
-        if self.embedded
+        if self.strapline_to_host
             && let Some(first) = held.first_mut()
         {
             first.strapline = None;
         }
         self.shelves.update(cx, |shelves, cx| shelves.set(held, cx));
         self.detail = Some(detail);
+    }
+
+    /// Whether the host draws the first shelf's strapline; off, the feed keeps it, as when Home hides For you.
+    pub fn hand_strapline_to_host(&mut self, on: bool, cx: &mut Context<Self>) {
+        if self.strapline_to_host == on {
+            return;
+        }
+        self.strapline_to_host = on;
+        if let Some(detail) = self.detail.clone() {
+            self.show(detail, cx);
+        }
+        cx.notify();
     }
 
     /// The chip's page, or back to the page itself when the chip on is pressed again.
@@ -535,11 +550,11 @@ impl CatalogChips {
 
 impl Render for CatalogChips {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Its own top space, so a source without chips leaves no gap under the host's title.
+        // Its own space below, so a source without chips leaves no gap over the row it heads.
         let row = self.page.read(cx).chips(&self.page);
         div()
             .w_full()
-            .when_some(row, |this, row| this.pt_8().child(row))
+            .when_some(row, |this, row| this.pb_6().child(row))
     }
 }
 
