@@ -18,6 +18,7 @@ use gpui_kit::{App, AppContext as _, AsyncApp, Context, Entity, EventEmitter, Gl
 pub use api;
 pub use client::Address;
 pub use client::default_socket_path;
+pub use daemon_process::run_daemon_flag;
 
 const RETRY_INTERVAL: Duration = Duration::from_secs(2);
 /// How many times the app starts its own kopuzd before giving up and crashing.

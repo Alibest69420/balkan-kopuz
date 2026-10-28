@@ -89,6 +89,11 @@ static ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 pub static MALLOC_CONF: &[u8] = b"background_thread:true,dirty_decay_ms:5000,muzzy_decay_ms:5000\0";
 
 fn main() -> anyhow::Result<()> {
+    // Before logging starts: this process becomes kopuzd, which keeps its own log.
+    let argv: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+    if let Some(code) = link::run_daemon_flag(&argv) {
+        std::process::exit(code);
+    }
     // Held until main returns: dropping it is what flushes the chrome trace.
     let _profile = profile::init();
     let started = std::time::Instant::now();
