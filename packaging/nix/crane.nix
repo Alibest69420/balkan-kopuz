@@ -78,8 +78,9 @@ let
       ;
     strictDeps = true;
     doCheck = false;
-    # Only what the package ships; the GPUI app and kopuzd are packaging/nix/kopuz.nix.
-    cargoExtraArgs = "--locked -p kopuz-legacy";
+    # Linux gets kopuzd and kopuzctl from packaging/nix/kopuz.nix; Darwin has no GPUI package, so they stay here.
+    cargoExtraArgs =
+      "--locked -p kopuz-legacy" + lib.optionalString stdenv.isDarwin " -p kopuz-ctl -p kopuz-kopuzd";
 
     # On commonArgs so both the deps-only and final derivations see it.
     RUSTY_V8_ARCHIVE = librustyV8;
@@ -140,6 +141,7 @@ craneLib.mkCargoDerivation (
       ''}
 
       dx build --release --platform desktop -p kopuz-legacy --offline --frozen
+      ${lib.optionalString stdenv.isDarwin "cargo build --release --offline --frozen -p kopuz-ctl -p kopuz-kopuzd"}
     '';
 
     installPhase = ''
@@ -165,6 +167,7 @@ craneLib.mkCargoDerivation (
             cp -r target/dx/kopuz-legacy/release/macos/KopuzLegacy.app $out/bin/kopuz-legacy.app
             macBin=$(find $out/bin/kopuz-legacy.app/Contents/MacOS -maxdepth 1 -type f | head -1)
             ln -s "$macBin" $out/bin/kopuz-legacy
+            install -m755 target/release/kopuzctl target/release/kopuzd $out/bin/
           ''
       }
 
