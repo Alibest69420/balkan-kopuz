@@ -1,18 +1,26 @@
-//! The mini surface: cover, title, transport and a hair of seek bar, in ~380×148.
+//! The mini surface: cover, title, transport with shuffle and the heart, over the blurred cover, in ~380×148.
 
 use components::format::t;
-use components::{Cover, IconButton, MetaLayout, NowPlayingMeta, TransportMetrics, icons, style};
+use components::{
+    Cover, IconButton, IconTone, MetaLayout, NowPlayingMeta, TransportMetrics, icons, style,
+};
 use gpui_kit::component::{ActiveTheme as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, Context, IntoElement, ParentElement as _, Pixels, Styled, Window, div, px,
+    AnyElement, Context, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Styled,
+    Window, div, px,
 };
+use store::PlayerModel;
 
 use crate::NowPlaying;
 
-const COVER: Pixels = px(56.);
+const COVER: Pixels = px(64.);
 const RESTORE: Pixels = px(28.);
 const RESTORE_GLYPH: Pixels = px(12.);
+// The cover behind it: dark enough that white text and the accent always read over it.
+const WASH_DARKENING: u8 = 45;
+const WASH_BLUR: u8 = 40;
+const GROUP: &str = "mini-player";
 
 impl NowPlaying {
     pub(crate) fn render_mini(
@@ -64,11 +72,31 @@ impl NowPlaying {
             (None, _) => div().flex_1().into_any_element(),
         };
 
+        let wash = artwork.as_ref().map(|artwork| {
+            components::backdrop::wallpaper(
+                store::artwork_source(artwork, true),
+                WASH_DARKENING,
+                WASH_BLUR,
+                window,
+                cx,
+            )
+        });
+        let metrics = TransportMetrics::COMPACT;
+        let shuffle = PlayerModel::global(cx).read(cx).shuffle();
+        // Shuffle and the heart flank the transport at the same size, so play stays centred.
+        let heart = self
+            .marks("mini-marks", false, track.as_ref(), cx)
+            .dont_recommend(false)
+            .size(metrics.side, metrics.side_glyph);
+
         v_flex()
+            .group(GROUP)
+            .relative()
             .size_full()
             .overflow_hidden()
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
+            .children(wash)
             .child(
                 h_flex()
                     .flex_1()
@@ -84,23 +112,24 @@ impl NowPlaying {
                             .children(leaving_cover)
                             .child(div().opacity(swap.cover).child(cover(artwork.as_ref()))),
                     )
-                    .child(title)
-                    .child(
-                        IconButton::new("mini-restore", icons::EXPAND)
-                            .size(RESTORE)
-                            .glyph(RESTORE_GLYPH)
-                            .tooltip(t("restore_full_player"))
-                            .on_click(|_, _, cx| crate::close_mini(cx)),
-                    ),
+                    .child(title),
             )
             .child(
                 h_flex()
                     .flex_shrink_0()
                     .items_center()
                     .justify_center()
+                    .gap(metrics.gap)
                     .px_3()
                     .pb_1()
-                    .child(self.transport(TransportMetrics::COMPACT, false, cx)),
+                    .child(
+                        self.transport(metrics, true, cx)
+                            .shuffle(Some(shuffle))
+                            .repeat(None)
+                            .balanced(false)
+                            .filled(true),
+                    )
+                    .child(heart),
             )
             .child(
                 div()
@@ -108,6 +137,22 @@ impl NowPlaying {
                     .px_3()
                     .pb_2()
                     .children(self.seek.clone()),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .top_2()
+                    .right_2()
+                    .invisible()
+                    .group_hover(GROUP, |restore| restore.visible())
+                    .child(
+                        IconButton::new("mini-restore", icons::EXPAND)
+                            .size(RESTORE)
+                            .glyph(RESTORE_GLYPH)
+                            .tone(IconTone::Scrim)
+                            .tooltip(t("restore_full_player"))
+                            .on_click(|_, _, cx| crate::close_mini(cx)),
+                    ),
             )
             .into_any_element()
     }
