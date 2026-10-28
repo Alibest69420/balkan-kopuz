@@ -5,9 +5,12 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use api::{ApiError, ApiEvent, AvailableUpdate, UpdateStatus};
+use config::flavor::Flavor;
 use daemon::SessionHandle;
 
-const LATEST_RELEASE_URL: &str = "https://api.github.com/repos/Kopuz-org/kopuz/releases/latest";
+const RELEASES_URL: &str = "https://api.github.com/repos/Kopuz-org/kopuz/releases";
+/// Nightlies come out daily and only the last ten are kept, so one page always holds the newest.
+const NIGHTLY_PAGE: &str = "?per_page=30";
 const CHECK_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
 const PROGRESS_EVERY: Duration = Duration::from_millis(250);
 // Long enough for the Ready event to reach the app before the socket closes.
@@ -19,8 +22,13 @@ const CURRENT_VERSION: &str = match option_env!("KOPUZ_UPDATE_PRETEND_VERSION") 
     None => env!("CARGO_PKG_VERSION"),
 };
 
-/// The legacy app ships as `Kopuz-Legacy-…`, which this daemon must never install.
-const ASSET_PREFIX: &str = "Kopuz_";
+/// The installers of this daemon's own app; Kopuz Legacy's `Kopuz-Legacy-…` and the other flavour's never match.
+const fn asset_prefix(flavor: Flavor) -> &'static str {
+    match flavor {
+        Flavor::Stable => "Kopuz_",
+        Flavor::Nightly => "Kopuz-Nightly_",
+    }
+}
 
 pub struct Updater {
     session: SessionHandle,
@@ -69,6 +77,8 @@ struct GithubRelease {
     tag_name: String,
     html_url: String,
     #[serde(default)]
+    prerelease: bool,
+    #[serde(default)]
     assets: Vec<GithubAsset>,
 }
 
@@ -108,12 +118,21 @@ impl Updater {
     }
 
     pub async fn check(&self) -> Result<UpdateStatus, ApiError> {
-        let release = fetch_latest().await?;
-        let newer = is_newer_version(CURRENT_VERSION, &release.tag_name);
-        let plan = self
-            .install
-            .clone()
-            .and_then(|kind| select_asset(kind, std::env::consts::ARCH, &release.assets));
+        let flavor = Flavor::current();
+        let (status, plan) = match fetch_newest(flavor).await? {
+            Some(release) if is_newer_version(CURRENT_VERSION, &release.tag_name) => {
+                let plan = self.install.clone().and_then(|kind| {
+                    select_asset(flavor, kind, std::env::consts::ARCH, &release.assets)
+                });
+                let available = AvailableUpdate {
+                    version: release.tag_name.trim_start_matches(['v', 'V']).to_string(),
+                    release_url: release.html_url,
+                    installable: plan.is_some(),
+                };
+                (UpdateStatus::Available(available), plan)
+            }
+            _ => (UpdateStatus::Current, None),
+        };
         let mut state = self.lock();
         // A download or a staged update outranks whatever a check finds.
         if matches!(
@@ -122,14 +141,6 @@ impl Updater {
         ) {
             return Ok(state.status.clone());
         }
-        let status = match newer {
-            true => UpdateStatus::Available(AvailableUpdate {
-                version: release.tag_name.trim_start_matches(['v', 'V']).to_string(),
-                release_url: release.html_url,
-                installable: plan.is_some(),
-            }),
-            false => UpdateStatus::Current,
-        };
         state.plan = plan;
         Ok(self.publish(&mut state, status))
     }
@@ -279,60 +290,64 @@ fn http_client(timeout: Duration) -> Result<reqwest::Client, String> {
         .map_err(|error| format!("could not build the HTTP client: {error}"))
 }
 
-async fn fetch_latest() -> Result<GithubRelease, ApiError> {
+/// The newest release this flavour updates to: GitHub's latest for Kopuz, the newest nightly pre-release for Kopuz Nightly.
+async fn fetch_newest(flavor: Flavor) -> Result<Option<GithubRelease>, ApiError> {
     let unreachable = |error: reqwest::Error| {
         ApiError::new(
             api::ErrorCode::SourceUnreachable,
             format!("release check: {error}"),
         )
     };
-    http_client(Duration::from_secs(8))
+    let url = match flavor {
+        Flavor::Stable => format!("{RELEASES_URL}/latest"),
+        Flavor::Nightly => format!("{RELEASES_URL}{NIGHTLY_PAGE}"),
+    };
+    let response = http_client(Duration::from_secs(8))
         .map_err(ApiError::internal)?
-        .get(LATEST_RELEASE_URL)
+        .get(url)
         .header(reqwest::header::ACCEPT, "application/vnd.github+json")
         .send()
         .await
         .and_then(reqwest::Response::error_for_status)
-        .map_err(unreachable)?
-        .json::<GithubRelease>()
-        .await
-        .map_err(unreachable)
-}
-
-fn parse_version_parts(version: &str) -> Option<Vec<u64>> {
-    let core = version
-        .trim()
-        .trim_start_matches(['v', 'V'])
-        .split(['-', '+'])
-        .next()
-        .unwrap_or_default();
-    let parts: Option<Vec<u64>> = core
-        .split('.')
-        .map(|part| part.parse::<u64>().ok())
-        .collect();
-    parts.filter(|parts| !parts.is_empty())
-}
-
-fn is_newer_version(current: &str, candidate: &str) -> bool {
-    let (Some(current), Some(candidate)) =
-        (parse_version_parts(current), parse_version_parts(candidate))
-    else {
-        return false;
-    };
-    for idx in 0..current.len().max(candidate.len()) {
-        let have = current.get(idx).copied().unwrap_or(0);
-        let offered = candidate.get(idx).copied().unwrap_or(0);
-        match offered.cmp(&have) {
-            std::cmp::Ordering::Greater => return true,
-            std::cmp::Ordering::Less => return false,
-            std::cmp::Ordering::Equal => {}
-        }
+        .map_err(unreachable)?;
+    match flavor {
+        Flavor::Stable => response.json().await.map(Some).map_err(unreachable),
+        Flavor::Nightly => response
+            .json::<Vec<GithubRelease>>()
+            .await
+            .map(newest_nightly)
+            .map_err(unreachable),
     }
-    false
+}
+
+fn newest_nightly(releases: Vec<GithubRelease>) -> Option<GithubRelease> {
+    releases
+        .into_iter()
+        .filter(|release| release.prerelease && release.tag_name.contains("-nightly."))
+        .filter_map(|release| Some((version_of(&release.tag_name)?, release)))
+        .max_by(|(a, _), (b, _)| a.cmp(b))
+        .map(|(_, release)| release)
+}
+
+fn version_of(tag: &str) -> Option<semver::Version> {
+    semver::Version::parse(tag.trim().trim_start_matches(['v', 'V'])).ok()
+}
+
+/// Semver order, so `0.68.0-nightly.20261029` follows `…20261028` and `0.68.0` follows both.
+fn is_newer_version(current: &str, candidate: &str) -> bool {
+    matches!(
+        (version_of(current), version_of(candidate)),
+        (Some(current), Some(candidate)) if candidate > current
+    )
 }
 
 /// No published checksum, no self-update.
-fn select_asset(kind: InstallKind, arch: &str, assets: &[GithubAsset]) -> Option<InstallPlan> {
+fn select_asset(
+    flavor: Flavor,
+    kind: InstallKind,
+    arch: &str,
+    assets: &[GithubAsset],
+) -> Option<InstallPlan> {
     let windows_arch = match arch {
         "x86_64" => "x64",
         "aarch64" => "arm64",
@@ -344,9 +359,10 @@ fn select_asset(kind: InstallKind, arch: &str, assets: &[GithubAsset]) -> Option
         InstallKind::AppImage { .. } => format!("_{arch}.AppImage"),
         InstallKind::MacApp { .. } => format!("_{arch}.dmg"),
     };
+    let prefix = asset_prefix(flavor);
     let asset = assets
         .iter()
-        .find(|asset| asset.name.starts_with(ASSET_PREFIX) && asset.name.ends_with(&suffix))?;
+        .find(|asset| asset.name.starts_with(prefix) && asset.name.ends_with(&suffix))?;
     let checksum_name = format!("{}.sha256", asset.name);
     let checksum = assets.iter().find(|asset| asset.name == checksum_name)?;
     Some(InstallPlan {
@@ -370,16 +386,12 @@ fn checksum_matches(digest: &[u8], checksum_file: &str) -> bool {
     hex::decode_to_slice(expected, &mut expected_bytes).is_ok() && expected_bytes == digest
 }
 
-/// Package managers, debug builds and anything not writable get `None`.
+/// Only an installer we ship, in a place this user can write: anything a package manager owns gets `None`.
 fn detect_install() -> Option<InstallKind> {
-    if cfg!(debug_assertions) || std::env::var_os("FLATPAK_ID").is_some() {
+    if cfg!(debug_assertions) {
         return None;
     }
-    let exe = std::env::current_exe().ok()?;
-    if exe.starts_with("/nix/store") {
-        return None;
-    }
-    detect_platform_install(&exe)
+    detect_platform_install(&std::env::current_exe().ok()?)
 }
 
 #[cfg(target_os = "windows")]
@@ -710,17 +722,57 @@ mod tests {
     fn newer_versions_are_detected() {
         assert!(is_newer_version("0.67.0", "v1.0.0"));
         assert!(is_newer_version("1.0.0", "1.0.1"));
-        assert!(is_newer_version("1.0", "1.0.1"));
         assert!(!is_newer_version("1.0.0", "v1.0.0"));
         assert!(!is_newer_version("1.0.1", "1.0.0"));
-        assert!(!is_newer_version("1.0.0", "1.0.0-rc1"));
         assert!(!is_newer_version("1.0.0", "nightly"));
+    }
+
+    #[test]
+    fn nightlies_order_by_date_and_fall_behind_their_release() {
+        assert!(is_newer_version("0.67.0", "0.68.0-nightly.20261028"));
+        assert!(is_newer_version(
+            "0.68.0-nightly.20261028",
+            "v0.68.0-nightly.20261029"
+        ));
+        assert!(is_newer_version(
+            "0.68.0-nightly.20261028",
+            "0.68.0-nightly.20261028.2"
+        ));
+        assert!(is_newer_version("0.68.0-nightly.20261028", "0.68.0"));
+        assert!(!is_newer_version("0.68.0", "0.68.0-nightly.20261030"));
+    }
+
+    fn release(tag: &str, prerelease: bool) -> GithubRelease {
+        GithubRelease {
+            tag_name: tag.to_string(),
+            html_url: String::new(),
+            prerelease,
+            assets: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn the_newest_nightly_is_picked_whatever_order_github_lists_them_in() {
+        let newest = newest_nightly(vec![
+            release("v0.68.0-nightly.20261028", true),
+            release("v0.68.0-nightly.20261030", true),
+            release("v0.68.0-nightly.20261029.2", true),
+            release("v0.67.0", false),
+            release("v0.69.0-nightly.20261031", false),
+        ]);
+        assert_eq!(
+            newest.map(|release| release.tag_name).as_deref(),
+            Some("v0.68.0-nightly.20261030")
+        );
+        assert!(newest_nightly(vec![release("v0.67.0", false)]).is_none());
     }
 
     #[test]
     fn picks_the_gpui_asset_for_each_install_type_and_never_the_legacy_one() {
         let assets = release_assets();
-        let pick = |kind, arch| select_asset(kind, arch, &assets).map(|plan| plan.asset_name);
+        let pick = |kind, arch| {
+            select_asset(Flavor::Stable, kind, arch, &assets).map(|plan| plan.asset_name)
+        };
         assert_eq!(
             pick(nsis(), "x86_64").as_deref(),
             Some("Kopuz_1.0.0_x64-setup.exe")
@@ -753,11 +805,41 @@ mod tests {
             .into_iter()
             .filter(|asset| asset.name != "Kopuz_1.0.0_x64-setup.exe.sha256")
             .collect();
-        assert_eq!(select_asset(nsis(), "x86_64", &assets), None);
-        let plan = select_asset(msi(), "x86_64", &assets).expect("msi plan");
+        assert_eq!(
+            select_asset(Flavor::Stable, nsis(), "x86_64", &assets),
+            None
+        );
+        let plan = select_asset(Flavor::Stable, msi(), "x86_64", &assets).expect("msi plan");
         assert_eq!(
             plan.checksum_url,
             "https://example.invalid/Kopuz_1.0.0_x64.msi.sha256"
+        );
+    }
+
+    #[test]
+    fn each_flavour_installs_only_its_own_app() {
+        let assets: Vec<_> = [
+            "Kopuz_0.68.0_x86_64.AppImage",
+            "Kopuz_0.68.0_x86_64.AppImage.sha256",
+            "Kopuz-Nightly_0.68.0-nightly.20261028_x86_64.AppImage",
+            "Kopuz-Nightly_0.68.0-nightly.20261028_x86_64.AppImage.sha256",
+        ]
+        .into_iter()
+        .map(asset)
+        .collect();
+        let appimage = || InstallKind::AppImage {
+            path: PathBuf::from("/home/k/Kopuz.AppImage"),
+        };
+        let pick = |flavor| {
+            select_asset(flavor, appimage(), "x86_64", &assets).map(|plan| plan.asset_name)
+        };
+        assert_eq!(
+            pick(Flavor::Stable).as_deref(),
+            Some("Kopuz_0.68.0_x86_64.AppImage")
+        );
+        assert_eq!(
+            pick(Flavor::Nightly).as_deref(),
+            Some("Kopuz-Nightly_0.68.0-nightly.20261028_x86_64.AppImage")
         );
     }
 
