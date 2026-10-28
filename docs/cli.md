@@ -23,6 +23,11 @@ directory on Linux, the user cache directory on macOS, or the current user's
 named pipe on Windows. Use `--socket PATH` or `KOPUZ_SOCKET` for a custom
 address. No daemon starts automatically when a client connects.
 
+On Linux and macOS, `KOPUZ_RUNTIME_DIR` moves the default socket to
+`$KOPUZ_RUNTIME_DIR/kopuzd.sock` for the daemon, the app and `kopuzctl` alike.
+Unlike `KOPUZ_SOCKET`, the app still starts its own daemon there when none is
+running.
+
 ```sh
 kopuzctl --socket /path/to/kopuzd.sock status
 kopuzctl --address 127.0.0.1:7770 status
