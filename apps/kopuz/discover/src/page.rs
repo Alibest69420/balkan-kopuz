@@ -172,6 +172,12 @@ impl CatalogPage {
             held.push(tracks_shelf(&detail.tracks));
         }
         held.extend(detail.shelves.iter().cloned());
+        // Home moves the feed's opening line up to its own first row.
+        if self.embedded
+            && let Some(first) = held.first_mut()
+        {
+            first.strapline = None;
+        }
         self.shelves.update(cx, |shelves, cx| shelves.set(held, cx));
         self.detail = Some(detail);
     }
@@ -410,18 +416,18 @@ impl CatalogPage {
             .into_any_element()
     }
 
-    fn chips(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    fn chips(&self, page: &Entity<Self>) -> Option<AnyElement> {
         let chips = &self.detail.as_ref()?.chips;
         if chips.is_empty() {
             return None;
         }
         let row = chips.iter().enumerate().map(|(at, chip)| {
-            let picked = chip.clone();
+            let (picked, page) = (chip.clone(), page.clone());
             Chip::new(("catalog-chip", at))
                 .label(chip.label.clone())
                 .size(ChipSize::Medium)
                 .selected(self.chip_on(chip))
-                .on_click(cx.listener(move |this, _, _, cx| this.pick(picked.clone(), cx)))
+                .on_click(move |_, _, cx| page.update(cx, |this, cx| this.pick(picked.clone(), cx)))
         });
         Some(
             div()
@@ -437,7 +443,11 @@ impl CatalogPage {
 impl Render for CatalogPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = profile::render("catalog-page");
-        let chips = self.chips(cx);
+        // Embedded, the host draws the chips through `CatalogChips`.
+        let chips = match self.embedded {
+            true => None,
+            false => self.chips(&cx.entity()),
+        };
         let held = self.detail.as_ref();
         let empty =
             held.is_some_and(|detail| detail.tracks.is_empty() && detail.shelves.is_empty());
@@ -504,6 +514,32 @@ impl Render for CatalogPage {
                     .child(content),
             )
             .into_any_element()
+    }
+}
+
+/// An embedded page's chips, for a host that draws them apart from the feed they switch.
+pub struct CatalogChips {
+    page: Entity<CatalogPage>,
+    _observe: Subscription,
+}
+
+impl CatalogChips {
+    pub fn new(page: Entity<CatalogPage>, cx: &mut Context<Self>) -> Self {
+        let observe = cx.observe(&page, |_, _, cx| cx.notify());
+        Self {
+            page,
+            _observe: observe,
+        }
+    }
+}
+
+impl Render for CatalogChips {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Its own top space, so a source without chips leaves no gap under the host's title.
+        let row = self.page.read(cx).chips(&self.page);
+        div()
+            .w_full()
+            .when_some(row, |this, row| this.pt_8().child(row))
     }
 }
 
