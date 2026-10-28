@@ -41,6 +41,7 @@ player = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true }
 sha2 = { workspace = true }
+semver = { workspace = true }
 hex = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]

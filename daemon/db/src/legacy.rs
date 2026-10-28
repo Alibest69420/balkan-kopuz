@@ -14,7 +14,7 @@ const LEGACY_IDENTITY: (&str, &str, &str) = ("com", "temidaradev", "kopuz");
 pub fn migrate_identity() -> Vec<String> {
     let (Some(old), Some(new)) = (
         directories::ProjectDirs::from(LEGACY_IDENTITY.0, LEGACY_IDENTITY.1, LEGACY_IDENTITY.2),
-        directories::ProjectDirs::from("moe", "kopuz", "kopuz"),
+        config::flavor::project_dirs(),
     ) else {
         return Vec::new();
     };
@@ -54,7 +54,7 @@ fn move_dir(from: &Path, to: &Path) -> Option<String> {
 /// Move legacy JSON stores from the old cache location into the config
 /// directory before the one-shot SQLite import runs.
 pub fn migrate_locations() {
-    let Some(dirs) = directories::ProjectDirs::from("moe", "kopuz", "kopuz") else {
+    let Some(dirs) = config::flavor::project_dirs() else {
         return;
     };
     let new_config = dirs.config_dir().to_path_buf();
