@@ -25,8 +25,12 @@ address. No daemon starts automatically when a client connects.
 
 On Linux and macOS, `KOPUZ_RUNTIME_DIR` moves the default socket to
 `$KOPUZ_RUNTIME_DIR/kopuzd.sock` for the daemon, the app and `kopuzctl` alike.
-Unlike `KOPUZ_SOCKET`, the app still starts its own daemon there when none is
-running.
+A relative value is taken under the user's runtime directory. Unlike
+`KOPUZ_SOCKET`, the app still starts its own daemon there when none is running.
+
+Kopuz Nightly's Flatpak keeps its socket in the folder Flatpak shares with the
+host, so `kopuzctl` outside the sandbox reaches it with
+`KOPUZ_SOCKET=$XDG_RUNTIME_DIR/app/moe.kopuz.kopuz.nightly/kopuzd.sock`.
 
 ```sh
 kopuzctl --socket /path/to/kopuzd.sock status
