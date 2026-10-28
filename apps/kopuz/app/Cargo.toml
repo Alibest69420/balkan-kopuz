@@ -18,7 +18,7 @@ workspace = true
 
 # Bundles the release kopuz, kopuzd and kopuzctl already built in the target dir.
 [package.metadata.packager]
-product-name = "Kopuz"
+product-name = "Balkan Kopuz"
 identifier = "moe.kopuz.kopuz"
 publisher = "temidaradev"
 authors = ["temidaradev"]

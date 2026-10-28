@@ -1,6 +1,6 @@
 [Desktop Entry]
-Name=Kopuz
-Comment=A modern music player
+Name=Balkan Kopuz
+Comment=A modern music player (Kopuz fork with extra metadata codecs)
 Exec=kopuz
 Icon=moe.kopuz.kopuz
 Terminal=false

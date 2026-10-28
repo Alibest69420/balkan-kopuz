@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 #[command(
     name = "kopuzctl",
     version,
-    about = "Control a running Kopuz app or daemon"
+    about = "Control a running Balkan Kopuz app or daemon"
 )]
 pub struct Cli {
     /// Unix socket or Windows pipe to connect to.
@@ -264,7 +264,7 @@ pub async fn execute(
         api::Handshake::Ready(status) => status,
         api::Handshake::Mismatched { daemon, client } => {
             return Err(ApiError::unsupported(format!(
-                "protocol mismatch: daemon {daemon}, client {client}; install matching Kopuz versions"
+                "protocol mismatch: daemon {daemon}, client {client}; install matching Balkan Kopuz versions"
             )));
         }
     };

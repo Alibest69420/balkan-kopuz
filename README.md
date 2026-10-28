@@ -1,11 +1,14 @@
 <!--markdownlint-disable MD013 MD033 MD041 -->
 <div align="center">
-  <img src="apps/legacy/kopuz/assets/banner.png" alt="Kopuz Logo" height="300"/>
-  <h1>Kopuz</h1>
+  <img src="apps/legacy/kopuz/assets/banner.png" alt="Balkan Kopuz Logo" height="300"/>
+  <h1>Balkan Kopuz</h1>
   <p>
-    Kopuz is a modern, lightweight, music player application built with Rust
-    and the Dioxus framework. It provides a clean and responsive interface
-    for managing and enjoying your local music collection.
+    Balkan Kopuz is a fork of <a href="https://github.com/Kopuz-org/kopuz">Kopuz</a>,
+    a modern, lightweight music player built with Rust and the Dioxus framework.
+    This fork reads tags from a wider set of audio codecs — AAC, AIFF, APE,
+    WavPack, Musepack, Speex, MP2/MP1, Matroska audio, WebM and CAF — alongside
+    the formats upstream already supported, and picks up embedded cover art
+    wherever the container exposes it.
   </p>
   <a href="https://discord.gg/K6Bmzw2E4M">
     <img src="https://img.shields.io/badge/Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord">

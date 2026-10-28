@@ -66,7 +66,7 @@ fn options(kind: WindowKind, bounds: Bounds<Pixels>) -> WindowOptions {
         window_min_size: Some(dimensions()),
         app_id: Some("kopuz".into()),
         titlebar: Some(TitlebarOptions {
-            title: Some("Kopuz".into()),
+            title: Some("Balkan Kopuz".into()),
             ..Default::default()
         }),
         is_resizable: false,

@@ -115,7 +115,7 @@ fn main() -> anyhow::Result<()> {
                     WindowOptions {
                         app_id: Some("kopuz".into()),
                         titlebar: Some(TitlebarOptions {
-                            title: Some("Kopuz".into()),
+                            title: Some("Balkan Kopuz".into()),
                             ..Default::default()
                         }),
                         ..Default::default()
@@ -185,7 +185,7 @@ fn open_main_window(started: std::time::Instant, cx: &mut App) {
         window_background: gpui_kit::WindowBackgroundAppearance::Opaque,
         app_id: Some("kopuz".into()),
         titlebar: Some(TitlebarOptions {
-            title: Some("Kopuz".into()),
+            title: Some("Balkan Kopuz".into()),
             ..Default::default()
         }),
         ..Default::default()

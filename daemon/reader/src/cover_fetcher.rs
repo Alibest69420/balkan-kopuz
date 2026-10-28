@@ -35,7 +35,7 @@ impl CoverFetcher {
             .filter(|key| !key.is_empty());
         let client = ::utils::http::builder()
             .user_agent(concat!(
-                "Kopuz/",
+                "BalkanKopuz/",
                 env!("CARGO_PKG_VERSION"),
                 " (music-player)"
             ))

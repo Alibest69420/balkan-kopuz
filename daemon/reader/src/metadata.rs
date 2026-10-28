@@ -264,9 +264,16 @@ pub fn read_metadata(track_path: &Path) -> Option<ScannedTrack> {
     let options = ParseOptions::new().read_cover_art(false);
     let tagged_file = match Probe::open(track_path).ok()?.options(options).read() {
         Ok(tagged_file) => tagged_file,
-        Err(_) if is_matroska_audio(track_path) => {
+        Err(_) if should_retry_with_symphonia(track_path) => {
             let file = std::fs::File::open(track_path).ok()?;
-            return read_with_symphonia(Box::new(file), track_path).ok();
+            // Symphonia can panic on malformed input; one bad file must not
+            // take the scan task down with it.
+            let scanned = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                read_with_symphonia(Box::new(file), track_path)
+            }))
+            .ok()?
+            .ok()?;
+            return Some(scanned);
         }
         Err(_) => return None,
     };
@@ -405,11 +412,23 @@ pub fn write_tags(track_path: &Path, edits: &TrackEdits) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-fn is_matroska_audio(track_path: &Path) -> bool {
+/// Whether the container is in the Matroska family, which `lofty` cannot read
+/// but symphonia can (`.mka` audio, `.webm` audio-only downloads).
+pub fn is_matroska_audio(track_path: &Path) -> bool {
     track_path
         .extension()
         .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("mka"))
+        .is_some_and(|ext| matches!(ext.to_ascii_lowercase().as_str(), "mka" | "mkv" | "webm"))
+}
+
+/// `lofty` first; symphonia covers Matroska and containers `lofty` does not
+/// know by extension (an `.oga`, say), where the bytes may still be probeable.
+fn should_retry_with_symphonia(track_path: &Path) -> bool {
+    is_matroska_audio(track_path)
+        || track_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_none_or(|ext| lofty::file::FileType::from_ext(ext).is_none())
 }
 
 fn symphonia_tag_to_string(tag: &SymphoniaTag) -> Option<String> {
@@ -765,5 +784,21 @@ mod tests {
             Some(3)
         );
         assert_eq!(disc("/music/Live Set/01.flac", None), None);
+    }
+
+    #[test]
+    fn matroska_containers_use_the_symphonia_reader() {
+        assert!(is_matroska_audio(Path::new("/music/a.mka")));
+        assert!(is_matroska_audio(Path::new("/music/a.webm")));
+        assert!(is_matroska_audio(Path::new("/music/A.MKV")));
+        assert!(!is_matroska_audio(Path::new("/music/a.flac")));
+    }
+
+    #[test]
+    fn unknown_extensions_may_fall_back_to_symphonia() {
+        assert!(should_retry_with_symphonia(Path::new("/music/a.oga")));
+        assert!(should_retry_with_symphonia(Path::new("/music/a.webm")));
+        assert!(!should_retry_with_symphonia(Path::new("/music/a.flac")));
+        assert!(!should_retry_with_symphonia(Path::new("/music/a.aac")));
     }
 }

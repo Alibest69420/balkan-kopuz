@@ -7,9 +7,9 @@ release: 1
 section: sound
 priority: optional
 maintainer: temidaradev <temidaradev@proton.me>
-description: A modern, lightweight music player, with the kopuzd daemon it runs on.
-vendor: Kopuz
-homepage: https://github.com/Kopuz-org/kopuz
+description: Balkan Kopuz, a Kopuz fork with extra metadata codecs, and the kopuzd daemon it runs on.
+vendor: Balkan Kopuz
+homepage: https://github.com/Alibest69420/balkan-kopuz
 license: EUPL-1.2
 
 contents:

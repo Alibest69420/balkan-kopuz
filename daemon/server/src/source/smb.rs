@@ -348,10 +348,7 @@ fn scan_stream(
     stream: impl symphonia::core::io::MediaSource + 'static,
     path: &str,
 ) -> Result<Option<reader::ScannedTrack>, SourceError> {
-    if Path::new(path)
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("mka"))
-    {
+    if reader::metadata::is_matroska_audio(Path::new(path)) {
         return match reader::metadata::read_with_symphonia(Box::new(stream), Path::new(path)) {
             Ok(scanned) => Ok(Some(remote_metadata(scanned, path))),
             Err(symphonia::core::errors::Error::IoError(error)) => {

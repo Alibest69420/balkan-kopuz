@@ -3,7 +3,7 @@
   <id>moe.kopuz.kopuz</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>EUPL-1.2</project_license>
-  <name>Kopuz</name>
+  <name>Balkan Kopuz</name>
   <icon type="stock">moe.kopuz.kopuz</icon>
   <branding>
   <color type="primary" scheme_preference="light">#fcf0f0</color>
@@ -12,7 +12,7 @@
   <summary>Hi-Res multi-backend music player</summary>
   <description>
     <p>
-      Kopuz is a fast, modern music player built with Rust and the Dioxus framework.
+      Balkan Kopuz is a fork of Kopuz, a fast, modern music player built with Rust and the Dioxus framework.
       It scans your local music folders and organizes them into a browsable library
       by artist and album. Features include full playback controls, an immersive
       fullscreen player, dynamic theming, and system media integration. And also

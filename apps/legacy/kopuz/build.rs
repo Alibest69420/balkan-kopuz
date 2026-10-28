@@ -62,7 +62,7 @@ const NETWORK_SECURITY_CONFIG: &str = r#"<?xml version="1.0" encoding="utf-8"?>
 
 /// The launcher name Android users have always had, whatever the desktop binary is called.
 const APP_STRINGS: &str = r#"<resources>
-    <string name="app_name">Kopuz</string>
+    <string name="app_name">Balkan Kopuz</string>
 </resources>
 "#;
 

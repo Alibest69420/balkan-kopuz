@@ -198,7 +198,7 @@ fn main() -> std::process::ExitCode {
         }
 
         let mut window = dioxus::desktop::WindowBuilder::new()
-            .with_title("Kopuz")
+            .with_title("Balkan Kopuz")
             .with_resizable(true)
             .with_inner_size(LogicalSize::new(1350.0, 800.0));
 
@@ -773,7 +773,7 @@ fn App() -> Element {
                 match (enabled, slot.as_mut()) {
                     (true, None) => {
                         let mut builder = TrayIconBuilder::new()
-                            .with_tooltip("Kopuz")
+                            .with_tooltip("Balkan Kopuz")
                             .with_menu(tray_menu())
                             .with_menu_on_left_click(false);
                         if let Some(icon) = desktop_shell::build_tray_icon() {

@@ -92,7 +92,7 @@ pub fn Titlebar() -> Element {
                     class: "absolute inset-0 flex items-center justify-center pointer-events-none",
                     span {
                         class: "text-[11px] text-white/35 font-mono",
-                        "Kopuz"
+                        "Balkan Kopuz"
                     }
                 }
 

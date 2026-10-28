@@ -371,11 +371,20 @@ async fn collect_audio_files(
     (audio_files, artist_image_dirs)
 }
 
+/// Audio containers whose metadata `lofty` reads (the format list from its
+/// `FileType::from_ext`), plus the Matroska and CAF containers that symphonia
+/// handles. Kept in one list so the scanner, SMB source and cover indexer
+/// agree on what is a track.
+pub const AUDIO_EXTENSIONS: &[&str] = &[
+    "3gp", "aac", "afc", "aif", "aifc", "aiff", "ape", "caf", "flac", "m4a", "m4b", "m4p", "m4r",
+    "mka", "mp1", "mp2", "mp3", "mp4", "mp+", "mpc", "mpp", "oga", "ogg", "opus", "spx", "wav",
+    "wave", "webm", "wv",
+];
+
 pub fn is_audio_file(path: &Path) -> bool {
-    let extensions = ["mp3", "flac", "m4a", "wav", "ogg", "opus", "mp4", "mka"];
     path.extension()
         .and_then(|s| s.to_str())
-        .is_some_and(|s| extensions.iter().any(|e| s.eq_ignore_ascii_case(e)))
+        .is_some_and(|s| AUDIO_EXTENSIONS.iter().any(|e| s.eq_ignore_ascii_case(e)))
 }
 
 #[cfg(test)]
@@ -718,5 +727,37 @@ mod tests {
 
         assert_eq!(library.albums[1].cover_path, None);
         assert!(!library.albums[1].manual_cover);
+    }
+
+    #[test]
+    fn extra_metadata_codecs_are_audio_files() {
+        for name in [
+            "song.aac",
+            "song.aiff",
+            "song.aif",
+            "song.aifc",
+            "song.caf",
+            "song.ape",
+            "song.wv",
+            "song.mpc",
+            "song.mpp",
+            "song.spx",
+            "song.m4b",
+            "song.mp2",
+            "song.oga",
+            "song.webm",
+            "song.wave",
+            "song.3gp",
+        ] {
+            assert!(is_audio_file(Path::new(name)), "{name} should be audio");
+        }
+        assert!(!is_audio_file(Path::new("cover.jpg")));
+        assert!(!is_audio_file(Path::new("notes.txt")));
+    }
+
+    #[test]
+    fn audio_extension_matching_is_case_insensitive() {
+        assert!(is_audio_file(Path::new("SONG.APE")));
+        assert!(is_audio_file(Path::new("song.FLAC")));
     }
 }

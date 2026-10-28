@@ -77,7 +77,7 @@ impl Gate {
 /// What a call to a daemon on another wire fails with, worded as `kopuzctl` words it.
 fn protocol_mismatch(daemon: u32, client: u32) -> ApiError {
     ApiError::unsupported(format!(
-        "protocol mismatch: daemon {daemon}, client {client}; install matching Kopuz versions"
+        "protocol mismatch: daemon {daemon}, client {client}; install matching Balkan Kopuz versions"
     ))
 }
 

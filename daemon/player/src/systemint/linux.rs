@@ -128,7 +128,10 @@ impl RootInterface for P {
         Ok(false)
     }
     async fn identity(&self) -> fdo::Result<String> {
-        Ok(IDENTITY.get().map_or("Kopuz", |(name, _)| name).into())
+        Ok(IDENTITY
+            .get()
+            .map_or("Balkan Kopuz", |(name, _)| name)
+            .into())
     }
     async fn desktop_entry(&self) -> fdo::Result<String> {
         Ok(IDENTITY.get().map_or("kopuz", |(_, entry)| entry).into())

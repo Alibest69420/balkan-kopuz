@@ -1,6 +1,6 @@
 [Desktop Entry]
-Name=Kopuz Legacy
-Comment=The previous Kopuz interface, with the music daemon built in
+Name=Balkan Kopuz Legacy
+Comment=The previous Balkan Kopuz interface, with the music daemon built in
 Exec=kopuz-legacy
 Icon=moe.kopuz.legacy
 Terminal=false
