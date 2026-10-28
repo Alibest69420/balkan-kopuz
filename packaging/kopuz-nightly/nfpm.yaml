@@ -27,7 +27,7 @@ contents:
       mode: 0755
   - src: data/moe.kopuz.kopuz.nightly.desktop
     dst: /usr/share/applications/moe.kopuz.kopuz.nightly.desktop
-  - src: apps/legacy/kopuz/assets/logo.png
+  - src: packaging/kopuz-nightly/logo.png
     dst: /usr/share/icons/hicolor/256x256/apps/moe.kopuz.kopuz.nightly.png
   - src: LICENSE
     dst: /usr/share/licenses/kopuz-nightly/LICENSE
