@@ -8,7 +8,7 @@ authors = ["temidaradev"]
 category = "Music"
 description = "A modern, lightweight music player built with Rust and GPUI, from the latest development code."
 license-file = "../../LICENSE"
-icons = ["../../apps/legacy/kopuz/assets/logo.png", "../../apps/legacy/kopuz/assets/app.ico"]
+icons = ["logo.png", "app.ico"]
 binaries-dir = "../../target/release"
 binaries = [
   { path = "kopuz-nightly", main = true },
@@ -17,5 +17,5 @@ binaries = [
 ]
 
 [nsis]
-installer-icon = "../../apps/legacy/kopuz/assets/app.ico"
+installer-icon = "app.ico"
 template = "../kopuz/installer.nsi"
