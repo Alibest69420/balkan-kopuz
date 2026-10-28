@@ -101,20 +101,34 @@ async fn apps_gone(exit_with_app: bool, core: &Core, clients: &service::Clients)
     if !exit_with_app {
         return std::future::pending().await;
     }
-    let mut idle_since: Option<Instant> = None;
-    loop {
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        let playing = core
-            .api
+    let playing_now = async || {
+        core.api
             .player_state()
             .await
-            .is_ok_and(|state| state.phase == api::Phase::Playing);
-        match clients.count() == 0 && !playing {
-            true if idle_since.get_or_insert_with(Instant::now).elapsed() >= APP_GONE_AFTER => {
-                return;
-            }
-            true => {}
-            false => idle_since = None,
+            .is_ok_and(|state| state.phase == api::Phase::Playing)
+    };
+    // The phase follows the session's events, so the once-a-second check only reads a counter.
+    let mut events = core.session.subscribe();
+    let mut playing = playing_now().await;
+    let mut tick = tokio::time::interval(std::time::Duration::from_secs(1));
+    let mut idle_since: Option<Instant> = None;
+    loop {
+        tokio::select! {
+            event = events.recv() => match event {
+                Ok(api::ApiEvent::PlayerState(state)) => playing = state.phase == api::Phase::Playing,
+                Ok(_) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => playing = playing_now().await,
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    return std::future::pending().await;
+                }
+            },
+            _ = tick.tick() => match clients.count() == 0 && !playing {
+                true if idle_since.get_or_insert_with(Instant::now).elapsed() >= APP_GONE_AFTER => {
+                    return;
+                }
+                true => {}
+                false => idle_since = None,
+            },
         }
     }
 }
