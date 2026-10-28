@@ -134,9 +134,10 @@ mod tests {
     }
 
     #[test]
-    fn no_app_id_sets_none() {
-        assert_eq!(parse(&[], None).unwrap().identity, None);
-        assert_eq!(parse(&[], Some("")).unwrap().identity, None);
+    fn no_app_id_falls_back_to_the_flavour_identity() {
+        let own = flavor_identity(Flavor::current());
+        assert_eq!(parse(&[], None).unwrap().identity, own);
+        assert_eq!(parse(&[], Some("")).unwrap().identity, own);
     }
 
     #[test]
