@@ -1110,6 +1110,7 @@ tips_search = durchsucht alles und führt Befehle aus
 tips_now_playing = Klicke auf das Cover in der Player-Leiste, um Now Playing zu öffnen
 tips_source_switcher = Wechsle über das Menü in der oberen Leiste zwischen deinen Quellen
 daemon_down_title = Kopuz braucht seinen Hintergrunddienst
+daemon_not_answering = Ein Kopuz-Hintergrunddienst läuft bereits, antwortet aber nicht. Beende ihn und versuche es erneut.
 retry = Erneut versuchen
 connectivity_check_urls = Verbindungsprüfung
 connectivity_check_urls_description = Adressen, die abgefragt werden, wenn eine Quelle nicht mehr antwortet, um eine getrennte Verbindung von einem ausgefallenen Server zu unterscheiden. Leer lassen, um die Prüfung zu überspringen.

@@ -19,6 +19,9 @@ pub const DOWN_AFTER: Duration = Duration::from_secs(3);
 const FADE: Duration = Duration::from_millis(300);
 /// How far the panel rises as it fades in.
 const RISE: f32 = 6.;
+const REASON_WIDTH: Pixels = px(420.);
+// The startup screen has no theme yet, so its secondary line is the text colour, faded.
+const REASON_OPACITY: f32 = 0.7;
 const LOGO_WIDTH: Pixels = px(120.);
 const LOGO_HEIGHT: Pixels = px(100.);
 
@@ -58,14 +61,27 @@ impl Render for Loader {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = theme::startup();
         let reduced = cx.reduce_motion() || components::motion::span(FADE, cx).is_none();
-        let connected = link::Link::connection(cx).read(cx).is_connected();
-        // The app starting its own daemon either gets an answer or crashes saying why; there is nothing to offer meanwhile.
-        let waiting_on_others = !link::Link::global(cx).starts_own();
+        let connection = link::Link::connection(cx);
+        let connection = connection.read(cx);
+        let connected = connection.is_connected();
+        let status = connection.status().clone();
+        // Starting its own daemon ends in an answer or a crash saying why; anything else needs the user.
+        let stuck = !link::Link::global(cx).starts_own()
+            || connection.is_blocked()
+            || matches!(status, link::ConnectionStatus::Mismatched { .. });
         let elapsed = self.started.elapsed();
         let (frame, opacity) = logo::pose(elapsed, reduced);
-        let down = match waiting_on_others {
+        let down = match stuck {
             true => down_shown(elapsed, connected, reduced),
             false => 0.,
+        };
+        let reason = match &status {
+            _ if connection.is_blocked() => Some(t("daemon_not_answering")),
+            link::ConnectionStatus::Mismatched { daemon, client } => {
+                Some(crate::banner::ConnectionBanner::mismatch(*daemon, *client))
+            }
+            link::ConnectionStatus::Unreachable(error) => Some(store::human(error)),
+            _ => None,
         };
         if !reduced {
             window.request_animation_frame();
@@ -95,6 +111,14 @@ impl Render for Loader {
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .child(t("daemon_down_title")),
                             )
+                            .children(reason.map(|reason| {
+                                div()
+                                    .max_w(REASON_WIDTH)
+                                    .text_sm()
+                                    .text_center()
+                                    .opacity(REASON_OPACITY)
+                                    .child(reason)
+                            }))
                             .child(
                                 Button::new("loader-retry")
                                     .outline()
