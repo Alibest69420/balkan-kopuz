@@ -302,6 +302,7 @@ jobs:
           if-no-files-found: error
 
   macos-legacy:
+    if: ${{ !(github.ref_type == 'tag' && contains(github.ref_name, '-nightly.')) }}
     runs-on: macos-15
 
     steps:
@@ -384,6 +385,7 @@ jobs:
           if-no-files-found: error
 
   macos:
+    if: ${{ !(github.ref_type == 'tag' && contains(github.ref_name, '-nightly.')) }}
     runs-on: macos-15
 
     steps:

@@ -54,7 +54,12 @@ jobs:
           git tag "$tag" "$head"
           git push origin "refs/tags/${tag}"
           # A tag pushed with this workflow's token starts no other workflow, so the build is started by hand.
-          gh workflow run release.yml --ref "$tag"
+          if ! gh workflow run release.yml --ref "$tag"; then
+            # A tag on HEAD reads as built, so one whose build never started must go for the next run to retry.
+            git push origin --delete "refs/tags/${tag}"
+            echo "Could not start the build of ${tag}; removed the tag"
+            exit 1
+          fi
           echo "Tagged ${head} as ${tag}"
 
       - name: Keep the last ten nightlies
