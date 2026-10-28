@@ -343,11 +343,17 @@ impl Render for Home {
             false => None,
         };
         let mut rows: Vec<AnyElement> = Vec::with_capacity(drawn.len());
+        // The chips head For you, or the feed where For you is not shown, whichever comes first.
+        let mut chips = catalog.as_ref().map(|views| views.chips.clone());
+        let headed = |chips: &mut Option<AnyView>, row: AnyElement| match chips.take() {
+            Some(chips) => v_flex().gap_6().child(chips).child(row).into_any_element(),
+            None => row,
+        };
         for drawn in drawn {
             let index = match drawn {
                 Drawn::Catalog => {
                     if let Some(views) = &catalog {
-                        rows.push(views.feed.clone().into_any_element());
+                        rows.push(headed(&mut chips, views.feed.clone().into_any_element()));
                     }
                     continue;
                 }
@@ -360,14 +366,17 @@ impl Render for Home {
             // A ranking is a list and a shelf is a row; `Form` is what says which a name gets.
             rows.push(match shelf.form {
                 data::Form::Ranked => ranked::ranked(shelf, cx),
-                _ if shelf.name == "for_you" => for_you::row(
-                    shelf,
-                    &shared,
-                    &self.for_you_last,
-                    &handle,
-                    &mut self.for_you,
-                    window,
-                    cx,
+                _ if shelf.name == "for_you" => headed(
+                    &mut chips,
+                    for_you::row(
+                        shelf,
+                        &shared,
+                        &self.for_you_last,
+                        &handle,
+                        &mut self.for_you,
+                        window,
+                        cx,
+                    ),
                 ),
                 _ => shelf::shelf(shelf, &handle, &shared.now),
             });
@@ -390,11 +399,7 @@ impl Render for Home {
             .p_8()
             .pb_32()
             .gap_12()
-            .child(
-                v_flex()
-                    .child(heading(cx))
-                    .children(catalog.map(|views| views.chips)),
-            )
+            .child(heading(cx))
             .children(banner)
             .children(rows)
             .when(bare && offline, |page| page.child(EmptyState::offline()))
