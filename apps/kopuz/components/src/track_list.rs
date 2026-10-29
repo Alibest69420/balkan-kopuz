@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 use api::TrackInfo;
+use gpui_kit::base::{Scrollbar, ScrollbarMode};
 use gpui_kit::component::menu::PopupMenu;
 use gpui_kit::component::v_flex;
 use gpui_kit::{
@@ -478,17 +479,27 @@ impl Render for TrackList {
                 }
             }))
             .child(
-                uniform_list(
-                    "track-list",
-                    count,
-                    cx.processor(move |this, range: std::ops::Range<usize>, _, cx| {
-                        let columns = this.layout();
-                        range.map(|index| this.row(index, &columns, cx)).collect()
-                    }),
-                )
-                .track_scroll(&self.scroll)
-                .flex_1()
-                .size_full(),
+                div()
+                    .relative()
+                    .flex_1()
+                    .min_h_0()
+                    .size_full()
+                    .child(
+                        uniform_list(
+                            "track-list",
+                            count,
+                            cx.processor(move |this, range: std::ops::Range<usize>, _, cx| {
+                                let columns = this.layout();
+                                range.map(|index| this.row(index, &columns, cx)).collect()
+                            }),
+                        )
+                        .track_scroll(&self.scroll)
+                        .flex_1()
+                        .size_full(),
+                    )
+                    // A long playlist is unreachable by wheel alone; always show
+                    // the drag handle rather than fade it out between scrolls.
+                    .child(Scrollbar::vertical(&self.scroll).mode(ScrollbarMode::Always)),
             )
     }
 }
