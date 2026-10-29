@@ -250,6 +250,20 @@ fn handle_tray_action(action: tray::TrayAction, started: std::time::Instant, cx:
         tray::TrayAction::Next => {
             store::PlayerModel::global(cx).update(cx, |player, cx| player.next(cx))
         }
-        tray::TrayAction::Quit => cx.quit(),
+        tray::TrayAction::Quit => quit_after_stopping(cx),
     }
+}
+
+/// Stop the daemon's playback before this process exits, so a tray Quit does
+/// not leave a headless player running after its app is gone.
+fn quit_after_stopping(cx: &mut App) {
+    let call = store::Link::global(cx)
+        .call(|api| async move { api.player_command(api::PlayerCommand::Stop).await });
+    cx.spawn(async move |cx| {
+        if let Err(error) = call.await {
+            tracing::warn!(%error, "could not stop playback before quitting");
+        }
+        cx.update(|cx| cx.quit());
+    })
+    .detach();
 }
