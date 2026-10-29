@@ -12,7 +12,7 @@ use ksni::menu::StandardItem;
 /// What a tray click asks the GPUI side to do; the tray only owns a channel.
 #[derive(Debug, Clone, Copy)]
 pub enum TrayAction {
-    Show,
+    ShowHide,
     Toggle,
     Previous,
     Next,
@@ -69,7 +69,7 @@ impl Tray for BalkanTray {
     }
 
     fn activate(&mut self, _x: i32, _y: i32) {
-        self.send(TrayAction::Show);
+        self.send(TrayAction::ShowHide);
     }
 
     fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
@@ -78,7 +78,7 @@ impl Tray for BalkanTray {
         vec![
             StandardItem {
                 label: t("tray_show_hide").to_string(),
-                activate: Box::new(|tray: &mut Self| tray.send(TrayAction::Show)),
+                activate: Box::new(|tray: &mut Self| tray.send(TrayAction::ShowHide)),
                 ..Default::default()
             }
             .into(),

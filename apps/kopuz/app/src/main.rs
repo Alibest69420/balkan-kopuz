@@ -226,18 +226,21 @@ fn minimize_to_tray(cx: &App) -> bool {
 }
 
 /// Bring the app back after the window was closed, or focus the window still open.
-fn show_main_window(started: std::time::Instant, cx: &mut App) {
-    if let Some(window) = cx.windows().first().copied() {
-        let _ = window.update(cx, |_, window, _| window.activate_window());
-        cx.activate(true);
+fn toggle_main_window(started: std::time::Instant, cx: &mut App) {
+    let windows = cx.windows();
+    if windows.is_empty() {
+        open_main_window(started, cx);
         return;
     }
-    open_main_window(started, cx);
+    // Closing the last window leaves the app running when the tray is enabled.
+    for window in windows {
+        let _ = window.update(cx, |_, window, _| window.remove_window());
+    }
 }
 
 fn handle_tray_action(action: tray::TrayAction, started: std::time::Instant, cx: &mut App) {
     match action {
-        tray::TrayAction::Show => show_main_window(started, cx),
+        tray::TrayAction::ShowHide => toggle_main_window(started, cx),
         tray::TrayAction::Toggle => {
             store::PlayerModel::global(cx).update(cx, |player, cx| player.toggle(cx))
         }
