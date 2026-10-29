@@ -7,6 +7,7 @@ mod handover;
 mod router;
 mod shell;
 mod system_ease;
+mod tray;
 
 use std::time::Duration;
 
@@ -102,6 +103,7 @@ fn main() -> anyhow::Result<()> {
     let args = args::Args::parse(std::env::args_os().skip(1));
 
     gpui_kit::application()
+        .with_quit_mode(gpui_kit::QuitMode::Explicit)
         .with_assets(gpui_kit::assets::AllAssets)
         .run(move |cx| {
             gpui_kit::init(cx);
@@ -134,6 +136,23 @@ fn main() -> anyhow::Result<()> {
                 store::SourcesModel::global(cx)
                     .update(cx, |sources, cx| sources.offline_on_connect(cx));
             }
+
+            let (tray_actions, mut tray_rx) = futures::channel::mpsc::unbounded();
+            let tray_available = tray::start(tray_actions);
+            cx.on_window_closed(move |cx, _| {
+                // With no tray there is nothing left to reach, so a close is still a quit.
+                if cx.windows().is_empty() && (!tray_available || !minimize_to_tray(cx)) {
+                    cx.quit();
+                }
+            })
+            .detach();
+            cx.spawn(async move |cx| {
+                use futures::StreamExt as _;
+                while let Some(action) = tray_rx.next().await {
+                    cx.update(|cx| handle_tray_action(action, started, cx));
+                }
+            })
+            .detach();
             metadata_dialog::register(cx);
             settings_sources::register(cx);
             settings_interface::init(cx);
@@ -195,4 +214,39 @@ fn open_main_window(started: std::time::Instant, cx: &mut App) {
         cx.new(|cx| Root::new(shell, window, cx))
     })
     .expect("failed to open the main window");
+}
+
+/// Whether closing the last window should leave the app running in the tray.
+fn minimize_to_tray(cx: &App) -> bool {
+    store::ConfigModel::global(cx)
+        .read(cx)
+        .config()
+        .system
+        .minimize_to_tray
+}
+
+/// Bring the app back after the window was closed, or focus the window still open.
+fn show_main_window(started: std::time::Instant, cx: &mut App) {
+    if let Some(window) = cx.windows().first().copied() {
+        let _ = window.update(cx, |_, window, _| window.activate_window());
+        cx.activate(true);
+        return;
+    }
+    open_main_window(started, cx);
+}
+
+fn handle_tray_action(action: tray::TrayAction, started: std::time::Instant, cx: &mut App) {
+    match action {
+        tray::TrayAction::Show => show_main_window(started, cx),
+        tray::TrayAction::Toggle => {
+            store::PlayerModel::global(cx).update(cx, |player, cx| player.toggle(cx))
+        }
+        tray::TrayAction::Previous => {
+            store::PlayerModel::global(cx).update(cx, |player, cx| player.previous(cx))
+        }
+        tray::TrayAction::Next => {
+            store::PlayerModel::global(cx).update(cx, |player, cx| player.next(cx))
+        }
+        tray::TrayAction::Quit => cx.quit(),
+    }
 }
