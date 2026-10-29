@@ -1,12 +1,13 @@
 //! The chrome over the listing: the facet switch, the filter bar and the selection pill.
 
-use api::TrackFilter;
+use api::{JobKind, TrackFilter};
 use commands::Command;
 use components::format::{t, t_with};
 use components::{
     FilterBar, FilterChip, FilterEntry, PageHeader, Segment, Segmented, SortControl, icons, style,
 };
 use config::{SortCriterion, SortDirection};
+use gpui_kit::component::Disableable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{h_flex, v_flex};
@@ -208,6 +209,7 @@ impl Library {
     /// The facet's own knobs: how it is drawn, how it is ordered, and what it groups by.
     fn controls(&self, cx: &mut Context<Self>) -> AnyElement {
         let facet = self.filters().facet;
+        let reload = Self::reload_kind(cx);
         h_flex()
             .gap_2()
             .items_center()
@@ -221,6 +223,36 @@ impl Library {
                 row.child(self.view_control(cx))
                     .child(self.tile_control(cx))
                     .child(self.grid_sort_control(cx))
+            })
+            .when_some(reload, |row, kind| row.child(self.reload_control(kind, cx)))
+            .into_any_element()
+    }
+
+    /// The job that refills the active source's library, if it has one: a folder
+    /// scan for local sources, a sync for services.
+    fn reload_kind(cx: &App) -> Option<JobKind> {
+        let capabilities = store::SourcesModel::global(cx).read(cx).capabilities();
+        if capabilities.scan_folders {
+            Some(JobKind::Scan)
+        } else if capabilities.sync {
+            Some(JobKind::LibrarySync)
+        } else {
+            None
+        }
+    }
+
+    /// Pick up songs added to a folder without restarting the app. The daemon
+    /// refuses a second scan of the same kind, so the button just asks again.
+    fn reload_control(&self, kind: JobKind, cx: &mut Context<Self>) -> AnyElement {
+        let label = match kind {
+            JobKind::Scan => t("rescan_library"),
+            _ => t("refresh_music_library"),
+        };
+        let running = store::JobsModel::global(cx).read(cx).is_running(kind);
+        self.quiet("library-reload", icons::REFRESH, label, cx)
+            .disabled(running)
+            .on_click(move |_, _, cx| {
+                store::JobsModel::global(cx).update(cx, |jobs, cx| jobs.start(kind, cx));
             })
             .into_any_element()
     }
