@@ -1,7 +1,7 @@
 //! "Add to playlist": pick one of the source's playlists, or type a name to make one.
 
 use components::dialogs::{FormDialog, FormFooter};
-use components::format::t;
+use components::format::{t, t_with};
 use components::icons;
 use components::{PickItem, PickList, QuickCreate};
 use gpui_kit::component::WindowExt as _;
@@ -43,7 +43,12 @@ impl Render for PlaylistPicker {
             .read(cx)
             .playlists()
             .iter()
-            .map(|playlist| PickItem::new(playlist.id.clone(), playlist.name.clone()))
+            .map(|playlist| {
+                PickItem::new(playlist.id.clone(), playlist.name.clone()).detail(t_with(
+                    "playlist_track_count",
+                    &[("count", playlist.track_keys.len().into())],
+                ))
+            })
             .collect();
         let (on_create, on_pick) = (cx.weak_entity(), cx.weak_entity());
         v_flex()

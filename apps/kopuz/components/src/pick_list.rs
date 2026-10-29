@@ -27,6 +27,7 @@ type OnCreate = Rc<dyn Fn(&mut Window, &mut App)>;
 pub struct PickItem {
     id: SharedString,
     label: SharedString,
+    detail: Option<SharedString>,
     icon: Option<&'static str>,
 }
 
@@ -35,6 +36,7 @@ impl PickItem {
         Self {
             id: id.into(),
             label: label.into(),
+            detail: None,
             icon: None,
         }
     }
@@ -42,6 +44,12 @@ impl PickItem {
     /// A glyph before the label, drawn in the warning tone.
     pub fn icon(mut self, icon: &'static str) -> Self {
         self.icon = Some(icon);
+        self
+    }
+
+    /// A muted note at the row's end, such as how many tracks the playlist holds.
+    pub fn detail(mut self, detail: impl Into<SharedString>) -> Self {
+        self.detail = Some(detail.into());
         self
     }
 }
@@ -104,6 +112,7 @@ impl RenderOnce for PickList {
             );
             let pick = self.on_pick.clone();
             let picked = item.id.clone();
+            let detail = item.detail;
             h_flex()
                 .id(motion::channel(&item.id, ROW))
                 .gap_2()
@@ -118,7 +127,15 @@ impl RenderOnce for PickList {
                         .size(px(12.))
                         .text_color(cx.theme().warning)
                 }))
-                .child(item.label)
+                .child(div().flex_1().min_w_0().child(item.label))
+                .when_some(detail, |row, detail| {
+                    row.child(
+                        div()
+                            .text_xs()
+                            .text_color(style::white(0.4, cx))
+                            .child(detail),
+                    )
+                })
                 .on_click(move |_, window, cx| {
                     if let Some(pick) = pick.as_ref() {
                         pick(&picked, window, cx);
