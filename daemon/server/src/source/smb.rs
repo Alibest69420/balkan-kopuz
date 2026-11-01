@@ -408,7 +408,7 @@ fn cache_picture(picture: &lofty::picture::Picture) -> Option<PathBuf> {
     #[cfg(target_os = "android")]
     let dir = db::config_dir().join("cache/smb-covers");
     #[cfg(not(target_os = "android"))]
-    let dir = directories::ProjectDirs::from("moe", "kopuz", "kopuz")?
+    let dir = config::flavor::project_dirs()?
         .cache_dir()
         .join("smb-covers");
     let extension = picture.mime_type()?.ext()?;

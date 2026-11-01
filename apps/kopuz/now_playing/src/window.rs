@@ -18,6 +18,7 @@ use crate::NowPlaying;
 const WIDTH: Pixels = px(380.);
 const HEIGHT: Pixels = px(148.);
 // How far the overlay sits from the corner it is anchored to.
+#[cfg(target_os = "linux")]
 const MARGIN: Pixels = px(24.);
 
 /// The handle to the second window, while there is one.
@@ -64,9 +65,9 @@ fn options(kind: WindowKind, bounds: Bounds<Pixels>) -> WindowOptions {
         window_background: WindowBackgroundAppearance::Opaque,
         window_decorations: Some(WindowDecorations::Client),
         window_min_size: Some(dimensions()),
-        app_id: Some("kopuz".into()),
+        app_id: Some(config::flavor::Flavor::current().name().into()),
         titlebar: Some(TitlebarOptions {
-            title: Some("Balkan Kopuz".into()),
+            title: Some(config::flavor::Flavor::current().display_name().into()),
             ..Default::default()
         }),
         is_resizable: false,

@@ -4,6 +4,8 @@
 mod args;
 mod backdrop;
 mod handover;
+#[cfg(target_os = "macos")]
+mod menus;
 mod router;
 mod shell;
 mod system_ease;
@@ -115,9 +117,9 @@ fn main() -> anyhow::Result<()> {
                 let reason = error.to_string();
                 cx.open_window(
                     WindowOptions {
-                        app_id: Some("kopuz".into()),
+                        app_id: Some(config::flavor::Flavor::current().name().into()),
                         titlebar: Some(TitlebarOptions {
-                            title: Some("Balkan Kopuz".into()),
+                            title: Some(config::flavor::Flavor::current().display_name().into()),
                             ..Default::default()
                         }),
                         ..Default::default()
@@ -161,8 +163,16 @@ fn main() -> anyhow::Result<()> {
             page_home::register(cx);
             page_home::register_catalog(
                 |id, scroll, window, cx| {
-                    cx.new(|cx| discover::CatalogPage::embedded(id, scroll, window, cx))
-                        .into()
+                    let feed = cx.new(|cx| discover::CatalogPage::embedded(id, scroll, window, cx));
+                    let chips = cx.new(|cx| discover::CatalogChips::new(feed.clone(), cx));
+                    let page = feed.clone();
+                    page_home::CatalogViews {
+                        chips: chips.into(),
+                        feed: feed.into(),
+                        strapline_to_host: std::rc::Rc::new(move |on, cx| {
+                            page.update(cx, |page, cx| page.hand_strapline_to_host(on, cx));
+                        }),
+                    }
                 },
                 cx,
             );
@@ -177,6 +187,8 @@ fn main() -> anyhow::Result<()> {
             commands::init(cx);
             theme::apply_named("default", None, cx);
             keymap(cx);
+            #[cfg(target_os = "macos")]
+            menus::init(cx);
             let ready = store::LayoutModel::global(cx).update(cx, |layout, _| layout.take_ready());
             cx.spawn(async move |cx| {
                 let timer = cx.background_executor().timer(PREFS_WAIT);
@@ -202,9 +214,9 @@ fn open_main_window(started: std::time::Instant, cx: &mut App) {
         })),
         window_min_size: Some(MAIN_WINDOW_MIN_SIZE),
         window_background: gpui_kit::WindowBackgroundAppearance::Opaque,
-        app_id: Some("kopuz".into()),
+        app_id: Some(config::flavor::Flavor::current().name().into()),
         titlebar: Some(TitlebarOptions {
-            title: Some("Balkan Kopuz".into()),
+            title: Some(config::flavor::Flavor::current().display_name().into()),
             ..Default::default()
         }),
         ..Default::default()
