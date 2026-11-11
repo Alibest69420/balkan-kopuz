@@ -3225,15 +3225,37 @@ async fn search_filters_agree_across_transports() {
 }
 
 /// Deleting from disk is the one API call that destroys something outside
-/// the database, so its guard has to hold identically on both transports.
+/// the database, so its guard has to hold identically on both transports: a
+/// file outside the library roots is never unlinked, though the row it named
+/// still goes (the caller asked to forget the track).
 #[tokio::test]
 async fn mutations_agree_across_transports() {
     let pair = spawn_pair().await;
 
-    let keys = vec!["/lib/seed-0.flac".to_string()];
+    let outside = pair._dir.path().join("outside.flac");
+    std::fs::write(&outside, b"not ours to delete").expect("write outside");
+    let outside_key = outside.to_string_lossy().into_owned();
+    pair.database
+        .upsert_tracks(&config::Source::default(), &[track(&outside_key)])
+        .await
+        .expect("seed a track outside the roots");
+
+    let keys = vec![outside_key];
     let local = pair.local.delete_tracks(keys.clone(), true).await;
-    let wire = pair.wire.delete_tracks(keys.clone(), true).await;
-    assert!(local.is_err(), "outside the library roots: {local:?}");
+    let wire = pair.wire.delete_tracks(keys, true).await;
+    assert_eq!(
+        local.as_ref().err().map(|error| error.code),
+        wire.as_ref().err().map(|error| error.code),
+    );
+    assert!(local.is_ok(), "outside the library roots: {local:?}");
+    assert!(outside.exists(), "the guard left the outside file alone");
+
+    // A key whose file is already gone is not an error either: nothing is
+    // left to unlink, and the row must still go.
+    let gone = vec!["/lib/seed-0.flac".to_string()];
+    let local = pair.local.delete_tracks(gone.clone(), true).await;
+    let wire = pair.wire.delete_tracks(gone, true).await;
+    assert!(local.is_ok(), "a missing file: {local:?}");
     assert_eq!(
         local.err().map(|error| error.code),
         wire.err().map(|error| error.code),
@@ -3244,12 +3266,12 @@ async fn mutations_agree_across_transports() {
             .await
             .expect("tracks")
             .total,
-        2,
-        "a refused delete changed nothing"
+        1,
+        "both deletions dropped their rows"
     );
 
     let patch = api::TrackMetadataPatch {
-        key: "/lib/seed-0.flac".into(),
+        key: "/lib/seed-1.flac".into(),
         title: Some("renamed".into()),
         ..Default::default()
     };

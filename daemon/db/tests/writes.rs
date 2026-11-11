@@ -106,6 +106,86 @@ async fn upsert_then_prune() {
     let _ = std::fs::remove_dir_all(db_path.parent().unwrap());
 }
 
+/// A local row names a file. A playlist or favorite that still points at it
+/// must not keep a row the scan no longer found: that is how deleted tracks
+/// stayed in the library with nothing to play.
+#[tokio::test]
+async fn a_local_prune_drops_a_row_only_a_playlist_or_favorite_holds() {
+    let db_path = unique_db();
+    let db = db::init(&db_path).await.unwrap();
+    let source = Source::default();
+    db.upsert_tracks(
+        &source,
+        &[
+            local("/music/kept.flac", "Kept"),
+            local("/music/gone.flac", "Gone"),
+        ],
+    )
+    .await
+    .unwrap();
+    db.upsert_playlist_meta(&source, "PL1", "Mix", None, None)
+        .await
+        .unwrap();
+    db.set_playlist_tracks(
+        &source,
+        "PL1",
+        &[reader::models::PlaylistEntry::of("/music/gone.flac")],
+    )
+    .await
+    .unwrap();
+    db.set_favorite(source.as_str(), "/music/gone.flac", true)
+        .await
+        .unwrap();
+
+    db.prune_source(&source, &["/music/kept.flac".into()], &[])
+        .await
+        .unwrap();
+
+    let filter = TrackFilter::new(Source::default());
+    assert_eq!(db.tracks_count(&filter).await.unwrap(), 1);
+
+    let _ = std::fs::remove_dir_all(db_path.parent().unwrap());
+}
+
+/// Deleting a local track is also forgetting the lists that name its file;
+/// otherwise the playlist keeps a ref that can never resolve.
+#[tokio::test]
+async fn deleting_a_local_track_forgets_its_playlist_entry_and_favorite() {
+    let db_path = unique_db();
+    let db = db::init(&db_path).await.unwrap();
+    let source = Source::default();
+    db.upsert_tracks(&source, &[local("/music/gone.flac", "Gone")])
+        .await
+        .unwrap();
+    db.upsert_playlist_meta(&source, "PL1", "Mix", None, None)
+        .await
+        .unwrap();
+    db.set_playlist_tracks(
+        &source,
+        "PL1",
+        &[reader::models::PlaylistEntry::of("/music/gone.flac")],
+    )
+    .await
+    .unwrap();
+    db.set_favorite(source.as_str(), "/music/gone.flac", true)
+        .await
+        .unwrap();
+
+    db.delete_tracks(&source, &["/music/gone.flac".into()])
+        .await
+        .unwrap();
+
+    assert!(
+        db.playlist_entries(&source, "PL1")
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(db.favorites(source.as_str()).await.unwrap().is_empty());
+
+    let _ = std::fs::remove_dir_all(db_path.parent().unwrap());
+}
+
 #[tokio::test]
 async fn automatic_cover_update_preserves_concurrent_manual_cover() {
     let db_path = unique_db();

@@ -667,6 +667,27 @@ pub async fn delete_tracks(
     )
     .execute(&mut *tx)
     .await?;
+    if source.is_local() {
+        // A local playlist or favorite is a list of files. Once the file is
+        // forgotten, its references would name something that can never play.
+        sqlx::query(
+            "DELETE FROM playlist_tracks WHERE playlist_pk IN \
+             (SELECT rowid_pk FROM playlists WHERE source = ?1) \
+             AND track_ref IN (SELECT value FROM json_each(?2))",
+        )
+        .bind(src)
+        .bind(&keys_json)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "DELETE FROM favorites WHERE server_id = ?1 \
+             AND ref IN (SELECT value FROM json_each(?2))",
+        )
+        .bind(src)
+        .bind(&keys_json)
+        .execute(&mut *tx)
+        .await?;
+    }
     prune_artists(&mut tx, src).await?;
     tx.commit().await?;
     Ok(res.rows_affected())
@@ -686,17 +707,33 @@ pub async fn prune_source(
     let keep_tracks = serde_json::to_string(keep_track_keys)?;
     let keep_albums = serde_json::to_string(keep_album_ids)?;
     let mut tx = pool.begin().await?;
-    sqlx::query!(
-        "DELETE FROM tracks WHERE source = ?1 \
-         AND track_key NOT IN (SELECT value FROM json_each(?2)) \
-         AND track_key NOT IN (SELECT pt.track_ref FROM playlist_tracks pt \
-             JOIN playlists p ON p.rowid_pk = pt.playlist_pk WHERE p.source = ?1) \
-         AND track_key NOT IN (SELECT ref FROM favorites WHERE server_id = ?1)",
-        src,
-        keep_tracks
-    )
-    .execute(&mut *tx)
-    .await?;
+    if source.is_local() {
+        // A local row is a file: it is only kept when the scan actually found
+        // it. Spared playlist/favorite references used to keep rows for files
+        // that were already gone, so the library showed tracks nothing could play.
+        sqlx::query(
+            "DELETE FROM tracks WHERE source = ?1 \
+             AND track_key NOT IN (SELECT value FROM json_each(?2))",
+        )
+        .bind(src)
+        .bind(&keep_tracks)
+        .execute(&mut *tx)
+        .await?;
+    } else {
+        // A server playlist or favorite can name an item its library listing
+        // does not, so those references keep the cached row alive.
+        sqlx::query!(
+            "DELETE FROM tracks WHERE source = ?1 \
+             AND track_key NOT IN (SELECT value FROM json_each(?2)) \
+             AND track_key NOT IN (SELECT pt.track_ref FROM playlist_tracks pt \
+                 JOIN playlists p ON p.rowid_pk = pt.playlist_pk WHERE p.source = ?1) \
+             AND track_key NOT IN (SELECT ref FROM favorites WHERE server_id = ?1)",
+            src,
+            keep_tracks
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
     sqlx::query!(
         "DELETE FROM albums WHERE source = ?1 \
          AND source_album_id NOT IN (SELECT value FROM json_each(?2)) \

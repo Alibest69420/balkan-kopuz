@@ -3,7 +3,7 @@
 use api::TrackInfo;
 use gpui_kit::{App, ClipboardItem};
 use link::Link;
-use store::{Notices, actions};
+use store::{Notices, SourcesModel, actions};
 
 /// Album order: by disc, then by track number.
 pub fn in_album_order(tracks: &mut [TrackInfo]) {
@@ -28,10 +28,13 @@ pub fn keys_of(tracks: &[TrackInfo]) -> Vec<String> {
 }
 
 pub fn delete_tracks(keys: Vec<String>, cx: &mut App) {
-    actions::run(
-        cx,
-        move |api| async move { api.delete_tracks(keys, true).await },
-    );
+    let from_disk = SourcesModel::global(cx)
+        .read(cx)
+        .capabilities()
+        .delete_from_disk;
+    actions::run(cx, move |api| async move {
+        api.delete_tracks(keys, from_disk).await
+    });
 }
 
 /// The album's public page, falling back to its first track's; the daemon knows which sources have one.

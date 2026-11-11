@@ -107,6 +107,29 @@ impl MutationService {
         Ok(path.to_path_buf())
     }
 
+    /// The file behind a track when unlinking it is safe: local, still there,
+    /// and inside a configured root. A missing file needs no unlink; one
+    /// outside the roots is somebody else's, so it is left alone — neither
+    /// case is a reason to keep the row the caller asked us to forget.
+    fn removable_path(
+        config: &config::Settings,
+        active: &config::Source,
+        track: &reader::Track,
+    ) -> Option<PathBuf> {
+        let path = track.id.local_path()?;
+        if !path.exists() {
+            return None;
+        }
+        if !inside_a_root(config, active, path) {
+            tracing::warn!(
+                path = %path.display(),
+                "leaving a track file outside the configured library roots in place"
+            );
+            return None;
+        }
+        Some(path.to_path_buf())
+    }
+
     pub async fn update_track_metadata(
         &self,
         patch: TrackMetadataPatch,
@@ -192,29 +215,38 @@ impl MutationService {
                 .await
                 .map_err(db_error)?;
 
-            let mut paths = Vec::with_capacity(tracks.len());
-            for track in &tracks {
-                paths.push(Self::editable_path(&config, &active, track)?);
-            }
+            let paths: Vec<PathBuf> = tracks
+                .iter()
+                .filter_map(|track| Self::removable_path(&config, &active, track))
+                .collect();
+            // Best effort: a file that will not go is worth a warning, not a
+            // failure that leaves the track in the library. Missing files are
+            // already gone; outside-root paths are deliberately skipped.
             tokio::task::spawn_blocking(move || {
                 for path in paths {
                     if let Err(error) = std::fs::remove_file(&path)
                         && error.kind() != std::io::ErrorKind::NotFound
                     {
-                        return Err(error);
+                        tracing::warn!(
+                            path = %path.display(),
+                            %error,
+                            "could not delete a track's file"
+                        );
                     }
                 }
-                Ok::<(), std::io::Error>(())
             })
             .await
-            .map_err(|error| ApiError::internal(format!("delete task failed: {error}")))?
-            .map_err(|error| ApiError::internal(format!("file delete failed: {error}")))?;
+            .map_err(|error| ApiError::internal(format!("delete task failed: {error}")))?;
         }
         self.source()
             .delete_tracks(keys)
             .await
             .map_err(source_error)?;
         self.session.invalidate(Table::Tracks);
+        if active.is_local() {
+            self.session.invalidate(Table::Playlists);
+            self.session.invalidate(Table::Favorites);
+        }
         Ok(())
     }
 
@@ -494,6 +526,63 @@ mod tests {
         // A server source owns no local files, so nothing is deletable.
         let server = config::Source::Server("s".into());
         assert!(!inside_a_root(&config, &server, &inside));
+    }
+
+    fn track_at(path: &Path) -> reader::Track {
+        reader::Track {
+            id: reader::TrackId::Local(path.to_path_buf()),
+            cover: None,
+            album_id: "a".into(),
+            title: "song".into(),
+            artist: String::new(),
+            album: String::new(),
+            duration: 60,
+            khz: 44,
+            bitrate: 320,
+            track_number: None,
+            disc_number: None,
+            musicbrainz_release_id: None,
+            musicbrainz_recording_id: None,
+            musicbrainz_track_id: None,
+            playlist_item_id: None,
+            credits: Vec::new(),
+            artists: vec![],
+            replay_gain: config::ReplayGainInfo::default(),
+            explicit: false,
+            plays: None,
+            counterpart: None,
+        }
+    }
+
+    /// Deleting from disk is best effort: a file already gone needs no unlink,
+    /// and one outside the roots is not ours, but neither keeps the row.
+    #[test]
+    fn only_existing_files_inside_a_root_are_removable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let library = dir.path().join("library");
+        std::fs::create_dir(&library).expect("create library");
+        let inside = library.join("song.flac");
+        let outside = dir.path().join("elsewhere.flac");
+        let gone = library.join("gone.flac");
+        std::fs::write(&inside, b"in").expect("write inside");
+        std::fs::write(&outside, b"out").expect("write outside");
+        let config = config_with_root(&library);
+        let local = config::Source::default();
+
+        assert_eq!(
+            MutationService::removable_path(&config, &local, &track_at(&inside)),
+            Some(inside.clone())
+        );
+        assert_eq!(
+            MutationService::removable_path(&config, &local, &track_at(&outside)),
+            None,
+            "a path outside the roots is never unlinked"
+        );
+        assert_eq!(
+            MutationService::removable_path(&config, &local, &track_at(&gone)),
+            None,
+            "a missing file has nothing left to unlink"
+        );
     }
 
     #[test]
