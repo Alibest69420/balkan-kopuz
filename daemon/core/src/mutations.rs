@@ -152,12 +152,13 @@ impl MutationService {
         } else {
             patch.disc_number.or(track.disc_number)
         };
-        let cover = match patch.cover {
-            ArtworkChange::Keep => reader::CoverChange::Keep,
-            ArtworkChange::Remove => reader::CoverChange::Remove,
+        let keep_cover = matches!(patch.cover, ArtworkChange::Keep);
+        let (cover, cover_picture) = match patch.cover {
+            ArtworkChange::Keep => (reader::CoverChange::Keep, None),
+            ArtworkChange::Remove => (reader::CoverChange::Remove, None),
             ArtworkChange::Set(bytes) => {
                 validate_image(&bytes)?;
-                reader::CoverChange::Set(bytes)
+                (reader::CoverChange::Set(bytes.clone()), Some(bytes))
             }
         };
 
@@ -175,6 +176,22 @@ impl MutationService {
             .map_err(|error| ApiError::internal(format!("tag writer task failed: {error}")))?
             .map_err(ApiError::internal)?;
 
+        // A new picture is served from an upload, so the track's cover points
+        // at it. Without that the album's cover would keep showing, because a
+        // local track's cover comes from its album and a scan only fills in
+        // albums that have none.
+        let stored_cover = match cover_picture {
+            Some(bytes) => {
+                let format = image::guess_format(&bytes).map_err(|error| {
+                    ApiError::invalid_input(format!("unreadable image: {error}"))
+                })?;
+                let extension = format.extensions_str().first().copied().unwrap_or("img");
+                Some(self.write_upload(&bytes, extension).await?)
+            }
+            None if keep_cover => track.cover.as_deref().map(PathBuf::from),
+            None => None,
+        };
+
         let reader::ScannedTrack {
             track: mut scanned,
             album: mut scanned_album,
@@ -182,7 +199,9 @@ impl MutationService {
             .await
             .map_err(|error| ApiError::internal(format!("tag reader task failed: {error}")))?
             .ok_or_else(|| ApiError::internal("the edited file could not be read back"))?;
-        scanned.cover = track.cover.clone();
+        scanned.cover = stored_cover
+            .as_ref()
+            .map(|cover| cover.to_string_lossy().into_owned());
         // One file names only its own artist; the album's credit comes from every track it holds.
         let siblings = self
             .db
@@ -287,18 +306,7 @@ impl MutationService {
         };
         let previous = self.current_artwork_path(&upload.target).await?;
 
-        let mut name = String::with_capacity(72);
-        for byte in Sha256::digest(&upload.bytes) {
-            use std::fmt::Write as _;
-            let _ = write!(name, "{byte:02x}");
-        }
-        let path = self.uploads.join(format!("{name}.{extension}"));
-        tokio::fs::create_dir_all(&self.uploads)
-            .await
-            .map_err(|error| ApiError::internal(format!("artwork directory failed: {error}")))?;
-        tokio::fs::write(&path, &upload.bytes)
-            .await
-            .map_err(|error| ApiError::internal(format!("artwork write failed: {error}")))?;
+        let path = self.write_upload(&upload.bytes, extension).await?;
         let stored = path.to_string_lossy().into_owned();
 
         let result = match &upload.target {
@@ -445,6 +453,23 @@ impl MutationService {
             ArtworkTarget::Playlist(id) => self.playlist(id).await?.cover_path,
             _ => None,
         })
+    }
+
+    /// Store picture bytes under the upload directory, named by their hash.
+    async fn write_upload(&self, bytes: &[u8], extension: &str) -> Result<PathBuf, ApiError> {
+        let mut name = String::with_capacity(72);
+        for byte in Sha256::digest(bytes) {
+            use std::fmt::Write as _;
+            let _ = write!(name, "{byte:02x}");
+        }
+        let path = self.uploads.join(format!("{name}.{extension}"));
+        tokio::fs::create_dir_all(&self.uploads)
+            .await
+            .map_err(|error| ApiError::internal(format!("artwork directory failed: {error}")))?;
+        tokio::fs::write(&path, bytes)
+            .await
+            .map_err(|error| ApiError::internal(format!("artwork write failed: {error}")))?;
+        Ok(path)
     }
 
     /// Delete a picture this daemon uploaded once nothing points at it.
